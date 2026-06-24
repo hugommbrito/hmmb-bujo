@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<!--
+  UX Design Validation Report — skeleton template.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>UX Design Validation: hmmb-bujo (DESIGN.md + EXPERIENCE.md)</title>
+<style>
+  :root {
+    --bg: #fafaf9;
+    --surface: #ffffff;
+    --border: #e7e5e4;
+    --text: #1c1917;
+    --muted: #78716c;
+    --verdict-strong: #16a34a;
+    --verdict-adequate: #65a30d;
+    --verdict-thin: #d97706;
+    --verdict-broken: #dc2626;
+    --sev-low: #64748b;
+    --sev-medium: #ca8a04;
+    --sev-high: #ea580c;
+    --sev-critical: #dc2626;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    font-size: 15px;
+  }
+  .container { max-width: 960px; margin: 0 auto; padding: 32px 24px 64px; }
+  header.report-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 24px;
+  }
+  .title h1 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
+  .title .subtitle { color: var(--muted); font-size: 13px; margin-top: 4px; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .synthesis {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--muted);
+    border-radius: 8px;
+    padding: 18px 22px;
+    margin-bottom: 24px;
+    font-size: 15.5px;
+  }
+  .synthesis p { margin: 0 0 10px; }
+  .synthesis p:last-child { margin-bottom: 0; }
+  .dimension-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 10px;
+    margin-bottom: 24px;
+  }
+  .dim-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+  .dim-card .dim-name { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  .dim-card .dim-verdict { font-size: 14px; font-weight: 600; }
+  section.dimension, section.reviewer-section { margin-bottom: 14px; }
+  section.dimension details, section.reviewer-section details {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  section summary {
+    padding: 14px 20px;
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  section summary::-webkit-details-marker { display: none; }
+  section summary::before {
+    content: "▸";
+    display: inline-block;
+    color: var(--muted);
+    transition: transform 0.15s ease;
+  }
+  section details[open] summary::before { transform: rotate(90deg); }
+  section summary h2 {
+    display: inline;
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+    flex: 1;
+  }
+  .verdict-pill {
+    font-size: 11px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: white;
+  }
+  .verdict-strong { background: var(--verdict-strong); }
+  .verdict-adequate { background: var(--verdict-adequate); }
+  .verdict-thin { background: var(--verdict-thin); }
+  .verdict-broken { background: var(--verdict-broken); }
+  .dim-body { padding: 4px 20px 18px; }
+  .dim-judgment { color: var(--text); font-size: 14.5px; }
+  .dim-judgment p { margin: 0 0 10px; }
+  .findings-list { padding: 0 20px 4px; }
+  article.finding {
+    padding: 14px 0;
+    border-top: 1px solid var(--border);
+  }
+  article.finding:first-child { border-top: none; }
+  article.finding header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+  }
+  .badge {
+    font-size: 10.5px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    line-height: 1.4;
+  }
+  .badge-sev-low { background: rgba(100, 116, 139, 0.12); color: var(--sev-low); }
+  .badge-sev-medium { background: rgba(202, 138, 4, 0.14); color: var(--sev-medium); }
+  .badge-sev-high { background: rgba(234, 88, 12, 0.14); color: var(--sev-high); }
+  .badge-sev-critical { background: rgba(220, 38, 38, 0.14); color: var(--sev-critical); }
+  .finding-title { margin: 0; font-size: 15px; font-weight: 500; flex: 1; min-width: 200px; }
+  .finding-location { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; color: var(--muted); }
+  .finding-note, .finding-fix { margin-top: 6px; font-size: 14px; }
+  .finding-fix strong { color: var(--muted); font-weight: 500; }
+  .mechanical {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin-top: 24px;
+    font-size: 14px;
+  }
+  .mechanical h3 { margin: 0 0 10px; font-size: 14px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .mechanical ul { margin: 0; padding-left: 20px; }
+  .mechanical li { margin-bottom: 4px; color: var(--text); }
+  footer.report-footer {
+    margin-top: 40px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--muted);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  footer .meta { display: flex; gap: 24px; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+  <div class="container">
+    <header class="report-header">
+      <div class="title">
+        <h1>hmmb-bujo (DESIGN.md + EXPERIENCE.md) — UX Design Validation Report</h1>
+        <div class="subtitle">_bmad-output/planning-artifacts/ux-designs/ux-hmmb-bujo-2026-06-15/DESIGN.md · EXPERIENCE.md</div>
+      </div>
+    </header>
+
+    <div class="synthesis">
+      <p>The spine pair is substantially complete and defensible for downstream consumers. DESIGN.md is exceptionally well-crafted — every token is defined, every component has a real spec, and the brand rationale is load-bearing prose, not decoration. EXPERIENCE.md covers the full FR matrix, all eight UJs, and has a rare asset: a 100%-coverage cross-reference table (Section 10).</p>
+      <p>The pair's main weaknesses are mechanical: five of eight UJs lack a Key Flow in EXPERIENCE.md, the <code>imports/</code> directory is empty despite the decision-log referencing a scan of <code>My BuJo.pdf</code>, and a handful of component inconsistencies between the two files create small but real developer friction. Two findings are high-severity and should be resolved before development begins: the missing UJ-5/6/7/8 Key Flows, and the absent <code>imports/My BuJo.pdf</code> audit trail. The offline-state gap in §5 is also high-priority for the mobile UJ-4 scenario.</p>
+    </div>
+
+    <div class="dimension-summary">
+      <div class="dim-card">
+        <div class="dim-name">1. Flow coverage</div>
+        <div class="dim-verdict" style="color: var(--verdict-thin);">Thin</div>
+      </div>
+      <div class="dim-card">
+        <div class="dim-name">2. Token completeness</div>
+        <div class="dim-verdict" style="color: var(--verdict-strong);">Strong</div>
+      </div>
+      <div class="dim-card">
+        <div class="dim-name">3. Component coverage</div>
+        <div class="dim-verdict" style="color: var(--verdict-strong);">Strong</div>
+      </div>
+      <div class="dim-card">
+        <div class="dim-name">4. State coverage</div>
+        <div class="dim-verdict" style="color: var(--verdict-adequate);">Adequate</div>
+      </div>
+      <div class="dim-card">
+        <div class="dim-name">5. Visual ref coverage</div>
+        <div class="dim-verdict" style="color: var(--verdict-broken);">Broken</div>
+      </div>
+      <div class="dim-card">
+        <div class="dim-name">6. Bloat &amp; overspec</div>
+        <div class="dim-verdict" style="color: var(--verdict-adequate);">Adequate</div>
+      </div>
+      <div class="dim-card">
+        <div class="dim-name">7. Inheritance discipline</div>
+        <div class="dim-verdict" style="color: var(--verdict-strong);">Strong</div>
+      </div>
+      <div class="dim-card">
+        <div class="dim-name">8. Shape fit</div>
+        <div class="dim-verdict" style="color: var(--verdict-strong);">Strong</div>
+      </div>
+    </div>
+
+    <!-- 1. Flow coverage — thin (open) -->
+    <section class="dimension">
+      <details open>
+        <summary>
+          <h2>1. Flow coverage</h2>
+          <span class="verdict-pill verdict-thin">Thin</span>
+        </summary>
+        <div class="dim-body">
+          <div class="dim-judgment">
+            <p>EXPERIENCE.md defines three Key Flows. PRD defines eight User Journeys (UJ-1 through UJ-8). Five UJs have no corresponding Key Flow with a named protagonist, numbered steps, climax beat, or failure path. UJ-3 (Abertura do Mês) and UJ-4 (Captura Rápida no Mobile) are covered. UJ-1 is partially covered (Monday variant only). UJ-2, UJ-5, UJ-6, UJ-7, and UJ-8 have no standalone flow.</p>
+          </div>
+        </div>
+        <div class="findings-list">
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">High</span>
+              <h3 class="finding-title">UJ-5, UJ-6, UJ-7, UJ-8 have no Key Flow in EXPERIENCE.md</h3>
+              <span class="finding-location">EXPERIENCE.md §9</span>
+            </header>
+            <div class="finding-note">UJ-5 (Future Log), UJ-6 (Diário de Gratidão), UJ-7 (Saúde e Medicamentos), and UJ-8 (Configuração de Hábitos) have no Key Flow in EXPERIENCE.md §9. These surfaces have non-trivial behavioral rules (UJ-7 has a two-day review ritual; UJ-8 has weight-change semantics; UJ-6 has multiple-entries-per-day). A developer sourcing these flows has only the State Patterns tables and the FR cross-reference — correct but thin for story-level implementation guidance.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add Fluxo 4–7 covering each missing UJ. Each needs: named protagonist, numbered steps, one climax beat, one failure or error path (UJ-7 form-validation error, UJ-8 numeric habit with wrong meta, etc.).</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">Medium</span>
+              <h3 class="finding-title">Fluxo 1 covers Monday variant only; non-Monday daily path undocumented</h3>
+              <span class="finding-location">EXPERIENCE.md §9, Fluxo 1</span>
+            </header>
+            <div class="finding-note">Fluxo 1 covers UJ-1 on a Monday specifically, but UJ-1 is a daily ritual — the non-Monday path (no semanal banner, no monthly banner) is the most common execution and has no flow. A developer could infer it, but the "Monday version first" precedent suggests the simpler path is what ships daily, not the edge case.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add a parenthetical step list for the non-Monday, non-first-week variant within Fluxo 1, or note explicitly that the Monday scenario is a superset.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-low">Low</span>
+              <h3 class="finding-title">Fluxo 3 has no failure path for zero-item Future Log pull</h3>
+              <span class="finding-location">EXPERIENCE.md §9, Fluxo 3</span>
+            </header>
+            <div class="finding-note">Fluxo 1 failure path covers the migration picker and one save failure. No failure path is stated for UJ-3 (what if the Future Log pull returns zero items? what if the mês anterior had zero open tasks?).</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add a "zero-item" failure beat to Fluxo 3 — system should confirm "Junho fechado" even if there were no pending tasks, without presenting an empty migration flow.</div>
+          </article>
+        </div>
+      </details>
+    </section>
+
+    <!-- 2. Token completeness — strong (closed) -->
+    <section class="dimension">
+      <details>
+        <summary>
+          <h2>2. Token completeness</h2>
+          <span class="verdict-pill verdict-strong">Strong</span>
+        </summary>
+        <div class="dim-body">
+          <div class="dim-judgment">
+            <p>All tokens defined in DESIGN.md YAML frontmatter have both light and dark hex pairs. No undefined token references found in prose or component specs. Surface, ink, border, category, priority, brand, typography, spacing, and rounded tokens are all fully defined and consistently used.</p>
+          </div>
+        </div>
+        <div class="findings-list">
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">Medium</span>
+              <h3 class="finding-title">WCAG AA contrast claim is unverified — no contrast ratios cited</h3>
+              <span class="finding-location">DESIGN.md §2, Accessibility sub-section</span>
+            </header>
+            <div class="finding-note">DESIGN.md §2 states "Contraste mínimo WCAG 2.2 AA aplicado em todos os pares ink/surface" but no actual contrast ratios are cited for any pairing. The most risky combination — <code>ink-secondary</code> (#6B6359) on <code>surface-base</code> (#FDFAF4) — is used for ghost chip text and inactive nav items. This is a load-bearing accessibility claim that a developer cannot verify without running the numbers themselves.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add a contrast ratio table for the four load-bearing pairings: <code>ink-primary/surface-base</code>, <code>ink-secondary/surface-base</code>, <code>cat-*/surface-base</code> (use the lowest-contrast example, likely <code>cat-yellow</code>), and <code>priority-i/surface-base</code>.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-low">Low</span>
+              <h3 class="finding-title">Status chip opacity expressions not computed — MUI <code>alpha()</code> call undocumented</h3>
+              <span class="finding-location">DESIGN.md YAML frontmatter, components.status-chip.variants</span>
+            </header>
+            <div class="finding-note">The <code>status-chip</code> component in YAML uses string expressions like <code>"cat-yellow + 15% opacity"</code> rather than a computed hex. This is intentional shorthand, but a developer implementing in MUI will need to derive the value. Acceptable if the implementation doc acknowledges this, but currently it is silently deferred.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add a note in §7.5 (Status Chip) that these tint values should be computed as <code>alpha(token, 0.15)</code> using MUI's <code>alpha()</code> utility — one line prevents ambiguity.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-low">Low</span>
+              <h3 class="finding-title"><code>fab-bg</code> dark-mode inversion uncommented in YAML</h3>
+              <span class="finding-location">DESIGN.md YAML frontmatter</span>
+            </header>
+            <div class="finding-note"><code>fab-bg</code> token is defined as <code>"#1A1612"</code> light / <code>"#EDE8E0"</code> dark, which inverts the ink/surface relationship (dark mode FAB is light-colored). This is intentional and consistent with the "maximum contrast" note in the spec, but no comment in the YAML explains the inversion.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add inline YAML comment: <code># FAB inverts in dark mode — maximum contrast against dark surface-base</code>.</div>
+          </article>
+        </div>
+      </details>
+    </section>
+
+    <!-- 3. Component coverage — strong (closed) -->
+    <section class="dimension">
+      <details>
+        <summary>
+          <h2>3. Component coverage</h2>
+          <span class="verdict-pill verdict-strong">Strong</span>
+        </summary>
+        <div class="dim-body">
+          <div class="dim-judgment">
+            <p>Eight of eleven components have full dual-spine coverage (visual spec in DESIGN.md + behavioral spec in EXPERIENCE.md). Task Row, Day Header, Sidebar Nav Item, FAB, Status Chip, Eisenhower Chip, Habit Tracker Grid/Row, and Migration Modal are all fully cross-specified. Three components (Future Log Item, Health Metric Row, Medication Block) have behavioral specs but no visual spec.</p>
+          </div>
+        </div>
+        <div class="findings-list">
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">Medium</span>
+              <h3 class="finding-title">Future Log Item, Health Metric Row, Medication Block have no visual spec in DESIGN.md</h3>
+              <span class="finding-location">DESIGN.md §7 — gap; EXPERIENCE.md §4.7, §4.8, §4.9</span>
+            </header>
+            <div class="finding-note">These three components have behavioral specs in EXPERIENCE.md §4.7–4.9 but have no corresponding visual spec in DESIGN.md §7. A developer implementing these three components has behavioral rules but no token assignments — no background, border, padding, or typography tokens are specified.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add §7.9 Future Log Item, §7.10 Health Metric Row, §7.11 Medication Block to DESIGN.md with at minimum: padding token, typography role, and any color tokens that differentiate state (filled vs. unfilled metric field, confirmed vs. pending medication).</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-low">Low</span>
+              <h3 class="finding-title">"Concluída" icon mismatch: <code>CheckBox</code> vs. <code>TaskAlt</code></h3>
+              <span class="finding-location">DESIGN.md §7.1 icon table; EXPERIENCE.md §4.1 states table</span>
+            </header>
+            <div class="finding-note">EXPERIENCE.md §4.1 lists <code>TaskAlt</code> as the MUI icon for "Concluída", while DESIGN.md §7.1 lists <code>CheckBox</code> for the same state. These are different icons with materially different visual semantics.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Align both documents to <code>TaskAlt</code> (circle with check) as canonical — it maps more faithfully to the BuJo X symbol than <code>CheckBox</code> (square with check). Update DESIGN.md §7.1.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-low">Low</span>
+              <h3 class="finding-title">"Rápida" icon mismatch: <code>FlashOn</code> vs. <code>Bolt</code></h3>
+              <span class="finding-location">DESIGN.md §7.1; EXPERIENCE.md §4.1</span>
+            </header>
+            <div class="finding-note">EXPERIENCE.md §4.1 lists <code>Bolt</code> for the "Rápida" state; DESIGN.md §7.1 lists <code>FlashOn</code>. These are effectively the same icon by different MUI names — <code>FlashOn</code> is the correct MUI v5 identifier for the bolt/lightning icon.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Standardize on <code>FlashOn</code> in both documents.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-low">Low</span>
+              <h3 class="finding-title">Category chip referenced in EXPERIENCE.md but absent from DESIGN.md</h3>
+              <span class="finding-location">EXPERIENCE.md §4.1 Acessibilidade note; DESIGN.md §7 — no category chip entry</span>
+            </header>
+            <div class="finding-note">EXPERIENCE.md §4.1 mentions "chip de categoria (se exibido)" as the secondary indicator alongside the border color, but DESIGN.md §7 never defines a "category chip" component — only the border is specified. If a category chip is a required a11y affordance, it needs a visual spec.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Either add a <code>category-chip</code> entry to DESIGN.md or reword EXPERIENCE.md §4.1 to "the tooltip or aria-label on the border" as the secondary indicator.</div>
+          </article>
+        </div>
+      </details>
+    </section>
+
+    <!-- 4. State coverage — adequate (closed) -->
+    <section class="dimension">
+      <details>
+        <summary>
+          <h2>4. State coverage</h2>
+          <span class="verdict-pill verdict-adequate">Adequate</span>
+        </summary>
+        <div class="dim-body">
+          <div class="dim-judgment">
+            <p>EXPERIENCE.md §5 covers the most critical surfaces with explicit state tables. Coverage is good but uneven. Daily Log, Auth, Migration Flow, and Medications are well-specified. Future Log and Health Metrics have no state coverage at all. Offline state is not covered for any surface, which is a significant gap given the mobile UJ-4 scenario.</p>
+          </div>
+        </div>
+        <div class="findings-list">
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">High</span>
+              <h3 class="finding-title">Offline state not covered for any surface</h3>
+              <span class="finding-location">EXPERIENCE.md §5 — omission across all surfaces</span>
+            </header>
+            <div class="finding-note">The PRD does not require offline-first (PWA is backlog), but the app will be used on mobile in connectivity-constrained environments (UJ-4 is explicitly "Hugo no metrô"). A developer needs to know: does the app fail silently? Show a banner? Block writes? The example spine (Drift) covers this explicitly with a Toast pattern.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add a §5.8 Global / Connectivity state table: offline detection → non-blocking toast (one-time); write-on-offline → behavior (queue? block? reject?). Given backlog status of PWA/offline, "block writes with inline error" is the minimum acceptable spec.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">Medium</span>
+              <h3 class="finding-title">Future Log surface has no state coverage in §5</h3>
+              <span class="finding-location">EXPERIENCE.md §5 — no §5.x for Future Log</span>
+            </header>
+            <div class="finding-note">Future Log empty state (valid — Future Log can be empty, especially at project start), cold-load state, and the "date-partial item with no day assigned" in-context state are all missing from §5.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add §5.x Future Log with: empty ("Nenhum item no Futuro."), cold-load (skeleton rows), date-partial visual treatment (already partially covered in §4.7 but should be surfaced as a state).</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">Medium</span>
+              <h3 class="finding-title">Health Metrics surface has no state coverage</h3>
+              <span class="finding-location">EXPERIENCE.md §5 — omission</span>
+            </header>
+            <div class="finding-note">This surface has two temporal states (day-in-review: "Ontem" fields, and day-current: "Hoje" fields), and filling in metrics is part of the morning ritual (UJ-7 step 2). The "all fields filled" vs. "fields pending" vs. "no fields configured" states are load-bearing for implementation.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add §5.x Saúde / Métricas covering: no fields configured (empty state, prompt to Configurações &gt; Métricas), fields pending (default state), fields complete, cold-load skeleton.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-low">Low</span>
+              <h3 class="finding-title">Migration Flow zero-tasks path not specified in §5.1</h3>
+              <span class="finding-location">EXPERIENCE.md §5.1</span>
+            </header>
+            <div class="finding-note">If UJ-1 is opened on a day where the previous day had zero incomplete tasks, the system should NOT show the banner. EXPERIENCE.md §5.1 describes the banner for "N tarefas pendentes" but does not specify behavior when N=0. A developer could over-implement and show "0 tarefas pendentes de ontem. Iniciar migração?".</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add one row to §5.1: "Sem tarefas pendentes de ontem — nenhum banner exibido."</div>
+          </article>
+        </div>
+      </details>
+    </section>
+
+    <!-- 5. Visual reference coverage — broken (open) -->
+    <section class="dimension">
+      <details open>
+        <summary>
+          <h2>5. Visual reference coverage</h2>
+          <span class="verdict-pill verdict-broken">Broken</span>
+        </summary>
+        <div class="dim-body">
+          <div class="dim-judgment">
+            <p><code>mockups/</code> and <code>wireframes/</code> directories do not exist. <code>imports/</code> exists but is empty (0 files). <code>.working/color-themes-1.html</code> exists but is not linked from either spine. The decision-log references <code>imports/My BuJo.pdf</code> ("18 páginas") as having been imported and analyzed — the file is absent. EXPERIENCE.md header deliberately defers mockups to "fase Finalize."</p>
+          </div>
+        </div>
+        <div class="findings-list">
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">High</span>
+              <h3 class="finding-title"><code>imports/My BuJo.pdf</code> referenced in decision-log but absent from filesystem</h3>
+              <span class="finding-location">.decision-log.md §Import; imports/ directory empty</span>
+            </header>
+            <div class="finding-note"><code>imports/My BuJo.pdf</code> is referenced in <code>.decision-log.md</code> as the visual source for the caderno vocabulary extraction (colors, symbols, layout density) — but the file is absent from <code>imports/</code>. If that PDF informed design decisions now baked into DESIGN.md, its absence means no future contributor can audit whether the color extraction was accurate.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Either commit <code>My BuJo.pdf</code> to <code>imports/</code>, or add a note in DESIGN.md §2 stating that the caderno scan informed the palette but the original is not retained digitally (intentional omission).</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">Medium</span>
+              <h3 class="finding-title"><code>.working/color-themes-1.html</code> is an orphaned artifact with no context</h3>
+              <span class="finding-location">.working/color-themes-1.html — orphan</span>
+            </header>
+            <div class="finding-note">This artifact is in the workspace but is not linked from either DESIGN.md or EXPERIENCE.md, and is not listed in any "see also" section. A developer encountering it has no context for whether it is authoritative, exploratory, or superseded.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Either link it from DESIGN.md §2 as "exploração de paleta — ver <code>.working/color-themes-1.html</code>" or add a note to <code>.decision-log.md</code> marking it as exploratory/superseded.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-low">Low</span>
+              <h3 class="finding-title">Mockup deferral note lacks a trigger condition</h3>
+              <span class="finding-location">EXPERIENCE.md, header note</span>
+            </header>
+            <div class="finding-note">EXPERIENCE.md header note defers all mockups to "fase Finalize." The note uses future tense without a trigger condition. Story-dev teams consuming this document before Finalize will have no visual composition reference.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Change the note to: "Mockups serão produzidos na fase Finalize, antes de iniciar o desenvolvimento dos Épicos 1–3."</div>
+          </article>
+        </div>
+      </details>
+    </section>
+
+    <!-- 6. Bloat & overspecification — adequate (closed) -->
+    <section class="dimension">
+      <details>
+        <summary>
+          <h2>6. Bloat &amp; overspecification</h2>
+          <span class="verdict-pill verdict-adequate">Adequate</span>
+        </summary>
+        <div class="dim-body">
+          <div class="dim-judgment">
+            <p>Both documents are disciplined. DESIGN.md has no pixel specs where tokens would cover it, and EXPERIENCE.md's FR cross-reference table (§10) earns its length as a genuine consumer artifact. A few areas are worth attention but no major cuts are warranted.</p>
+          </div>
+        </div>
+        <div class="findings-list">
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-low">Low</span>
+              <h3 class="finding-title">§8 (Do's and Don'ts) duplicates constraints already stated in §5 and §6</h3>
+              <span class="finding-location">DESIGN.md §5, §8</span>
+            </header>
+            <div class="finding-note">DESIGN.md §8 restates several constraints already in §5 (Elevation), §6 (Shapes), and §7 (Components) — notably the no-ripple override code snippet and the no-shadow rule appear in both §5 and §8. Duplication is mild but creates a maintenance surface where updating one may miss the other.</div>
+            <div class="finding-fix"><strong>Fix:</strong> In §8, convert restated constraints to cross-references: "Sem sombra — ver §5" rather than re-specifying.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-low">Low</span>
+              <h3 class="finding-title">§10 FR table mixes UI and infrastructure FRs without visual separation</h3>
+              <span class="finding-location">EXPERIENCE.md §10</span>
+            </header>
+            <div class="finding-note">EXPERIENCE.md §10 FR table is 45 rows — unusually complete for this format (net positive). However, the table mixes infrastructure FRs (FR-0.x — "Fundação, infraestrutura") with UI FRs, which can create false confidence that a story has been UX-specified when it has only been acknowledged as infrastructure.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add a visual separator or sub-header in the table to distinguish "UI Surface" rows from "Infrastructure (no UX surface)" rows.</div>
+          </article>
+        </div>
+      </details>
+    </section>
+
+    <!-- 7. Inheritance discipline — strong (closed) -->
+    <section class="dimension">
+      <details>
+        <summary>
+          <h2>7. Inheritance discipline</h2>
+          <span class="verdict-pill verdict-strong">Strong</span>
+        </summary>
+        <div class="dim-body">
+          <div class="dim-judgment">
+            <p>Sources frontmatter in both files is accurate and all referenced files exist. UJ naming is verbatim-consistent with the PRD (UJ-1 through UJ-8). BuJo vocabulary (Daily Log, Weekly Log, Monthly Log, Future Log, Brain Dump, Eisenhower, motor de migrações) is consistent across both documents in terms and capitalization. EXPERIENCE.md token references to DESIGN.md use "ver DESIGN.md" callouts rather than inline token syntax — a defensible behavioral/design spine separation. Minor icon name inconsistencies noted below.</p>
+          </div>
+        </div>
+        <div class="findings-list">
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-low">Low</span>
+              <h3 class="finding-title">FAB icon has three different values across the two documents</h3>
+              <span class="finding-location">DESIGN.md §7.4; EXPERIENCE.md §4.5</span>
+            </header>
+            <div class="finding-note">EXPERIENCE.md §4.5 (FAB) specifies the icon as "<code>AddCircle</code> ou <code>FlashOn</code>" — two options without a decision. DESIGN.md §7.4 specifies <code>AddComment</code>. Three different icons for the same component across the two documents.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Align to <code>AddComment</code> (DESIGN.md) as the canonical icon. The "captura rápida" semantic is better served by <code>AddComment</code> (implies note/capture) than <code>AddCircle</code> (generic add) or <code>FlashOn</code> (speed/bolt).</div>
+          </article>
+        </div>
+      </details>
+    </section>
+
+    <!-- 8. Shape fit — strong (closed) -->
+    <section class="dimension">
+      <details>
+        <summary>
+          <h2>8. Shape fit</h2>
+          <span class="verdict-pill verdict-strong">Strong</span>
+        </summary>
+        <div class="dim-body">
+          <div class="dim-judgment">
+            <p>DESIGN.md matches canonical section order exactly: Marca e Estilo → Cores → Tipografia → Layout e Espaçamento → Elevação e Profundidade → Formas → Componentes → Do's e Don'ts. EXPERIENCE.md contains all required sections plus two earned additions: §10 (FR Coverage Matrix) and §11 (Inspirações e Anti-padrões). The only minor deviation is section ordering — Key Flows (§9) appears before Inspirations/Anti-patterns (§11), whereas the reference shape inverts these. The ordering is intentional and has no consumer impact.</p>
+          </div>
+        </div>
+        <div class="findings-list">
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-low">Low</span>
+              <h3 class="finding-title">Key Flows and Inspirations/Anti-patterns order inverts canonical reference shape</h3>
+              <span class="finding-location">EXPERIENCE.md §9, §11</span>
+            </header>
+            <div class="finding-note">EXPERIENCE.md places Key Flows (§9) before Inspirations/Anti-patterns (§11), with the FR matrix (§10) between them. The reference shape places Inspirations/Anti-patterns before Key Flows. The BuJo ordering is defensible (flows are more load-bearing than anti-patterns; the FR matrix needs to follow the flows it maps), but it breaks canonical order.</div>
+            <div class="finding-fix"><strong>Fix:</strong> No action required unless the team wants strict canonical compliance — the ordering choice is intentional and the content is correct.</div>
+          </article>
+        </div>
+      </details>
+    </section>
+
+    <!-- Mechanical notes -->
+    <div class="mechanical">
+      <h3>Mechanical Notes</h3>
+      <ul>
+        <li><strong>Icon mismatch (3 locations):</strong> "Concluída" icon is <code>CheckBox</code> (DESIGN.md §7.1) vs. <code>TaskAlt</code> (EXPERIENCE.md §4.1). FAB icon is <code>AddComment</code> (DESIGN.md §7.4) vs. <code>AddCircle</code> or <code>FlashOn</code> (EXPERIENCE.md §4.5). "Rápida" icon is <code>FlashOn</code> (DESIGN.md §7.1) vs. <code>Bolt</code> (EXPERIENCE.md §4.1). Developer will encounter three conflicting pairs on first implementation day.</li>
+        <li><strong>Missing <code>imports/My BuJo.pdf</code>:</strong> Referenced in <code>.decision-log.md</code> as the primary visual source. File absent. Audit trail broken.</li>
+        <li><strong>Orphan <code>.working/color-themes-1.html</code>:</strong> Unlinked from both spines. Status (exploratory vs. authoritative) unknown.</li>
+        <li><strong><code>mockups/</code> directory absent:</strong> EXPERIENCE.md promises it "a produzir na fase Finalize." No mockup references exist in prose; no spine-wins-on-conflict rule is needed yet. Low risk now, but downstream architecture/story phases may begin before Finalize.</li>
+        <li><strong>EXPERIENCE.md frontmatter <code>sources.decision-log</code>:</strong> Uses relative path <code>.decision-log.md</code>. Consistent with workspace-relative convention, but different format from DESIGN.md which uses full relative paths from repo root. Not a broken reference but creates a convention inconsistency.</li>
+        <li><strong>Frontmatter completeness:</strong> Both files have <code>title</code>, <code>status: final</code>, and <code>created/updated: 2026-06-15</code>. Frontmatter is complete and consistent.</li>
+        <li><strong><code>priority-none</code> reuses <code>cat-green</code> value</strong> (#4A8C5C / #6BB880): Intentional semantic reinforcement noted in DESIGN.md §2. Not a bug. A YAML comment would prevent future developer questions about apparent duplication.</li>
+      </ul>
+    </div>
+
+    <footer class="report-footer">
+      <div class="meta">
+        <span>Rubric: _bmad-output/planning-artifacts/ux-designs/ux-hmmb-bujo-2026-06-15/review-rubric.md</span>
+        <span>Generated: 2026-06-15T00:00:00-03:00</span>
+      </div>
+    </footer>
+  </div>
+</body>
+</html>

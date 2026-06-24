@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>BuJo Digital — Migration Modal (Desktop)</title>
+<style>
+/*
+  Screen: Migration Flow Modal — Desktop
+  Spine sections: EXPERIENCE.md §4.2 Migration Card, §5.1 Daily Log (estado "Migração em andamento"), §6.1 Desktop interactions (Fluxo de Migração — teclado), §9 Fluxo 1 (passo 6)
+  Component Patterns: Migration Card (4.2), Task Row (readonly/expanded), Day Header (4.4), Sidebar Item (4.6)
+  State Patterns: 5.1 "Migração em andamento" — modal overlay; conteúdo do Daily Log visível atrás com overlay semitransparente
+  Key Flows: Fluxo 1 — Abertura do Dia, passo 6 (revisão semanal — Migration Card com "Ligar para seguradora")
+*/
+
+/* ── Reset ──────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ── Design Tokens ──────────────────────────────────────────────────────── */
+:root {
+  --surface-base:    #FDFAF4;
+  --surface-raised:  #F7F3EB;
+  --surface-header:  #F0EBE0;
+  --ink-primary:     #1A1612;
+  --ink-secondary:   #6B6359;
+  --ink-disabled:    #B0A899;
+  --border-hairline: #DDD8CF;
+  --cat-teal:        #2BADA0;
+  --cat-purple:      #7B5EA7;
+  --cat-pink:        #D95F78;
+  --cat-yellow:      #C89B00;
+  --cat-green:       #4A8C5C;
+  --priority-ui:     #C0392B;
+  --priority-u:      #D4660A;
+  --brand-primary:   #2BADA0;
+  --fab-bg:          #1A1612;
+
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+
+  --sp1: 4px;
+  --sp2: 8px;
+  --sp3: 12px;
+  --sp4: 16px;
+  --sp5: 20px;
+  --sp6: 24px;
+  --sp8: 32px;
+  --sp10: 40px;
+}
+
+/* ── Typography base ────────────────────────────────────────────────────── */
+body {
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 400;
+  color: var(--ink-primary);
+  background: #E8E3DC;
+}
+
+/* ── Browser chrome ─────────────────────────────────────────────────────── */
+.browser-chrome {
+  width: 1280px;
+  margin: 24px auto;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  border: 1px solid #C8C3BB;
+  position: relative;
+}
+
+.chrome-bar {
+  background: #EBEBEB;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  gap: 8px;
+  border-bottom: 1px solid #C8C3BB;
+  position: relative;
+  z-index: 1;
+}
+
+.chrome-dot { width: 12px; height: 12px; border-radius: 50%; }
+.chrome-dot-r { background: #FF5F57; }
+.chrome-dot-y { background: #FFBD2E; }
+.chrome-dot-g { background: #28CA42; }
+
+.chrome-url {
+  flex: 1;
+  background: white;
+  border-radius: var(--radius-sm);
+  height: 22px;
+  margin: 0 40px;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  font-size: 11px;
+  color: #6B6359;
+  border: 1px solid #C8C3BB;
+}
+
+/* ── App shell ──────────────────────────────────────────────────────────── */
+.app-shell {
+  display: flex;
+  height: 820px;
+  background: var(--surface-base);
+  position: relative;
+}
+
+/* ── Sidebar (dimmed) ───────────────────────────────────────────────────── */
+.sidebar {
+  width: 240px;
+  min-width: 240px;
+  background: var(--surface-raised);
+  border-right: 1px solid var(--border-hairline);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sidebar-logo {
+  padding: var(--sp5) var(--sp4);
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--ink-primary);
+  border-bottom: 1px solid var(--border-hairline);
+  line-height: 24px;
+}
+.sidebar-logo span { color: var(--brand-primary); }
+
+.sidebar-nav {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--sp2) 0;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp3);
+  padding: var(--sp2) var(--sp4);
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 400;
+  color: var(--ink-secondary);
+  border-left: 3px solid transparent;
+  min-height: 36px;
+}
+.nav-item.active {
+  background: rgba(43, 173, 160, 0.10);
+  border-left-color: var(--brand-primary);
+  color: var(--brand-primary);
+  font-weight: 600;
+}
+.nav-item-icon { font-size: 16px; width: 20px; text-align: center; flex-shrink: 0; }
+.nav-item-label { flex: 1; }
+.nav-badge {
+  background: var(--brand-primary);
+  color: white;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 5px;
+}
+.nav-group-children { padding-left: var(--sp4); }
+.nav-group-children .nav-item { padding-left: var(--sp4); font-size: 13px; }
+.nav-separator { height: 1px; background: var(--border-hairline); margin: var(--sp2) var(--sp4); }
+.sidebar-settings { border-top: 1px solid var(--border-hairline); padding: var(--sp2) 0; }
+
+/* ── Main content (behind overlay) ─────────────────────────────────────── */
+.main-content-dimmed {
+  flex: 1;
+  background: var(--surface-base);
+  overflow: hidden;
+  position: relative;
+}
+
+/* Dimmed background content */
+.bg-content {
+  padding: var(--sp3) var(--sp4);
+  opacity: 0.45;
+}
+
+.day-header {
+  background: var(--surface-header);
+  padding: var(--sp1) var(--sp3);
+  border-bottom: 1px solid var(--border-hairline);
+  border-radius: var(--radius-xs);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 20px;
+  letter-spacing: -0.01em;
+  color: var(--ink-primary);
+  margin-bottom: var(--sp3);
+}
+
+.bg-task-list { display: flex; flex-direction: column; gap: 2px; }
+
+.bg-task-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp2);
+  padding: 6px var(--sp3) 6px var(--sp2);
+  min-height: 36px;
+  border-left: 3px solid transparent;
+  border-radius: var(--radius-sm);
+  border-top: 1px solid var(--border-hairline);
+}
+.bg-task-row:first-child { border-top: none; }
+.bg-task-row.cat-teal   { border-left-color: var(--cat-teal); }
+.bg-task-row.cat-purple { border-left-color: var(--cat-purple); }
+.bg-task-row.cat-pink   { border-left-color: var(--cat-pink); }
+
+.bg-status { font-size: 14px; width: 16px; color: var(--ink-secondary); flex-shrink: 0; }
+.bg-title  { flex: 1; font-size: 14px; color: var(--ink-primary); }
+
+.eisen-chip {
+  border-radius: var(--radius-xs);
+  padding: 1px 5px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 14px;
+}
+.eisen-chip.ui { background: var(--priority-ui); color: #FFF; }
+.eisen-chip.u  { background: var(--priority-u);  color: #FFF; }
+
+/* ── Modal backdrop overlay ─────────────────────────────────────────────── */
+.modal-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(26, 22, 18, 0.40);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+/* ── Migration Modal Card ────────────────────────────────────────────────── */
+.migration-modal {
+  width: 480px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+/* Modal header row */
+.modal-header {
+  padding: var(--sp4) var(--sp5) var(--sp3);
+  border-bottom: 1px solid var(--border-hairline);
+  background: var(--surface-header);
+}
+
+.modal-header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp3);
+  margin-bottom: var(--sp1);
+}
+
+.modal-title {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink-primary);
+  line-height: 20px;
+}
+
+.modal-dismiss {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-secondary);
+}
+
+/* Task card section */
+.modal-task-card {
+  padding: var(--sp5) var(--sp5) var(--sp4);
+  border-bottom: 1px solid var(--border-hairline);
+}
+
+.modal-task-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink-primary);
+  line-height: 22px;
+  margin-bottom: var(--sp1);
+}
+
+.modal-task-desc {
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--ink-secondary);
+  line-height: 20px;
+  margin-bottom: var(--sp2);
+}
+
+.modal-task-origin {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-disabled);
+}
+
+/* Action buttons section */
+.modal-actions {
+  padding: var(--sp4) var(--sp5);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp2);
+  border-bottom: 1px solid var(--border-hairline);
+}
+
+.action-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--sp2);
+  padding: var(--sp2) var(--sp3);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.action-btn-icon {
+  font-size: 15px;
+  flex-shrink: 0;
+}
+
+.action-btn.primary {
+  background: var(--brand-primary);
+  color: #FFFFFF;
+  grid-column: 1 / 3;
+}
+
+.action-btn.outlined {
+  background: transparent;
+  border-color: var(--border-hairline);
+  color: var(--ink-primary);
+  background: var(--surface-base);
+}
+
+.action-btn.ghost {
+  background: transparent;
+  color: var(--ink-secondary);
+  border-color: transparent;
+  font-weight: 400;
+}
+
+.action-btn-shortcut {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  opacity: 0.5;
+}
+
+/* Progress section */
+.modal-progress {
+  padding: var(--sp3) var(--sp5) var(--sp4);
+}
+
+.modal-progress-text {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-secondary);
+  margin-bottom: var(--sp2);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.modal-progress-bar-track {
+  height: 3px;
+  background: var(--border-hairline);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.modal-progress-bar-fill {
+  height: 100%;
+  background: var(--brand-primary);
+  width: 60%; /* 3 of 5 */
+  border-radius: 2px;
+}
+
+</style>
+</head>
+<body>
+
+<div class="browser-chrome">
+  <!-- Chrome bar -->
+  <div class="chrome-bar">
+    <div class="chrome-dot chrome-dot-r"></div>
+    <div class="chrome-dot chrome-dot-y"></div>
+    <div class="chrome-dot chrome-dot-g"></div>
+    <div class="chrome-url">localhost:3000/hoje</div>
+  </div>
+
+  <!-- App Shell -->
+  <div class="app-shell">
+
+    <!-- Sidebar -->
+    <nav class="sidebar" aria-label="Navegação principal">
+      <div class="sidebar-logo">Bu<span>Jo</span></div>
+      <div class="sidebar-nav">
+        <div class="nav-item active">
+          <span class="nav-item-icon">◉</span>
+          <span class="nav-item-label">Hoje</span>
+        </div>
+        <div class="nav-item">
+          <span class="nav-item-icon">▸</span>
+          <span class="nav-item-label">Planner</span>
+        </div>
+        <div class="nav-group-children">
+          <div class="nav-item"><span class="nav-item-icon">⌗</span><span class="nav-item-label">Esta Semana</span></div>
+          <div class="nav-item"><span class="nav-item-icon">⌗</span><span class="nav-item-label">Este Mês</span></div>
+          <div class="nav-item"><span class="nav-item-icon">⌗</span><span class="nav-item-label">Futuro</span></div>
+        </div>
+        <div class="nav-item"><span class="nav-item-icon">◇</span><span class="nav-item-label">Hábitos</span></div>
+        <div class="nav-item"><span class="nav-item-icon">▸</span><span class="nav-item-label">Saúde</span></div>
+        <div class="nav-group-children">
+          <div class="nav-item"><span class="nav-item-icon">◈</span><span class="nav-item-label">Métricas</span></div>
+          <div class="nav-item"><span class="nav-item-icon">◈</span><span class="nav-item-label">Medicamentos</span></div>
+        </div>
+        <div class="nav-item"><span class="nav-item-icon">❧</span><span class="nav-item-label">Gratidão</span></div>
+        <div class="nav-item">
+          <span class="nav-item-icon">⊙</span>
+          <span class="nav-item-label">Brain Dump</span>
+          <span class="nav-badge">2</span>
+        </div>
+        <div class="nav-item"><span class="nav-item-icon">⊟</span><span class="nav-item-label">Arquivo</span></div>
+        <div class="nav-separator"></div>
+      </div>
+      <div class="sidebar-settings">
+        <div class="nav-item"><span class="nav-item-icon">⚙</span><span class="nav-item-label">Configurações</span></div>
+      </div>
+    </nav>
+
+    <!-- Main content area (dimmed behind overlay) -->
+    <main class="main-content-dimmed" aria-label="Daily Log — Segunda, 16 de junho">
+      <!-- Background Daily Log (dimmed) -->
+      <div class="bg-content">
+        <div class="day-header">SEGUNDA | 16/06</div>
+        <div class="bg-task-list">
+          <div class="bg-task-row cat-teal">
+            <span class="bg-status">⧖</span>
+            <span class="bg-title">Finalizar relatório Q2</span>
+            <span class="eisen-chip ui">U+I</span>
+          </div>
+          <div class="bg-task-row cat-purple">
+            <span class="bg-status">○</span>
+            <span class="bg-title">IVDM</span>
+          </div>
+          <div class="bg-task-row cat-pink">
+            <span class="bg-status">○</span>
+            <span class="bg-title">Consulado PT</span>
+            <span class="eisen-chip u">U</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal backdrop + card -->
+      <div class="modal-overlay" role="dialog" aria-modal="true" aria-label="Fluxo de migração">
+        <div class="migration-modal">
+
+          <!-- Modal header -->
+          <div class="modal-header">
+            <div class="modal-header-top">
+              <span class="modal-title" aria-live="polite">Migração do dia — 3 de 5</span>
+              <span class="modal-dismiss">Esc para cancelar</span>
+            </div>
+          </div>
+
+          <!-- Task being reviewed -->
+          <div class="modal-task-card">
+            <div class="modal-task-title">Ligar para seguradora</div>
+            <div class="modal-task-desc">Pegar número no email da corretora antes de ligar.</div>
+            <div class="modal-task-origin">De: seg 9/06</div>
+          </div>
+
+          <!-- Action buttons -->
+          <div class="modal-actions">
+            <!-- Primary: Migrar para hoje -->
+            <button class="action-btn primary">
+              <span class="action-btn-icon">→</span>
+              Migrar para hoje
+              <span class="action-btn-shortcut">1</span>
+            </button>
+
+            <!-- Outlined: Adiar no mês -->
+            <button class="action-btn outlined">
+              <span class="action-btn-icon">⊞</span>
+              Adiar no mês
+              <span class="action-btn-shortcut">2</span>
+            </button>
+
+            <!-- Outlined: Adiar no Futuro -->
+            <button class="action-btn outlined">
+              <span class="action-btn-icon">⊡</span>
+              Adiar no Futuro
+              <span class="action-btn-shortcut">3</span>
+            </button>
+
+            <!-- Ghost: Cancelar tarefa -->
+            <button class="action-btn ghost">
+              <span class="action-btn-icon">✕</span>
+              Cancelar tarefa
+              <span class="action-btn-shortcut">4</span>
+            </button>
+          </div>
+
+          <!-- Progress indicator -->
+          <div class="modal-progress">
+            <div class="modal-progress-text">
+              <span aria-live="polite">3 de 5 tarefas revisadas</span>
+              <span>60%</span>
+            </div>
+            <div class="modal-progress-bar-track">
+              <div class="modal-progress-bar-fill"></div>
+            </div>
+          </div>
+
+        </div><!-- /migration-modal -->
+      </div><!-- /modal-overlay -->
+
+    </main>
+
+  </div><!-- /app-shell -->
+</div><!-- /browser-chrome -->
+
+</body>
+</html>

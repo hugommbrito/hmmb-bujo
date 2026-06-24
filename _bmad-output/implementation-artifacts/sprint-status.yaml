@@ -1,0 +1,119 @@
+# generated: 2026-06-22
+# last_updated: 2026-06-22
+# project: hmmb-bujo
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: _bmad-output/implementation-artifacts
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog → in-progress: Automatically when first story is created (via create-story)
+#   - in-progress → done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created
+# - Stories can be worked in parallel if team capacity allows
+# - Developer typically creates next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+
+generated: 2026-06-22
+last_updated: 2026-06-24
+project: hmmb-bujo
+project_key: NOKEY
+tracking_system: file-system
+story_location: _bmad-output/implementation-artifacts
+
+development_status:
+  # Epic 1: Fundação de Plataforma
+  epic-1: in-progress
+  1-1-scaffold-do-monorepo-e-pipeline-de-ci-base: done
+  1-2-modulo-core-com-isolamento-multi-tenant-fail-closed-e-guardrails: backlog
+  1-3-autoridade-temporal-core-calendar-py-e-padrao-temporal-canonico: backlog
+  1-4-contrato-de-api-e-padroes-da-camada-de-servico: backlog
+  1-5-tema-mui-central-e-camada-de-dados-do-frontend: backlog
+  epic-1-retrospective: optional
+
+  # Epic 2: Autenticação & Acesso
+  epic-2: backlog
+  2-1-cadastro-e-login-com-jwt: backlog
+  2-2-sessao-persistente-refresh-single-flight-e-estados-de-auth-no-frontend: backlog
+  2-3-casca-de-navegacao-autenticada-sidebar-bottom-nav-roteamento: backlog
+  2-4-baseline-de-acessibilidade-wcag-2-2-aa: backlog
+  epic-2-retrospective: optional
+
+  # Epic 3: Daily Log & Agregado de Tarefas
+  epic-3: backlog
+  3-1-agregado-task-com-schema-congelado-e-maquina-de-estados: backlog
+  3-2-superficie-do-daily-log-com-task-row-e-ciclo-de-estados: backlog
+  3-3-criacao-e-edicao-de-tarefas-com-campos-completos-e-subtarefas: backlog
+  3-4-ordenacao-manual-de-tarefas: backlog
+  epic-3-retrospective: optional
+
+  # Epic 4: Logs de Planejamento, Migração & Recorrentes
+  epic-4: backlog
+  4-1-logs-weekly-monthly-e-future: backlog
+  4-2-migracao-diaria-com-migration-card-e-linhagem: backlog
+  4-3-revisao-semanal-mensal-e-pull-automatico-do-future-log: backlog
+  4-4-catch-up-de-dias-pulados: backlog
+  4-5-templates-de-tarefas-recorrentes-com-placement-manual: backlog
+  4-6-fechamento-de-ciclos-e-arquivo: backlog
+  epic-4-retrospective: optional
+
+  # Epic 5: Brain Dump & Captura Rápida (Fase 1b)
+  epic-5: backlog
+  5-1-caixa-de-entrada-do-brain-dump-e-processamento-manual: backlog
+  5-2-indicador-persistente-como-server-state-derivado: backlog
+  5-3-captura-rapida-no-mobile-via-fab-e-capture-sheet: backlog
+  epic-5-retrospective: optional
+
+  # Epic 6: Sistema de Hábitos
+  epic-6: backlog
+  6-1-configuracao-de-habitos-e-grupos: backlog
+  6-2-tracker-diario-com-snapshot-imutavel-e-completude-ponderada: backlog
+  6-3-multiplicador-de-peso-por-tipo-de-dia: backlog
+  6-4-historico-por-data-e-grafico-de-evolucao: backlog
+  epic-6-retrospective: optional
+
+  # Epic 7: Métricas de Saúde
+  epic-7: backlog
+  7-1-campos-de-saude-dinamicos: backlog
+  7-2-log-diario-de-saude: backlog
+  7-3-historico-de-saude-em-tres-visualizacoes: backlog
+  epic-7-retrospective: optional
+
+  # Epic 8: Medicamentos
+  epic-8: backlog
+  8-1-cadastro-de-medicamentos-com-slot-estavel-e-versoes: backlog
+  8-2-confirmacao-diaria-por-bloco-ou-individual: backlog
+  8-3-historico-de-adesao-e-dose-perdida: backlog
+  epic-8-retrospective: optional
+
+  # Epic 9: Diário de Gratidão
+  epic-9: backlog
+  9-1-entradas-de-texto-livre: backlog
+  9-2-historico-navegavel-por-data-e-mes: backlog
+  epic-9-retrospective: optional
+
+  # Epic 10: Gestão de Usuários (pós-MVP — fora da contagem de sprint do MVP)
+  epic-10: backlog
+  10-1-convite-de-novos-usuarios-por-email: backlog
+  10-2-onboarding-de-usuario-convidado-com-espaco-isolado: backlog
+  epic-10-retrospective: optional
