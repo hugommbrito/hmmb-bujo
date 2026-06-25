@@ -45,7 +45,7 @@ development_status:
   # Epic 1: Fundação de Plataforma
   epic-1: in-progress
   1-1-scaffold-do-monorepo-e-pipeline-de-ci-base: done
-  1-2-modulo-core-com-isolamento-multi-tenant-fail-closed-e-guardrails: backlog
+  1-2-modulo-core-com-isolamento-multi-tenant-fail-closed-e-guardrails: done
   1-3-autoridade-temporal-core-calendar-py-e-padrao-temporal-canonico: backlog
   1-4-contrato-de-api-e-padroes-da-camada-de-servico: backlog
   1-5-tema-mui-central-e-camada-de-dados-do-frontend: backlog

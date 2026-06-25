@@ -56,6 +56,12 @@ jobs:
       - name: Ruff (lint)
         run: uv run ruff check .
 
+      # Port rule (§7.2): fails the build if core/ imports a domain app. The
+      # scoped-manager guardrail runs inside pytest (core/tests/test_guardrails.py),
+      # so it needs no separate step.
+      - name: Import boundaries (import-linter)
+        run: uv run lint-imports
+
       - name: Pytest
         run: uv run pytest
 

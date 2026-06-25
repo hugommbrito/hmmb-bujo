@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git check-ignore *)"
+      "Bash(git check-ignore *)",
+      "Bash(cp pyproject.toml /tmp/pyproject.bak)",
+      "Bash(python3 -)",
+      "Bash(uv run *)",
+      "Bash(echo \"EXIT=$?\")"
     ]
   }
 }

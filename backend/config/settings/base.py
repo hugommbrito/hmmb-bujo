@@ -23,9 +23,9 @@ DEBUG = env.bool("DEBUG", default=False)
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=[])
 
 # --- Applications --------------------------------------------------------------
-# NOTE: `core` and `accounts` exist as placeholder packages but are NOT registered
-# here yet — they have no models. They enter INSTALLED_APPS when they gain models
-# (Stories 1.2 / 2.1).
+# NOTE: `accounts` exists as a placeholder package but is NOT registered here
+# yet — it gains models in Story 2.1. `core` is registered as of Story 1.2 (it
+# now owns the TenantModel base + tenant middleware).
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -36,6 +36,8 @@ INSTALLED_APPS = [
     # Third-party
     "rest_framework",
     "corsheaders",
+    # Local
+    "core",
 ]
 
 MIDDLEWARE = [
@@ -46,6 +48,9 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    # Must come right after AuthenticationMiddleware — it reads request.user to
+    # set the tenant context (dormant until Story 2.1 wires auth).
+    "core.middleware.TenantMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -96,6 +101,14 @@ USE_TZ = True
 STATIC_URL = "static/"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# --- Django REST Framework -----------------------------------------------------
+# Only the project-wide exception handler is wired here (uniform {detail, fields}
+# error bodies + domain-exception → status mapping). Pagination/filtering
+# defaults belong to Story 1.4 — do NOT add them here.
+REST_FRAMEWORK = {
+    "EXCEPTION_HANDLER": "core.exceptions.custom_exception_handler",
+}
 
 # --- CORS ----------------------------------------------------------------------
 # Origins are configurable per environment so the frontend can be served either

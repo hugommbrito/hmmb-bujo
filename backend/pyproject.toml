@@ -17,6 +17,7 @@ dev = [
     "pytest-django>=4.9",
     "factory-boy>=3.3",
     "ruff>=0.6",
+    "import-linter>=2.0",
 ]
 
 [tool.ruff]
@@ -31,3 +32,22 @@ select = ["E", "F", "I", "UP", "B", "DJ"]
 DJANGO_SETTINGS_MODULE = "config.settings.dev"
 python_files = "test_*.py"
 testpaths = ["."]
+
+# --- import-linter (port rule, §7.2) -------------------------------------------
+# Enforces that `core/` never imports a domain app. The domain apps do not exist
+# yet (they arrive one per story in Epic 3+), so they are declared as *external*
+# forbidden modules — `include_external_packages = true` lets grimp flag an
+# `import bujo` in core even before `bujo` is an installed package. The contract
+# is green today (core imports none of them) and turns RED the moment any future
+# story wires a domain import into core. When a new domain app is created, add
+# its package name to `forbidden_modules` below (verified empirically: a
+# fabricated `import bujo` in core breaks this contract — see story 1.2 notes).
+[tool.importlinter]
+root_packages = ["core", "config"]
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "core must not import domain apps (port rule)"
+type = "forbidden"
+source_modules = ["core"]
+forbidden_modules = ["bujo", "habits", "health", "medications", "gratitude", "braindump"]
