@@ -1,15 +1,19 @@
-"""URL configuration for the config project.
-
-Every endpoint lives under the ``/api/`` prefix. Domain routers are added by
-later stories; for now we expose only the liveness health-check.
-"""
+"""URL configuration. Todo endpoint sob /api/."""
 
 from django.contrib import admin
 from django.urls import path
+from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 from core.views import health
 
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/health/", health, name="health"),
+    # Schema endpoints (drf-spectacular)
+    path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
+    path(
+        "api/schema/swagger-ui/",
+        SpectacularSwaggerView.as_view(url_name="schema"),
+        name="swagger-ui",
+    ),
 ]

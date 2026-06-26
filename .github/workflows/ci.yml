@@ -65,6 +65,22 @@ jobs:
       - name: Pytest
         run: uv run pytest
 
+      - name: Set up Node (para geração de types.gen.ts)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Gerar schema OpenAPI
+        run: uv run python manage.py spectacular --file ../schema.yaml
+
+      - name: Verificar types.gen.ts está atualizado
+        shell: bash
+        run: |
+          npx --yes openapi-typescript@^7 schema.yaml -o /tmp/types.gen.ts
+          diff frontend/src/api/types.gen.ts /tmp/types.gen.ts \
+            || (echo "❌ frontend/src/api/types.gen.ts divergiu do schema — rode 'npm run generate-types' em frontend/ e commite" && exit 1)
+        working-directory: ${{ github.workspace }}
+
   frontend:
     name: Frontend (tsc + eslint + build)
     runs-on: ubuntu-latest

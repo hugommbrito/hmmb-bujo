@@ -36,6 +36,8 @@ INSTALLED_APPS = [
     # Third-party
     "rest_framework",
     "corsheaders",
+    "drf_spectacular",
+    "django_filters",
     # Local
     "core",
 ]
@@ -103,11 +105,44 @@ STATIC_URL = "static/"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # --- Django REST Framework -----------------------------------------------------
-# Only the project-wide exception handler is wired here (uniform {detail, fields}
-# error bodies + domain-exception → status mapping). Pagination/filtering
-# defaults belong to Story 1.4 — do NOT add them here.
 REST_FRAMEWORK = {
     "EXCEPTION_HANDLER": "core.exceptions.custom_exception_handler",
+    # camelCase na borda (§6.3) — BrowsableAPIRenderer excluído intencionalmente
+    "DEFAULT_RENDERER_CLASSES": [
+        "djangorestframework_camel_case.render.CamelCaseJSONRenderer",
+    ],
+    "DEFAULT_PARSER_CLASSES": [
+        "djangorestframework_camel_case.parser.CamelCaseJSONParser",
+    ],
+    # Paginação (§6.3)
+    "DEFAULT_PAGINATION_CLASS": "core.pagination.CorePagination",
+    "PAGE_SIZE": 50,
+    # Filtros (§6.3)
+    "DEFAULT_FILTER_BACKENDS": [
+        "django_filters.rest_framework.DjangoFilterBackend",
+        "rest_framework.filters.OrderingFilter",
+    ],
+    # Schema (drf-spectacular)
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+}
+
+# --- drf-spectacular -----------------------------------------------------------
+SPECTACULAR_SETTINGS = {
+    "TITLE": "hmmb-bujo API",
+    "DESCRIPTION": "BuJo Digital — API backend (Django REST Framework)",
+    "VERSION": "0.1.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    "COMPONENT_SPLIT_REQUEST": False,
+}
+
+# --- Exceção JSONB (§6.3, AD-01) -----------------------------------------------
+# djangorestframework-camel-case 1.4+ lê sua configuração via o setting Django
+# `JSON_CAMEL_CASE` (getattr(settings, "JSON_CAMEL_CASE", {})). A chave interna
+# `JSON_UNDERSCOREIZE` controla o comportamento de camelize/underscoreize.
+# "values" é a chave usada em health_logs.values; chaves internas (UUIDs, etc.)
+# ficam preservadas. Adicionar outros campos JSONB dinâmicos conforme surgirem.
+JSON_CAMEL_CASE = {
+    "JSON_UNDERSCOREIZE": {"ignore_fields": ("values",)},
 }
 
 # --- CORS ----------------------------------------------------------------------

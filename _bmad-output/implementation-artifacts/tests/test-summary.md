@@ -1,61 +1,74 @@
-# Resumo de Automação de Testes — Story 1.3
+# Sumário de Automação de Testes — Story 1.4
 
 **Data:** 2026-06-26
-**Story:** 1.3 — Autoridade temporal `core/calendar.py` e padrão temporal canônico
-**Framework:** pytest 9.1.1 + pytest-django 4.12.0 (`uv run pytest`)
+**Story:** 1.4 — Contrato de API e padrões da camada de serviço
+**Suite base:** 46 testes (Stories 1.1–1.3)
+**Suite final:** 53 testes (+7 gaps cobertos)
 
 ---
 
-## Testes Gerados (QA — gaps adicionados)
+## Testes Gerados
 
-### Testes de API / Unidade
+### Testes de API — `backend/core/tests/test_api_contract.py`
 
-| Arquivo | Teste | Status |
-|---------|-------|--------|
-| `backend/core/tests/test_calendar.py` | `test_today_for_fuso_positivo_utc_mais_9` | ✅ |
-| `backend/core/tests/test_calendar.py` | `test_today_for_fuso_utc` | ✅ |
-| `backend/core/tests/test_calendar.py` | `test_week_start_of_quarta` | ✅ |
-| `backend/core/tests/test_calendar.py` | `test_weeks_of_month_marco_2023_cinco_semanas` | ✅ |
-| `backend/core/tests/test_calendar.py` | `test_weeks_of_month_mes_comecando_na_segunda` | ✅ |
-| `backend/core/tests/test_calendar.py` | `test_weeks_of_month_todos_os_itens_sao_segundas` | ✅ |
-| `backend/core/tests/test_calendar.py` | `test_months_of_week_semana_fim_de_mes_sem_cruzar` | ✅ |
+| Teste | AC | Resultado |
+|---|---|---|
+| `test_camelcase_renderer_converte_snake_case` | AC2 | ✅ pré-existente |
+| `test_jsonb_dynamic_keys_sobrevivem_ao_roundtrip` | AC2 | ✅ pré-existente |
+| `test_jsonb_ignore_fields_configurado_no_renderer` | AC2 | ✅ pré-existente |
+| `test_schema_endpoint_retorna_200` | AC1 | ✅ pré-existente |
+| `test_schema_titulo_e_versao_corretos` | AC1 | ✅ **novo** |
+| `test_health_excluido_do_schema` | AC1 | ✅ **novo** |
+| `test_camelcase_parser_converte_para_snake_case` | AC2 | ✅ **novo** |
+| `test_core_pagination_atributos` | AC3 | ✅ **novo** |
+| `test_paginacao_shape_padrao` | AC3 | ✅ **novo** |
+| `test_paginacao_class_e_page_size_configurados` | AC3 | ✅ **novo** |
+| `test_filter_backends_configurados` | AC3 | ✅ **novo** |
 
-### Testes E2E
-Não aplicável — projeto back-end sem UI nesta story.
+### Testes de Serviço — `backend/core/tests/test_services.py`
 
----
-
-## Gaps Descobertos e Corrigidos
-
-| ID | Gap | Motivo da relevância |
-|----|-----|---------------------|
-| G1 | `today_for` com fuso positivo (UTC+9, Tokyo) | Testes anteriores só cobriam UTC-3; meia-noite inversa (UTC atrás) era diferente code-path semântico |
-| G2 | `today_for` com fuso UTC | Fixture `user_utc` existia sem nenhum teste usando-a |
-| G3 | `week_start_of` para quarta-feira (dia intermediário) | Apenas Seg, Sáb e Dom estavam cobertos; Ter–Sex sem teste |
-| G4 | `weeks_of_month` mês com 5 semanas | Caso mais frequente do calendário gregoriano, sem cobertura |
-| G5 | `weeks_of_month` mês começando na segunda | Garantia que `week_start == dia 1` sem recuo ao mês anterior |
-| G6 | `weeks_of_month` todos resultados são segundas | Regressão: verifica invariante estrutural em 4 meses distintos |
-| G7 | `months_of_week` fim de mês sem cruzar virada | Semana dez/25–31 inteira em dezembro — conjunto de 1 elemento |
+| Teste | AC | Resultado |
+|---|---|---|
+| `test_service_exige_keyword_args` | AC3 | ✅ pré-existente |
+| `test_service_levanta_domain_error_para_user_none` | AC3 | ✅ pré-existente |
+| `test_service_levanta_domain_error_para_name_vazio` | AC3 | ✅ pré-existente |
+| `test_service_happy_path` | AC3 | ✅ pré-existente |
 
 ---
 
-## Cobertura
+## Gaps Descobertos e Fechados
 
-| Função | Antes | Depois |
-|--------|-------|--------|
-| `today_for` | 2 happy paths + 1 erro | +fuso positivo +fuso UTC = 4 happy paths + 1 erro |
-| `week_start_of` | Seg, Sáb, Dom | +Qua — representa Ter–Sex |
-| `weeks_of_month` | 4 semanas, 6 semanas, tipo | +5 semanas (caso típico), +começa na segunda, +invariante de segundas |
-| `months_of_week` | virada de mês, meio do mês | +fim de mês sem cruzar |
-| `is_workday` | Seg–Sex, Sáb, Dom | sem alteração (stub — cobertura completa) |
-| guardrail temporal | 0 violações na base | sem alteração (guardrail mantido) |
-
-**Total de testes:** 31 originais → **38 após QA** (+7 novos, 0 falhas, 0 regressões)
+| AC | Gap | Teste adicionado |
+|---|---|---|
+| AC1 | `SPECTACULAR_SETTINGS` (title/version) não validado | `test_schema_titulo_e_versao_corretos` |
+| AC1 | `@extend_schema(exclude=True)` no health não verificado | `test_health_excluido_do_schema` |
+| AC2 | `CamelCaseJSONParser` (body camelCase→snake_case) sem teste | `test_camelcase_parser_converte_para_snake_case` |
+| AC3 | `CorePagination` atributos não testados diretamente | `test_core_pagination_atributos` |
+| AC3 | Shape de paginação `{count, next, previous, results}` | `test_paginacao_shape_padrao` |
+| AC3 | `DEFAULT_PAGINATION_CLASS` e `PAGE_SIZE` nos settings | `test_paginacao_class_e_page_size_configurados` |
+| AC3 | `DEFAULT_FILTER_BACKENDS` (DjangoFilterBackend + OrderingFilter) | `test_filter_backends_configurados` |
 
 ---
+
+## Cobertura por AC
+
+| AC | Descrição | Cobertura |
+|---|---|---|
+| AC1 | Schema OpenAPI, endpoint `/api/schema/`, title/version, health excluído | ✅ 4/4 |
+| AC2 | CamelCase renderer + parser, JSONB round-trip, ignore_fields configurado | ✅ 4/4 |
+| AC3 | CorePagination atributos + shape, settings configurados, filtros, serviço canônico | ✅ 7/7 |
+
+---
+
+## Resultados Finais
+
+```
+53 passed in 1.15s
+ruff check: All checks passed
+lint-imports: 1 kept, 0 broken
+```
 
 ## Próximos Passos
 
-- Executar em CI: `uv run pytest` (os 38 testes estão no path de testes padrão)
-- `is_workday` tem TODO p/ Story 2.1 — quando `accounts.UserHoliday` existir, adicionar testes de integração para feriados
-- Considerar `pytest-cov` para rastreamento de cobertura de linhas em CI
+- Testes de integração com endpoints reais quando endpoints de domínio existirem (Story 2.1+)
+- Testar parser JSONB round-trip via HTTP quando houver endpoint com campo `values` (Story 2.x)

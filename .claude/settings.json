@@ -5,7 +5,10 @@
       "Bash(cp pyproject.toml /tmp/pyproject.bak)",
       "Bash(python3 -)",
       "Bash(uv run *)",
-      "Bash(echo \"EXIT=$?\")"
+      "Bash(echo \"EXIT=$?\")",
+      "Bash('/Users/hugommbrito/Documents/CODE/Projetos Pessoais/hmmb-bujo/.claude/skills/bmad-story-automator/scripts/story-automator' orchestrator-helper verify-step create 1.4 --state-file '/Users/hugommbrito/Documents/CODE/Projetos Pessoais/hmmb-bujo/_bmad-output/story-automator/orchestration-1-20260626-183340.md')",
+      "Bash('/Users/hugommbrito/Documents/CODE/Projetos Pessoais/hmmb-bujo/.claude/skills/bmad-story-automator/scripts/story-automator' tmux-wrapper kill sa-hmmbbujo-260626-153726-e1-s1-4-create)",
+      "Bash('/Users/hugommbrito/Documents/CODE/Projetos Pessoais/hmmb-bujo/.claude/skills/bmad-story-automator/scripts/story-automator' tmux-wrapper agent-cli)"
     ]
   },
   "hooks": {
@@ -14,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "env 'PROJECT_ROOT=/Users/hugommbrito/Documents/CODE/Projetos Pessoais/hmmb-bujo' '/Users/hugommbrito/Documents/CODE/Projetos Pessoais/hmmb-bujo/.claude/skills/bmad-story-automator/scripts/story-automator' stop-hook",
+            "command": "env 'PROJECT_ROOT=/Users/hugommbrito/Documents/CODE/Projetos Pessoais/hmmb-bujo' '/Users/hugommbrito/Documents/CODE/Projetos Pessoais/hmmb-bujo/.claude/skills/bmad-story-automator/scripts/story-automator' Pessoais/hmmb-bujo/.claude/skills/bmad-story-automator/scripts/story-automator stop-hook",
             "timeout": 10
           }
         ]

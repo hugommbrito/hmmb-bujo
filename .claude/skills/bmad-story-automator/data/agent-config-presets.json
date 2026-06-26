@@ -3,7 +3,7 @@
   "presets": [
     {
       "name": "all-claude",
-      "createdAt": "2026-06-26T12:54:20Z",
+      "createdAt": "2026-06-26T18:29:08Z",
       "config": {
         "complexityBased": false,
         "low": {

@@ -1,0 +1,7 @@
+openapi: 3.0.3
+info:
+  title: hmmb-bujo API
+  version: 0.1.0
+  description: BuJo Digital — API backend (Django REST Framework)
+paths: {}
+components: {}

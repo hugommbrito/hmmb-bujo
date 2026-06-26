@@ -9,6 +9,9 @@ dependencies = [
     "django-environ>=0.11",
     "django-cors-headers>=4.4",
     "psycopg[binary]>=3.2",
+    "drf-spectacular>=0.27,<1",
+    "djangorestframework-camel-case>=1.4,<2",
+    "django-filter>=24,<25",
 ]
 
 [dependency-groups]
