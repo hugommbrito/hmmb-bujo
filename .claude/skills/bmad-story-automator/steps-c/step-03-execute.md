@@ -151,9 +151,90 @@ validation=$("$scripts" orchestrator-helper verify-step create {story_id} --stat
   tmp_state=$(mktemp)
   sed "s/^| ${story_id} |.*$/| ${story_id} | done | - | - | - | - | in-progress |/" "$state_file" > "$tmp_state" && mv "$tmp_state" "$state_file"
   ```
-  → proceed to B
+  → proceed to A2 (story review gate)
 - If `validation.verified == false` AND attempts < 5 → retry with next agent (see `{retryStrategy}`)
 - If `validation.verified == false` AND attempts == 5 → escalate (all retries exhausted)
+
+<!-- ========================================================================= -->
+<!-- CONCEPT TEST: create-story review gate (gate leve)                        -->
+<!-- Inserted manually (not via core). Remove this whole A2 block to revert.   -->
+<!-- Reuses spawn/monitor/kill; no Python/CLI changes. create-story has no     -->
+<!-- {{extra_instruction}} slot, so retry REGENERATES rather than feeding back -->
+<!-- the reasons; final failure escalates WITH the reasons for a human.        -->
+<!-- ========================================================================= -->
+
+### A2. Story Review Gate (concept test)
+
+**Goal:** Before dev, validate the freshly-created story for completeness/quality. Reuse the `create-story` **validate** flow as the reviewer. PASS → proceed to B. FAIL → regenerate (bounded), then escalate with reasons.
+
+**Config:** `maxReviewCycles = 2` (review attempts, including the initial one).
+
+```bash
+reviewCycle=1
+maxReviewCycles=2
+story_glob="{implementation_artifacts}/${story_prefix}-*.md"
+
+while [ "$reviewCycle" -le "$maxReviewCycles" ]; do
+  resolve_agent_for_task "create" "$state_file" "{story_id}"   # reuse create-task agent/model
+  cli=$("$scripts" tmux-wrapper agent-cli --model "$primary_model")
+
+  review_prompt=$(cat <<EOF
+Run the BMAD create-story workflow in VALIDATE mode for story {story_id}.
+First load the bmad-create-story skill, then run its validate flow against the
+EXISTING story file matching: ${story_glob}
+Do NOT create or modify any file — review only.
+Judge whether the story is implementation-ready (clear acceptance criteria,
+scoped tasks, no missing context a dev would need).
+Emit EXACTLY ONE final line, nothing after it:
+  STORY_REVIEW: PASS
+or
+  STORY_REVIEW: FAIL - <one-line reasons>
+#YOLO - Do NOT wait for user input.
+EOF
+)
+  built_cmd="unset CLAUDECODE && $cli $(printf '%q' "$review_prompt")"
+  session=$("$scripts" tmux-wrapper spawn create {epic} {story_id} \
+    --agent "$current_agent" --cycle "$reviewCycle" --command "$built_cmd")
+  result=$("$scripts" monitor-session "$session" --json --agent "$current_agent")
+  "$scripts" tmux-wrapper kill "$session"
+
+  # MANDATORY log pre-filter, then extract the single verdict marker
+  log_file=$(echo "$result" | jq -r '.output_file')
+  verdict=$(grep -aoE "STORY_REVIEW: (PASS|FAIL[^\"]*)" "$log_file" | tail -n1)
+
+  echo "- **[$(date -u +%Y-%m-%dT%H:%M:%SZ)]** Story review cycle ${reviewCycle}: ${verdict:-NO_VERDICT}" >> "$state_file"
+
+  case "$verdict" in
+    "STORY_REVIEW: PASS")
+      break ;;                                  # → proceed to B
+    "")  # No parseable verdict → treat as inconclusive, do not block dev on a parser miss
+      echo "- **[$(date -u +%Y-%m-%dT%H:%M:%SZ)]** Story review inconclusive (no marker); proceeding" >> "$state_file"
+      break ;;
+    *)   # FAIL
+      if [ "$reviewCycle" -lt "$maxReviewCycles" ]; then
+        # Back up the rejected story (non-destructive) so create won't skip, then regenerate
+        for f in $story_glob; do [ -e "$f" ] && mv "$f" "${f}.rejected-cycle${reviewCycle}"; done
+        resolve_agent_for_task "create" "$state_file" "{story_id}"
+        if should_apply_primary_model "$current_agent"; then
+          recreate_cmd=$("$scripts" tmux-wrapper build-cmd create {story_id} --agent "$current_agent" --model "$primary_model" --state-file "$state_file")
+        else
+          recreate_cmd=$("$scripts" tmux-wrapper build-cmd create {story_id} --agent "$current_agent" --state-file "$state_file")
+        fi
+        rc_session=$("$scripts" tmux-wrapper spawn create {epic} {story_id} --agent "$current_agent" --command "$recreate_cmd")
+        "$scripts" monitor-session "$rc_session" --json --agent "$current_agent" >/dev/null
+        "$scripts" tmux-wrapper kill "$rc_session"
+        reviewCycle=$((reviewCycle + 1))
+      else
+        # Exhausted review cycles → ESCALATE with the reasons (human decides)
+        echo "- **[$(date -u +%Y-%m-%dT%H:%M:%SZ)]** Story review ESCALATION after ${maxReviewCycles} cycles: ${verdict}" >> "$state_file"
+        break
+      fi ;;
+  esac
+done
+```
+
+- If final `verdict == PASS` (or inconclusive) → proceed to B.
+- If final cycle still `FAIL` → **escalate to user**: show `{story_id}` + the FAIL reasons, and stop the loop for this story. Do not auto-proceed to dev on a story the reviewer rejected.
 
 ### B. Dev Story
 

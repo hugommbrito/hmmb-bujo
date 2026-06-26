@@ -31,3 +31,4 @@ frontend/dist/
 
 # Build / logs
 *.log
+.claude/.story-automator-active

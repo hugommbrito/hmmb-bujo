@@ -1,0 +1,1 @@
+{"stories":[{"storyId":"1.3","title":"Autoridade temporal `core/calendar.py` e padrão temporal canônico","complexity":{"level":"Medium","score":4,"reasons":["Authorization/permissions","High AC count (12)"]}}]}

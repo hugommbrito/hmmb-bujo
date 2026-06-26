@@ -7,5 +7,18 @@
       "Bash(uv run *)",
       "Bash(echo \"EXIT=$?\")"
     ]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "env 'PROJECT_ROOT=/Users/hugommbrito/Documents/CODE/Projetos Pessoais/hmmb-bujo' '/Users/hugommbrito/Documents/CODE/Projetos Pessoais/hmmb-bujo/.claude/skills/bmad-story-automator/scripts/story-automator' stop-hook",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
   }
 }
