@@ -27,10 +27,12 @@ def user_utc():
 # --- today_for ---
 
 def test_today_for_retorna_data_no_fuso_correto(user_sp):
-    """today_for devolve a data no fuso do usuário, não UTC."""
-    # Simula 23:30 UTC = 20:30 BRT (03h de diferença no horário padrão)
-    # O dia em UTC é hoje, mas em São Paulo ainda é o mesmo dia
-    fixed_utc = datetime(2024, 3, 15, 23, 30, 0, tzinfo=UTC)
+    """today_for devolve a data no fuso do usuário, não UTC.
+
+    00:30 UTC do dia 16 = 21:30 BRT do dia 15: datas UTC e BRT divergem.
+    Se a função usasse UTC incorretamente retornaria 16, não 15.
+    """
+    fixed_utc = datetime(2024, 3, 16, 0, 30, 0, tzinfo=UTC)
 
     with patch("django.utils.timezone.now", return_value=fixed_utc):
         resultado = today_for(user_sp)
@@ -136,3 +138,67 @@ def test_is_workday_sabado_domingo(user_sp):
     domingo = date(2024, 1, 7)
     assert is_workday(user_sp, sabado) is False
     assert is_workday(user_sp, domingo) is False
+
+
+# --- gaps de cobertura adicionados pelo QA (Story 1.3) ---
+
+# G1: today_for com fuso positivo (UTC+9, Tokyo)
+def test_today_for_fuso_positivo_utc_mais_9():
+    """Às 23:30 UTC do dia 15, Tokyo (UTC+9) já está no dia 16."""
+    user_tokyo = types.SimpleNamespace(timezone="Asia/Tokyo")
+    fixed_utc = datetime(2024, 3, 15, 23, 30, 0, tzinfo=UTC)
+
+    with patch("django.utils.timezone.now", return_value=fixed_utc):
+        resultado = today_for(user_tokyo)
+
+    assert resultado == date(2024, 3, 16)
+
+
+# G2: today_for com timezone UTC direto
+def test_today_for_fuso_utc(user_utc):
+    """Usuário com timezone UTC recebe a data UTC sem distorção."""
+    fixed_utc = datetime(2024, 3, 15, 12, 0, 0, tzinfo=UTC)
+
+    with patch("django.utils.timezone.now", return_value=fixed_utc):
+        resultado = today_for(user_utc)
+
+    assert resultado == date(2024, 3, 15)
+
+
+# G3: week_start_of para dia intermediário (quarta-feira)
+def test_week_start_of_quarta():
+    """Quarta-feira (weekday=2) retorna a segunda da mesma semana."""
+    quarta = date(2022, 12, 28)  # quarta, mesma semana de 26/12 (segunda)
+    assert week_start_of(quarta) == date(2022, 12, 26)
+
+
+# G4: weeks_of_month mês com 5 semanas (caso mais comum)
+def test_weeks_of_month_marco_2023_cinco_semanas():
+    """Março 2023 começa na quarta → 5 semanas; 1ª week_start em 27/02."""
+    semanas = weeks_of_month(2023, 3)
+    assert len(semanas) == 5
+    assert semanas[0] == date(2023, 2, 27)
+    assert semanas[-1] == date(2023, 3, 27)
+
+
+# G5: weeks_of_month mês que começa exatamente na segunda
+def test_weeks_of_month_mes_comecando_na_segunda():
+    """Abril 2024 começa numa segunda → 1ª week_start = 01/04 (sem recuo ao mês anterior)."""
+    semanas = weeks_of_month(2024, 4)
+    assert semanas[0] == date(2024, 4, 1)
+    assert len(semanas) == 5
+
+
+# G6: todos os resultados de weeks_of_month são segundas-feiras
+def test_weeks_of_month_todos_os_itens_sao_segundas():
+    """weeks_of_month deve retornar somente segundas-feiras (weekday == 0)."""
+    for year, month in [(2023, 3), (2023, 10), (2024, 1), (2024, 4)]:
+        for d in weeks_of_month(year, month):
+            assert d.weekday() == 0, f"{d} não é segunda-feira em {year}-{month:02d}"
+
+
+# G7: months_of_week semana no final do mês sem cruzar virada
+def test_months_of_week_semana_fim_de_mes_sem_cruzar():
+    """Semana 25/12/2023 (Seg) até 31/12/2023 (Dom) — inteiramente em dezembro."""
+    resultado = months_of_week(date(2023, 12, 25))
+    assert resultado == {(2023, 12)}

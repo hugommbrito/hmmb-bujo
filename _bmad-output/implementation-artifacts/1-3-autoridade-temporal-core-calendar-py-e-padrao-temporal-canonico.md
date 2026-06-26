@@ -4,7 +4,7 @@ baseline_commit: 0855f66f5d19cb58e9bb16f1c3e79a27e8d46a9d
 
 # Story 1.3: Autoridade temporal `core/calendar.py` e padrão temporal canônico
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -307,10 +307,10 @@ claude-sonnet-4-6
 ### Completion Notes List
 
 - **Task 1** (`core/calendar.py`): implementado com `import calendar as _calendar` para evitar shadowing, `today_for` via `ZoneInfo`, `week_start_of` via `d.weekday()`, `weeks_of_month` iterando por semanas, `months_of_week` comparando `week_start` e `week_start + 6d`, `is_workday` stub com TODO para Story 2.1. Ruff limpo, import-linter OK (sem importar apps de domínio), django check 0 issues.
-- **Task 2** (`test_calendar.py`): 14 testes cobrindo os 3 casos-âncora obrigatórios do AC2, mock de `django.utils.timezone.now` com `datetime.UTC`, erro de fuso inválido, `is_workday` stub seg–dom, `weeks_of_month` para fevereiro (4 semanas) e outubro 2023 (6 semanas). Todos passam.
+- **Task 2** (`test_calendar.py`): 21 testes cobrindo os 3 casos-âncora obrigatórios do AC2, mock de `django.utils.timezone.now` com `datetime.UTC`, erro de fuso inválido, `is_workday` stub seg–dom, `weeks_of_month` para fevereiro (4 semanas) e outubro 2023 (6 semanas), mais 7 gaps de cobertura adicionados na revisão (G1–G7: fusos positivos, UTC direto, quarta-feira, 5 semanas, mês começando na segunda, invariante de segunda-feira, fim de mês sem virada). Todos passam.
 - **Task 3** (`test_guardrails.py` estendido): guardrail AST `test_no_bare_date_today_outside_calendar` adicionado sem modificar o guardrail de manager existente. Scanner verifica 5 padrões proibidos; 0 violações na base. Ruff limpo.
 - **Task 4** (`docs/temporal-pattern.md`): 7 seções obrigatórias em pt-BR com tabela de decisão materialização vs. on-demand, casos-âncora documentados, referências cruzadas a AD-04, AD-05, §6.8, §7.2 e Épicos 4 e 6.
-- **Suite final**: 31/31 testes passam (16 originais + 14 novos de calendar + 1 novo de guardrail). Zero regressões. Ruff, lint-imports e django check todos OK.
+- **Suite final**: 38/38 testes passam (16 originais + 21 novos de calendar + 1 novo de guardrail). Zero regressões. Ruff, lint-imports e django check todos OK.
 
 ### File List
 
@@ -321,6 +321,25 @@ claude-sonnet-4-6
 - `_bmad-output/implementation-artifacts/sprint-status.yaml` — ALTERADO (status in-progress → review)
 - `_bmad-output/implementation-artifacts/1-3-autoridade-temporal-core-calendar-py-e-padrao-temporal-canonico.md` — ALTERADO (checkboxes, Dev Agent Record, File List, Change Log, Status)
 
+## Senior Developer Review (AI)
+
+**Data:** 2026-06-26  
+**Revisor:** claude-sonnet-4-6 (adversarial review)
+
+**Resultado:** APROVADO — 0 issues críticos ou altos. 1 médio + 2 baixos corrigidos automaticamente.
+
+### Achados e Correções
+
+| # | Severidade | Achado | Ação |
+|---|---|---|---|
+| M1 | MEDIUM | 7 testes QA (G1–G7) foram adicionados em `test_calendar.py` após o commit da story e estavam não-commitados; Dev Agent Record citava 14 testes mas o arquivo tinha 21 | Corrigido — contagem atualizada no Dev Agent Record; testes serão commitados junto a esta revisão |
+| L1 | LOW | `test_today_for_retorna_data_no_fuso_correto` usava 23:30 UTC = 20:30 BRT (mesma data); a função poderia retornar a data UTC e o teste passaria igualmente | Corrigido — caso alterado para 00:30 UTC dia 16 = 21:30 BRT dia 15; agora divergem e o teste prova a resolução de fuso |
+| L2 | LOW | Dev Agent Record dizia "31/31 testes passam (16+14+1)"; suite real era 38 | Corrigido junto ao M1 |
+
+**AC validados:** AC1 ✅ AC2 ✅ AC3 ✅  
+**Suite:** 38/38 testes passam | Ruff limpo | lint-imports 1 contrato mantido | django check 0 issues
+
 ## Change Log
 
 - **2026-06-26**: Story 1.3 implementada — `core/calendar.py` (autoridade temporal: `today_for`, `week_start_of`, `weeks_of_month`, `months_of_week`, `is_workday` stub), testes com casos-âncora AC2, guardrail AST de `date.today()`/`timezone.now()` em `test_guardrails.py`, e documento `docs/temporal-pattern.md`.
+- **2026-06-26**: Code review (AI adversarial) — 1 médio + 2 baixos corrigidos; 7 testes QA gap (G1–G7) commitados; story → done.
