@@ -8,7 +8,12 @@
       "Bash(echo \"EXIT=$?\")",
       "Bash('/Users/hugommbrito/Documents/CODE/Projetos Pessoais/hmmb-bujo/.claude/skills/bmad-story-automator/scripts/story-automator' orchestrator-helper verify-step create 1.4 --state-file '/Users/hugommbrito/Documents/CODE/Projetos Pessoais/hmmb-bujo/_bmad-output/story-automator/orchestration-1-20260626-183340.md')",
       "Bash('/Users/hugommbrito/Documents/CODE/Projetos Pessoais/hmmb-bujo/.claude/skills/bmad-story-automator/scripts/story-automator' tmux-wrapper kill sa-hmmbbujo-260626-153726-e1-s1-4-create)",
-      "Bash('/Users/hugommbrito/Documents/CODE/Projetos Pessoais/hmmb-bujo/.claude/skills/bmad-story-automator/scripts/story-automator' tmux-wrapper agent-cli)"
+      "Bash('/Users/hugommbrito/Documents/CODE/Projetos Pessoais/hmmb-bujo/.claude/skills/bmad-story-automator/scripts/story-automator' tmux-wrapper agent-cli)",
+      "Bash('/Users/hugommbrito/Documents/CODE/Projetos Pessoais/hmmb-bujo/.claude/skills/bmad-story-automator/scripts/story-automator' build-state-doc *)",
+      "Bash('/Users/hugommbrito/Documents/CODE/Projetos Pessoais/hmmb-bujo/.claude/skills/bmad-story-automator/scripts/story-automator' orchestrator-helper *)",
+      "Bash('/Users/hugommbrito/Documents/CODE/Projetos Pessoais/hmmb-bujo/.claude/skills/bmad-story-automator/scripts/story-automator' tmux-wrapper *)",
+      "Bash('/Users/hugommbrito/Documents/CODE/Projetos Pessoais/hmmb-bujo/.claude/skills/bmad-story-automator/scripts/story-automator' monitor-session *)",
+      "Bash('/Users/hugommbrito/Documents/CODE/Projetos Pessoais/hmmb-bujo/.claude/skills/bmad-story-automator/scripts/story-automator' tmux-status-check *)"
     ]
   },
   "hooks": {

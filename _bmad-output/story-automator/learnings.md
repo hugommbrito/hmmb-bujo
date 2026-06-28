@@ -20,3 +20,16 @@
 - automate: ~3-4 min
 - code-review: ~5-6 min
 - Total ciclo 1 story: ~25-30 min
+
+## Run: 2026-06-26 — Epic 1 stories 1.4 + 1.5
+
+- **monitor-session timeouts**: Múltiplos timeouts de 5-10min durante dev e automate — sessões completaram com sucesso mas o monitor não capturou. Verificação via tmux-status-check + sprint-status foi essencial.
+- **Story review gate (A2)**: Funcionou bem. 1.4 e 1.5 passaram em ciclo 1.
+- **Commit manual**: Instrução personalizada de commit manual funcionou corretamente — pausas após code review para autorização do usuário.
+- **stop-hook error**: Pequeno erro no pane da sessão review-gate 1.5, não bloqueante.
+- **Retrospective**: Pulada por timeout (non-blocking).
+
+## Instrução permanente do usuário (2026-06-27)
+
+- **Retrospective**: NÃO pular retrospective. Aguardar conclusão mesmo se lenta. Aumentar timeout ou re-monitorar ao invés de pular.
+- **Commits**: NENHUM commit sem autorização expressa do usuário. 1 commit por story, sempre após code review passar. Pausar e aguardar "[S]im" antes de executar `commit-story`.

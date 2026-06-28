@@ -12,6 +12,7 @@ dependencies = [
     "drf-spectacular>=0.27,<1",
     "djangorestframework-camel-case>=1.4,<2",
     "django-filter>=24,<25",
+    "djangorestframework-simplejwt>=5.3,<6",
 ]
 
 [dependency-groups]
@@ -46,7 +47,7 @@ testpaths = ["."]
 # its package name to `forbidden_modules` below (verified empirically: a
 # fabricated `import bujo` in core breaks this contract — see story 1.2 notes).
 [tool.importlinter]
-root_packages = ["core", "config"]
+root_packages = ["core", "config", "accounts"]
 include_external_packages = true
 
 [[tool.importlinter.contracts]]

@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-22
-last_updated: 2026-06-26  # story 1.5 → done
+last_updated: 2026-06-28  # story 2.1 → done
 project: hmmb-bujo
 project_key: NOKEY
 tracking_system: file-system
@@ -52,8 +52,8 @@ development_status:
   epic-1-retrospective: optional
 
   # Epic 2: Autenticação & Acesso
-  epic-2: backlog
-  2-1-cadastro-e-login-com-jwt: backlog
+  epic-2: in-progress
+  2-1-cadastro-e-login-com-jwt: done
   2-2-sessao-persistente-refresh-single-flight-e-estados-de-auth-no-frontend: backlog
   2-3-casca-de-navegacao-autenticada-sidebar-bottom-nav-roteamento: backlog
   2-4-baseline-de-acessibilidade-wcag-2-2-aa: backlog

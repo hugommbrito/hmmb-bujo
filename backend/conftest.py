@@ -8,8 +8,6 @@ domain apps plug into.
 """
 
 import importlib
-import types
-import uuid
 
 import pytest
 
@@ -27,19 +25,15 @@ def _enable_db_access(db):  # noqa: PT004 - autouse fixture intentionally return
 
 
 @pytest.fixture
-def user():
-    """Lightweight tenant stand-in — only ``.id`` is used by ``tenant_context``.
-
-    There is no real ``User`` model until Story 2.1; ``user_id`` is a plain
-    ``UUIDField`` so any UUID works. Story 2.1 replaces this with ``UserFactory``.
-    """
-    return types.SimpleNamespace(id=uuid.uuid4())
+def user(db):
+    from accounts.tests.factories import UserFactory
+    return UserFactory()
 
 
 @pytest.fixture
-def other_user():
-    """A second distinct tenant stand-in, for cross-tenant isolation tests."""
-    return types.SimpleNamespace(id=uuid.uuid4())
+def other_user(db):
+    from accounts.tests.factories import UserFactory
+    return UserFactory()  # email único garantido pela Sequence do factory
 
 
 @pytest.fixture
@@ -51,13 +45,16 @@ def api_client():
 
 @pytest.fixture
 def auth_client(user, api_client):
-    """API client bound to ``user``'s tenant context (§6.10).
+    """Cliente autenticado via JWT real (§6.10).
 
-    No ``force_authenticate`` yet — there is no JWT/``User`` until Story 2.1; this
-    only establishes the tenant context. 2.1 layers real authentication on top.
+    force_authenticate seta request.user → TenantMiddleware acorda e seta
+    current_user_id por request. tenant_context mantido para compatibilidade
+    com testes que chamam services diretamente (sem passar pelo HTTP stack).
     """
+    api_client.force_authenticate(user=user)
     with tenant_context(user):
         yield api_client
+    api_client.force_authenticate(user=None)
 
 
 def pytest_generate_tests(metafunc):

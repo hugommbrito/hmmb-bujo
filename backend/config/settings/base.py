@@ -6,6 +6,7 @@ and then ``from .base import *``. Configuration is driven by environment variabl
 via ``django-environ`` — no secrets are committed (see ``.env.example``).
 """
 
+from datetime import timedelta
 from pathlib import Path
 
 import environ
@@ -16,6 +17,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 env = environ.Env(
     DEBUG=(bool, False),
 )
+
+AUTH_USER_MODEL = "accounts.User" # Altera o modelo de user, deixando de usar o padrão do django para adotar o padrão personalizado deste projeto.
 
 # --- Core security / hosts (all driven by env) ---------------------------------
 SECRET_KEY = env("SECRET_KEY")
@@ -38,8 +41,11 @@ INSTALLED_APPS = [
     "corsheaders",
     "drf_spectacular",
     "django_filters",
+    "rest_framework_simplejwt",
+    "rest_framework_simplejwt.token_blacklist",
     # Local
     "core",
+    "accounts",
 ]
 
 MIDDLEWARE = [
@@ -104,9 +110,27 @@ STATIC_URL = "static/"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
+# --- JWT config ---------------------------------------------------------------
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
+    "AUTH_HEADER_TYPES": ("Bearer",),
+    "USER_ID_FIELD": "id",
+    "USER_ID_CLAIM": "user_id",
+    "TOKEN_USER_CLASS": "rest_framework_simplejwt.models.TokenUser",
+}
+
 # --- Django REST Framework -----------------------------------------------------
 REST_FRAMEWORK = {
     "EXCEPTION_HANDLER": "core.exceptions.custom_exception_handler",
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
+    ],
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.IsAuthenticated",
+    ],
     # camelCase na borda (§6.3) — BrowsableAPIRenderer excluído intencionalmente
     "DEFAULT_RENDERER_CLASSES": [
         "djangorestframework_camel_case.render.CamelCaseJSONRenderer",
