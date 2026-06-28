@@ -1,74 +1,81 @@
-# Sumário de Automação de Testes — Story 1.4
+# Resumo de Automação de Testes — Story 1.5
 
 **Data:** 2026-06-26
-**Story:** 1.4 — Contrato de API e padrões da camada de serviço
-**Suite base:** 46 testes (Stories 1.1–1.3)
-**Suite final:** 53 testes (+7 gaps cobertos)
+**Story:** 1.5 — Tema MUI central e camada de dados do frontend
+**Framework:** Vitest 4.1 + @testing-library/react 16 + jsdom 29
 
 ---
 
 ## Testes Gerados
 
-### Testes de API — `backend/core/tests/test_api_contract.py`
+### Testes Unitários — Frontend
 
-| Teste | AC | Resultado |
-|---|---|---|
-| `test_camelcase_renderer_converte_snake_case` | AC2 | ✅ pré-existente |
-| `test_jsonb_dynamic_keys_sobrevivem_ao_roundtrip` | AC2 | ✅ pré-existente |
-| `test_jsonb_ignore_fields_configurado_no_renderer` | AC2 | ✅ pré-existente |
-| `test_schema_endpoint_retorna_200` | AC1 | ✅ pré-existente |
-| `test_schema_titulo_e_versao_corretos` | AC1 | ✅ **novo** |
-| `test_health_excluido_do_schema` | AC1 | ✅ **novo** |
-| `test_camelcase_parser_converte_para_snake_case` | AC2 | ✅ **novo** |
-| `test_core_pagination_atributos` | AC3 | ✅ **novo** |
-| `test_paginacao_shape_padrao` | AC3 | ✅ **novo** |
-| `test_paginacao_class_e_page_size_configurados` | AC3 | ✅ **novo** |
-| `test_filter_backends_configurados` | AC3 | ✅ **novo** |
+| Arquivo | Testes | AC Cobertos |
+|---------|--------|-------------|
+| `src/theme.test.ts` | 13 | AC1 (paleta, sombras, tipografia, borderRadius, disableRipple, spacing) |
+| `src/api/client.test.ts` | 3 | AC2 (instância Axios, Content-Type, sem JWT) |
+| `src/api/keys.test.ts` | 3 | AC2 (factory canônica, padrão de escopo) |
+| `src/api/queryClient.test.ts` | 3 | AC2 (refetchOnWindowFocus, staleTime, retry) |
+| `src/app/providers/providers.test.tsx` | 7 | AC2 + AC3 (render, localStorage init/persist, toggle) |
+| `src/shared/hooks/useOptimisticMutation.test.tsx` | 4 | AC2 (otimista, rollback, invalidação sucesso e erro) |
 
-### Testes de Serviço — `backend/core/tests/test_services.py`
-
-| Teste | AC | Resultado |
-|---|---|---|
-| `test_service_exige_keyword_args` | AC3 | ✅ pré-existente |
-| `test_service_levanta_domain_error_para_user_none` | AC3 | ✅ pré-existente |
-| `test_service_levanta_domain_error_para_name_vazio` | AC3 | ✅ pré-existente |
-| `test_service_happy_path` | AC3 | ✅ pré-existente |
+**Total: 6 arquivos · 36 testes · 36 passando**
 
 ---
 
-## Gaps Descobertos e Fechados
+## Configuração Adicionada
 
-| AC | Gap | Teste adicionado |
-|---|---|---|
-| AC1 | `SPECTACULAR_SETTINGS` (title/version) não validado | `test_schema_titulo_e_versao_corretos` |
-| AC1 | `@extend_schema(exclude=True)` no health não verificado | `test_health_excluido_do_schema` |
-| AC2 | `CamelCaseJSONParser` (body camelCase→snake_case) sem teste | `test_camelcase_parser_converte_para_snake_case` |
-| AC3 | `CorePagination` atributos não testados diretamente | `test_core_pagination_atributos` |
-| AC3 | Shape de paginação `{count, next, previous, results}` | `test_paginacao_shape_padrao` |
-| AC3 | `DEFAULT_PAGINATION_CLASS` e `PAGE_SIZE` nos settings | `test_paginacao_class_e_page_size_configurados` |
-| AC3 | `DEFAULT_FILTER_BACKENDS` (DjangoFilterBackend + OrderingFilter) | `test_filter_backends_configurados` |
+- **`frontend/vitest.config.ts`** — Vitest com environment jsdom, setupFiles e globals
+- **`frontend/src/test-setup.ts`** — jest-dom matchers + mock de `window.matchMedia`
+- **`frontend/package.json`** — scripts `test` (watch) e `test:run` (CI)
+
+Dependências de desenvolvimento adicionadas:
+- `vitest@^4.1.9`
+- `@testing-library/react@^16.3.2`
+- `@testing-library/user-event@^14.6.1`
+- `@testing-library/jest-dom@^6.9.1`
+- `jsdom@^29.1.1`
 
 ---
 
 ## Cobertura por AC
 
-| AC | Descrição | Cobertura |
-|---|---|---|
-| AC1 | Schema OpenAPI, endpoint `/api/schema/`, title/version, health excluído | ✅ 4/4 |
-| AC2 | CamelCase renderer + parser, JSONB round-trip, ignore_fields configurado | ✅ 4/4 |
-| AC3 | CorePagination atributos + shape, settings configurados, filtros, serviço canônico | ✅ 7/7 |
+| AC | Critério | Coberto |
+|----|----------|---------|
+| AC1 | `palette.background.default` light = `#FDFAF4` | ✅ |
+| AC1 | `palette.background.default` dark = `#2A2420` | ✅ |
+| AC1 | `shadows` = 25× `"none"` | ✅ |
+| AC1 | `MuiPaper.elevation = 0` | ✅ |
+| AC1 | `MuiButtonBase.disableRipple = true` | ✅ |
+| AC1 | `shape.borderRadius = 4` | ✅ |
+| AC1 | `spacing(1) = '4px'` | ✅ |
+| AC1 | Variantes tipográficas: display/heading/body-sm/label | ✅ |
+| AC2 | `client.ts` instância Axios sem JWT | ✅ |
+| AC2 | `keys.ts` factory canônica `[escopo, entidade, params]` | ✅ |
+| AC2 | `queryClient.ts` opções padrão (refetch/stale/retry) | ✅ |
+| AC2 | `useOptimisticMutation` update otimista + rollback + invalidação | ✅ |
+| AC2 | `Providers` monta QueryClientProvider + ThemeProvider | ✅ |
+| AC3 | Persistência do modo claro/escuro via localStorage | ✅ |
+| AC3 | Leitura do modo no init (light e dark) | ✅ |
+| AC3 | ESLint boundary rule | ✅ (lint 0 erros — validação estática) |
 
 ---
 
-## Resultados Finais
+## Resultado Final
 
 ```
-53 passed in 1.15s
-ruff check: All checks passed
-lint-imports: 1 kept, 0 broken
+ Test Files  6 passed (6)
+      Tests  36 passed (36)
+   Duration  ~2.3s
+
+Typecheck: 0 erros
+Lint: 0 warnings
 ```
+
+---
 
 ## Próximos Passos
 
-- Testes de integração com endpoints reais quando endpoints de domínio existirem (Story 2.1+)
-- Testar parser JSONB round-trip via HTTP quando houver endpoint com campo `values` (Story 2.x)
+- Adicionar ao CI (`.github/workflows/ci.yml`) o step `npm run test:run` no job frontend
+- Expandir testes de `keys.ts` à medida que features são adicionadas (Story 3.x+)
+- Testes de `client.ts` com interceptor JWT após Story 2.2

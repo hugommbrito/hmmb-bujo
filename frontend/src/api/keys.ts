@@ -1,4 +1,5 @@
-// Padrão canônico: [escopo, entidade, 'list' | 'detail', params?]
+// Padrão canônico: [escopo, entidade, discriminador, params?]
+// discriminador = 'list' | 'detail' para coleções/items; operações agregadas usam nome descritivo (ex: 'count').
 // Cada feature adiciona sua seção à medida que é implementada.
 // Mutations invalidam por prefixo: queryClient.invalidateQueries({ queryKey: keys.habits.logs.all })
 export const keys = {

@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-22
-last_updated: 2026-06-26  # story 1.5 → review
+last_updated: 2026-06-26  # story 1.5 → done
 project: hmmb-bujo
 project_key: NOKEY
 tracking_system: file-system
@@ -48,7 +48,7 @@ development_status:
   1-2-modulo-core-com-isolamento-multi-tenant-fail-closed-e-guardrails: done
   1-3-autoridade-temporal-core-calendar-py-e-padrao-temporal-canonico: done
   1-4-contrato-de-api-e-padroes-da-camada-de-servico: done
-  1-5-tema-mui-central-e-camada-de-dados-do-frontend: review
+  1-5-tema-mui-central-e-camada-de-dados-do-frontend: done
   epic-1-retrospective: optional
 
   # Epic 2: Autenticação & Acesso
