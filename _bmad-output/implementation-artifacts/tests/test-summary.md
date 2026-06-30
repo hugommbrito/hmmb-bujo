@@ -161,3 +161,122 @@ Lint: 0 warnings
 
 - Story 2.2 adicionará testes E2E do frontend (JWT interceptor, AuthProvider, localStorage)
 - CI deve rodar `pytest --reuse-db` para reutilizar o banco de teste e acelerar o pipeline
+
+---
+
+# Resumo de Automação de Testes — Story 2.2: Sessão Persistente, Refresh Single-Flight e Estados de Auth no Frontend
+
+**Data:** 2026-06-29
+**Story:** 2.2 — Sessão persistente, refresh single-flight e estados de auth no frontend
+**Framework:** Vitest 4.1.9 + @testing-library/react
+
+---
+
+## Gaps Descobertos e Auto-Aplicados
+
+| Gap | Arquivo | Descrição |
+|-----|---------|-----------|
+| Assertion ausente | `AuthProvider.test.tsx` | Teste de `logout()` não verificava `queryClient.clear()` (AC2) |
+| Sem testes | `SessionExpiredBanner.test.tsx` | Componente sem cobertura alguma |
+| Sem testes | `SignupPage.test.tsx` | Componente sem cobertura alguma |
+| Sem testes | `tokenStorage.test.ts` | Utilitários críticos de token sem testes unitários |
+
+---
+
+## Testes Gerados
+
+### Novos Arquivos de Teste
+
+- [x] `frontend/src/features/auth/components/SessionExpiredBanner.test.tsx` — Banner não-bloqueante de sessão expirada (5 testes)
+- [x] `frontend/src/features/auth/components/SignupPage.test.tsx` — Formulário de cadastro com login automático (6 testes)
+- [x] `frontend/src/features/auth/tokenStorage.test.ts` — Helpers de token no localStorage (8 testes)
+
+### Arquivos de Teste Corrigidos
+
+- [x] `frontend/src/app/providers/AuthProvider.test.tsx` — Adicionado mock de `queryClient` e assertion `queryClient.clear()` no logout
+
+---
+
+## Detalhamento dos Testes
+
+### `client.test.ts` (pré-existente — 9 testes)
+- [x] Configuração base: instância Axios, Content-Type, sem Authorization estático
+- [x] Request interceptor: adiciona Bearer quando token presente
+- [x] Request interceptor: sem header quando token ausente
+- [x] Response 401: dispara refresh e faz retry com novo token
+- [x] Response 401 × N simultâneos: único refresh (single-flight)
+- [x] Response 401 no endpoint de refresh → logout imediato + promise rejeitada
+- [x] Response non-401: passa adiante sem tentar refresh
+- [x] Retry com novo token retornando 401 → logout chamado
+
+### `AuthProvider.test.tsx` (pré-existente + gap corrigido — 6 testes)
+- [x] Sem token no localStorage → isAuthenticated = false
+- [x] Restaura sessão do localStorage quando token presente
+- [x] login() persiste tokens e atualiza isAuthenticated = true
+- [x] logout() limpa localStorage **e chama queryClient.clear()** ← gap corrigido
+- [x] Registra logout handler no mount via registerLogoutHandler
+- [x] storage event de outra aba → isAuthenticated = false, sessionExpired = true
+
+### `LoginPage.test.tsx` (pré-existente — 5 testes)
+- [x] Renderiza campos de email, senha e botão de submit
+- [x] Credenciais válidas → chama auth.login() e onSuccess
+- [x] Credenciais inválidas → exibe "Email ou senha incorretos." inline
+- [x] Botão fica desabilitado durante o loading
+- [x] Erro não expõe detalhes técnicos na tela
+
+### `SessionExpiredBanner.test.tsx` (novo — 5 testes)
+- [x] Exibe texto "Sessão expirada. Entre novamente."
+- [x] Não exibe botão "Entrar" quando onLogin não é fornecido
+- [x] Exibe botão "Entrar" quando onLogin é fornecido
+- [x] Clicar em "Entrar" chama onLogin
+- [x] Banner não bloqueia o conteúdo (sem role=dialog)
+
+### `SignupPage.test.tsx` (novo — 6 testes)
+- [x] Renderiza campos de email, senha e botão de submit
+- [x] Cadastro bem-sucedido → chama signupApi, loginApi, auth.login() e onSuccess
+- [x] Inclui timezone detectado automaticamente no signupApi
+- [x] Erro 400 → exibe "Dados inválidos. Verifique o formulário."
+- [x] Erro genérico → exibe "Erro ao criar conta. Tente novamente."
+- [x] Botão fica desabilitado durante o loading
+
+### `tokenStorage.test.ts` (novo — 8 testes)
+- [x] getAccessToken: retorna null quando ausente
+- [x] getAccessToken: retorna token quando presente
+- [x] getRefreshToken: retorna null quando ausente
+- [x] getRefreshToken: retorna token quando presente
+- [x] setTokens: persiste access_token e refresh_token no localStorage
+- [x] setTokens: sobrescreve tokens existentes
+- [x] clearTokens: remove ambos os tokens do localStorage
+- [x] clearTokens: não lança erro quando tokens não existem
+
+---
+
+## Cobertura por AC
+
+| AC | Comportamento | Coberto por |
+|----|---------------|-------------|
+| AC1 | Tokens persistidos em localStorage com chaves canônicas | `tokenStorage.test.ts` |
+| AC1 | Interceptor adiciona Bearer em toda request autenticada | `client.test.ts` |
+| AC1 | Sessão restaurada no reload sem novo login | `AuthProvider.test.tsx` |
+| AC2 | Single-flight: N 401 simultâneos disparam 1 único refresh | `client.test.ts` |
+| AC2 | 401 no refresh → logout + clearTokens + queryClient.clear() | `client.test.ts`, `AuthProvider.test.tsx` |
+| AC2 | storage event de outra aba re-sincroniza estado | `AuthProvider.test.tsx` |
+| AC3 | Banner não-bloqueante exibido quando sessão expirada | `SessionExpiredBanner.test.tsx` |
+| AC3 | Erro de login exibido inline sem detalhes técnicos | `LoginPage.test.tsx` |
+
+---
+
+## Resultado Final
+
+```
+Test Files  11 passed (11)
+     Tests  73 passed (73)    (+19 vs. início da story 2.2)
+  Duration  30.19s
+```
+
+---
+
+## Próximos Passos
+
+- Story 2.3 adicionará testes de navegação protegida (PrivateRoute, redirect pós-login)
+- CI deve incluir o step `npx vitest run` no job frontend junto ao typecheck e lint

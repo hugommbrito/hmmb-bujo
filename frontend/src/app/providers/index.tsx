@@ -4,6 +4,7 @@ import { ThemeProvider, CssBaseline } from '@mui/material'
 import { queryClient } from '../../api/queryClient'
 import { createBujoTheme } from '../../theme'
 import { ColorModeContext } from './ColorModeContext'
+import { AuthProvider } from './AuthProvider'
 
 const STORAGE_KEY = 'bujo-color-scheme'
 
@@ -37,10 +38,12 @@ export function Providers({ children }: ProvidersProps) {
   return (
     <ColorModeContext.Provider value={colorMode}>
       <QueryClientProvider client={queryClient}>
-        <ThemeProvider theme={theme}>
-          <CssBaseline />
-          {children}
-        </ThemeProvider>
+        <AuthProvider>
+          <ThemeProvider theme={theme}>
+            <CssBaseline />
+            {children}
+          </ThemeProvider>
+        </AuthProvider>
       </QueryClientProvider>
     </ColorModeContext.Provider>
   )

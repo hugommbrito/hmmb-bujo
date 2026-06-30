@@ -26,6 +26,9 @@ export default tseslint.config([
   // Arquivos dentro de src/features/<A>/ NÃO podem importar
   // diretamente de src/features/<B>/<sub-path>.
   // Apenas o barrel (index.ts / import '../featureB') é permitido.
+  // Permitido: imports para api/ (infra) e shared/ (utilitários compartilhados).
+  // Regex: detecta '../' NOT seguido por '../', 'api/', 'shared/' ou 'app/',
+  // e seguido de ao menos um segmento de diretório (com '/') — i.e. um import profundo.
   {
     files: ['src/features/**/*.{ts,tsx}'],
     rules: {
@@ -34,7 +37,7 @@ export default tseslint.config([
         {
           patterns: [
             {
-              group: ['../*/*'],
+              regex: '\\.\\.\\/(?!api\\/|shared\\/|app\\/|\\.\\.\\/)[^\\/]+\\/',
               message:
                 'Imports inter-feature devem usar apenas o barrel: import { X } from "../featureB" (não "../featureB/arquivo")',
             },
