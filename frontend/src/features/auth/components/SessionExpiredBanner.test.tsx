@@ -9,17 +9,12 @@ describe('SessionExpiredBanner', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Sessão expirada. Entre novamente.')
   })
 
-  it('não exibe botão "Entrar" quando onLogin não é fornecido', () => {
+  it('test_botao_entrar_aparece_sem_onLogin_prop — botão "Entrar" sempre presente mesmo sem prop', () => {
     render(<SessionExpiredBanner />)
-    expect(screen.queryByRole('button', { name: /entrar/i })).not.toBeInTheDocument()
-  })
-
-  it('exibe botão "Entrar" quando onLogin é fornecido', () => {
-    render(<SessionExpiredBanner onLogin={vi.fn()} />)
     expect(screen.getByRole('button', { name: /entrar/i })).toBeInTheDocument()
   })
 
-  it('clicar em "Entrar" chama onLogin', async () => {
+  it('test_botao_entrar_chama_onLogin_quando_fornecido', async () => {
     const user = userEvent.setup()
     const onLogin = vi.fn()
     render(<SessionExpiredBanner onLogin={onLogin} />)
@@ -29,10 +24,21 @@ describe('SessionExpiredBanner', () => {
     expect(onLogin).toHaveBeenCalledTimes(1)
   })
 
+  it('test_botao_entrar_usa_window_location_quando_sem_onLogin', async () => {
+    const user = userEvent.setup()
+    const assignSpy = vi.fn()
+    vi.stubGlobal('location', { assign: assignSpy })
+
+    render(<SessionExpiredBanner />)
+    await user.click(screen.getByRole('button', { name: /entrar/i }))
+
+    expect(assignSpy).toHaveBeenCalledWith('/login')
+    vi.unstubAllGlobals()
+  })
+
   it('banner não bloqueia o conteúdo (usa position fixed, não modal)', () => {
     const { container } = render(<SessionExpiredBanner />)
     const alert = container.firstChild as HTMLElement
-    // O banner deve estar no DOM sem nenhum overlay bloqueante (sem role=dialog)
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(alert).toBeTruthy()
   })

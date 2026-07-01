@@ -280,3 +280,93 @@ Test Files  11 passed (11)
 
 - Story 2.3 adicionará testes de navegação protegida (PrivateRoute, redirect pós-login)
 - CI deve incluir o step `npx vitest run` no job frontend junto ao typecheck e lint
+
+---
+
+# Resumo de Automação de Testes — Story 2.3: Casca de Navegação Autenticada
+
+**Data:** 2026-06-30
+**Story:** 2.3 — Casca de Navegação Autenticada (sidebar, bottom-nav, roteamento)
+**Framework:** Vitest + @testing-library/react
+
+---
+
+## Gaps Descobertos e Auto-Aplicados (8 novos testes)
+
+| Gap | Arquivo | AC |
+|-----|---------|-----|
+| PlaceholderPage sem cobertura | `PlaceholderPage.test.tsx` (NOVO) | AC1 |
+| SignupPageRoute redirect quando autenticado não testado | `router.test.tsx` | AC3 |
+| Catchall `/rota-desconhecida → /today` não testado | `router.test.tsx` | AC3 |
+| Botão de toggle da sidebar (clique) não testado | `Sidebar.test.tsx` | AC1 |
+| Grupo Saúde expande/colapsa não testado | `Sidebar.test.tsx` | AC1 |
+| Tablet inicia sidebar colapsada não testado | `AppLayout.test.tsx` | AC1/Task6 |
+
+---
+
+## Testes Gerados
+
+### `src/pages/PlaceholderPage.test.tsx` — NOVO (3 testes)
+- [x] `test_renderiza_titulo_como_heading` — `<h5>` com texto do `title` prop está no DOM (AC1)
+- [x] `test_exibe_em_desenvolvimento` — texto "Em desenvolvimento." visível (AC1: placeholder honesto)
+- [x] `test_aria_label_igual_ao_titulo` — `<main aria-label={title}>` acessível por `getByRole('main')` (AC1)
+
+### `src/app/router.test.tsx` — 2 testes adicionados
+- [x] `test_autenticado_em_signup_redireciona_para_today` — `SignupPageRoute` + `isAuthenticated: true` → heading "Hoje" (AC3)
+- [x] `test_rota_desconhecida_redireciona_para_today` — `/rota-que-nao-existe` + autenticado → catchall → heading "Hoje" (AC3)
+
+### `src/app/layout/Sidebar.test.tsx` — 2 testes adicionados
+- [x] `test_botao_toggle_chama_onToggle` — clique em `aria-label="Colapsar sidebar"` chama a prop `onToggle` (AC1)
+- [x] `test_grupo_saude_expande_ao_clicar` — Métricas visível → clicar "Saúde" oculta → clicar novamente exibe (AC1)
+
+### `src/app/layout/AppLayout.test.tsx` — 1 teste adicionado
+- [x] `test_tablet_sidebar_inicia_colapsada` — mock tablet `(min-width: 768px) and (max-width: 1023px)` → `waitFor` textos da sidebar ausentes; bottom-nav também ausente (AC1/Task6)
+
+---
+
+## Cobertura Story 2.3
+
+| Arquivo de Teste | Testes Totais | ACs Cobertos |
+|---|---|---|
+| `router.test.tsx` | 6 | AC3 completo (não-autenticado, autenticado, login+signup redirect, catchall) |
+| `AppLayout.test.tsx` | 5 | AC1 (desktop sidebar, mobile bottom-nav, atalho `[`, tablet colapsado), AC2 |
+| `Sidebar.test.tsx` | 7 | AC1 completo (ativo, inativo, toggle btn, Planner, Saúde, collapsed, colapso) |
+| `BottomNav.test.tsx` | 4 | AC2 completo (4 abas, FAB desabilitado, aba ativa, navegação) |
+| `PlaceholderPage.test.tsx` | 3 | AC1 (placeholder honesto: título, texto, aria-label) |
+| `SessionExpiredBanner.test.tsx` | 5 | AC4 completo (botão sempre, onLogin, fallback window.location, não-bloqueante) |
+| **Total Story 2.3** | **30** | |
+
+---
+
+## Resultado Final da Suite
+
+```
+Test Files  16 passed (16)
+     Tests  98 passed (98)    (+8 vs. início da QA)
+  Duration  12.63s
+
+Typecheck: 0 erros (npx tsc --noEmit)
+Lint: 0 erros (npx eslint src/)
+```
+
+Regressão: 0 — todos os 90 testes anteriores (Stories 1.x–2.2) continuam passando.
+
+---
+
+## Checklist de Validação
+
+- [x] Testes gerados (E2E frontend: 8 novos unit/integration)
+- [x] Usam APIs padrão do framework (Vitest + Testing Library)
+- [x] Cobrem happy path + casos críticos de erro
+- [x] Todos os 98 testes passam
+- [x] Locators semânticos (roles, aria-labels, texto visível)
+- [x] Descrições claras em pt-BR
+- [x] Sem waits/sleeps artificiais (`waitFor` apenas onde necessário para `useEffect`)
+- [x] Testes independentes entre si
+- [x] Summary salvo em `_bmad-output/implementation-artifacts/tests/test-summary.md`
+- [x] Testes salvos nos diretórios corretos do projeto
+
+## Próximos Passos
+
+- Story 2.4 adicionará testes de acessibilidade WCAG 2.2 AA (focus ring, tab order, aria-live)
+- CI deve incluir `npx vitest run` no job frontend
