@@ -3,6 +3,7 @@ import { Box, useMediaQuery } from '@mui/material'
 import { Outlet } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 import { BottomNav } from './BottomNav'
+import { RouteAnnouncer } from './RouteAnnouncer'
 
 export function AppLayout() {
   const isDesktop = useMediaQuery('(min-width: 1024px)')
@@ -42,11 +43,8 @@ export function AppLayout() {
   if (isMobile) {
     return (
       <Box>
-        <Box
-          component="main"
-          aria-label="Conteúdo principal"
-          sx={{ pb: 'calc(56px + env(safe-area-inset-bottom, 0px) + 8px)' }}
-        >
+        <RouteAnnouncer />
+        <Box sx={{ pb: 'calc(56px + env(safe-area-inset-bottom, 0px) + 8px)' }}>
           <Outlet />
         </Box>
         <BottomNav />
@@ -56,15 +54,12 @@ export function AppLayout() {
 
   return (
     <Box sx={{ display: 'flex' }}>
+      <RouteAnnouncer />
       <Sidebar
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed((prev) => !prev)}
       />
-      <Box
-        component="main"
-        aria-label="Conteúdo principal"
-        sx={{ flexGrow: 1, minWidth: 0, overflow: 'auto' }}
-      >
+      <Box sx={{ flexGrow: 1, minWidth: 0, overflow: 'auto' }}>
         <Outlet />
       </Box>
     </Box>

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { axe } from 'jest-axe'
 import { MemoryRouter } from 'react-router-dom'
 import { BottomNav } from './BottomNav'
 
@@ -62,5 +63,11 @@ describe('BottomNav', () => {
     await user.click(screen.getByText('Planner'))
 
     expect(mockNavigate).toHaveBeenCalledWith('/planner/week')
+  })
+
+  it('test_sem_violacoes_de_acessibilidade', async () => {
+    const { container } = renderBottomNav()
+
+    expect(await axe(container)).toHaveNoViolations()
   })
 })

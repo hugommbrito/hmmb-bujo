@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { axe } from 'jest-axe'
 import { MemoryRouter } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 
@@ -22,6 +23,13 @@ describe('Sidebar', () => {
       (btn) => btn.getAttribute('aria-current') === 'page',
     )
     expect(hojeBtns.length).toBeGreaterThan(0)
+  })
+
+  it('test_item_ativo_tem_indicador_nao_cor_AC1 — cor não é o único indicador de estado', () => {
+    renderSidebar({ initialPath: '/today' })
+    // AC1: cor nunca é o único indicador — item ativo também fica com texto em negrito.
+    expect(screen.getByText('Hoje')).toHaveStyle({ fontWeight: '700' })
+    expect(screen.getByText('Hábitos')).toHaveStyle({ fontWeight: '400' })
   })
 
   it('test_item_inativo_sem_borda', () => {
@@ -102,5 +110,11 @@ describe('Sidebar', () => {
 
     // Collapsed: subitens ocultos (Collapse fechado + textos removidos)
     expect(screen.queryByText('Esta Semana')).not.toBeInTheDocument()
+  })
+
+  it('test_sem_violacoes_de_acessibilidade', async () => {
+    const { container } = renderSidebar({ initialPath: '/today' })
+
+    expect(await axe(container)).toHaveNoViolations()
   })
 })

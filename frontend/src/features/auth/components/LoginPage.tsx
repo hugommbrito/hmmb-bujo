@@ -30,34 +30,36 @@ export function LoginPage({ onSuccess }: LoginPageProps) {
   }
 
   return (
-    <Box
-      component="form"
-      onSubmit={handleSubmit}
-      sx={{ display: 'flex', flexDirection: 'column', gap: 2, maxWidth: 400, mx: 'auto', mt: 8 }}
-    >
-      <Typography variant="h4" component="h1">
-        Entrar
-      </Typography>
-      <TextField
-        label="Email"
-        type="email"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        required
-        autoComplete="email"
-      />
-      <TextField
-        label="Senha"
-        type="password"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        required
-        autoComplete="current-password"
-      />
-      {error && <Alert severity="error">{error}</Alert>}
-      <Button type="submit" variant="contained" disabled={loading}>
-        {loading ? <CircularProgress size={20} /> : 'Entrar'}
-      </Button>
+    <Box component="main" aria-label="Entrar">
+      <Box
+        component="form"
+        onSubmit={handleSubmit}
+        sx={{ display: 'flex', flexDirection: 'column', gap: 2, maxWidth: 400, mx: 'auto', mt: 8 }}
+      >
+        <Typography variant="h4" component="h1">
+          Entrar
+        </Typography>
+        <TextField
+          label="Email"
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+          autoComplete="email"
+        />
+        <TextField
+          label="Senha"
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+          autoComplete="current-password"
+        />
+        {error && <Alert severity="error">{error}</Alert>}
+        <Button type="submit" variant="contained" disabled={loading}>
+          {loading ? <CircularProgress size={20} /> : 'Entrar'}
+        </Button>
+      </Box>
     </Box>
   )
 }

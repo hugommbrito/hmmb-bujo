@@ -107,7 +107,10 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
           {item.icon}
         </ListItemIcon>
         {!collapsed && (
-          <ListItemText primary={item.label} />
+          <ListItemText
+            primary={item.label}
+            slotProps={{ primary: { fontWeight: active ? 700 : 400 } }}
+          />
         )}
       </ListItemButton>
     )
@@ -143,7 +146,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
           </IconButton>
         </Box>
 
-        <List disablePadding>
+        <List disablePadding component="div">
           {topItems.map(renderItem)}
 
           {/* Grupo Planner */}
@@ -159,13 +162,16 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
             </ListItemIcon>
             {!collapsed && (
               <>
-                <ListItemText primary="Planner" />
+                <ListItemText
+                  primary="Planner"
+                  slotProps={{ primary: { fontWeight: isGroupActive(plannerItems) ? 700 : 400 } }}
+                />
                 {plannerOpen ? <ExpandLessIcon /> : <ExpandMoreIcon />}
               </>
             )}
           </ListItemButton>
           <Collapse in={plannerOpen && !collapsed} timeout="auto" unmountOnExit>
-            <List disablePadding sx={{ pl: 2 }}>
+            <List disablePadding component="div" sx={{ pl: 2 }}>
               {plannerItems.map(renderItem)}
             </List>
           </Collapse>
@@ -185,13 +191,16 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
             </ListItemIcon>
             {!collapsed && (
               <>
-                <ListItemText primary="Saúde" />
+                <ListItemText
+                  primary="Saúde"
+                  slotProps={{ primary: { fontWeight: isGroupActive(healthItems) ? 700 : 400 } }}
+                />
                 {healthOpen ? <ExpandLessIcon /> : <ExpandMoreIcon />}
               </>
             )}
           </ListItemButton>
           <Collapse in={healthOpen && !collapsed} timeout="auto" unmountOnExit>
-            <List disablePadding sx={{ pl: 2 }}>
+            <List disablePadding component="div" sx={{ pl: 2 }}>
               {healthItems.map(renderItem)}
             </List>
           </Collapse>

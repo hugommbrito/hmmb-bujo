@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { axe } from 'jest-axe'
 import { SessionExpiredBanner } from './SessionExpiredBanner'
 
 describe('SessionExpiredBanner', () => {
@@ -41,5 +42,11 @@ describe('SessionExpiredBanner', () => {
     const alert = container.firstChild as HTMLElement
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(alert).toBeTruthy()
+  })
+
+  it('test_sem_violacoes_de_acessibilidade', async () => {
+    const { container } = render(<SessionExpiredBanner />)
+
+    expect(await axe(container)).toHaveNoViolations()
   })
 })

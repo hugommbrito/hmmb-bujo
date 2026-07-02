@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { axe } from 'jest-axe'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 
 vi.mock('../shared/hooks/useAuth', () => ({
@@ -85,6 +86,11 @@ describe('Router — proteção de rotas', () => {
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: 'Hoje' })).toBeInTheDocument()
     })
+
+    // Regressão da Task 4: a casca autenticada não deve reintroduzir um <main>
+    // genérico em torno do Outlet — só o <main aria-label="Hoje"> do PlaceholderPage.
+    expect(screen.getAllByRole('main')).toHaveLength(1)
+    expect(await axe(document.body)).toHaveNoViolations()
   })
 
   it('test_autenticado_em_login_redireciona_para_today', () => {

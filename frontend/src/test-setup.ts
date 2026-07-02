@@ -1,5 +1,8 @@
 import '@testing-library/jest-dom'
-import { vi } from 'vitest'
+import { expect, vi } from 'vitest'
+import { toHaveNoViolations } from 'jest-axe'
+
+expect.extend(toHaveNoViolations)
 
 // jsdom não implementa window.matchMedia — mock necessário para Providers
 Object.defineProperty(window, 'matchMedia', {

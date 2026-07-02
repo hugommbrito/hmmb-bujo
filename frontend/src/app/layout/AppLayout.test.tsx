@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
-import { MemoryRouter, Routes, Route } from 'react-router-dom'
+import { axe } from 'jest-axe'
+import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { AppLayout } from './AppLayout'
 
 vi.mock('../../shared/hooks/useAuth', () => ({
@@ -31,16 +32,20 @@ function mockMatchMedia(desktopMatch: boolean, mobileMatch: boolean, tabletMatch
 }
 
 function renderAppLayout() {
-  return render(
-    <MemoryRouter initialEntries={['/today']}>
-      <Routes>
-        <Route path="/*" element={<AppLayout />}>
-          <Route index element={<div>conteúdo</div>} />
-          <Route path="today" element={<div>conteúdo hoje</div>} />
-        </Route>
-      </Routes>
-    </MemoryRouter>,
+  const router = createMemoryRouter(
+    [
+      {
+        path: '/',
+        element: <AppLayout />,
+        children: [
+          { index: true, element: <div>conteúdo</div> },
+          { path: 'today', element: <div>conteúdo hoje</div> },
+        ],
+      },
+    ],
+    { initialEntries: ['/today'] },
   )
+  return render(<RouterProvider router={router} />)
 }
 
 describe('AppLayout', () => {
@@ -105,5 +110,19 @@ describe('AppLayout', () => {
     // Sidebar ainda expandida — textos ainda visíveis
     expect(screen.getByText('Hoje')).toBeInTheDocument()
     document.body.removeChild(inputEl)
+  })
+
+  it('test_sem_violacoes_de_acessibilidade (desktop)', async () => {
+    mockMatchMedia(true, false)
+    const { container } = renderAppLayout()
+
+    expect(await axe(container)).toHaveNoViolations()
+  })
+
+  it('test_sem_violacoes_de_acessibilidade (mobile)', async () => {
+    mockMatchMedia(false, true)
+    const { container } = renderAppLayout()
+
+    expect(await axe(container)).toHaveNoViolations()
   })
 })

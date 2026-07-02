@@ -99,6 +99,8 @@ export function createBujoTheme(mode: 'light' | 'dark') {
       MuiPaper:      { defaultProps: { elevation: 0 } },
       MuiCard:       { defaultProps: { elevation: 0 } },
       MuiButtonBase: { defaultProps: { disableRipple: true } },
+      MuiButton:     { styleOverrides: { root: { minHeight: 44 } } },
+      MuiIconButton: { styleOverrides: { root: { minWidth: 44, minHeight: 44 } } },
     },
   })
 }

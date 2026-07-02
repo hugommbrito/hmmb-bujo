@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { axe } from 'jest-axe'
 
 vi.mock('../api', () => ({
   loginApi: vi.fn(),
@@ -29,6 +30,12 @@ describe('LoginPage', () => {
     expect(screen.getByLabelText(/email/i)).toBeInTheDocument()
     expect(screen.getByLabelText(/senha/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /entrar/i })).toBeInTheDocument()
+  })
+
+  it('test_pagina_tem_landmark_main', () => {
+    render(<LoginPage />)
+
+    expect(screen.getByRole('main', { name: 'Entrar' })).toBeInTheDocument()
   })
 
   it('credenciais válidas → chama auth.login() e onSuccess', async () => {
@@ -100,5 +107,11 @@ describe('LoginPage', () => {
     })
     expect(screen.queryByText(/internal server error/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/line 42/i)).not.toBeInTheDocument()
+  })
+
+  it('test_sem_violacoes_de_acessibilidade', async () => {
+    const { container } = render(<LoginPage />)
+
+    expect(await axe(container)).toHaveNoViolations()
   })
 })

@@ -370,3 +370,81 @@ Regressão: 0 — todos os 90 testes anteriores (Stories 1.x–2.2) continuam pa
 
 - Story 2.4 adicionará testes de acessibilidade WCAG 2.2 AA (focus ring, tab order, aria-live)
 - CI deve incluir `npx vitest run` no job frontend
+
+---
+
+# Resumo de Automação de Testes — Story 2.4: Baseline de Acessibilidade WCAG 2.2 AA
+
+**Data:** 2026-07-01
+**Story:** 2.4 — Baseline de acessibilidade WCAG 2.2 AA
+**Framework:** Vitest 4.1.9 + @testing-library/react + jest-axe (sem Playwright/Cypress no projeto — mantido o framework existente por decisão de escopo)
+
+---
+
+## Contexto
+
+A Story 2.4 já chegou implementada com 19 testes novos (118 no total), a maioria `jest-axe` por componente isolado (`toHaveNoViolations` renderizando cada componente sozinho com mocks). Esta rodada de QA focou em identificar **gaps de fluxo end-to-end** — cenários que cruzam múltiplos componentes via o router real — não cobertos pelos testes unitários por-componente já existentes.
+
+## Gaps Descobertos e Auto-Aplicados
+
+| Gap | Arquivo | Descrição |
+|-----|---------|-----------|
+| `RouteAnnouncer` só testado no branch desktop | `RouteAnnouncer.test.tsx` | O `aria-live` de mudança de superfície (AC2) nunca foi exercitado no branch mobile (BottomNav) via router real — só via clique na Sidebar |
+| Regressão do bug de `<main>` aninhado (Task 4) sem guarda de integração | `router.test.tsx`, `RouteAnnouncer.test.tsx` | Nenhum teste verificava, após navegação real via router (não isolada), que existe exatamente **um** landmark `<main>` — a asserção existia só nos componentes isolados (`LoginPage`, `SignupPage`, `PlaceholderPage`), nunca na composição real `AppLayout` + `Outlet` + `PlaceholderPage` |
+| Axe pós-navegação ausente | `RouteAnnouncer.test.tsx` | O teste de axe existente só cobria o estado inicial (`/today`); nenhuma verificação de acessibilidade **depois** de uma navegação client-side |
+
+## Testes Gerados
+
+### `src/app/layout/RouteAnnouncer.test.tsx` — novo describe (3 testes)
+
+- [x] `test_anuncia_superficie_inicial_via_bottom_nav` — mobile (BottomNav visível), `/today` anuncia "Hoje" via `role="status"` (AC2)
+- [x] `test_anuncia_mudanca_de_superficie_ao_navegar_via_bottom_nav` — clicar aba "Hábitos" no BottomNav → status anuncia "Hábitos" **e** `getAllByRole('main')` tem length 1 (regressão Task 4, AC2)
+- [x] `test_sem_violacoes_de_acessibilidade_apos_navegar` — `axe(document.body)` sem violações após navegação real via BottomNav, não só no render inicial (AC1/AC2)
+
+### `src/app/router.test.tsx` — teste existente estendido
+
+- [x] `test_login_bem_sucedido_navega_para_today` — adicionadas 2 asserções pós-login: `getAllByRole('main')` tem length 1 (regressão Task 4) e `axe(document.body)` sem violações no fluxo completo login → shell autenticado
+
+---
+
+## Cobertura por AC (incremento desta rodada)
+
+| AC | Critério | Coberto por |
+|----|----------|-------------|
+| AC1 | Sem violações de acessibilidade após navegação real (não só render inicial) | `RouteAnnouncer.test.tsx` |
+| AC2 | `aria-live="polite"` anuncia mudança de superfície também no branch mobile (BottomNav) | `RouteAnnouncer.test.tsx` |
+| AC2 | Único `<main>` por página, garantido via composição real do router (não só por componente isolado) | `router.test.tsx`, `RouteAnnouncer.test.tsx` |
+
+---
+
+## Resultado Final
+
+```
+Test Files  18 passed (18)
+     Tests  121 passed (121)    (+3 vs. início da rodada; 118 pré-existentes intactos)
+  Duration  ~36s (serial, --no-file-parallelism)
+
+Typecheck: 0 erros (npx tsc --noEmit)
+Lint: 0 erros (npx eslint src/)
+```
+
+Regressão: 0 — todos os 118 testes da implementação original da Story 2.4 continuam passando.
+
+---
+
+## Checklist de Validação
+
+- [x] Testes E2E/integração gerados (fluxos reais via router, não componentes isolados)
+- [x] Usam APIs padrão do framework já adotado pelo projeto (Vitest + Testing Library + jest-axe) — nenhuma ferramenta nova introduzida
+- [x] Cobrem happy path (navegação mobile e desktop) + regressão do bug real corrigido nesta story (`<main>` aninhado)
+- [x] Todos os 121 testes passam
+- [x] Locators semânticos (`role="status"`, `role="main"`, texto visível)
+- [x] Descrições claras em pt-BR, seguindo a convenção `test_*` já estabelecida
+- [x] Sem waits/sleeps artificiais
+- [x] Testes independentes entre si (cada `it` re-renderiza do zero)
+- [x] Summary salvo em `_bmad-output/implementation-artifacts/tests/test-summary.md`
+
+## Próximos Passos
+
+- Nenhum modal real existe ainda (`Modal` é primitivo sem consumidor) — quando a Migração (Épico 4) ou o Capture Sheet (Épico 5) introduzirem o primeiro modal real, replicar o padrão de teste de integração via router real + axe pós-interação usado aqui
+- CI continua sem rodar Vitest (decisão de escopo da Story 1.1, não revisitada)

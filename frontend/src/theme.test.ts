@@ -95,4 +95,19 @@ describe('createBujoTheme', () => {
       expect(theme.components?.MuiButtonBase?.defaultProps?.disableRipple).toBe(true)
     })
   })
+
+  describe('touch target (AC1)', () => {
+    it('MuiButton tem minHeight 44px', () => {
+      const theme = createBujoTheme('light')
+      expect(theme.components?.MuiButton?.styleOverrides?.root).toMatchObject({ minHeight: 44 })
+    })
+
+    it('MuiIconButton tem minWidth e minHeight 44px', () => {
+      const theme = createBujoTheme('light')
+      expect(theme.components?.MuiIconButton?.styleOverrides?.root).toMatchObject({
+        minWidth: 44,
+        minHeight: 44,
+      })
+    })
+  })
 })
