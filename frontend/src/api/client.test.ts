@@ -59,7 +59,7 @@ describe('api/client — request interceptor', () => {
   beforeEach(() => {
     vi.resetAllMocks()
     mockLogout = vi.fn()
-    registerLogoutHandler(mockLogout)
+    registerLogoutHandler(mockLogout as unknown as () => void)
   })
 
   afterEach(() => {
@@ -101,7 +101,7 @@ describe('api/client — response interceptor (401 single-flight)', () => {
   beforeEach(() => {
     vi.resetAllMocks()
     mockLogout = vi.fn()
-    registerLogoutHandler(mockLogout)
+    registerLogoutHandler(mockLogout as unknown as () => void)
     vi.mocked(tokenStorage.getAccessToken).mockReturnValue(null)
     vi.mocked(tokenStorage.getRefreshToken).mockReturnValue(null)
   })

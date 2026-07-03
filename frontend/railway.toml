@@ -1,6 +1,6 @@
 [build]
 builder = "railpack"
-buildCommand = "npm ci && npm run build"
+buildCommand = "npm run build"
 
 [deploy]
 # -s = single-page app mode: serve index.html for all unknown routes (React Router).
