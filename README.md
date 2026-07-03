@@ -63,7 +63,8 @@ Verificações:
 ```bash
 npm run lint
 npx tsc --noEmit
-npm run build    # gera estáticos em frontend/dist/
+npm run test:run   # vitest (inclui regressão de acessibilidade via jest-axe)
+npm run build      # gera estáticos em frontend/dist/
 ```
 
 ## CI
@@ -74,4 +75,4 @@ Qualquer erro de lint, tipo, teste ou build falha o workflow.
 
 ## Documentação
 
-Documentação viva em [`docs/`](docs/) (o padrão temporal canônico chega na Story 1.3).
+Documentação viva em [`docs/`](docs/), incluindo o [padrão temporal canônico](docs/temporal-pattern.md) (`core/calendar.py`, AD-04/AD-05).

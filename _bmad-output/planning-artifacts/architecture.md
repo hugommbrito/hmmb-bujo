@@ -1084,7 +1084,7 @@ hmmb-bujo/
 │       └── tests/{factories,test_models,test_serializers,test_services,test_views}.py
 └── frontend/
     ├── package.json  vite.config.ts  tsconfig.json  index.html
-    ├── .eslintrc.cjs                # regra de boundary: features não se importam (§7.2)
+    ├── eslint.config.js              # flat config; regra de boundary: features não se importam (§7.2)
     ├── .env.development  .env.production
     ├── public/
     └── src/
@@ -1138,7 +1138,7 @@ hmmb-bujo/
 - **Config:** `django-environ` lê `.env.dev`/`.env.prod` (cada um aponta para sua branch do Neon — FR-0). **CORS e base-URL da API configuráveis por env desde o dia 1** (não fechar a porta de servir o frontend via CDN vs Django).
 - **Build:** backend sem build; frontend `vite build` → estáticos. Geração de `types.gen.ts` é passo de CI.
 - **Testes:** `core/tests/test_isolation.py` testa o `TenantManager` genérico (incl. fail-closed); o isolamento por-app é validado por uma **fixture parametrizada compartilhada** no `conftest.py` (não copy-paste de `test_isolation.py` por app). `factory_boy` por app; toda factory tenant declara `user = SubFactory(UserFactory)`.
-- **CI (`.github/workflows/ci.yml`):** `ruff` + `pytest` (backend) + **import-linter** (regra de porta do `core`) + guardrail de tenant (AD-12); `tsc` + ESLint (incl. regra de boundary de features) + testes (frontend).
+- **CI (`.github/workflows/ci.yml`):** `ruff` + `pytest` (backend) + **import-linter** (regra de porta do `core`) + guardrail de tenant (AD-12) + diff de `types.gen.ts`; `tsc` + ESLint (incl. regra de boundary de features) + `vite build` (frontend). **Decisão de escopo (Story 1.1, revisitada e mantida na Story 2.4):** Vitest **não** roda no CI — os testes de frontend (incl. regressão de acessibilidade via `jest-axe`) são a rede de segurança do desenvolvedor local e do code-review, não um gate de pipeline.
 - **Deploy:** alvo a definir; estrutura deploy-agnóstica via 12-factor/env (disciplina, não ausência de decisão). Migrations no release; frontend como estáticos/CDN. Branch Neon por ambiente; nada assume estado de banco no boot.
 
 ---
