@@ -18,6 +18,20 @@ if _env_file.exists():
 
 DEBUG = False
 
+# WhiteNoise serves static files in production (admin, swagger UI).
+# Injected right after SecurityMiddleware, as required by whitenoise docs.
+_sec_idx = MIDDLEWARE.index("django.middleware.security.SecurityMiddleware")  # noqa: F405
+MIDDLEWARE = [  # noqa: F405
+    *MIDDLEWARE[:_sec_idx + 1],  # noqa: F405
+    "whitenoise.middleware.WhiteNoiseMiddleware",
+    *MIDDLEWARE[_sec_idx + 1:],  # noqa: F405
+]
+STORAGES = {
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
+
 # Railway terminates TLS and forwards X-Forwarded-Proto.
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SESSION_COOKIE_SECURE = True
