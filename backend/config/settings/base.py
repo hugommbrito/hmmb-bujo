@@ -18,7 +18,7 @@ env = environ.Env(
     DEBUG=(bool, False),
 )
 
-AUTH_USER_MODEL = "accounts.User" # Altera o modelo de user, deixando de usar o padrão do django para adotar o padrão personalizado deste projeto.
+AUTH_USER_MODEL = "accounts.User"
 
 # --- Core security / hosts (all driven by env) ---------------------------------
 SECRET_KEY = env("SECRET_KEY")
