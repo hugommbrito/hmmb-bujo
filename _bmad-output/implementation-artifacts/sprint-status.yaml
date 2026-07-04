@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-22
-last_updated: 2026-07-02  # epic-2 retrospective → done
+last_updated: 2026-07-03  # story 3-2 → in-progress (dev-story iniciado)
 project: hmmb-bujo
 project_key: NOKEY
 tracking_system: file-system
@@ -60,9 +60,9 @@ development_status:
   epic-2-retrospective: done
 
   # Epic 3: Daily Log & Agregado de Tarefas
-  epic-3: backlog
-  3-1-agregado-task-com-schema-congelado-e-maquina-de-estados: backlog
-  3-2-superficie-do-daily-log-com-task-row-e-ciclo-de-estados: backlog
+  epic-3: in-progress
+  3-1-agregado-task-com-schema-congelado-e-maquina-de-estados: done
+  3-2-superficie-do-daily-log-com-task-row-e-ciclo-de-estados: in-progress
   3-3-criacao-e-edicao-de-tarefas-com-campos-completos-e-subtarefas: backlog
   3-4-ordenacao-manual-de-tarefas: backlog
   epic-3-retrospective: optional

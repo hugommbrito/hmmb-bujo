@@ -448,3 +448,85 @@ Regressão: 0 — todos os 118 testes da implementação original da Story 2.4 c
 
 - Nenhum modal real existe ainda (`Modal` é primitivo sem consumidor) — quando a Migração (Épico 4) ou o Capture Sheet (Épico 5) introduzirem o primeiro modal real, replicar o padrão de teste de integração via router real + axe pós-interação usado aqui
 - CI continua sem rodar Vitest (decisão de escopo da Story 1.1, não revisitada)
+
+---
+
+# Resumo de Automação de Testes — Story 3.1: Agregado `Task` com schema congelado e máquina de estados
+
+**Data:** 2026-07-03
+**Story:** 3.1 — Agregado `Task` com schema congelado e máquina de estados
+**Framework:** pytest-django 4.12 + factory-boy 3.3 (backend puro — sem serializers/views/UI nesta story; ver Contexto)
+
+---
+
+## Contexto
+
+Esta story é **model + service layer only** (AC #1/#2/#3): não há endpoints HTTP nem UI — isso começa na Story 3.2. Não existe, portanto, superfície para "testes de API" (status code) nem "testes E2E" (browser) no sentido usual do workflow; o equivalente para este slice é a suíte de integração de `bujo/` contra o banco real (Neon dev), que já existia integralmente implementada pelo dev (`test_models.py`, `test_services.py`, `factories.py` + registro no contrato de isolamento compartilhado). Esta rodada de QA focou em **gaps de cobertura** não fechados pela suíte original do dev.
+
+## Gaps Descobertos e Auto-Aplicados
+
+| Gap | Arquivo | Descrição |
+|-----|---------|-----------|
+| Escopo por tenant não testado no nível do serviço | `bujo/tests/test_services.py` | `transition_task` busca via `Task.objects.get(id=task_id)` (auto-escopado), mas nenhum teste provava que um `task_id` válido pertencente a **outro** tenant é inalcançável — a única suíte que cobria isolamento era o contrato genérico (criação/leitura em massa), não uma chamada de serviço por id. É exatamente a lacuna sinalizada no próprio Dev Notes da story ("Escrita cross-tenant não validada... `bujo/services/` é essa primeira camada de escrita de domínio") |
+| Defaults dos campos congelados/inertes não testados | `bujo/tests/test_models.py` | AC #1 exige `migrated_to_task`, `migration_count`, `parent_task`, `source_template_id` "congelados agora, nuláveis/inertes" — nenhum teste verificava que uma `Task` comum nasce com esses campos em seu estado neutro (`None`/`0`/sem subtasks) |
+
+---
+
+## Testes Gerados
+
+### `bujo/tests/test_services.py` — 1 teste novo
+
+- [x] `test_transition_task_escopado_por_tenant` — `transition_task(user=other_user, task_id=<task de user>, ...)` levanta `Task.DoesNotExist` (AC #3: "toda query de Task é escopada por tenant")
+
+### `bujo/tests/test_models.py` — 1 teste novo
+
+- [x] `test_task_campos_de_linhagem_tem_defaults_inertes` — `migrated_to_task_id`/`parent_task_id`/`source_template_id` são `None`, `migration_count == 0`, `subtasks`/`migrated_from` vazios numa `Task` recém-criada (AC #1)
+
+---
+
+## Cobertura por AC
+
+| AC | Critério | Coberto por |
+|----|----------|-------------|
+| AC1 | `Log` único por `(user_id, log_date)` | `test_log_unique_constraint_por_user_e_data` (pré-existente) |
+| AC1 | `Task.status` inválido rejeitado por `CheckConstraint` | `test_task_check_constraint_status_invalido` (pré-existente) |
+| AC1 | Relações self-FK `parent_task`/`subtasks`, `migrated_to_task`/`migrated_from` | `test_task_relacao_parent_subtasks`, `test_task_relacao_migrated_to_task` (pré-existentes) |
+| AC1 | Campos de linhagem nascem nulos/zerados (não é a hipótese "feliz" testada acima, é o estado neutro) | `test_task_campos_de_linhagem_tem_defaults_inertes` ← **novo** |
+| AC1 | `Log`/`Task` escopados por tenant + auto-fill de `user_id` | `test_isolation_contract[bujo.Log]`, `test_isolation_contract[bujo.Task]` (pré-existentes, contrato genérico) |
+| AC2 | Matriz de transições `ALLOWED` — 100% das 36 combinações (6×6) | `test_transition_task_matriz_completa` (pré-existente) |
+| AC2 | Transição ilegal → `InvalidTransition` → 409 | `test_transition_task_matriz_completa` + `core/tests/test_exceptions.py::test_domain_rule_errors_map_to_409` (pré-existentes) |
+| AC3 | `transition_task` não alcança tarefa de outro tenant via `task_id` | `test_transition_task_escopado_por_tenant` ← **novo** |
+| AC3 | `get_or_create_daily_log` idempotente e escopado por tenant | `test_get_or_create_daily_log_idempotente`, `test_get_or_create_daily_log_escopado_por_tenant` (pré-existentes) |
+
+---
+
+## Resultado Final
+
+```
+bujo/:  44 passed (42 pré-existentes + 2 novos gaps)
+Suíte completa (backend/): 121 passed, 1 warning in 285.46s (0:04:45)
+ruff check .: All checks passed!
+lint-imports: core must not import domain apps (port rule) KEPT — 1 kept, 0 broken
+```
+
+O único warning (`PytestWarning: Error when trying to teardown test databases: ... database "test_neondb" is being accessed by other users`) é a mesma instabilidade de infraestrutura da Neon dev branch já registrada no Debug Log da story (sessão concorrente no teardown) — não relacionada ao código ou aos testes novos. Um `test_neondb` órfão de uma rodada anterior (`bujo/` isolado) precisou ser removido manualmente (`DROP DATABASE ... WITH (FORCE)`) antes da suíte completa rodar verde — mesmo procedimento já documentado pelo dev.
+
+Regressão: 0 — os 42 testes originais de `bujo/` e os 77 restantes de `accounts/`+`core/` continuam passando.
+
+---
+
+## Checklist de Validação
+
+- [x] Testes de integração gerados para o gap real desta story (model + service layer — sem API/UI, fora de escopo até 3.2)
+- [x] Usam APIs padrão do framework já adotado (`pytest-django` + `factory_boy` + `tenant_context`) — nenhuma ferramenta nova introduzida
+- [x] Cobrem o "happy path" (defaults neutros) + caso crítico de segurança (isolamento cross-tenant no serviço)
+- [x] Todos os 121 testes da suíte completa passam
+- [x] Sem waits/sleeps artificiais
+- [x] Testes independentes entre si (cada um usa `tenant_context` e factories próprias)
+- [x] Summary salvo em `_bmad-output/implementation-artifacts/tests/test-summary.md`
+- [x] Testes salvos nos diretórios corretos (`backend/bujo/tests/`)
+
+## Próximos Passos
+
+- Story 3.2 (superfície do Daily Log) introduz as primeiras views/serializers de `bujo` — é o ponto natural para testes de API (status code, corpo de resposta) e para fechar o mapeamento HTTP 404 "recurso de outro usuário" citado em `deferred-work.md`
+- O gap de "categoria" sinalizado no Dev Notes da story (campo referenciado pela UI das Stories 3.2/3.3 mas ausente do schema congelado) segue não resolvido — não é responsabilidade desta rodada de QA, mas deve ser confirmado antes/durante a Story 3.2

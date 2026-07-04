@@ -46,6 +46,7 @@ INSTALLED_APPS = [
     # Local
     "core",
     "accounts",
+    "bujo",
 ]
 
 MIDDLEWARE = [
