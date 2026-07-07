@@ -573,3 +573,81 @@ A story já chegou com cobertura extensa de testes unitários/API criada pelo de
 
 - Se o projeto adotar Playwright/Cypress no futuro, promover o fluxo de clique (`DailyPage` → ícone de status → chip atualizado) para um teste de browser real, incluindo o rollback visual em erro de rede simulado.
 - Nenhuma ação bloqueante pendente para esta story.
+
+---
+
+# Resumo de Automação de Testes — Story 3.3: Criação e edição de tarefas com campos completos e subtarefas
+
+**Data:** 2026-07-07
+**Story:** 3.3 — Criação e edição de tarefas com campos completos e subtarefas
+**Framework:** pytest + DRF `APIClient` (backend) · Vitest 4.1 + @testing-library/react (frontend) · **Playwright 1.61 (novo — primeiro E2E de browser real do projeto)**
+
+A story já chegou com cobertura extensa criada pelo dev-story (85 testes backend + 190 frontend, ver File List da story). Esta rodada de QA fechou dois tipos de gap: (1) ausência de qualquer teste de **browser real** ponta-a-ponta — até aqui só existiam testes unitários/integração via `APIClient` (backend) e jsdom/Testing Library (frontend), nenhum exercitava o app real rodando contra o backend real; (2) dois gaps pontuais na suíte de backend.
+
+## Decisão: instalar Playwright
+
+Não havia framework de E2E de browser no projeto. Como o Dev Agent Record da própria story 3.3 já usou Playwright headless ad-hoc para a verificação manual (Task 7.7) — sem nunca o instalar como dependência —, e o "Próximos Passos" da 3.2 já apontava essa direção, optou-se por instalar `@playwright/test` (decisão confirmada com o usuário antes de prosseguir, por ser uma dependência nova) em vez de tentar espremer cobertura de fluxo real dentro do Vitest/jsdom, que não renderiza CSS real nem distingue `Drawer anchor="right"` de `anchor="bottom"` por posição de tela.
+
+## Testes Gerados
+
+### `frontend/e2e/` — novo (Playwright, 5 testes)
+
+- [x] `fixtures.ts` — fixture `test` que faz signup real via UI (`/signup`) com email único por teste (`crypto.randomUUID()`), isolando o Daily Log de hoje entre testes; helper `syncAfter` (aguarda o refetch de `/api/bujo/logs/today/` que segue toda mutação otimista antes de agir sobre o id retornado, evitando corrida com o id temporário client-side); helper `detailPanel` (localiza o Drawer temporário do painel de detalhe, distinto do Drawer persistente da sidebar).
+- [x] `daily-tasks.spec.ts`:
+  - `cria tarefa raiz via botão e via atalho N; título vazio não cria nada` (AC1) — inclui regressão do bug real do atalho `N` corrigido durante a verificação manual da story (vazamento do caractere digitado para o campo).
+  - `edita campos no painel de detalhe e adiciona subtarefa aninhada` (AC2) — título/descrição/categoria/Eisenhower via painel, subtarefa aninhada nunca solta na raiz, reabrir confirma persistência em memória.
+  - `subtarefa cicla status independente do pai, sem cascata` (AC3) — cicla pending→started→completed na subtarefa, confirma que o pai permanece pending durante todo o ciclo.
+  - `painel de detalhe abre como bottom sheet no mobile` (AC2, container) — viewport 375×667, bounding box do Drawer confirma `anchor="bottom"` (largura total, colado à base) vs. `anchor="right"` no desktop.
+  - `dados persistem após recarregar a página` (regressão do fluxo de verificação manual da story) — título/descrição/subtarefa sobrevivem a um `page.reload()` real contra o backend.
+
+Configuração: `frontend/playwright.config.ts` sobe `npm run dev` (5173) e `uv run python manage.py runserver` (8000, `config.settings.dev` — mesmo Neon dev branch da verificação manual) via `webServer`; script `npm run test:e2e`; `vitest.config.ts` ganhou `exclude: [...configDefaults.exclude, 'e2e/**']` para não colidir com o Vitest (que por padrão também coletaria `*.spec.ts`).
+
+### `backend/bujo/tests/test_views.py` — 2 testes novos
+
+- [x] `test_post_subtask_create_aceita_pai_que_e_subtarefa_e_serializer_aninha_recursivamente` — Dev Notes da story ("Profundidade da árvore") documentam explicitamente que o endpoint aceita qualquer `id` existente como pai, inclusive uma subtarefa — o bloqueio de "só 1 nível" é decisão de UI, não do backend. `TaskSerializer.subtasks` é recursivo (`get_subtasks` chama a própria `TaskSerializer`), mas nenhum teste existente cobria profundidade > 1 (avó→pai→neta). Sem este teste, um bug de recursão rasa (ex.: `.subtasks.all()` sem propagar a serialização completa) passaria despercebido.
+- [x] `test_patch_task_detail_titulo_em_branco_retorna_400` — AC1 exige título obrigatório na criação; `TaskUpdateSerializer.title` não define `allow_blank=True`, então uma edição para string vazia também deveria ser rejeitada — comportamento correto mas não coberto por nenhum teste até aqui (só havia testes de `eisenhower`/`category` fora do enum).
+
+## Cobertura por AC
+
+| AC | Critério | Coberto por |
+|----|----------|-------------|
+| AC1 | Criar tarefa via botão/atalho `N`, título obrigatório, Enter salva e abre nova linha | `AddTaskRow.test.tsx`, `DailyPage.test.tsx` (unitário) + `daily-tasks.spec.ts` ← **novo, browser real** |
+| AC1 | Regressão do vazamento de caractere no atalho `N` | `DailyPage.test.tsx` (unitário) + `daily-tasks.spec.ts` ← **novo, browser real** |
+| AC2 | Painel de detalhe: editar título/descrição/categoria/Eisenhower | `TaskDetailPanel.test.tsx` (unitário, mutação mockada) + `daily-tasks.spec.ts` ← **novo, contra API real** |
+| AC2 | Painel lateral no desktop / bottom sheet no mobile | Nenhum teste anterior distinguia por posição real de tela (jsdom não renderiza layout) — `daily-tasks.spec.ts` ← **novo** |
+| AC2 | Subtarefa criada com `parent_task_id`/`log_id` corretos | `test_post_subtask_create_cria_subtarefa_com_parent_e_log_corretos` (pré-existente) |
+| AC2 | Subtarefa de subtarefa (profundidade > 1) aceita e serializada corretamente | `test_post_subtask_create_aceita_pai_que_e_subtarefa_e_serializer_aninha_recursivamente` ← **novo** |
+| AC3 | Subtarefas aninhadas, ciclo de estado independente, sem cascata pai↔filho | `TaskRow.test.tsx` (unitário) + `daily-tasks.spec.ts` ← **novo, contra API real** |
+| — | Persistência após reload (fluxo da verificação manual da story) | `daily-tasks.spec.ts` ← **novo** |
+| — | Título em branco rejeitado também na edição, não só na criação | `test_patch_task_detail_titulo_em_branco_retorna_400` ← **novo** |
+
+## Execução
+
+- **Backend completo:** `uv run pytest` → **167 passed** (165 pré-existentes + 2 novos), `uv run ruff check .` limpo, `uv run lint-imports` limpo, `uv run python manage.py check` sem issues.
+- **Frontend unitário:** `npx vitest run` → **190 passed** (25 arquivos), `npm run typecheck` e `npm run lint` limpos, `npm run build` ok.
+- **E2E (Playwright):** `npx playwright test` → **5 passed**, executado 3× consecutivas sem flakiness contra o backend real (Neon dev).
+
+## Observações
+
+- Corrida descoberta e corrigida durante a escrita dos testes E2E: toda mutação de tarefa é otimista (`useOptimisticMutation`) — a UI mostra o resultado com um id temporário client-side antes do `onSettled → invalidateQueries` trazer o id real do servidor. Ações em sequência muito rápidas (ex. criar tarefa e imediatamente abrir o painel/criar subtarefa) usavam o id temporário e o backend respondia 404. O helper `syncAfter` (aguarda o refetch de `logs/today/`) resolve isso — vale o mesmo cuidado em qualquer E2E futuro contra mutações otimistas do projeto.
+- Um `test_neondb` órfão de uma rodada de teste anterior (conexão idle não fechada) bloqueou a suíte completa do backend com `DuplicateDatabase`; removido manualmente antes da execução final — mesma classe de instabilidade da Neon dev branch já registrada nas rodadas de QA das stories 3.1/3.2.
+- Os testes E2E rodam contra o Neon dev branch real (sem banco efêmero local) — cada execução grava usuários/tarefas persistentes lá, igual à verificação manual da própria story. Ainda não há job de CI que suba backend+frontend juntos (ver Próximos Passos).
+
+## Checklist de Validação
+
+- [x] Testes de API gerados (2 gaps de backend)
+- [x] Testes E2E gerados (5 cenários de browser real, primeira vez no projeto)
+- [x] Usam APIs padrão do framework (`@playwright/test`, `pytest-django`) — Playwright é dependência nova, mas confirmada com o usuário antes da instalação
+- [x] Cobrem happy path (criação, edição, subtarefas, mobile, persistência) + casos críticos (título vazio, sem cascata de status, profundidade de subtarefa)
+- [x] Todos os testes passam (167 backend + 190 frontend + 5 E2E)
+- [x] Locators semânticos (`getByLabel`, `getByRole`, `data-testid` já existente no projeto para `task-row`)
+- [x] Sem waits/sleeps artificiais — `syncAfter` espera uma resposta de rede nomeada, não um tempo fixo
+- [x] Testes independentes entre si (cada E2E cria seu próprio usuário via signup)
+- [x] Summary salvo em `_bmad-output/implementation-artifacts/tests/test-summary.md`
+- [x] Testes salvos nos diretórios corretos (`frontend/e2e/`, `backend/bujo/tests/`)
+
+## Próximos Passos
+
+- Nenhum job de CI sobe backend+frontend juntos hoje — se o projeto quiser rodar os E2E em CI, precisa de um Postgres efêmero (como o job `backend` já usa) em vez do Neon dev branch, e um step novo em `.github/workflows/ci.yml` subindo os dois `webServer` do `playwright.config.ts`.
+- O bottom-sheet mobile foi testado só no viewport 375×667; se o projeto definir breakpoints adicionais (tablet, por exemplo), vale estender o teste de `painel de detalhe abre como bottom sheet no mobile`.
+- Nenhuma ação bloqueante pendente para esta story.

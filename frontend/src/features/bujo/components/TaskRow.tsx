@@ -49,9 +49,10 @@ function eisenhowerChipInfo(eisenhower: Task['eisenhower']) {
 interface TaskRowProps {
   task: Task
   onTransition: (taskId: string, toStatus: TaskStatus) => void
+  onOpenDetail: (taskId: string) => void
 }
 
-export function TaskRow({ task, onTransition }: TaskRowProps) {
+export function TaskRow({ task, onTransition, onOpenDetail }: TaskRowProps) {
   const isMobile = useMediaQuery('(max-width: 767px)')
   const [announcement, setAnnouncement] = useState('')
 
@@ -61,6 +62,7 @@ export function TaskRow({ task, onTransition }: TaskRowProps) {
   const statusChipLabel = STATUS_CHIP_LABEL[status]
   const eisenhowerChip = eisenhowerChipInfo(task.eisenhower)
   const category = task.category || null
+  const subtasks = task.subtasks ?? []
 
   function handleStatusClick() {
     if (!nextStatus) return
@@ -69,74 +71,98 @@ export function TaskRow({ task, onTransition }: TaskRowProps) {
   }
 
   return (
-    <Box
-      data-testid="task-row"
-      sx={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 1,
-        minHeight: isMobile ? 44 : 36,
-        borderLeft: '3px solid',
-        borderLeftColor: (theme) =>
-          category ? theme.palette.category[category] : theme.palette.divider,
-        pl: 1,
-        pr: 1.5,
-        position: 'relative',
-      }}
-    >
-      <IconButton
-        size="small"
-        aria-label={STATUS_LABEL[status]}
-        onClick={handleStatusClick}
-        disabled={!nextStatus}
-        sx={{ color: status === 'completed' ? (theme) => theme.palette.category.green : 'text.secondary' }}
-      >
-        <StatusIcon fontSize="small" />
-      </IconButton>
-      <Typography
-        variant="body2"
+    <Box>
+      <Box
+        data-testid="task-row"
         sx={{
-          flex: 1,
-          textDecoration: status === 'cancelled' ? 'line-through' : 'none',
-          color: status === 'completed' ? 'text.disabled' : 'text.primary',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1,
+          minHeight: isMobile ? 44 : 36,
+          borderLeft: '3px solid',
+          borderLeftColor: (theme) =>
+            category ? theme.palette.category[category] : theme.palette.divider,
+          pl: 1,
+          pr: 1.5,
+          position: 'relative',
         }}
       >
-        {task.title}
-      </Typography>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-        {eisenhowerChip && (
-          <Chip
-            label={eisenhowerChip.label}
-            size="small"
-            sx={{
-              bgcolor: (theme) => theme.palette.priority[eisenhowerChip.key],
-              color: eisenhowerChip.textColor,
-              fontWeight: 600,
-              fontSize: '11px',
-              height: 18,
-            }}
-          />
-        )}
-        {statusChipLabel && (
-          <Chip
-            label={statusChipLabel}
-            size="small"
-            variant="outlined"
-            sx={{
-              borderColor: (theme) => theme.palette.category[status === 'started' ? 'yellow' : 'green'],
-              color: (theme) => theme.palette.category[status === 'started' ? 'yellow' : 'green'],
-              height: 18,
-            }}
-          />
-        )}
+        <IconButton
+          size="small"
+          aria-label={STATUS_LABEL[status]}
+          onClick={handleStatusClick}
+          disabled={!nextStatus}
+          sx={{ color: status === 'completed' ? (theme) => theme.palette.category.green : 'text.secondary' }}
+        >
+          <StatusIcon fontSize="small" />
+        </IconButton>
+        <Typography
+          component="button"
+          type="button"
+          onClick={() => onOpenDetail(task.id)}
+          aria-label={`Ver detalhes de ${task.title}`}
+          variant="body2"
+          sx={{
+            flex: 1,
+            textAlign: 'left',
+            background: 'none',
+            border: 'none',
+            font: 'inherit',
+            padding: 0,
+            cursor: 'pointer',
+            textDecoration: status === 'cancelled' ? 'line-through' : 'none',
+            color: status === 'completed' ? 'text.disabled' : 'text.primary',
+          }}
+        >
+          {task.title}
+        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          {eisenhowerChip && (
+            <Chip
+              label={eisenhowerChip.label}
+              size="small"
+              sx={{
+                bgcolor: (theme) => theme.palette.priority[eisenhowerChip.key],
+                color: eisenhowerChip.textColor,
+                fontWeight: 600,
+                fontSize: '11px',
+                height: 18,
+              }}
+            />
+          )}
+          {statusChipLabel && (
+            <Chip
+              label={statusChipLabel}
+              size="small"
+              variant="outlined"
+              sx={{
+                borderColor: (theme) => theme.palette.category[status === 'started' ? 'yellow' : 'green'],
+                color: (theme) => theme.palette.category[status === 'started' ? 'yellow' : 'green'],
+                height: 18,
+              }}
+            />
+          )}
+        </Box>
+        <Box
+          role="status"
+          aria-live="polite"
+          sx={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clipPath: 'inset(50%)' }}
+        >
+          {announcement}
+        </Box>
       </Box>
-      <Box
-        role="status"
-        aria-live="polite"
-        sx={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clipPath: 'inset(50%)' }}
-      >
-        {announcement}
-      </Box>
+      {subtasks.length > 0 && (
+        <Box sx={{ pl: 3 }}>
+          {subtasks.map((subtask) => (
+            <TaskRow
+              key={subtask.id}
+              task={subtask}
+              onTransition={onTransition}
+              onOpenDetail={onOpenDetail}
+            />
+          ))}
+        </Box>
+      )}
     </Box>
   )
 }

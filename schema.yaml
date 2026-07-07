@@ -71,6 +71,79 @@ paths:
               schema:
                 $ref: '#/components/schemas/Log'
           description: ''
+  /api/bujo/tasks/:
+    post:
+      operationId: bujo_tasks_create
+      tags:
+      - bujo
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskCreate'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+          description: ''
+  /api/bujo/tasks/{id}/:
+    patch:
+      operationId: bujo_tasks_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - bujo
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedTaskUpdate'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+          description: ''
+  /api/bujo/tasks/{id}/subtasks/:
+    post:
+      operationId: bujo_tasks_subtasks_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - bujo
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskCreate'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+          description: ''
   /api/bujo/tasks/{id}/transition/:
     post:
       operationId: bujo_tasks_transition_create
@@ -153,6 +226,25 @@ components:
     NullEnum:
       enum:
       - null
+    PatchedTaskUpdate:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 500
+        description:
+          type: string
+          nullable: true
+        eisenhower:
+          nullable: true
+          oneOf:
+          - $ref: '#/components/schemas/EisenhowerEnum'
+          - $ref: '#/components/schemas/NullEnum'
+        category:
+          nullable: true
+          oneOf:
+          - $ref: '#/components/schemas/CategoryEnum'
+          - $ref: '#/components/schemas/NullEnum'
     StatusEnum:
       enum:
       - pending
@@ -179,6 +271,9 @@ components:
         title:
           type: string
           maxLength: 500
+        description:
+          type: string
+          nullable: true
         status:
           $ref: '#/components/schemas/StatusEnum'
         eisenhower:
@@ -193,8 +288,35 @@ components:
           - $ref: '#/components/schemas/CategoryEnum'
           - $ref: '#/components/schemas/BlankEnum'
           - $ref: '#/components/schemas/NullEnum'
+        subtasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/Task'
+          readOnly: true
       required:
       - id
+      - subtasks
+      - title
+    TaskCreate:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 500
+        description:
+          type: string
+          nullable: true
+        eisenhower:
+          nullable: true
+          oneOf:
+          - $ref: '#/components/schemas/EisenhowerEnum'
+          - $ref: '#/components/schemas/NullEnum'
+        category:
+          nullable: true
+          oneOf:
+          - $ref: '#/components/schemas/CategoryEnum'
+          - $ref: '#/components/schemas/NullEnum'
+      required:
       - title
     TaskTransitionRequest:
       type: object

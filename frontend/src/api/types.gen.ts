@@ -76,6 +76,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/bujo/tasks/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["bujo_tasks_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bujo/tasks/{id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["bujo_tasks_partial_update"];
+        trace?: never;
+    };
+    "/api/bujo/tasks/{id}/subtasks/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["bujo_tasks_subtasks_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/bujo/tasks/{id}/transition/": {
         parameters: {
             query?: never;
@@ -125,6 +173,12 @@ export interface components {
         };
         /** @enum {unknown} */
         NullEnum: null;
+        PatchedTaskUpdate: {
+            title?: string;
+            description?: string | null;
+            eisenhower?: (components["schemas"]["EisenhowerEnum"] | components["schemas"]["NullEnum"]) | null;
+            category?: (components["schemas"]["CategoryEnum"] | components["schemas"]["NullEnum"]) | null;
+        };
         /**
          * @description * `pending` - Pending
          *     * `started` - Started
@@ -139,9 +193,17 @@ export interface components {
             /** Format: uuid */
             readonly id: string;
             title: string;
+            description?: string | null;
             status?: components["schemas"]["StatusEnum"];
             eisenhower?: (components["schemas"]["EisenhowerEnum"] | components["schemas"]["BlankEnum"] | components["schemas"]["NullEnum"]) | null;
             category?: (components["schemas"]["CategoryEnum"] | components["schemas"]["BlankEnum"] | components["schemas"]["NullEnum"]) | null;
+            readonly subtasks: components["schemas"]["Task"][];
+        };
+        TaskCreate: {
+            title: string;
+            description?: string | null;
+            eisenhower?: (components["schemas"]["EisenhowerEnum"] | components["schemas"]["NullEnum"]) | null;
+            category?: (components["schemas"]["CategoryEnum"] | components["schemas"]["NullEnum"]) | null;
         };
         TaskTransitionRequest: {
             toStatus: components["schemas"]["ToStatusEnum"];
@@ -254,6 +316,79 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Log"];
+                };
+            };
+        };
+    };
+    bujo_tasks_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskCreate"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+        };
+    };
+    bujo_tasks_partial_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PatchedTaskUpdate"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+        };
+    };
+    bujo_tasks_subtasks_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskCreate"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
                 };
             };
         };

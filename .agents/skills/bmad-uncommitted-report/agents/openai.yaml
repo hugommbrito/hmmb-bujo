@@ -1,0 +1,4 @@
+interface:
+  display_name: "Uncommitted Report"
+  short_description: "Documenta arquivos nao commitados"
+  default_prompt: "Use $bmad-uncommitted-report para analisar os arquivos nao commitados e salvar um relatorio Markdown."

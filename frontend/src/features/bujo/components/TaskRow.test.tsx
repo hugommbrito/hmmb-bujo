@@ -12,17 +12,18 @@ function baseTask(overrides: Partial<Task> = {}): Task {
     status: 'pending',
     eisenhower: null,
     category: null,
+    subtasks: [],
     ...overrides,
   }
 }
 
-function renderTaskRow(task: Task, onTransition = vi.fn()) {
+function renderTaskRow(task: Task, onTransition = vi.fn(), onOpenDetail = vi.fn()) {
   render(
     <ThemeProvider theme={createBujoTheme('light')}>
-      <TaskRow task={task} onTransition={onTransition} />
+      <TaskRow task={task} onTransition={onTransition} onOpenDetail={onOpenDetail} />
     </ThemeProvider>,
   )
-  return { onTransition }
+  return { onTransition, onOpenDetail }
 }
 
 describe('TaskRow (AC2)', () => {
@@ -160,5 +161,47 @@ describe('TaskRow (AC2)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Pendente' }))
 
     expect(screen.getByRole('status')).toHaveTextContent('Tarefa marcada como Em andamento')
+  })
+
+  it('clique no título chama onOpenDetail com o id da tarefa (AC2)', () => {
+    const { onOpenDetail } = renderTaskRow(baseTask({ id: 'task-42' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ver detalhes de Finalizar relatório Q2' }))
+
+    expect(onOpenDetail).toHaveBeenCalledWith('task-42')
+  })
+
+  it('subtarefas em task.subtasks renderizam como linhas aninhadas com indentação (AC3)', () => {
+    renderTaskRow(
+      baseTask({
+        subtasks: [
+          { id: 'sub-1', title: 'Subtarefa 1', status: 'pending', subtasks: [] },
+          { id: 'sub-2', title: 'Subtarefa 2', status: 'completed', subtasks: [] },
+        ],
+      }),
+    )
+
+    expect(screen.getByText('Subtarefa 1')).toBeInTheDocument()
+    expect(screen.getByText('Subtarefa 2')).toBeInTheDocument()
+    expect(screen.getAllByTestId('task-row')).toHaveLength(3)
+  })
+
+  it('ciclar o status de uma subtarefa não afeta o pai (AC3, sem cascata)', () => {
+    const { onTransition } = renderTaskRow(
+      baseTask({
+        id: 'parent-1',
+        subtasks: [{ id: 'sub-1', title: 'Subtarefa 1', status: 'pending', subtasks: [] }],
+      }),
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ver detalhes de Subtarefa 1' }))
+    // A busca acima só confirma que a subtarefa é independente na árvore; o
+    // clique de transição usa o mesmo ícone de status do pai e da subtarefa —
+    // aqui garantimos que cada um dispara `onTransition` com o seu próprio id.
+    const statusButtons = screen.getAllByRole('button', { name: 'Pendente' })
+    fireEvent.click(statusButtons[1])
+
+    expect(onTransition).toHaveBeenCalledWith('sub-1', 'started')
+    expect(onTransition).not.toHaveBeenCalledWith('parent-1', expect.anything())
   })
 })

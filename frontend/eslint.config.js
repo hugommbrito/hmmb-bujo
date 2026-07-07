@@ -24,6 +24,15 @@ export default tseslint.config([
       globals: globals.browser,
     },
   },
+  // ─── Testes E2E (Playwright) ───────────────────────────────────────────────
+  // Node puro, sem JSX/hooks — a fixture `use` do Playwright não é um React
+  // Hook, então react-hooks/rules-of-hooks não se aplica aqui.
+  {
+    files: ['e2e/**/*.ts'],
+    rules: {
+      'react-hooks/rules-of-hooks': 'off',
+    },
+  },
   // ─── Fronteiras inter-feature ─────────────────────────────────────────────
   // Arquivos dentro de src/features/<A>/ NÃO podem importar
   // diretamente de src/features/<B>/<sub-path>.

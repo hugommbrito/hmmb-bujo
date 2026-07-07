@@ -18,6 +18,13 @@ vi.mock('../../features/bujo', () => ({
     data: { id: 'log-1', logDate: '2026-01-01', tasks: [] },
   }),
   useTransitionTaskMutation: () => ({ mutate: vi.fn() }),
+  useCreateTaskMutation: () => ({ mutate: vi.fn() }),
+}))
+
+// TaskDetailPanel usa mutações do TanStack Query (`../api`) diretamente, fora
+// deste mock — sem um QueryClientProvider na árvore, mocamos o componente.
+vi.mock('../../features/bujo/components/TaskDetailPanel', () => ({
+  TaskDetailPanel: () => null,
 }))
 
 // Mock useMediaQuery to avoid jsdom matchMedia issues — força branch desktop/tablet (Sidebar visível)
