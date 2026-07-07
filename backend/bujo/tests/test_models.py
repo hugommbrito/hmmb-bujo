@@ -64,3 +64,20 @@ def test_task_campos_de_linhagem_tem_defaults_inertes(user):
         assert task.source_template_id is None
         assert list(task.subtasks.all()) == []
         assert list(task.migrated_from.all()) == []
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("category", list(Task.Category.values))
+def test_task_category_aceita_as_6_choices_validas(user, category):
+    with tenant_context(user):
+        task = TaskFactory(user=user, category=category)
+
+        assert task.category == category
+
+
+@pytest.mark.django_db
+def test_task_category_aceita_null(user):
+    with tenant_context(user):
+        task = TaskFactory(user=user, category=None)
+
+        assert task.category is None

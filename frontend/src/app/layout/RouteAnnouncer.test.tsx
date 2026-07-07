@@ -3,9 +3,21 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { axe } from 'jest-axe'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
+import { ThemeProvider } from '@mui/material'
+import { createBujoTheme } from '../../theme'
 
 vi.mock('../../shared/hooks/useAuth', () => ({
   useAuth: vi.fn(),
+}))
+
+// DailyPage (rota /today desde a Story 3.2) depende de TanStack Query — estes
+// testes cobrem o anúncio de navegação, não o conteúdo do Daily Log.
+vi.mock('../../features/bujo', () => ({
+  useTodayLogQuery: () => ({
+    isPending: false,
+    data: { id: 'log-1', logDate: '2026-01-01', tasks: [] },
+  }),
+  useTransitionTaskMutation: () => ({ mutate: vi.fn() }),
 }))
 
 // Mock useMediaQuery to avoid jsdom matchMedia issues — força branch desktop/tablet (Sidebar visível)
@@ -22,7 +34,11 @@ const mockAuthBase = { sessionExpired: false, login: vi.fn(), logout: vi.fn() }
 
 function renderRouter(initialEntry: string) {
   const router = createMemoryRouter(routeDefinitions, { initialEntries: [initialEntry] })
-  render(<RouterProvider router={router} />)
+  render(
+    <ThemeProvider theme={createBujoTheme('light')}>
+      <RouterProvider router={router} />
+    </ThemeProvider>,
+  )
   return router
 }
 

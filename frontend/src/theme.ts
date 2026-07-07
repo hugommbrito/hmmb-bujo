@@ -24,6 +24,37 @@ declare module '@mui/material/Typography' {
   }
 }
 
+// ─── Module augmentation para tokens de categoria/prioridade/superfície ──────
+interface CategoryPalette {
+  teal: string
+  purple: string
+  pink: string
+  yellow: string
+  green: string
+  blue: string
+}
+interface PriorityPalette {
+  ui: string
+  u: string
+  i: string
+  none: string
+}
+interface SurfacesPalette {
+  header: string
+}
+declare module '@mui/material/styles' {
+  interface Palette {
+    category: CategoryPalette
+    priority: PriorityPalette
+    surfaces: SurfacesPalette
+  }
+  interface PaletteOptions {
+    category?: CategoryPalette
+    priority?: PriorityPalette
+    surfaces?: SurfacesPalette
+  }
+}
+
 // ─── Tokens de cor (espelham DESIGN.md exatamente) ───────────────────────────
 const colors = {
   // Superfície e tinta — light
@@ -37,6 +68,7 @@ const colors = {
   // Superfície e tinta — dark
   surfaceBaseDark:   '#2A2420',
   surfaceRaisedDark: '#322C28',
+  surfaceHeaderDark: '#3A3129', // DESIGN.md §Categorias Semânticas — não exposto até esta story
   inkPrimaryDark:    '#EDE8E0',
   inkSecondaryDark:  '#A89E93',
   inkDisabledDark:   '#5C554E',
@@ -87,6 +119,23 @@ export function createBujoTheme(mode: 'light' | 'dark') {
       primary: { main: light ? colors.brandPrimary    : colors.brandPrimaryDark },
       error:   { main: light ? colors.priorityUi      : colors.priorityUiDark },
       warning: { main: light ? colors.priorityU       : colors.priorityUDark },
+      category: {
+        teal:   light ? colors.catTeal   : colors.catTealDark,
+        purple: light ? colors.catPurple : colors.catPurpleDark,
+        pink:   light ? colors.catPink   : colors.catPinkDark,
+        yellow: light ? colors.catYellow : colors.catYellowDark,
+        green:  light ? colors.catGreen  : colors.catGreenDark,
+        blue:   light ? colors.catBlue   : colors.catBlueDark,
+      },
+      priority: {
+        ui:   light ? colors.priorityUi   : colors.priorityUiDark,
+        u:    light ? colors.priorityU    : colors.priorityUDark,
+        i:    light ? colors.priorityI    : colors.priorityIDark,
+        none: light ? colors.priorityNone : colors.priorityNoneDark,
+      },
+      surfaces: {
+        header: light ? colors.surfaceHeader : colors.surfaceHeaderDark,
+      },
     },
     spacing: 4,
     shape: { borderRadius: 4 },

@@ -127,8 +127,11 @@ SIMPLE_JWT = {
 # --- Django REST Framework -----------------------------------------------------
 REST_FRAMEWORK = {
     "EXCEPTION_HANDLER": "core.exceptions.custom_exception_handler",
+    # TenantAwareJWTAuthentication (não a JWTAuthentication padrão): seta o
+    # tenant context como efeito colateral de authenticate() — ver
+    # core/authentication.py e core/middleware.py para o porquê (Story 3.2).
     "DEFAULT_AUTHENTICATION_CLASSES": [
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        "core.authentication.TenantAwareJWTAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
@@ -159,6 +162,17 @@ SPECTACULAR_SETTINGS = {
     "VERSION": "0.1.0",
     "SERVE_INCLUDE_SCHEMA": False,
     "COMPONENT_SPLIT_REQUEST": False,
+    # Sem este hook, o schema (e portanto types.gen.ts) documenta os nomes de
+    # campo em snake_case (como declarados no serializer), mas o corpo real
+    # trafega em camelCase via CamelCase{JSON}Renderer/Parser (§6.3) — um
+    # contrato incorreto para qualquer campo com underscore (ex.: `log_date`,
+    # `to_status`, introduzidos pela Story 3.2). Mantém o hook padrão de enums
+    # e acrescenta a camelização (fica condicional a `_` no nome — campos já
+    # de uma palavra como `id`/`status`/`category` não mudam).
+    "POSTPROCESSING_HOOKS": [
+        "drf_spectacular.hooks.postprocess_schema_enums",
+        "drf_spectacular.contrib.djangorestframework_camel_case.camelize_serializer_fields",
+    ],
 }
 
 # --- Exceção JSONB (§6.3, AD-01) -----------------------------------------------

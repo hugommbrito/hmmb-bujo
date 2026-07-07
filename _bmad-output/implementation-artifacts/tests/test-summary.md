@@ -530,3 +530,46 @@ Regressão: 0 — os 42 testes originais de `bujo/` e os 77 restantes de `accoun
 
 - Story 3.2 (superfície do Daily Log) introduz as primeiras views/serializers de `bujo` — é o ponto natural para testes de API (status code, corpo de resposta) e para fechar o mapeamento HTTP 404 "recurso de outro usuário" citado em `deferred-work.md`
 - O gap de "categoria" sinalizado no Dev Notes da story (campo referenciado pela UI das Stories 3.2/3.3 mas ausente do schema congelado) segue não resolvido — não é responsabilidade desta rodada de QA, mas deve ser confirmado antes/durante a Story 3.2
+
+---
+
+# Resumo de Automação de Testes — Story 3.2
+
+**Data:** 2026-07-04
+**Story:** 3.2 — Superfície do Daily Log com Task Row e ciclo de estados
+**Framework:** pytest + DRF `APIClient` (backend) · Vitest 4.1 + @testing-library/react (frontend) — nenhum framework de E2E via browser (Playwright/Cypress) está instalado no projeto; mantido o padrão já estabelecido nas stories anteriores.
+
+A story já chegou com cobertura extensa de testes unitários/API criada pelo dev-story (Tasks 1–8: `test_models.py`, `test_serializers.py`, `test_views.py`, `TaskRow.test.tsx`, `DayHeader.test.tsx`, `DailyPage.test.tsx`, `api.test.tsx`). Esta rodada focou em fechar gaps de integração/fim-a-fim que a suíte unitária não cobria.
+
+## Gaps identificados e fechados
+
+1. **Backend — 404 para task inexistente**: só havia teste de 404 para task de *outro tenant*; faltava o caso de `task_id` que não existe em lugar nenhum (mesmo branch de código, `except Task.DoesNotExist`, mas sem teste dedicado).
+2. **Backend — ciclo completo de transição**: cada transição (`pending→started`, `started→completed`, ilegal→409) era testada isoladamente; faltava um teste fim-a-fim do ciclo completo do AC2 (`pending → started → completed → pending`) contra os endpoints reais em sequência.
+3. **Backend — GET integrado com ordem + categoria**: `LogSerializer`/`TaskSerializer` tinham teste unitário de ordem/categoria, mas não havia teste passando pela `TodayLogView` real (ciclo de request HTTP completo) confirmando que a resposta respeita `order_index` e inclui `category`.
+4. **Frontend — integração DailyPage → TaskRow → mutação**: `TaskRow.test.tsx` testava o clique isoladamente (com `onTransition` mockado) e `api.test.tsx` testava a mutação isoladamente; faltava o teste de integração provando que o clique no ícone de status dentro da `DailyPage` real aciona `useTransitionTaskMutation().mutate` com o payload correto — o caminho que o AC2 de fato descreve.
+
+## Testes Gerados/Estendidos
+
+| Arquivo | Teste novo | AC coberto |
+|---|---|---|
+| `backend/bujo/tests/test_views.py` | `test_post_transition_task_inexistente_retorna_404` | AC2 (erro) |
+| `backend/bujo/tests/test_views.py` | `test_post_transition_ciclo_completo_pending_started_completed_pending` | AC2 (fim-a-fim) |
+| `backend/bujo/tests/test_views.py` | `test_get_today_log_retorna_tasks_na_ordem_e_com_categoria` | AC1 (fim-a-fim) |
+| `frontend/src/pages/daily/DailyPage.test.tsx` | "clicar no ícone de status de uma Task Row aciona a mutação de transição (AC2, integração)" | AC2 (integração) |
+
+## Execução
+
+- Backend: `uv run pytest bujo/tests/test_views.py` → **11 passed** (8 pré-existentes + 3 novos).
+- Frontend: `npx vitest run src/pages/daily/DailyPage.test.tsx src/features/bujo` → **30 passed** (4 arquivos).
+- `tsc -b --noEmit` e `eslint` sobre as áreas alteradas → 0 erros/avisos.
+
+## Coverage
+
+- AC1 (Day Header + lista + skeleton): coberto (unitário) + reforçado (ordem/categoria via GET real).
+- AC2 (anatomia Task Row + ciclo de clique): coberto (unitário) + reforçado (ciclo completo backend + integração frontend do clique até a mutação).
+- AC3 (estado vazio + touch target): já coberto pela suíte existente do dev-story, sem gap identificado.
+
+## Próximos Passos
+
+- Se o projeto adotar Playwright/Cypress no futuro, promover o fluxo de clique (`DailyPage` → ícone de status → chip atualizado) para um teste de browser real, incluindo o rollback visual em erro de rede simulado.
+- Nenhuma ação bloqueante pendente para esta story.

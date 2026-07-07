@@ -1,8 +1,13 @@
 """Tests for ``TenantMiddleware`` (§6.7).
 
-Proves the request-scoped lifecycle: context is set for an authenticated user,
-always reset afterwards (no leak across requests on a reused worker), and the
-middleware stays dormant for anonymous requests (correct until Story 2.1).
+Setting ``current_user_id`` is ``TenantAwareJWTAuthentication``'s job (see
+``core/authentication.py`` and its tests) — it runs inside DRF's
+``perform_authentication()``, after the real user is known. Django middleware
+runs *before* that, so this middleware only owns the ``finally``-guaranteed
+reset, reading the ``contextvars.Token`` that authentication class stashes on
+``request._tenant_context_token``. These tests simulate that hand-off directly
+rather than going through real JWT auth (covered end-to-end in
+``core/tests/test_authentication.py`` and ``bujo/tests/test_views.py``).
 """
 
 import types
@@ -12,50 +17,41 @@ from core.middleware import TenantMiddleware
 from core.tenant import current_user_id
 
 
-def _request(*, authenticated, user_id=None):
-    user = types.SimpleNamespace(is_authenticated=authenticated, id=user_id)
-    return types.SimpleNamespace(user=user)
-
-
-def test_sets_and_resets_context_for_authenticated_user():
+def test_resets_context_when_a_token_was_stashed_during_the_request():
     uid = uuid.uuid4()
-    seen = {}
 
-    def get_response(_request):
-        seen["uid"] = current_user_id.get()
+    def get_response(request):
+        # Simulates what TenantAwareJWTAuthentication.authenticate() does.
+        request._tenant_context_token = current_user_id.set(uid)
         return "response"
 
     middleware = TenantMiddleware(get_response)
-    result = middleware(_request(authenticated=True, user_id=uid))
+    result = middleware(types.SimpleNamespace())
 
     assert result == "response"
-    assert seen["uid"] == uid  # context was set during the request
-    assert current_user_id.get() is None  # and reset afterwards
+    assert current_user_id.get() is None  # reset afterwards
 
 
-def test_dormant_for_anonymous_request():
-    seen = {}
-
+def test_dormant_when_no_token_was_stashed():
     def get_response(_request):
-        seen["uid"] = current_user_id.get()
         return "response"
 
     middleware = TenantMiddleware(get_response)
-    middleware(_request(authenticated=False))
+    middleware(types.SimpleNamespace())
 
-    assert seen["uid"] is None  # no context set for an anonymous user
     assert current_user_id.get() is None
 
 
 def test_resets_context_even_when_view_raises():
     uid = uuid.uuid4()
 
-    def get_response(_request):
+    def get_response(request):
+        request._tenant_context_token = current_user_id.set(uid)
         raise RuntimeError("boom")
 
     middleware = TenantMiddleware(get_response)
     try:
-        middleware(_request(authenticated=True, user_id=uid))
+        middleware(types.SimpleNamespace())
     except RuntimeError:
         pass
 

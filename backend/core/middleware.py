@@ -1,12 +1,18 @@
-"""Request-scoped tenant context wiring (§6.7).
+"""Request-scoped tenant context teardown (§6.7).
 
-Sets ``current_user_id`` right after authentication and resets it in ``finally``
-so context never leaks between requests on a reused worker.
+Guarantees ``current_user_id`` is reset after every request, so it never leaks
+between requests on a reused worker — regardless of whether the view raised.
 
-Scope note (Story 1.2): there is no JWT/``User`` model yet (Story 2.1), so
-``request.user`` is always ``AnonymousUser`` and this middleware stays dormant —
-it sets no context. That is correct and expected; it "wakes up" once 2.1 wires
-auth. ``/api/health/`` runs without auth and without context regardless.
+This middleware does NOT set the context (it did in a since-corrected earlier
+version — see Story 3.2 fix). Django middleware runs *before* DRF resolves
+``request.user``: JWT authentication happens inside ``APIView.dispatch()`` via
+``perform_authentication()``, which fires only once the view layer is reached.
+By the time this middleware's ``__call__`` would inspect ``request.user``, no
+authentication has happened yet, so it would always see ``AnonymousUser`` —
+the context would never actually be set for a real JWT-bearer request. Setting
+the context is ``TenantAwareJWTAuthentication.authenticate()``'s job instead
+(``core/authentication.py``): it runs exactly when the real user is known, and
+stashes the ``contextvars.Token`` on the request for this middleware to reset.
 
 Plain class form (not the async-capable form): WSGI is the current target.
 """
@@ -19,11 +25,9 @@ class TenantMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
-        token = None
-        if getattr(request, "user", None) and request.user.is_authenticated:
-            token = current_user_id.set(request.user.id)
         try:
             return self.get_response(request)
         finally:
+            token = getattr(request, "_tenant_context_token", None)
             if token is not None:
                 current_user_id.reset(token)

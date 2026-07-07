@@ -49,12 +49,23 @@ class Task(TenantModel):
         IMPORTANT = "i"
         NONE = "none"
 
+    class Category(models.TextChoices):
+        TEAL = "teal"
+        PURPLE = "purple"
+        PINK = "pink"
+        YELLOW = "yellow"
+        GREEN = "green"
+        BLUE = "blue"
+
     log = models.ForeignKey(Log, on_delete=models.CASCADE, related_name="tasks")
     status = models.CharField(
         max_length=16, choices=Status.choices, default=Status.PENDING
     )
     eisenhower = models.CharField(  # noqa: DJ001 - AC exige nulável (nenhum valor definido, não string vazia)
         max_length=8, choices=Eisenhower.choices, null=True, blank=True
+    )
+    category = models.CharField(  # noqa: DJ001 - ausência de categoria é um valor válido (ver Dev Notes)
+        max_length=8, choices=Category.choices, null=True, blank=True
     )
     order_index = models.FloatField()
     title = models.CharField(max_length=500)

@@ -6,6 +6,7 @@ import { SignupPage } from '../features/auth/components/SignupPage'
 import { useAuth } from '../shared/hooks/useAuth'
 import { AppLayout } from './layout/AppLayout'
 import { PlaceholderPage } from '../pages/PlaceholderPage'
+import { DailyPage } from '../pages/daily/DailyPage'
 
 function LoginPageRoute() {
   const { isAuthenticated } = useAuth()
@@ -53,7 +54,7 @@ export const routeDefinitions: RouteObject[] = [
     element: <ProtectedLayout />,
     children: [
       { index: true, element: <Navigate to="/today" replace /> },
-      { path: 'today', element: <PlaceholderPage title="Hoje" />, handle: { title: 'Hoje' } },
+      { path: 'today', element: <DailyPage />, handle: { title: 'Hoje' } },
       {
         path: 'planner/week',
         element: <PlaceholderPage title="Esta Semana" />,

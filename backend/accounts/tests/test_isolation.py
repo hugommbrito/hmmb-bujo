@@ -1,19 +1,25 @@
 from django.http import HttpResponse
-from django.test import RequestFactory
-from rest_framework.test import APIClient
+from rest_framework.request import Request
+from rest_framework.test import APIClient, APIRequestFactory
+from rest_framework_simplejwt.tokens import AccessToken
 
 from accounts.tests.factories import UserFactory
+from core.authentication import TenantAwareJWTAuthentication
 from core.middleware import TenantMiddleware
 from core.tenant import current_user_id
 
 
 def test_middleware_seta_user_id_correto():
-    """JWT → force_authenticate → middleware → contextvar com UUID correto."""
+    """force_authenticate → health (AllowAny) completa com 200.
+
+    Nota: `force_authenticate` substitui os authenticators por um
+    `ForcedAuthentication` interno do DRF — `TenantAwareJWTAuthentication`
+    nunca roda nesse caminho, então isto NÃO exercita o contextvar (ver
+    `test_contextvar_conteudo_correto` para isso, com um JWT de verdade).
+    """
     user_a = UserFactory()
     client = APIClient()
     client.force_authenticate(user=user_a)
-    # force_authenticate seta request.user = user_a → TenantMiddleware seta current_user_id.
-    # health (AllowAny) deve completar sem TenantScopeViolation — prova que a cadeia funciona.
     response = client.get("/api/health/")
     assert response.status_code == 200
 
@@ -43,27 +49,35 @@ def test_token_de_usuario_a_nao_autentica_como_b():
 
 
 def test_contextvar_conteudo_correto(db):
-    # AC3: verifica o conteúdo real do contextvar — não apenas status 200
+    """AC3: verifica o conteúdo real do contextvar — não apenas status 200.
+
+    Desde a Story 3.2, quem seta `current_user_id` é
+    `TenantAwareJWTAuthentication` (não mais `TenantMiddleware`, que hoje só
+    garante o reset) — por isso o `capture_view` chama o authenticate() de
+    verdade com um JWT real, simulando o que `perform_authentication()` faria
+    dentro do dispatch de uma view real.
+    """
     user_a = UserFactory()
-    factory = RequestFactory()
-    request = factory.get("/fake/")
-    request.user = user_a
+    token = str(AccessToken.for_user(user_a))
+    raw_request = APIRequestFactory().get("/fake/", HTTP_AUTHORIZATION=f"Bearer {token}")
 
     captured = []
 
     def capture_view(req):
+        TenantAwareJWTAuthentication().authenticate(Request(req))
         captured.append(current_user_id.get(None))
         return HttpResponse()
 
     middleware = TenantMiddleware(capture_view)
-    middleware(request)
+    middleware(raw_request)
 
     assert len(captured) == 1
     assert captured[0] == user_a.id
+    assert current_user_id.get(None) is None  # reset após o middleware retornar
 
 
 def test_novo_usuario_criado_com_isolamento():
-    """User A e User B têm IDs distintos; request.user é o correto após force_authenticate."""
+    """User A e User B têm IDs distintos; ambos completam requests via force_authenticate."""
     user_a = UserFactory()
     user_b = UserFactory()
 
@@ -71,8 +85,6 @@ def test_novo_usuario_criado_com_isolamento():
 
     client = APIClient()
     client.force_authenticate(user=user_a)
-    # Verificar que request.user.id é user_a (via contextvar setado pelo middleware)
-    # Fazemos uma request e confirmamos que não explode (middleware funcionando)
     response = client.get("/api/health/")
     assert response.status_code == 200
 

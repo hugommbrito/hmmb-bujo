@@ -110,4 +110,64 @@ describe('createBujoTheme', () => {
       })
     })
   })
+
+  describe('tokens de categoria (AC2, Story 3.2)', () => {
+    it('light: expõe as 6 cores de categoria', () => {
+      const theme = createBujoTheme('light')
+      expect(theme.palette.category).toEqual({
+        teal: '#2BADA0',
+        purple: '#7B5EA7',
+        pink: '#D95F78',
+        yellow: '#C89B00',
+        green: '#4A8C5C',
+        blue: '#3D72B4',
+      })
+    })
+
+    it('dark: expõe as 6 cores de categoria em suas variantes dark', () => {
+      const theme = createBujoTheme('dark')
+      expect(theme.palette.category).toEqual({
+        teal: '#3DC9BA',
+        purple: '#9E7FCC',
+        pink: '#F07F97',
+        yellow: '#F2C22E',
+        green: '#6BB880',
+        blue: '#6098D9',
+      })
+    })
+  })
+
+  describe('tokens de prioridade Eisenhower (AC2, Story 3.2)', () => {
+    it('light: expõe as 4 cores de prioridade', () => {
+      const theme = createBujoTheme('light')
+      expect(theme.palette.priority).toEqual({
+        ui: '#C0392B',
+        u: '#D4660A',
+        i: '#B8920A',
+        none: '#4A8C5C',
+      })
+    })
+
+    it('dark: expõe as 4 cores de prioridade em suas variantes dark', () => {
+      const theme = createBujoTheme('dark')
+      expect(theme.palette.priority).toEqual({
+        ui: '#E05A4A',
+        u: '#F08230',
+        i: '#D4B030',
+        none: '#6BB880',
+      })
+    })
+  })
+
+  describe('token de superfície do Day Header (AC1, Story 3.2)', () => {
+    it('light: surfaces.header é o tom-sobre-tom claro', () => {
+      const theme = createBujoTheme('light')
+      expect(theme.palette.surfaces.header).toBe('#F0EBE0')
+    })
+
+    it('dark: surfaces.header é o tom-sobre-tom escuro', () => {
+      const theme = createBujoTheme('dark')
+      expect(theme.palette.surfaces.header).toBe('#3A3129')
+    })
+  })
 })

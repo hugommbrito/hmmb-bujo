@@ -57,8 +57,168 @@ paths:
               schema:
                 $ref: '#/components/schemas/TokenRefresh'
           description: ''
+  /api/bujo/logs/today/:
+    get:
+      operationId: bujo_logs_today_retrieve
+      tags:
+      - bujo
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Log'
+          description: ''
+  /api/bujo/tasks/{id}/transition/:
+    post:
+      operationId: bujo_tasks_transition_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - bujo
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskTransitionRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+          description: ''
 components:
   schemas:
+    BlankEnum:
+      enum:
+      - ''
+    CategoryEnum:
+      enum:
+      - teal
+      - purple
+      - pink
+      - yellow
+      - green
+      - blue
+      type: string
+      description: |-
+        * `teal` - Teal
+        * `purple` - Purple
+        * `pink` - Pink
+        * `yellow` - Yellow
+        * `green` - Green
+        * `blue` - Blue
+    EisenhowerEnum:
+      enum:
+      - ui
+      - u
+      - i
+      - none
+      type: string
+      description: |-
+        * `ui` - Urgent Important
+        * `u` - Urgent
+        * `i` - Important
+        * `none` - None
+    Log:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        logDate:
+          type: string
+          format: date
+        tasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/Task'
+          readOnly: true
+      required:
+      - id
+      - logDate
+      - tasks
+    NullEnum:
+      enum:
+      - null
+    StatusEnum:
+      enum:
+      - pending
+      - started
+      - completed
+      - cancelled
+      - migrated
+      - postponed
+      type: string
+      description: |-
+        * `pending` - Pending
+        * `started` - Started
+        * `completed` - Completed
+        * `cancelled` - Cancelled
+        * `migrated` - Migrated
+        * `postponed` - Postponed
+    Task:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        title:
+          type: string
+          maxLength: 500
+        status:
+          $ref: '#/components/schemas/StatusEnum'
+        eisenhower:
+          nullable: true
+          oneOf:
+          - $ref: '#/components/schemas/EisenhowerEnum'
+          - $ref: '#/components/schemas/BlankEnum'
+          - $ref: '#/components/schemas/NullEnum'
+        category:
+          nullable: true
+          oneOf:
+          - $ref: '#/components/schemas/CategoryEnum'
+          - $ref: '#/components/schemas/BlankEnum'
+          - $ref: '#/components/schemas/NullEnum'
+      required:
+      - id
+      - title
+    TaskTransitionRequest:
+      type: object
+      properties:
+        toStatus:
+          $ref: '#/components/schemas/ToStatusEnum'
+      required:
+      - toStatus
+    ToStatusEnum:
+      enum:
+      - pending
+      - started
+      - completed
+      - cancelled
+      - migrated
+      - postponed
+      type: string
+      description: |-
+        * `pending` - Pending
+        * `started` - Started
+        * `completed` - Completed
+        * `cancelled` - Cancelled
+        * `migrated` - Migrated
+        * `postponed` - Postponed
     TokenObtainPair:
       type: object
       properties:
