@@ -15,6 +15,7 @@ import {
   useCreateTaskMutation,
   useCreateSubtaskMutation,
   useUpdateTaskMutation,
+  useReorderTaskMutation,
 } from './api'
 import type { Log } from './types'
 
@@ -199,6 +200,63 @@ describe('useCreateSubtaskMutation (AC2)', () => {
 
     await waitFor(() => expect(result.current.isError).toBe(true))
     expect(qc.getQueryData<Log>(keys.bujo.todayLog())).toEqual(LOG)
+  })
+})
+
+describe('useReorderTaskMutation', () => {
+  const REORDER_LOG: Log = {
+    id: 'log-1',
+    logDate: '2026-07-03',
+    tasks: [
+      { id: 'task-1', title: 'Primeira', status: 'pending', eisenhower: null, category: null, subtasks: [] },
+      { id: 'task-2', title: 'Segunda', status: 'pending', eisenhower: null, category: null, subtasks: [] },
+    ],
+  }
+
+  beforeEach(() => {
+    vi.resetAllMocks()
+  })
+
+  it('aplica a nova ordem de forma otimista antes da resposta do servidor', async () => {
+    const { qc, wrapper } = makeWrapper()
+    qc.setQueryData(keys.bujo.todayLog(), REORDER_LOG)
+
+    let resolvePost!: (value: { data: unknown }) => void
+    mockPost.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolvePost = resolve
+      }),
+    )
+
+    const { result } = renderHook(() => useReorderTaskMutation(), { wrapper })
+
+    result.current.mutate({ taskId: 'task-2', targetTaskId: 'task-1', position: 'before' })
+
+    await waitFor(() => expect(result.current.isPending).toBe(true))
+    expect(qc.getQueryData<Log>(keys.bujo.todayLog())?.tasks.map((t) => t.id)).toEqual([
+      'task-2',
+      'task-1',
+    ])
+
+    resolvePost({ data: REORDER_LOG.tasks[1] })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(mockPost).toHaveBeenCalledWith('/api/bujo/tasks/task-2/reorder/', {
+      targetTaskId: 'task-1',
+      position: 'before',
+    })
+  })
+
+  it('reverte para o snapshot anterior em caso de erro', async () => {
+    const { qc, wrapper } = makeWrapper()
+    qc.setQueryData(keys.bujo.todayLog(), REORDER_LOG)
+    mockPost.mockRejectedValueOnce(new Error('falha de rede'))
+
+    const { result } = renderHook(() => useReorderTaskMutation(), { wrapper })
+
+    result.current.mutate({ taskId: 'task-2', targetTaskId: 'task-1', position: 'before' })
+
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    expect(qc.getQueryData<Log>(keys.bujo.todayLog())).toEqual(REORDER_LOG)
   })
 })
 

@@ -117,6 +117,33 @@ paths:
               schema:
                 $ref: '#/components/schemas/Task'
           description: ''
+  /api/bujo/tasks/{id}/reorder/:
+    post:
+      operationId: bujo_tasks_reorder_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - bujo
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskReorder'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+          description: ''
   /api/bujo/tasks/{id}/subtasks/:
     post:
       operationId: bujo_tasks_subtasks_create
@@ -245,6 +272,14 @@ components:
           oneOf:
           - $ref: '#/components/schemas/CategoryEnum'
           - $ref: '#/components/schemas/NullEnum'
+    PositionEnum:
+      enum:
+      - before
+      - after
+      type: string
+      description: |-
+        * `before` - before
+        * `after` - after
     StatusEnum:
       enum:
       - pending
@@ -318,6 +353,17 @@ components:
           - $ref: '#/components/schemas/NullEnum'
       required:
       - title
+    TaskReorder:
+      type: object
+      properties:
+        targetTaskId:
+          type: string
+          format: uuid
+        position:
+          $ref: '#/components/schemas/PositionEnum'
+      required:
+      - position
+      - targetTaskId
     TaskTransitionRequest:
       type: object
       properties:

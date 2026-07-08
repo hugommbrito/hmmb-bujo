@@ -339,6 +339,101 @@ def test_post_subtask_create_aceita_pai_que_e_subtarefa_e_serializer_aninha_recu
 
 
 @pytest.mark.django_db
+def test_post_reorder_valido_move_a_tarefa_e_persiste_order_index(auth_client, user):
+    with tenant_context(user):
+        log = get_or_create_daily_log(user=user, log_date=today_for(user))
+        target = TaskFactory(user=user, log=log, order_index=0.0)
+        task = TaskFactory(user=user, log=log, order_index=1.0)
+
+    response = auth_client.post(
+        f"/api/bujo/tasks/{task.id}/reorder/",
+        {"targetTaskId": str(target.id), "position": "before"},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    with tenant_context(user):
+        task.refresh_from_db()
+        assert task.order_index < target.order_index
+
+
+@pytest.mark.django_db
+def test_post_reorder_target_task_id_de_outro_tenant_retorna_404(auth_client, user, other_user):
+    with tenant_context(user):
+        log = get_or_create_daily_log(user=user, log_date=today_for(user))
+        task = TaskFactory(user=user, log=log, order_index=0.0)
+
+    with tenant_context(other_user):
+        other_task = TaskFactory(user=other_user, order_index=0.0)
+
+    response = auth_client.post(
+        f"/api/bujo/tasks/{task.id}/reorder/",
+        {"targetTaskId": str(other_task.id), "position": "after"},
+        format="json",
+    )
+
+    assert response.status_code == 404
+
+
+@pytest.mark.django_db
+def test_post_reorder_target_task_id_igual_a_propria_tarefa_retorna_409(auth_client, user):
+    with tenant_context(user):
+        task = TaskFactory(user=user, order_index=0.0)
+
+    response = auth_client.post(
+        f"/api/bujo/tasks/{task.id}/reorder/",
+        {"targetTaskId": str(task.id), "position": "after"},
+        format="json",
+    )
+
+    assert response.status_code == 409
+
+
+@pytest.mark.django_db
+def test_post_reorder_target_task_id_que_nao_e_irma_retorna_409(auth_client, user):
+    with tenant_context(user):
+        log = get_or_create_daily_log(user=user, log_date=today_for(user))
+        task = TaskFactory(user=user, log=log, order_index=0.0)
+        other_log_task = TaskFactory(user=user, order_index=0.0)
+
+    response = auth_client.post(
+        f"/api/bujo/tasks/{task.id}/reorder/",
+        {"targetTaskId": str(other_log_task.id), "position": "after"},
+        format="json",
+    )
+
+    assert response.status_code == 409
+
+
+@pytest.mark.django_db
+def test_post_reorder_position_fora_do_enum_retorna_400(auth_client, user):
+    with tenant_context(user):
+        log = get_or_create_daily_log(user=user, log_date=today_for(user))
+        task = TaskFactory(user=user, log=log, order_index=0.0)
+        target = TaskFactory(user=user, log=log, order_index=1.0)
+
+    response = auth_client.post(
+        f"/api/bujo/tasks/{task.id}/reorder/",
+        {"targetTaskId": str(target.id), "position": "sideways"},
+        format="json",
+    )
+
+    assert response.status_code == 400
+
+
+@pytest.mark.django_db
+def test_post_reorder_target_task_id_ausente_retorna_400(auth_client, user):
+    with tenant_context(user):
+        task = TaskFactory(user=user, order_index=0.0)
+
+    response = auth_client.post(
+        f"/api/bujo/tasks/{task.id}/reorder/", {"position": "after"}, format="json"
+    )
+
+    assert response.status_code == 400
+
+
+@pytest.mark.django_db
 def test_patch_task_detail_titulo_em_branco_retorna_400(auth_client, user):
     """Título é obrigatório na criação (AC1); `TaskUpdateSerializer.title` não
     define `allow_blank=True`, então editar para uma string vazia também deve

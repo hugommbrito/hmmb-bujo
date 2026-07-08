@@ -5,6 +5,7 @@ já foi feito pelo serializer na view; o serviço assume dados validados.
 from django.db import models, transaction
 
 from bujo.models import Task
+from core.exceptions import InvalidReorderTarget
 
 
 @transaction.atomic
@@ -35,4 +36,44 @@ def update_task(*, user, task_id, **fields) -> Task:
     for field, value in fields.items():
         setattr(task, field, value)
     task.save(update_fields=[*fields.keys(), "updated_at"])
+    return task
+
+
+@transaction.atomic
+def reorder_task(*, user, task_id, target_task_id, position) -> Task:
+    """Reposiciona `task` como vizinha imediata de `target_task_id`, recalculando
+    `order_index` por bisseção entre os dois vizinhos que vão ladear a tarefa
+    após o move (mesmo índice fracionário de `create_task`, que soma `+1.0`)."""
+    if str(task_id) == str(target_task_id):
+        raise InvalidReorderTarget(task_id, target_task_id)
+    task = Task.objects.get(id=task_id)  # objects = auto-escopado por tenant
+    target = Task.objects.get(id=target_task_id)  # idem — DoesNotExist -> 404 na view
+
+    siblings = list(
+        Task.objects.filter(log=task.log, parent_task=task.parent_task)
+        .exclude(id=task.id)
+        .order_by("order_index")
+    )
+    if target not in siblings:
+        # `target` existe (passou no .get() acima, escopado por tenant) mas
+        # não é irmão de `task` (log ou parent_task diferentes) — 409, não 404.
+        raise InvalidReorderTarget(task_id, target_task_id)
+
+    idx = siblings.index(target)
+    if position == "after":
+        neighbor = siblings[idx + 1] if idx + 1 < len(siblings) else None
+        low, high = target.order_index, (neighbor.order_index if neighbor else None)
+    else:  # "before"
+        neighbor = siblings[idx - 1] if idx > 0 else None
+        low, high = (neighbor.order_index if neighbor else None), target.order_index
+
+    if low is None:
+        new_order = high - 1.0
+    elif high is None:
+        new_order = low + 1.0
+    else:
+        new_order = (low + high) / 2
+
+    task.order_index = new_order
+    task.save(update_fields=["order_index", "updated_at"])
     return task

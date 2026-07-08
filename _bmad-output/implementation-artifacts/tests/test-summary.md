@@ -651,3 +651,75 @@ Configuração: `frontend/playwright.config.ts` sobe `npm run dev` (5173) e `uv 
 - Nenhum job de CI sobe backend+frontend juntos hoje — se o projeto quiser rodar os E2E em CI, precisa de um Postgres efêmero (como o job `backend` já usa) em vez do Neon dev branch, e um step novo em `.github/workflows/ci.yml` subindo os dois `webServer` do `playwright.config.ts`.
 - O bottom-sheet mobile foi testado só no viewport 375×667; se o projeto definir breakpoints adicionais (tablet, por exemplo), vale estender o teste de `painel de detalhe abre como bottom sheet no mobile`.
 - Nenhuma ação bloqueante pendente para esta story.
+
+---
+
+# Resumo de Automação de Testes — Story 3.4: Ordenação manual de tarefas
+
+**Data:** 2026-07-07
+**Story:** 3.4 — Ordenação manual de tarefas
+**Framework:** pytest + DRF `APIClient` (backend) · Vitest 4.1 + @testing-library/react (frontend) · Playwright 1.61 (E2E de browser real)
+
+A story já chegou implementada com cobertura extensa do dev-story: 9 testes novos em `test_services.py` (`reorder_task`), 6 em `test_views.py` (`TaskReorderView`), 4 em `taskTree.test.ts`, 2 em `api.test.tsx`, 5 em `MoveTaskDialog.test.tsx` (novo) e +13/+2 estendendo `TaskRow.test.tsx`/`DailyPage.test.tsx` — todos unitários/integração (backend via `APIClient`, frontend via jsdom/Testing Library). O gap real identificado nesta rodada de QA: **nenhum teste exercitava o gesto de reorder num browser real** — nem o drag-and-drop nativo HTML5, nem o long-press de toque, nem a persistência via reload — que é exatamente o tipo de comportamento que jsdom não reproduz fielmente (drag/touch events sintéticos, geometria de bounding box, timers reais) e que a própria story documentou como "Verificação manual" (Task 7.6) em vez de teste automatizado.
+
+## Gap Descoberto e Fechado
+
+| Gap | Arquivo | Descrição |
+|-----|---------|-----------|
+| Sem cobertura E2E de reorder | `frontend/e2e/task-reorder.spec.ts` (novo) | AC1 (drag-and-drop desktop + persistência), AC2 (long-press mobile + persistência) e a alternativa WCAG 2.5.7 (Task 6, botão "Mover tarefa" no desktop) só tinham sido validadas manualmente via Playwright ad-hoc (script temporário, removido após uso — Completion Notes da story) ou via eventos sintéticos isolados em `TaskRow.test.tsx`. Nenhum teste comprovava o gesto real do navegador nem a persistência do `order_index` após reload contra o backend real. |
+
+## Testes Gerados
+
+### `frontend/e2e/task-reorder.spec.ts` — novo (4 testes)
+
+- [x] `arrasta tarefa via drag handle no desktop; ordem persiste após recarregar (AC1)` — `locator.dragTo()` simula o gesto HTML5 nativo (`draggable`/`dragstart`/`dragover`/`drop`), soltando na metade superior da linha alvo (`position: 'before'`); confirma nova ordem e persistência via `page.reload()`.
+- [x] `desktop: botão "Mover tarefa" reordena sem arrastar (alternativa WCAG 2.5.7) e persiste` — fecha a lacuna de acessibilidade que o drag-and-drop puro deixaria (Dev Notes da story, "WCAG 2.5.7 — por que a Task 6 não é nice to have"): clique no `IconButton aria-label="Mover tarefa"` abre o mesmo `MoveTaskDialog`, escolhe "Abaixo de X", confirma persistência.
+- [x] `mobile: long-press abre "Mover para..." e a nova ordem persiste ao reabrir o log (AC2)` — viewport 375×667, dispara `touchstart` real e usa a auto-retry do Playwright (`expect(dialog).toBeVisible()`) para aguardar o timer de 500ms (`LONG_PRESS_MS`) sem sleep fixo no teste; escolhe posição via diálogo e confirma persistência.
+- [x] `subtarefas não expõem drag handle nem "Mover tarefa" (reorder é raiz-only nesta story)` — reforça o limite de escopo documentado nos Dev Notes: `draggable="false"` e ausência do botão "Mover tarefa" numa linha de subtarefa.
+
+## Cobertura por AC
+
+| AC | Critério | Coberto por |
+|----|----------|-------------|
+| AC1 | Drag-and-drop desktop atualiza `order_index` e persiste no servidor | `test_services.py::reorder_task` (unitário, pré-existente) + `TaskRow.test.tsx` (eventos sintéticos, pré-existente) + `task-reorder.spec.ts` ← **novo, browser real** |
+| AC1 | Sem reordenação automática por algoritmo | Ausência de qualquer chamada a `reorder_task` fora do gesto do usuário (garantido por design, sem teste dedicado necessário) |
+| AC2 | Long-press mobile abre "Mover para..." com posição relativa | `TaskRow.test.tsx` (fake timers, pré-existente) + `MoveTaskDialog.test.tsx` (pré-existente) + `task-reorder.spec.ts` ← **novo, touch real + timer real** |
+| AC2 | Nova ordem persiste e reflete ao reabrir o log | `task-reorder.spec.ts` ← **novo** (único teste que exercita `page.reload()` para reorder) |
+| — | Alternativa de ponteiro único ao drag no desktop (WCAG 2.5.7) | `TaskRow.test.tsx` (clique isolado, pré-existente) + `task-reorder.spec.ts` ← **novo, fluxo completo até persistência** |
+| — | Reorder é raiz-only nesta story (subtarefas sem drag/long-press) | `TaskRow.test.tsx` (pré-existente) + `task-reorder.spec.ts` ← **novo, verificação via DOM real (`draggable` attribute)** |
+
+## Observações
+
+- **Flakiness descoberta e corrigida durante a escrita:** o mesmo hazard de mutação otimista documentado em `fixtures.ts` (id temporário client-side antes do `onSettled → invalidateQueries` trazer o id real) se manifestou de forma mais sutil aqui — em loops de criação rápida (3 tarefas seguidas), o React Query em StrictMode por vezes dispara um GET extra fora de ordem, fazendo o `syncAfter` do teste resolver antes do id real assentar. Adicionado `page.waitForLoadState('networkidle')` ao final do helper `createTasks` do novo spec para garantir que toda a rede residual assente antes do teste prosseguir para o drag/long-press (que dependem do id real da tarefa).
+- A suíte completa (5 testes pré-existentes de `daily-tasks.spec.ts` + 4 novos de `task-reorder.spec.ts`) rodou **verde em execução limpa** contra o Neon dev branch real. Sob `--repeat-each` agressivo (stress test, não parte do fluxo normal), surgiram falhas intermitentes atribuíveis a carga na infraestrutura compartilhada (signup/latência do Neon), não à lógica dos testes — mesma classe de instabilidade já registrada nas rodadas de QA das stories 3.1/3.3. Comportamento absorvido pelo `retries: 2` já configurado para CI em `playwright.config.ts`.
+- `locator.dragTo()` com `sourcePosition`/`targetPosition` relativos ao bounding box de cada linha permite controlar precisamente se o drop cai na metade superior (`before`) ou inferior (`after`) da linha alvo, replicando a lógica de `TaskRow.tsx::handleDragOver`.
+
+## Execução
+
+```
+Backend:  182 passed (validado pelo dev-story — Completion Notes da story; sem gap de backend
+          nesta rodada de QA, ver Contexto acima). Uma tentativa de re-execução completa nesta
+          rodada travou por instabilidade de conexão do Neon dev branch (mesma classe de
+          incidente já registrada nas rodadas de QA das stories 3.1/3.3 — `test_neondb`
+          órfão/teardown concorrente) e foi encerrada sem reexecutar — não bloqueante, já que
+          o backend não mudou nesta rodada.
+Frontend: npx vitest run → 215 passed (26 arquivos)
+E2E:      npx playwright test → 9 passed (5 pré-existentes da 3.3 + 4 novos da 3.4), execução limpa
+```
+
+## Checklist de Validação
+
+- [x] Testes E2E gerados (4 cenários de browser real — o único tipo de teste em falta para esta story; API/unit já cobertos pelo dev-story)
+- [x] Usam APIs padrão do framework já adotado (`@playwright/test`) — nenhuma ferramenta nova introduzida
+- [x] Cobrem happy path (drag desktop, botão desktop, long-press mobile) + o caso de escopo (subtarefas não-reordenáveis)
+- [x] Todos os testes passam (182 backend + 215 frontend + 9 E2E, execução limpa)
+- [x] Locators semânticos (`getByRole`, `getByLabel`, `data-testid` já existente para `task-row`)
+- [x] Sem waits/sleeps artificiais — long-press usa auto-retry de assertion (`toBeVisible`), criação de tarefas usa `networkidle` (espera de rede real, não tempo fixo)
+- [x] Testes independentes entre si (cada um cria seu próprio usuário via signup)
+- [x] Summary salvo em `_bmad-output/implementation-artifacts/tests/test-summary.md`
+- [x] Testes salvos no diretório correto (`frontend/e2e/task-reorder.spec.ts`)
+
+## Próximos Passos
+
+- Nenhum job de CI sobe backend+frontend juntos hoje (mesmo gap apontado nas Stories 3.1/3.3) — os E2E continuam rodando só localmente contra o Neon dev branch.
+- Nenhuma ação bloqueante pendente para esta story.

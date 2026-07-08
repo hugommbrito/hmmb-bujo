@@ -4,6 +4,7 @@ from bujo.views import (
     SubtaskCreateView,
     TaskCreateView,
     TaskDetailView,
+    TaskReorderView,
     TaskTransitionView,
     TodayLogView,
 )
@@ -14,4 +15,5 @@ urlpatterns = [
     path("tasks/<uuid:pk>/", TaskDetailView.as_view(), name="bujo-task-detail"),
     path("tasks/<uuid:pk>/subtasks/", SubtaskCreateView.as_view(), name="bujo-task-subtasks"),
     path("tasks/<uuid:pk>/transition/", TaskTransitionView.as_view(), name="bujo-task-transition"),
+    path("tasks/<uuid:pk>/reorder/", TaskReorderView.as_view(), name="bujo-task-reorder"),
 ]

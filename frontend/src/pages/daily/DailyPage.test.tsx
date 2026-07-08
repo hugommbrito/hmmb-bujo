@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, act } from '@testing-library/react'
 import { ThemeProvider } from '@mui/material'
 import { axe } from 'jest-axe'
 import { createBujoTheme } from '../../theme'
@@ -7,11 +7,13 @@ import { DailyPage } from './DailyPage'
 
 const mockMutate = vi.fn()
 const mockCreateTaskMutate = vi.fn()
+const mockReorderMutate = vi.fn()
 
 vi.mock('../../features/bujo', () => ({
   useTodayLogQuery: vi.fn(),
   useTransitionTaskMutation: vi.fn(() => ({ mutate: mockMutate })),
   useCreateTaskMutation: vi.fn(() => ({ mutate: mockCreateTaskMutate })),
+  useReorderTaskMutation: vi.fn(() => ({ mutate: mockReorderMutate })),
 }))
 
 vi.mock('../../features/bujo/components/TaskDetailPanel', () => ({
@@ -221,6 +223,81 @@ describe('DailyPage (AC1, AC3)', () => {
     fireEvent.keyDown(input, { key: 'n' })
 
     expect(input).toHaveValue('algum texto')
+  })
+
+  it('handleReorder chama useReorderTaskMutation().mutate com os argumentos repassados pelo TaskRow (drag-and-drop)', () => {
+    mockUseTodayLogQuery.mockReturnValue({
+      isPending: false,
+      data: {
+        id: 'log-1',
+        logDate: '2026-06-15',
+        tasks: [
+          { id: 't1', title: 'Tarefa 1', status: 'pending', eisenhower: null, category: null, subtasks: [] },
+          { id: 't2', title: 'Tarefa 2', status: 'pending', eisenhower: null, category: null, subtasks: [] },
+        ],
+      },
+    })
+
+    renderDailyPage()
+
+    const rows = screen.getAllByTestId('task-row')
+    const secondRow = rows[1]
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({
+      top: 0,
+      height: 40,
+      bottom: 40,
+      left: 0,
+      right: 0,
+      width: 0,
+      x: 0,
+      y: 0,
+      toJSON: () => {},
+    } as DOMRect)
+
+    const data: Record<string, string> = { 'text/plain': 't1' }
+    const dataTransfer = { getData: (key: string) => data[key], setData: () => {}, effectAllowed: '' }
+    const dragOverEvent = new Event('dragover', { bubbles: true, cancelable: true })
+    Object.defineProperty(dragOverEvent, 'dataTransfer', { value: dataTransfer, configurable: true })
+    Object.defineProperty(dragOverEvent, 'clientY', { value: 35, configurable: true })
+    act(() => {
+      secondRow.dispatchEvent(dragOverEvent)
+    })
+
+    const dropEvent = new Event('drop', { bubbles: true, cancelable: true })
+    Object.defineProperty(dropEvent, 'dataTransfer', { value: dataTransfer, configurable: true })
+    Object.defineProperty(dropEvent, 'clientY', { value: 35, configurable: true })
+    act(() => {
+      secondRow.dispatchEvent(dropEvent)
+    })
+
+    expect(mockReorderMutate).toHaveBeenCalledWith({ taskId: 't1', targetTaskId: 't2', position: 'after' })
+  })
+
+  it('siblings/onReorder chegam só nas linhas raiz (subtarefa não recebe drag handle)', () => {
+    mockUseTodayLogQuery.mockReturnValue({
+      isPending: false,
+      data: {
+        id: 'log-1',
+        logDate: '2026-06-15',
+        tasks: [
+          {
+            id: 't1',
+            title: 'Tarefa 1',
+            status: 'pending',
+            eisenhower: null,
+            category: null,
+            subtasks: [
+              { id: 'sub-1', title: 'Subtarefa 1', status: 'pending', eisenhower: null, category: null, subtasks: [] },
+            ],
+          },
+          { id: 't2', title: 'Tarefa 2', status: 'pending', eisenhower: null, category: null, subtasks: [] },
+        ],
+      },
+    })
+
+    renderDailyPage()
+
+    expect(screen.getAllByRole('button', { name: 'Mover tarefa' })).toHaveLength(2)
   })
 
   it('sem violações de acessibilidade (jest-axe)', async () => {

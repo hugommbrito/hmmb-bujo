@@ -47,6 +47,15 @@ class ImmutableSnapshot(DomainError):
     """An attempt to mutate an immutable historical snapshot (AD-06/07)."""
 
 
+class InvalidReorderTarget(DomainError):
+    """Reorder pedido contra um alvo que não é irmão da tarefa movida (Story 3.4)."""
+
+    def __init__(self, task_id, target_task_id):
+        self.task_id = task_id
+        self.target_task_id = target_task_id
+        super().__init__(f"Invalid reorder target: {task_id} -> {target_task_id}")
+
+
 class TenantScopeViolation(DomainError):
     """A tenant-scoped query/write ran without a tenant context set (AD-12).
 

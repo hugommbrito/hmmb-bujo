@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import client from '../../api/client'
 import { keys } from '../../api/keys'
 import { useOptimisticMutation } from '../../shared/hooks/useOptimisticMutation'
-import { mapTaskTree } from './taskTree'
+import { mapTaskTree, reorderTaskTree } from './taskTree'
 import type { Log, Task, TaskCategory, TaskEisenhower, TaskStatus } from './types'
 
 async function fetchTodayLog(): Promise<Log> {
@@ -122,6 +122,31 @@ export function useUpdateTaskMutation() {
         ...current,
         tasks: mapTaskTree(current.tasks, taskId, (task) => ({ ...task, ...patch })),
       }
+    },
+  })
+}
+
+interface ReorderTaskVariables {
+  taskId: string
+  targetTaskId: string
+  position: 'before' | 'after'
+}
+
+async function reorderTask({ taskId, targetTaskId, position }: ReorderTaskVariables): Promise<Task> {
+  const response = await client.post<Task>(`/api/bujo/tasks/${taskId}/reorder/`, {
+    targetTaskId,
+    position,
+  })
+  return response.data
+}
+
+export function useReorderTaskMutation() {
+  return useOptimisticMutation<Task, unknown, ReorderTaskVariables, Log>({
+    mutationFn: reorderTask,
+    queryKey: keys.bujo.todayLog(),
+    updater: (current, { taskId, targetTaskId, position }) => {
+      if (!current) return current as unknown as Log
+      return { ...current, tasks: reorderTaskTree(current.tasks, taskId, targetTaskId, position) }
     },
   })
 }

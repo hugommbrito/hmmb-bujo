@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { mapTaskTree, findTaskById } from './taskTree'
+import { mapTaskTree, findTaskById, reorderTaskTree } from './taskTree'
 import type { Task } from './types'
 
 function makeTask(overrides: Partial<Task>): Task {
@@ -54,5 +54,50 @@ describe('findTaskById', () => {
     const tasks = [makeTask({ id: 't1', title: 'Um' })]
 
     expect(findTaskById(tasks, 'inexistente')).toBeUndefined()
+  })
+})
+
+describe('reorderTaskTree', () => {
+  it('move um item para antes de outro na raiz', () => {
+    const tasks = [
+      makeTask({ id: 't1', title: 'Um' }),
+      makeTask({ id: 't2', title: 'Dois' }),
+      makeTask({ id: 't3', title: 'Três' }),
+    ]
+
+    const result = reorderTaskTree(tasks, 't3', 't1', 'before')
+
+    expect(result.map((t) => t.id)).toEqual(['t3', 't1', 't2'])
+  })
+
+  it('move um item para depois de outro na raiz', () => {
+    const tasks = [
+      makeTask({ id: 't1', title: 'Um' }),
+      makeTask({ id: 't2', title: 'Dois' }),
+      makeTask({ id: 't3', title: 'Três' }),
+    ]
+
+    const result = reorderTaskTree(tasks, 't1', 't2', 'after')
+
+    expect(result.map((t) => t.id)).toEqual(['t2', 't1', 't3'])
+  })
+
+  it('reordena dentro de um array de subtasks no mesmo nível', () => {
+    const child1 = makeTask({ id: 'c1', title: 'Filha 1' })
+    const child2 = makeTask({ id: 'c2', title: 'Filha 2' })
+    const child3 = makeTask({ id: 'c3', title: 'Filha 3' })
+    const parent = makeTask({ id: 'p1', title: 'Pai', subtasks: [child1, child2, child3] })
+
+    const result = reorderTaskTree([parent], 'c3', 'c1', 'before')
+
+    expect(result[0].subtasks?.map((t) => t.id)).toEqual(['c3', 'c1', 'c2'])
+  })
+
+  it('não altera nada quando taskId/targetTaskId não coexistem em nenhum nível', () => {
+    const tasks = [makeTask({ id: 't1', title: 'Um' }), makeTask({ id: 't2', title: 'Dois' })]
+
+    const result = reorderTaskTree(tasks, 't1', 'inexistente', 'after')
+
+    expect(result.map((t) => t.id)).toEqual(['t1', 't2'])
   })
 })

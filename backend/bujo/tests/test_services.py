@@ -7,9 +7,9 @@ import pytest
 from bujo.models import Log, Task
 from bujo.services.logs import get_or_create_daily_log
 from bujo.services.state_machine import ALLOWED, transition_task
-from bujo.services.tasks import create_task, update_task
+from bujo.services.tasks import create_task, reorder_task, update_task
 from bujo.tests.factories import LogFactory, TaskFactory
-from core.exceptions import InvalidTransition
+from core.exceptions import InvalidReorderTarget, InvalidTransition
 from core.tenant import tenant_context
 
 ALL_STATUSES = list(Task.Status.values)
@@ -134,3 +134,135 @@ def test_update_task_escopado_por_tenant(user, other_user):
     with tenant_context(other_user):
         with pytest.raises(Task.DoesNotExist):
             update_task(user=other_user, task_id=task.id, title="Invadida")
+
+
+@pytest.mark.django_db
+def test_reorder_task_position_after_calcula_ponto_medio_com_vizinho_seguinte(user):
+    with tenant_context(user):
+        log = LogFactory(user=user)
+        target = TaskFactory(user=user, log=log, order_index=0.0)
+        neighbor = TaskFactory(user=user, log=log, order_index=1.0)
+        moved = TaskFactory(user=user, log=log, order_index=2.0)
+
+        result = reorder_task(
+            user=user, task_id=moved.id, target_task_id=target.id, position="after"
+        )
+
+        assert result.order_index == (target.order_index + neighbor.order_index) / 2
+
+
+@pytest.mark.django_db
+def test_reorder_task_position_before_calcula_ponto_medio_com_vizinho_anterior(user):
+    with tenant_context(user):
+        log = LogFactory(user=user)
+        first = TaskFactory(user=user, log=log, order_index=0.0)
+        target = TaskFactory(user=user, log=log, order_index=1.0)
+        moved = TaskFactory(user=user, log=log, order_index=2.0)
+
+        result = reorder_task(
+            user=user, task_id=moved.id, target_task_id=target.id, position="before"
+        )
+
+        assert result.order_index == (first.order_index + target.order_index) / 2
+
+
+@pytest.mark.django_db
+def test_reorder_task_para_o_inicio_da_lista_fica_menor_que_todos(user):
+    with tenant_context(user):
+        log = LogFactory(user=user)
+        first = TaskFactory(user=user, log=log, order_index=0.0)
+        TaskFactory(user=user, log=log, order_index=1.0)
+        moved = TaskFactory(user=user, log=log, order_index=2.0)
+
+        result = reorder_task(
+            user=user, task_id=moved.id, target_task_id=first.id, position="before"
+        )
+
+        assert result.order_index < first.order_index
+
+
+@pytest.mark.django_db
+def test_reorder_task_para_o_fim_da_lista_fica_maior_que_todos(user):
+    with tenant_context(user):
+        log = LogFactory(user=user)
+        moved = TaskFactory(user=user, log=log, order_index=0.0)
+        TaskFactory(user=user, log=log, order_index=1.0)
+        last = TaskFactory(user=user, log=log, order_index=2.0)
+
+        result = reorder_task(
+            user=user, task_id=moved.id, target_task_id=last.id, position="after"
+        )
+
+        assert result.order_index > last.order_index
+
+
+@pytest.mark.django_db
+def test_reorder_task_target_igual_ao_proprio_task_levanta_invalid_reorder_target(user):
+    with tenant_context(user):
+        task = TaskFactory(user=user)
+
+        with pytest.raises(InvalidReorderTarget):
+            reorder_task(user=user, task_id=task.id, target_task_id=task.id, position="after")
+
+
+@pytest.mark.django_db
+def test_reorder_task_target_de_outro_log_levanta_invalid_reorder_target(user):
+    with tenant_context(user):
+        task = TaskFactory(user=user)
+        other_log_task = TaskFactory(user=user)  # LogFactory novo por padrão => log diferente
+
+        with pytest.raises(InvalidReorderTarget):
+            reorder_task(
+                user=user,
+                task_id=task.id,
+                target_task_id=other_log_task.id,
+                position="after",
+            )
+
+
+@pytest.mark.django_db
+def test_reorder_task_target_de_outro_pai_levanta_invalid_reorder_target(user):
+    with tenant_context(user):
+        log = LogFactory(user=user)
+        parent = TaskFactory(user=user, log=log)
+        other_parent = TaskFactory(user=user, log=log)
+        child = TaskFactory(user=user, log=log, parent_task=parent)
+        other_child = TaskFactory(user=user, log=log, parent_task=other_parent)
+
+        with pytest.raises(InvalidReorderTarget):
+            reorder_task(
+                user=user,
+                task_id=child.id,
+                target_task_id=other_child.id,
+                position="after",
+            )
+
+
+@pytest.mark.django_db
+def test_reorder_task_de_subtarefa_so_considera_subtarefas_irmas_sob_o_mesmo_pai(user):
+    with tenant_context(user):
+        log = LogFactory(user=user)
+        parent = TaskFactory(user=user, log=log)
+        child_1 = TaskFactory(user=user, log=log, parent_task=parent, order_index=0.0)
+        child_2 = TaskFactory(user=user, log=log, parent_task=parent, order_index=1.0)
+
+        result = reorder_task(
+            user=user, task_id=child_2.id, target_task_id=child_1.id, position="before"
+        )
+
+        assert result.order_index < child_1.order_index
+        assert result.parent_task_id == parent.id
+
+
+@pytest.mark.django_db
+def test_reorder_task_escopado_por_tenant(user, other_user):
+    with tenant_context(user):
+        log = LogFactory(user=user)
+        task = TaskFactory(user=user, log=log, order_index=0.0)
+        target = TaskFactory(user=user, log=log, order_index=1.0)
+
+    with tenant_context(other_user):
+        with pytest.raises(Task.DoesNotExist):
+            reorder_task(
+                user=other_user, task_id=task.id, target_task_id=target.id, position="after"
+            )

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, act } from '@testing-library/react'
 import { ThemeProvider } from '@mui/material'
 import { createBujoTheme } from '../../../theme'
 import { TaskRow } from './TaskRow'
@@ -203,5 +203,220 @@ describe('TaskRow (AC2)', () => {
 
     expect(onTransition).toHaveBeenCalledWith('sub-1', 'started')
     expect(onTransition).not.toHaveBeenCalledWith('parent-1', expect.anything())
+  })
+})
+
+describe('TaskRow — reorder (AC1, AC2)', () => {
+  const target = baseTask({ id: 'task-2', title: 'Outra tarefa' })
+
+  function renderReorderableTaskRow(overrides: Partial<Task> = {}) {
+    const onReorder = vi.fn()
+    const onTransition = vi.fn()
+    const onOpenDetail = vi.fn()
+    render(
+      <ThemeProvider theme={createBujoTheme('light')}>
+        <TaskRow
+          task={baseTask(overrides)}
+          onTransition={onTransition}
+          onOpenDetail={onOpenDetail}
+          siblings={[baseTask(overrides), target]}
+          onReorder={onReorder}
+        />
+      </ThemeProvider>,
+    )
+    return { onReorder, onTransition, onOpenDetail }
+  }
+
+  function makeDataTransfer(initialDraggedId?: string) {
+    const data: Record<string, string> = initialDraggedId ? { 'text/plain': initialDraggedId } : {}
+    return {
+      setData: (key: string, value: string) => {
+        data[key] = value
+      },
+      getData: (key: string) => data[key],
+      effectAllowed: '',
+    }
+  }
+
+  // jsdom's native DragEvent construction silently drops `clientY` when a
+  // custom (non-native) `dataTransfer` object is present in the init — build
+  // the event manually and force the properties via `defineProperty` instead
+  // of relying on fireEvent's init merging.
+  function makeDragEvent(
+    type: string,
+    { dataTransfer = makeDataTransfer(), clientY = 0 }: { dataTransfer?: unknown; clientY?: number } = {},
+  ) {
+    const event = new Event(type, { bubbles: true, cancelable: true })
+    Object.defineProperty(event, 'dataTransfer', { value: dataTransfer, configurable: true })
+    Object.defineProperty(event, 'clientY', { value: clientY, configurable: true })
+    return event as unknown as Event & { dataTransfer: ReturnType<typeof makeDataTransfer>; clientY: number }
+  }
+
+  function mockRowRect(rect: { top: number; height: number }) {
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({
+      ...rect,
+      bottom: rect.top + rect.height,
+      left: 0,
+      right: 0,
+      width: 0,
+      x: 0,
+      y: rect.top,
+      toJSON: () => {},
+    } as DOMRect)
+  }
+
+  beforeEach(() => {
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    })
+  })
+
+  it('dragover/drop de outra linha (task-2) na metade superior chama onReorder com position "before"', () => {
+    const { onReorder } = renderReorderableTaskRow({ id: 'task-1' })
+    const row = screen.getByTestId('task-row')
+    mockRowRect({ top: 0, height: 40 })
+
+    const event = makeDragEvent('dragover', { dataTransfer: makeDataTransfer('task-2'), clientY: 5 })
+    act(() => {
+      row.dispatchEvent(event)
+    })
+    act(() => {
+      row.dispatchEvent(makeDragEvent('drop', { dataTransfer: event.dataTransfer, clientY: 5 }))
+    })
+
+    expect(onReorder).toHaveBeenCalledWith('task-2', 'task-1', 'before')
+  })
+
+  it('dragover na metade inferior da linha resulta em position "after"', () => {
+    const { onReorder } = renderReorderableTaskRow({ id: 'task-1' })
+    const row = screen.getByTestId('task-row')
+    mockRowRect({ top: 0, height: 40 })
+
+    const event = makeDragEvent('dragover', { dataTransfer: makeDataTransfer('task-2'), clientY: 35 })
+    act(() => {
+      row.dispatchEvent(event)
+    })
+    act(() => {
+      row.dispatchEvent(makeDragEvent('drop', { dataTransfer: event.dataTransfer, clientY: 35 }))
+    })
+
+    expect(onReorder).toHaveBeenCalledWith('task-2', 'task-1', 'after')
+  })
+
+  it('soltar sobre si mesma não chama onReorder', () => {
+    const { onReorder } = renderReorderableTaskRow({ id: 'task-1' })
+    const row = screen.getByTestId('task-row')
+
+    act(() => {
+      row.dispatchEvent(makeDragEvent('drop', { dataTransfer: makeDataTransfer('task-1') }))
+    })
+
+    expect(onReorder).not.toHaveBeenCalled()
+  })
+
+  it('indicador de linha aparece durante dragover e some após dragLeave/dragEnd', () => {
+    renderReorderableTaskRow()
+    const row = screen.getByTestId('task-row')
+    mockRowRect({ top: 0, height: 40 })
+
+    expect(screen.queryByTestId('drag-over-indicator')).not.toBeInTheDocument()
+
+    act(() => {
+      row.dispatchEvent(makeDragEvent('dragover'))
+    })
+    expect(screen.getByTestId('drag-over-indicator')).toBeInTheDocument()
+
+    fireEvent.dragLeave(row)
+    expect(screen.queryByTestId('drag-over-indicator')).not.toBeInTheDocument()
+
+    act(() => {
+      row.dispatchEvent(makeDragEvent('dragover'))
+    })
+    fireEvent.dragEnd(row)
+    expect(screen.queryByTestId('drag-over-indicator')).not.toBeInTheDocument()
+  })
+
+  it('long-press (fake timers, ≥500ms) no mobile abre o MoveTaskDialog', () => {
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: query === '(max-width: 767px)',
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    })
+    vi.useFakeTimers()
+
+    renderReorderableTaskRow()
+    const row = screen.getByTestId('task-row')
+
+    fireEvent.touchStart(row)
+    act(() => {
+      vi.advanceTimersByTime(500)
+    })
+
+    expect(screen.getByText(/Mover ".*" para\.\.\./)).toBeInTheDocument()
+
+    vi.useRealTimers()
+  })
+
+  it('onTouchMove antes dos 500ms cancela o long-press', () => {
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: query === '(max-width: 767px)',
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    })
+    vi.useFakeTimers()
+
+    renderReorderableTaskRow()
+    const row = screen.getByTestId('task-row')
+
+    fireEvent.touchStart(row)
+    fireEvent.touchMove(row)
+    act(() => {
+      vi.advanceTimersByTime(500)
+    })
+
+    expect(screen.queryByText(/Mover ".*" para\.\.\./)).not.toBeInTheDocument()
+
+    vi.useRealTimers()
+  })
+
+  it('clique no botão "Mover tarefa" (desktop) abre o mesmo diálogo', () => {
+    renderReorderableTaskRow()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mover tarefa' }))
+
+    expect(screen.getByText(/Mover ".*" para\.\.\./)).toBeInTheDocument()
+  })
+
+  it('nenhum comportamento de reorder aparece quando onReorder/siblings não são passados', () => {
+    renderTaskRow(baseTask())
+
+    expect(screen.queryByRole('button', { name: 'Mover tarefa' })).not.toBeInTheDocument()
+    expect(screen.getByTestId('task-row')).toHaveAttribute('draggable', 'false')
   })
 })

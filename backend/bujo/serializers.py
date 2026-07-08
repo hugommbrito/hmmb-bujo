@@ -59,3 +59,8 @@ class TaskUpdateSerializer(serializers.Serializer):
     category = serializers.ChoiceField(
         choices=Task.Category.choices, required=False, allow_null=True
     )
+
+
+class TaskReorderSerializer(serializers.Serializer):
+    target_task_id = serializers.UUIDField()
+    position = serializers.ChoiceField(choices=["before", "after"])

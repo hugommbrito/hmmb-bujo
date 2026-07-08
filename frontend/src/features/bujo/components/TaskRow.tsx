@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState, type DragEvent } from 'react'
 import { Box, Chip, IconButton, Typography, useMediaQuery } from '@mui/material'
 import RadioButtonUncheckedIcon from '@mui/icons-material/RadioButtonUnchecked'
 import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty'
@@ -6,7 +6,13 @@ import TaskAltIcon from '@mui/icons-material/TaskAlt'
 import CancelIcon from '@mui/icons-material/Cancel'
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
 import KeyboardDoubleArrowRightIcon from '@mui/icons-material/KeyboardDoubleArrowRight'
+import DragIndicatorIcon from '@mui/icons-material/DragIndicator'
+import MoreVertIcon from '@mui/icons-material/MoreVert'
+import { MoveTaskDialog } from './MoveTaskDialog'
 import type { Task, TaskStatus } from '../types'
+
+// Long-press ≥500ms (EXPERIENCE.md §6.2) — abaixo disso é um toque comum.
+const LONG_PRESS_MS = 500
 
 const STATUS_ICON: Record<TaskStatus, typeof RadioButtonUncheckedIcon> = {
   pending: RadioButtonUncheckedIcon,
@@ -50,11 +56,16 @@ interface TaskRowProps {
   task: Task
   onTransition: (taskId: string, toStatus: TaskStatus) => void
   onOpenDetail: (taskId: string) => void
+  siblings?: Task[]
+  onReorder?: (taskId: string, targetTaskId: string, position: 'before' | 'after') => void
 }
 
-export function TaskRow({ task, onTransition, onOpenDetail }: TaskRowProps) {
+export function TaskRow({ task, onTransition, onOpenDetail, siblings, onReorder }: TaskRowProps) {
   const isMobile = useMediaQuery('(max-width: 767px)')
   const [announcement, setAnnouncement] = useState('')
+  const [dragOverPosition, setDragOverPosition] = useState<'before' | 'after' | null>(null)
+  const [moveDialogOpen, setMoveDialogOpen] = useState(false)
+  const longPressTimer = useRef<number | null>(null)
 
   const status = task.status ?? 'pending'
   const StatusIcon = STATUS_ICON[status]
@@ -63,6 +74,7 @@ export function TaskRow({ task, onTransition, onOpenDetail }: TaskRowProps) {
   const eisenhowerChip = eisenhowerChipInfo(task.eisenhower)
   const category = task.category || null
   const subtasks = task.subtasks ?? []
+  const isReorderable = Boolean(onReorder)
 
   function handleStatusClick() {
     if (!nextStatus) return
@@ -70,10 +82,61 @@ export function TaskRow({ task, onTransition, onOpenDetail }: TaskRowProps) {
     setAnnouncement(`Tarefa marcada como ${STATUS_LABEL[nextStatus]}`)
   }
 
+  function handleDragStart(event: DragEvent<HTMLDivElement>) {
+    event.dataTransfer.setData('text/plain', task.id)
+    event.dataTransfer.effectAllowed = 'move'
+  }
+
+  function handleDragOver(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault()
+    const rect = event.currentTarget.getBoundingClientRect()
+    const isTopHalf = event.clientY - rect.top < rect.height / 2
+    setDragOverPosition(isTopHalf ? 'before' : 'after')
+  }
+
+  function handleDragLeave() {
+    setDragOverPosition(null)
+  }
+
+  function handleDrop(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault()
+    const draggedId = event.dataTransfer.getData('text/plain')
+    if (draggedId !== task.id) {
+      onReorder!(draggedId, task.id, dragOverPosition ?? 'after')
+    }
+    setDragOverPosition(null)
+  }
+
+  function handleDragEnd() {
+    setDragOverPosition(null)
+  }
+
+  function clearLongPressTimer() {
+    if (longPressTimer.current !== null) {
+      window.clearTimeout(longPressTimer.current)
+      longPressTimer.current = null
+    }
+  }
+
+  function handleTouchStart() {
+    if (!isMobile || !isReorderable) return
+    longPressTimer.current = window.setTimeout(() => setMoveDialogOpen(true), LONG_PRESS_MS)
+  }
+
   return (
     <Box>
       <Box
         data-testid="task-row"
+        draggable={isReorderable && !isMobile}
+        onDragStart={isReorderable && !isMobile ? handleDragStart : undefined}
+        onDragOver={isReorderable && !isMobile ? handleDragOver : undefined}
+        onDragLeave={isReorderable && !isMobile ? handleDragLeave : undefined}
+        onDrop={isReorderable && !isMobile ? handleDrop : undefined}
+        onDragEnd={isReorderable && !isMobile ? handleDragEnd : undefined}
+        onTouchStart={isMobile && isReorderable ? handleTouchStart : undefined}
+        onTouchEnd={isMobile && isReorderable ? clearLongPressTimer : undefined}
+        onTouchMove={isMobile && isReorderable ? clearLongPressTimer : undefined}
+        onTouchCancel={isMobile && isReorderable ? clearLongPressTimer : undefined}
         sx={{
           display: 'flex',
           alignItems: 'center',
@@ -85,8 +148,23 @@ export function TaskRow({ task, onTransition, onOpenDetail }: TaskRowProps) {
           pl: 1,
           pr: 1.5,
           position: 'relative',
+          '&:hover .drag-handle': { opacity: 1 },
         }}
       >
+        {dragOverPosition && (
+          <Box
+            data-testid="drag-over-indicator"
+            sx={{
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              height: '2px',
+              bgcolor: 'primary.main',
+              top: dragOverPosition === 'before' ? 0 : undefined,
+              bottom: dragOverPosition === 'after' ? 0 : undefined,
+            }}
+          />
+        )}
         <IconButton
           size="small"
           aria-label={STATUS_LABEL[status]}
@@ -143,6 +221,21 @@ export function TaskRow({ task, onTransition, onOpenDetail }: TaskRowProps) {
             />
           )}
         </Box>
+        {isReorderable && !isMobile && (
+          <Box className="drag-handle" sx={{ display: 'flex', alignItems: 'center', opacity: 0 }}>
+            <IconButton
+              size="small"
+              aria-label="Mover tarefa"
+              onClick={() => setMoveDialogOpen(true)}
+              sx={{ color: 'text.secondary' }}
+            >
+              <MoreVertIcon fontSize="small" />
+            </IconButton>
+            <Box sx={{ display: 'flex', alignItems: 'center', cursor: 'grab', color: 'text.secondary' }}>
+              <DragIndicatorIcon fontSize="small" />
+            </Box>
+          </Box>
+        )}
         <Box
           role="status"
           aria-live="polite"
@@ -151,6 +244,18 @@ export function TaskRow({ task, onTransition, onOpenDetail }: TaskRowProps) {
           {announcement}
         </Box>
       </Box>
+      {isReorderable && (
+        <MoveTaskDialog
+          task={task}
+          siblings={siblings ?? []}
+          open={moveDialogOpen}
+          onMove={(targetId, position) => {
+            onReorder!(task.id, targetId, position)
+            setMoveDialogOpen(false)
+          }}
+          onClose={() => setMoveDialogOpen(false)}
+        />
+      )}
       {subtasks.length > 0 && (
         <Box sx={{ pl: 3 }}>
           {subtasks.map((subtask) => (

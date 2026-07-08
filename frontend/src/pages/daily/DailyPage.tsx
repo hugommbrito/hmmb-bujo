@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { Box, Typography } from '@mui/material'
-import { useCreateTaskMutation, useTransitionTaskMutation } from '../../features/bujo'
+import {
+  useCreateTaskMutation,
+  useReorderTaskMutation,
+  useTransitionTaskMutation,
+} from '../../features/bujo'
 import { AddTaskRow } from '../../features/bujo/components/AddTaskRow'
 import { DayHeader } from '../../features/bujo/components/DayHeader'
 import { TaskDetailPanel } from '../../features/bujo/components/TaskDetailPanel'
@@ -13,8 +17,13 @@ export function DailyPage() {
   const { todayLog } = useDailyData()
   const transition = useTransitionTaskMutation()
   const createTask = useCreateTaskMutation()
+  const reorder = useReorderTaskMutation()
   const [openTaskId, setOpenTaskId] = useState<string | null>(null)
   const addTaskInputRef = useRef<HTMLInputElement>(null)
+
+  function handleReorder(taskId: string, targetTaskId: string, position: 'before' | 'after') {
+    reorder.mutate({ taskId, targetTaskId, position })
+  }
 
   // Atalho `N` — escopo desta página (não global como `[` em AppLayout.tsx).
   useEffect(() => {
@@ -71,6 +80,8 @@ export function DailyPage() {
               task={task}
               onTransition={(taskId, toStatus) => transition.mutate({ taskId, toStatus })}
               onOpenDetail={setOpenTaskId}
+              siblings={tasks}
+              onReorder={handleReorder}
             />
           ))
         )}

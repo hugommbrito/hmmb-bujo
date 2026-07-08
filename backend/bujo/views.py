@@ -12,12 +12,13 @@ from bujo.models import Task
 from bujo.serializers import (
     LogSerializer,
     TaskCreateSerializer,
+    TaskReorderSerializer,
     TaskSerializer,
     TaskUpdateSerializer,
 )
 from bujo.services.logs import get_or_create_daily_log
 from bujo.services.state_machine import transition_task
-from bujo.services.tasks import create_task, update_task
+from bujo.services.tasks import create_task, reorder_task, update_task
 from core.calendar import today_for
 
 
@@ -78,6 +79,23 @@ class TaskTransitionView(APIView):
         try:
             task = transition_task(
                 user=request.user, task_id=pk, to_status=body.validated_data["to_status"]
+            )
+        except Task.DoesNotExist:
+            raise NotFound() from None
+        return Response(TaskSerializer(task).data)
+
+
+class TaskReorderView(APIView):
+    @extend_schema(request=TaskReorderSerializer, responses=TaskSerializer)
+    def post(self, request, pk):
+        body = TaskReorderSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        try:
+            task = reorder_task(
+                user=request.user,
+                task_id=pk,
+                target_task_id=body.validated_data["target_task_id"],
+                position=body.validated_data["position"],
             )
         except Task.DoesNotExist:
             raise NotFound() from None

@@ -108,6 +108,22 @@ export interface paths {
         patch: operations["bujo_tasks_partial_update"];
         trace?: never;
     };
+    "/api/bujo/tasks/{id}/reorder/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["bujo_tasks_reorder_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/bujo/tasks/{id}/subtasks/": {
         parameters: {
             query?: never;
@@ -180,6 +196,12 @@ export interface components {
             category?: (components["schemas"]["CategoryEnum"] | components["schemas"]["NullEnum"]) | null;
         };
         /**
+         * @description * `before` - before
+         *     * `after` - after
+         * @enum {string}
+         */
+        PositionEnum: "before" | "after";
+        /**
          * @description * `pending` - Pending
          *     * `started` - Started
          *     * `completed` - Completed
@@ -204,6 +226,11 @@ export interface components {
             description?: string | null;
             eisenhower?: (components["schemas"]["EisenhowerEnum"] | components["schemas"]["NullEnum"]) | null;
             category?: (components["schemas"]["CategoryEnum"] | components["schemas"]["NullEnum"]) | null;
+        };
+        TaskReorder: {
+            /** Format: uuid */
+            targetTaskId: string;
+            position: components["schemas"]["PositionEnum"];
         };
         TaskTransitionRequest: {
             toStatus: components["schemas"]["ToStatusEnum"];
@@ -355,6 +382,31 @@ export interface operations {
         requestBody?: {
             content: {
                 "application/json": components["schemas"]["PatchedTaskUpdate"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+        };
+    };
+    bujo_tasks_reorder_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskReorder"];
             };
         };
         responses: {
