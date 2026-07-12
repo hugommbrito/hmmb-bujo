@@ -171,6 +171,7 @@ tasks:
   migrated_to_task_id   uuid  nullable, FK → tasks (self-referential)
   migration_count       integer  default 0
   eisenhower            enum(ui, u, i, none)  nullable
+  category              enum(teal, purple, pink, yellow, green, blue)  nullable  -- agrupamento visual (borda 3px na Task Row), independente do Eisenhower (ver DESIGN.md#Categorias Semânticas)
   order_index           float  (ordenação manual)
   title                 text
   description           text  nullable

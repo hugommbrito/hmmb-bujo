@@ -178,6 +178,7 @@ O app não é um produto SaaS público — mas é arquitetado para escalar dentr
 - Descrição (opcional)
 - Subtarefas (opcional)
 - Etiqueta Eisenhower: Vermelho (Urgente + Importante), Laranja (Urgente), Amarelo (Importante), Verde (nenhum) — opcional
+- Categoria: agrupamento visual por cor (teal, purple, pink, yellow, green, blue), exibido como borda lateral na Task Row — independente do Eisenhower, opcional
 
 **FR-1.4** — Estados de uma tarefa: pendente, iniciada (`/`), concluída (`X`), cancelada, migrada, adiada.
 

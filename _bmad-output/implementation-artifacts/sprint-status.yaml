@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-22
-last_updated: 2026-07-07  # story 3-4 → done (code-review)
+last_updated: 2026-07-08  # epic-3-retrospective → done
 project: hmmb-bujo
 project_key: NOKEY
 tracking_system: file-system
@@ -65,7 +65,7 @@ development_status:
   3-2-superficie-do-daily-log-com-task-row-e-ciclo-de-estados: done
   3-3-criacao-e-edicao-de-tarefas-com-campos-completos-e-subtarefas: done
   3-4-ordenacao-manual-de-tarefas: done
-  epic-3-retrospective: optional
+  epic-3-retrospective: done
 
   # Epic 4: Logs de Planejamento, Migração & Recorrentes
   epic-4: backlog

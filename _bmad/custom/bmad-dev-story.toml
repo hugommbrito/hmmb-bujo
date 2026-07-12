@@ -1,0 +1,11 @@
+# Team override for bmad-dev-story.
+# Origem: itens de ação #1, #2 e #3 da retrospectiva do Epic 3
+# (_bmad-output/implementation-artifacts/epic-3-retro-2026-07-08.md, Seção 8).
+# persistent_facts APPENDS aos fatos da base — não substitui.
+
+[workflow]
+persistent_facts = [
+  "Antes de escrever a contagem de testes em Completion Notes ou de finalizar a story (Step 9), rode o comando real da suite de testes (pytest/vitest) e cole a contagem observada literalmente — nunca escreva um número de memória ou estimado. (Retro Epic 3: Story 3.1 regrediu nisso — Completion Notes dizia '119 passed', o real era 121, corrigido em code review como achado M1.)",
+  "A checagem final de File List (Step 9) deve ser a ÚLTIMA coisa feita antes de marcar a story como 'review': rode git status --short e git diff --stat DEPOIS de qualquer etapa de verificação manual (E2E, scripts de debug, Playwright) e reconcilie o File List documentado contra essa saída real, não apenas contra o que foi lembrado durante a implementação. (Retro Epic 3: o mesmo padrão se repetiu nas Stories 3.3 e 3.4 — arquivos criados na verificação manual ficaram fora do File List.)",
+  "Se um gap de especificação for encontrado durante a implementação (campo, contrato ou comportamento que o código precisa mas que architecture.md/prd.md não documentam), a atualização do documento-fonte correspondente entra no escopo de fechamento da story — não marque a story como pronta para review com um gap de documentação conhecido e não resolvido. (Retro Epic 3: o campo category só voltou para architecture.md/prd.md na retrospectiva do épico seguinte, não na story que o introduziu.)",
+]
