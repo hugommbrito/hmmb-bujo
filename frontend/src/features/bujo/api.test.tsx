@@ -20,8 +20,10 @@ import {
   useMonthlyLogQuery,
   useFutureLogQuery,
   useCreateMonthlyTaskMutation,
+  useMigrationQueueQuery,
+  useMigrateTaskMutation,
 } from './api'
-import type { FutureLogMonthGroup, Log, MonthlyLog, WeeklyLog } from './types'
+import type { FutureLogMonthGroup, Log, MigrationQueue, MonthlyLog, WeeklyLog } from './types'
 
 const mockGet = client.get as ReturnType<typeof vi.fn>
 const mockPost = client.post as ReturnType<typeof vi.fn>
@@ -431,5 +433,112 @@ describe('useCreateMonthlyTaskMutation (AC2)', () => {
     })
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.bujo.monthlyLog('2026-08-01') })
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.bujo.futureLog() })
+  })
+})
+
+const MIGRATION_QUEUE: MigrationQueue = {
+  logDate: '2026-07-12',
+  tasks: [
+    { id: 'task-1', title: 'Pendente de ontem', status: 'pending', eisenhower: null, category: null, subtasks: [] },
+  ],
+}
+
+describe('useMigrationQueueQuery (AC1)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+  })
+
+  it('busca a fila de migração de ontem', async () => {
+    mockGet.mockResolvedValueOnce({ data: MIGRATION_QUEUE })
+    const { wrapper } = makeWrapper()
+
+    const { result } = renderHook(() => useMigrationQueueQuery(), { wrapper })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data).toEqual(MIGRATION_QUEUE)
+    expect(mockGet).toHaveBeenCalledWith('/api/bujo/migration/queue/')
+  })
+})
+
+describe('useMigrateTaskMutation (AC3)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+  })
+
+  it('destination=today monta o payload certo e invalida as 4 chaves esperadas', async () => {
+    const { qc, wrapper } = makeWrapper()
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+    mockPost.mockResolvedValueOnce({
+      data: { id: 'task-1', title: 'Pendente de ontem', status: 'migrated', subtasks: [] },
+    })
+
+    const { result } = renderHook(() => useMigrateTaskMutation(), { wrapper })
+
+    result.current.mutate({ taskId: 'task-1', destination: 'today' })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(mockPost).toHaveBeenCalledWith('/api/bujo/tasks/task-1/migrate/', {
+      destination: 'today',
+    })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.bujo.migrationQueue() })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.bujo.todayLog() })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'monthlyLog'] })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'futureLog'] })
+  })
+
+  it('destination=month monta o payload com scheduledDate', async () => {
+    const { wrapper } = makeWrapper()
+    mockPost.mockResolvedValueOnce({
+      data: { id: 'task-1', title: 'Pendente de ontem', status: 'postponed', subtasks: [] },
+    })
+
+    const { result } = renderHook(() => useMigrateTaskMutation(), { wrapper })
+
+    result.current.mutate({ taskId: 'task-1', destination: 'month', scheduledDate: '2026-07-20' })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(mockPost).toHaveBeenCalledWith('/api/bujo/tasks/task-1/migrate/', {
+      destination: 'month',
+      scheduledDate: '2026-07-20',
+    })
+  })
+
+  it('destination=future monta o payload com monthFirst e scheduledDate', async () => {
+    const { wrapper } = makeWrapper()
+    mockPost.mockResolvedValueOnce({
+      data: { id: 'task-1', title: 'Pendente de ontem', status: 'postponed', subtasks: [] },
+    })
+
+    const { result } = renderHook(() => useMigrateTaskMutation(), { wrapper })
+
+    result.current.mutate({
+      taskId: 'task-1',
+      destination: 'future',
+      monthFirst: '2026-09-01',
+      scheduledDate: '2026-09-10',
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(mockPost).toHaveBeenCalledWith('/api/bujo/tasks/task-1/migrate/', {
+      destination: 'future',
+      monthFirst: '2026-09-01',
+      scheduledDate: '2026-09-10',
+    })
+  })
+
+  it('destination=cancel monta o payload sem campos extras', async () => {
+    const { wrapper } = makeWrapper()
+    mockPost.mockResolvedValueOnce({
+      data: { id: 'task-1', title: 'Pendente de ontem', status: 'cancelled', subtasks: [] },
+    })
+
+    const { result } = renderHook(() => useMigrateTaskMutation(), { wrapper })
+
+    result.current.mutate({ taskId: 'task-1', destination: 'cancel' })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(mockPost).toHaveBeenCalledWith('/api/bujo/tasks/task-1/migrate/', {
+      destination: 'cancel',
+    })
   })
 })

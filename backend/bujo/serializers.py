@@ -97,6 +97,42 @@ class FutureLogMonthGroupSerializer(serializers.Serializer):
     tasks = TaskSerializer(many=True)
 
 
+class MigrationQueueSerializer(serializers.Serializer):
+    log_date = serializers.DateField()
+    tasks = TaskSerializer(many=True)
+
+
+class TaskMigrateSerializer(serializers.Serializer):
+    destination = serializers.ChoiceField(choices=["today", "month", "future", "cancel"])
+    month_first = serializers.DateField(required=False)
+    scheduled_date = serializers.DateField(required=False, allow_null=True)
+
+    def validate(self, attrs):
+        destination = attrs["destination"]
+        if destination == "month" and not attrs.get("scheduled_date"):
+            raise serializers.ValidationError(
+                {"scheduled_date": "Obrigatório para adiar no mês."}
+            )
+        if destination == "future":
+            if not attrs.get("month_first"):
+                raise serializers.ValidationError(
+                    {"month_first": "Obrigatório para adiar no futuro."}
+                )
+            if attrs["month_first"].day != 1:
+                raise serializers.ValidationError(
+                    {"month_first": "Deve ser o primeiro dia do mês."}
+                )
+            scheduled_date = attrs.get("scheduled_date")
+            if scheduled_date and (scheduled_date.year, scheduled_date.month) != (
+                attrs["month_first"].year,
+                attrs["month_first"].month,
+            ):
+                raise serializers.ValidationError(
+                    {"scheduled_date": "A data deve pertencer ao mês/ano de monthFirst."}
+                )
+        return attrs
+
+
 class MonthlyTaskCreateSerializer(serializers.Serializer):
     month_first = serializers.DateField()
     title = serializers.CharField(max_length=500)

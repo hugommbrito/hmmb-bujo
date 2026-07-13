@@ -124,6 +124,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/bujo/migration/queue/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["bujo_migration_queue_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/bujo/tasks/": {
         parameters: {
             query?: never;
@@ -154,6 +170,22 @@ export interface paths {
         options?: never;
         head?: never;
         patch: operations["bujo_tasks_partial_update"];
+        trace?: never;
+    };
+    "/api/bujo/tasks/{id}/migrate/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["bujo_tasks_migrate_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/bujo/tasks/{id}/reorder/": {
@@ -221,6 +253,14 @@ export interface components {
          */
         CategoryEnum: "teal" | "purple" | "pink" | "yellow" | "green" | "blue";
         /**
+         * @description * `today` - today
+         *     * `month` - month
+         *     * `future` - future
+         *     * `cancel` - cancel
+         * @enum {string}
+         */
+        DestinationEnum: "today" | "month" | "future" | "cancel";
+        /**
          * @description * `ui` - Urgent Important
          *     * `u` - Urgent
          *     * `i` - Important
@@ -239,6 +279,11 @@ export interface components {
             /** Format: date */
             logDate: string;
             readonly tasks: components["schemas"]["Task"][];
+        };
+        MigrationQueue: {
+            /** Format: date */
+            logDate: string;
+            tasks: components["schemas"]["Task"][];
         };
         MonthlyLog: {
             /** Format: date */
@@ -296,6 +341,13 @@ export interface components {
             description?: string | null;
             eisenhower?: (components["schemas"]["EisenhowerEnum"] | components["schemas"]["NullEnum"]) | null;
             category?: (components["schemas"]["CategoryEnum"] | components["schemas"]["NullEnum"]) | null;
+        };
+        TaskMigrate: {
+            destination: components["schemas"]["DestinationEnum"];
+            /** Format: date */
+            monthFirst?: string;
+            /** Format: date */
+            scheduledDate?: string | null;
         };
         TaskReorder: {
             /** Format: uuid */
@@ -508,6 +560,25 @@ export interface operations {
             };
         };
     };
+    bujo_migration_queue_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MigrationQueue"];
+                };
+            };
+        };
+    };
     bujo_tasks_create: {
         parameters: {
             query?: never;
@@ -543,6 +614,31 @@ export interface operations {
         requestBody?: {
             content: {
                 "application/json": components["schemas"]["PatchedTaskUpdate"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+        };
+    };
+    bujo_tasks_migrate_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskMigrate"];
             };
         };
         responses: {

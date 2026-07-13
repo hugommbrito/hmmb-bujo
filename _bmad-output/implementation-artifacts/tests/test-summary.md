@@ -723,3 +723,83 @@ E2E:      npx playwright test → 9 passed (5 pré-existentes da 3.3 + 4 novos d
 
 - Nenhum job de CI sobe backend+frontend juntos hoje (mesmo gap apontado nas Stories 3.1/3.3) — os E2E continuam rodando só localmente contra o Neon dev branch.
 - Nenhuma ação bloqueante pendente para esta story.
+
+---
+
+# Resumo de Automação de Testes — Story 4.2: Migração diária com Migration Card e linhagem
+
+**Data:** 2026-07-13
+**Story:** 4.2 — Migração diária com Migration Card e linhagem
+**Framework:** pytest + DRF `APIClient` (backend) · Vitest 4.1 + @testing-library/react + jest-axe (frontend) · Playwright 1.61 (E2E de browser real)
+
+A story já chegou implementada com cobertura extensa do dev-story: `test_services.py`/`test_views.py` (backend, 237 passed no total), `MigrationBanner.test.tsx`/`MigrationCard.test.tsx`/`MigrationFlow.test.tsx` (novos) + `DailyPage.test.tsx` (estendido), todos unitários/integração. O gap real identificado nesta rodada de QA: a verificação ponta-a-ponta contra backend+frontend reais (Task 8.7 da própria story) foi feita com um script Playwright **temporário, escrito e removido** ao final da sessão de dev — igual ao padrão já visto na 3.4, mas aqui o risco é maior porque o cenário mais sensível da story (migrar um pai com um filho `completed` e um `pending`, AD-08 item 11 — "qual filho viaja, qual fica") só tinha ficado provado em teste de serviço isolado e numa verificação manual descartável, nunca contra o fluxo real do navegador (`Dialog` real com backdrop, atalhos de teclado, invalidação de cache via TanStack Query).
+
+## Gap Descoberto e Fechado
+
+| Gap | Arquivo | Descrição |
+|-----|---------|-----------|
+| Sem cobertura E2E do Fluxo de Migração | `frontend/e2e/migration-flow.spec.ts` (novo) | AC1 (banner+detecção), AC2 (Migration Card, atalhos, picker) e AC3 (linhagem, incl. o cenário-âncora pai/filho concluído/filho pendente) só tinham sido validados manualmente via Playwright ad-hoc (script temporário, removido — Debug Log References da story) ou via mocks isolados nos testes de componente. |
+| Sem affordance de seed para dados "de ontem" em E2E | `frontend/e2e/seedYesterdayQueue.ts` (novo) | A fila de migração só existe a partir de tarefas de ontem (`today_for(user) - 1 dia`), e a UI **de propósito** não tem nenhum jeito de criar dados no passado — não havia infraestrutura de teste reaproveitável para popular esse cenário contra o backend real. |
+
+## Testes Gerados
+
+### `frontend/e2e/seedYesterdayQueue.ts` — novo (infraestrutura, não é teste)
+
+Seeda um Daily Log de ontem (via `manage.py shell -c` + `tenant_context(user)`, mesma técnica da verificação manual da própria story) com tarefas-raiz e subtarefas arbitrárias, contra o mesmo Neon dev branch que o `webServer` do Playwright já sobe (`config.settings.dev`). Usa `core.calendar.today_for`, nunca `date.today()`, para calcular "ontem" com a mesma autoridade temporal que `MigrationQueueView` usa em produção — evita falso-positivo/negativo por fuso horário.
+
+`frontend/e2e/fixtures.ts` ganhou uma fixture `email` (aditiva, não quebra os specs existentes) para expor o e-mail do usuário criado no signup real da fixture `page`, necessário para direcionar o seed ao tenant certo.
+
+### `frontend/e2e/migration-flow.spec.ts` — novo (5 testes)
+
+- [x] `banner mostra a contagem certa e só raízes; não migra nada até "Iniciar" (AC1)` — 2 tarefas-raiz (uma com subtarefa pendente) seedadas ontem; banner mostra "2 tarefas pendentes de ontem", sem `Dialog` aberto até o clique.
+- [x] `migra tarefa solta para hoje via atalho "1"; aparece no Daily Log de hoje (AC2, AC3)` — decide via teclado (`1`), confirma que a tarefa aparece na `task-row` de hoje, o modal fecha sozinho (fila vazia) e o banner não reaparece após reload.
+- [x] `Esc pausa sem decidir; "Iniciar" retoma a mesma tarefa não decidida (AC1, AC2)` — `Escape` fecha o `Dialog` sem chamar a mutação; a contagem do banner permanece intacta; reabrir retoma exatamente o mesmo card ("1 de 2 revisadas").
+- [x] `migrar um pai recria só o filho pendente no destino; filho concluído fica na origem (AD-08 item 11, AC3)` — o cenário-âncora da story (guardrail da retro Epic 3), agora provado contra o navegador real: pai com filho `completed` + filho `pending`; após migrar, o Daily Log de hoje mostra o pai + só o filho pendente — o concluído nunca aparece no destino.
+- [x] `"Adiar no mês" com data no mês corrente confirma automaticamente (AC2), some da fila` — abre o picker inline, preenche `input[type=date]` com uma data do mês corrente e confirma que a decisão dispara sozinha no `onChange` (sem botão extra), fechando o fluxo.
+
+## Cobertura por AC
+
+| AC | Critério | Coberto por |
+|----|----------|-------------|
+| AC1 | Banner com contagem exata, sem iniciar migração automaticamente | `MigrationBanner.test.tsx` (pré-existente) + `migration-flow.spec.ts` ← **novo, browser real** |
+| AC1 | "Iniciar" abre o Fluxo de Migração (Dialog com backdrop) | `MigrationFlow.test.tsx` (pré-existente, mocka a mutação) + `migration-flow.spec.ts` ← **novo, Dialog real do MUI** |
+| AC2 | Migration Card: título/descrição/subtarefas, indicador "N de M revisadas", 4 ações, atalhos `1`-`4` | `MigrationCard.test.tsx` (pré-existente) + `migration-flow.spec.ts` ← **novo, teclado real via `page.keyboard`** |
+| AC2 | Picker de mês/futuro confirma automaticamente ao mudar a data (sem botão extra) | `MigrationCard.test.tsx` (pré-existente, `fireEvent.change` sintético) + `migration-flow.spec.ts` ← **novo, `input[type=date]` real do navegador** |
+| AC3 | Linhagem simples (hoje): origem `migrated`, novo registro `pending` no destino | `test_services.py`/`test_views.py` (pré-existente) + `migration-flow.spec.ts` ← **novo, reflexo real na Task Row do Daily Log de hoje** |
+| AC3 | Migração de subárvore: só filhos `pending`/`started` viajam (AD-08 item 11) | `test_services.py::test_migrar_pai_recria_apenas_filhos_nao_dispostos` (pré-existente, cenário-âncora da retro Epic 3) + `migration-flow.spec.ts` ← **novo, mesmo cenário contra backend+frontend reais** |
+| AC3 | Fluxo nunca é encerrado pelo sistema — Esc pausa, retomável | `MigrationFlow.test.tsx` (pré-existente) + `migration-flow.spec.ts` ← **novo, `Escape` real + reabertura confirmando o mesmo card** |
+
+## Observações
+
+- **Sem override de "hoje" em teste:** `core/calendar.py::today_for` não tem nenhum mecanismo de override (header, setting, model) — é `timezone.now()` puro. Isso significa que "ontem" no E2E é sempre o dia real anterior à execução; `seedYesterdayQueue.ts` recalcula via `today_for(user)` dentro do próprio script Python (não injeta uma data fixa do lado do Node), então o seed nunca desalinha do que o backend considera "ontem" no momento da chamada.
+- **Sem endpoint de seed dedicado:** não existe (nem foi criado) nenhum endpoint HTTP "test-only" para popular dados de ontem — o admin do Django (`bujo/admin.py`) existe mas é operador/`all_objects`, sem login de usuário de negócio, e não seria prático dirigir via Playwright (formulários genéricos de FK). `manage.py shell -c` + `tenant_context`, a mesma técnica que a própria story usou na verificação manual, foi o caminho mais direto e correto (mesma autoridade temporal, mesmo isolamento de tenant).
+- Suíte completa de E2E (9 testes pré-existentes de `daily-tasks.spec.ts`/`task-reorder.spec.ts` + 5 novos de `migration-flow.spec.ts`) rodou **verde em execução limpa** contra o Neon dev branch real, sem nenhuma alteração nos specs pré-existentes além da fixture aditiva `email`.
+- 120 usuários `e2e-*@e2e.test` órfãos (acumulados por execuções anteriores da suíte, que não faz cleanup — convenção já existente, não introduzida nesta rodada) foram removidos do banco de dev ao final desta sessão de QA.
+
+## Execução
+
+```
+Backend:  não alterado nesta rodada de QA (sem gap de backend identificado — cobertura de
+          serviço/view já extensa pelo dev-story, incluindo o cenário-âncora AD-08 item 11).
+Frontend: npx vitest run → 287 passed (34 arquivos)
+          npm run typecheck / npm run lint → sem erros
+E2E:      npx playwright test → 14 passed (9 pré-existentes + 5 novos), execução limpa
+```
+
+## Checklist de Validação
+
+- [x] Testes E2E gerados (5 cenários de browser real cobrindo AC1/AC2/AC3 — o único tipo de teste em falta para esta story; unit/serviço já cobertos pelo dev-story)
+- [x] Usam APIs padrão do framework já adotado (`@playwright/test`) — nenhuma ferramenta nova introduzida
+- [x] Cobrem happy path (banner, migração simples, picker de mês) + casos críticos (Esc pausa/retoma, cenário-âncora AD-08 item 11)
+- [x] Todos os testes passam (287 frontend + 14 E2E, execução limpa)
+- [x] Locators semânticos (`getByRole`, `getByLabel`, `getByText`, `data-testid` já existente para `task-row`)
+- [x] Sem waits/sleeps artificiais — `syncAfter` (já existente) espera a resposta de rede real do refetch pós-invalidação
+- [x] Testes independentes entre si (cada um cria seu próprio usuário via signup + seed isolado)
+- [x] Summary salvo em `_bmad-output/implementation-artifacts/tests/test-summary.md`
+- [x] Testes salvos no diretório correto (`frontend/e2e/migration-flow.spec.ts`, `frontend/e2e/seedYesterdayQueue.ts`)
+
+## Próximos Passos
+
+- Story 4.3 (revisão semanal/mensal) e Story 4.4 (Catch-Up genérico) reaproveitam `migrate_task` — `seedYesterdayQueue.ts` pode virar a base de um seed mais genérico por tipo de log (weekly/monthly) quando essas stories chegarem, em vez de duplicar a técnica.
+- Nenhum job de CI sobe backend+frontend juntos hoje (mesmo gap apontado nas Stories 3.1/3.3/3.4) — os E2E continuam rodando só localmente contra o Neon dev branch.
+- Nenhuma ação bloqueante pendente para esta story.

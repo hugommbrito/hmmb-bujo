@@ -9,7 +9,11 @@ export {
   useMonthlyLogQuery,
   useFutureLogQuery,
   useCreateMonthlyTaskMutation,
+  useMigrationQueueQuery,
+  useMigrateTaskMutation,
 } from './api'
+export { MigrationBanner } from './components/MigrationBanner'
+export type { MigrationDestination } from './api'
 export type {
   Log,
   Task,
@@ -20,4 +24,5 @@ export type {
   WeeklyLog,
   MonthlyLog,
   FutureLogMonthGroup,
+  MigrationQueue,
 } from './types'

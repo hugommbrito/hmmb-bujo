@@ -16,6 +16,8 @@ vi.mock('../features/auth/api', () => ({
 
 // DailyPage (rota /today desde a Story 3.2) depende de TanStack Query — estes
 // testes cobrem proteção de rota/navegação, não o conteúdo do Daily Log.
+// `MigrationBanner` também usa TanStack Query direto (`../api`), fora deste
+// mock — mocada como `TaskDetailPanel` abaixo, sem QueryClientProvider aqui.
 vi.mock('../features/bujo', () => ({
   useTodayLogQuery: () => ({
     isPending: false,
@@ -24,6 +26,7 @@ vi.mock('../features/bujo', () => ({
   useTransitionTaskMutation: () => ({ mutate: vi.fn() }),
   useCreateTaskMutation: () => ({ mutate: vi.fn() }),
   useReorderTaskMutation: () => ({ mutate: vi.fn() }),
+  MigrationBanner: () => null,
 }))
 
 // TaskDetailPanel usa mutações do TanStack Query (`../api`) diretamente, fora

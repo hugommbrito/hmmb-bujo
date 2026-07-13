@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, act } from '@testing-library/react'
+import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
 import { ThemeProvider } from '@mui/material'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { axe } from 'jest-axe'
 import { createBujoTheme } from '../../theme'
 import { DailyPage } from './DailyPage'
@@ -9,12 +10,20 @@ const mockMutate = vi.fn()
 const mockCreateTaskMutate = vi.fn()
 const mockReorderMutate = vi.fn()
 
-vi.mock('../../features/bujo', () => ({
-  useTodayLogQuery: vi.fn(),
-  useTransitionTaskMutation: vi.fn(() => ({ mutate: mockMutate })),
-  useCreateTaskMutation: vi.fn(() => ({ mutate: mockCreateTaskMutate })),
-  useReorderTaskMutation: vi.fn(() => ({ mutate: mockReorderMutate })),
-}))
+// `MigrationBanner` não é mockado aqui (importOriginal) — ela e `MigrationFlow`
+// chamam `useMigrationQueueQuery`/`useMigrateTaskMutation` direto de `./api`,
+// fora deste barrel, então continuam reais e precisam de `client` mockado +
+// `QueryClientProvider` de verdade (ver `renderDailyPage`).
+vi.mock('../../features/bujo', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../features/bujo')>()
+  return {
+    ...actual,
+    useTodayLogQuery: vi.fn(),
+    useTransitionTaskMutation: vi.fn(() => ({ mutate: mockMutate })),
+    useCreateTaskMutation: vi.fn(() => ({ mutate: mockCreateTaskMutate })),
+    useReorderTaskMutation: vi.fn(() => ({ mutate: mockReorderMutate })),
+  }
+})
 
 vi.mock('../../features/bujo/components/TaskDetailPanel', () => ({
   TaskDetailPanel: ({ task, onClose }: { task?: { id: string; title: string }; onClose: () => void }) =>
@@ -26,16 +35,29 @@ vi.mock('../../features/bujo/components/TaskDetailPanel', () => ({
     ) : null,
 }))
 
+vi.mock('../../api/client', () => ({
+  default: { get: vi.fn(), post: vi.fn(), patch: vi.fn() },
+}))
+
 import { useTodayLogQuery } from '../../features/bujo'
+import client from '../../api/client'
 
 const mockUseTodayLogQuery = useTodayLogQuery as ReturnType<typeof vi.fn>
+const mockGet = client.get as ReturnType<typeof vi.fn>
+const mockPost = client.post as ReturnType<typeof vi.fn>
 
 function renderDailyPage() {
-  return render(
-    <ThemeProvider theme={createBujoTheme('light')}>
-      <DailyPage />
-    </ThemeProvider>,
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  })
+  const utils = render(
+    <QueryClientProvider client={qc}>
+      <ThemeProvider theme={createBujoTheme('light')}>
+        <DailyPage />
+      </ThemeProvider>
+    </QueryClientProvider>,
   )
+  return { ...utils, qc }
 }
 
 const EMPTY_TEXT = 'Nenhuma tarefa para hoje. Adicione ou migre do dia anterior.'
@@ -43,6 +65,9 @@ const EMPTY_TEXT = 'Nenhuma tarefa para hoje. Adicione ou migre do dia anterior.
 describe('DailyPage (AC1, AC3)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // Fila de migração vazia por padrão — só os testes da seção
+    // "MigrationBanner integration" abaixo sobrescrevem isso.
+    mockGet.mockResolvedValue({ data: { logDate: '2026-06-14', tasks: [] } })
   })
 
   it('mostra skeleton enquanto o log está carregando (isPending)', () => {
@@ -324,5 +349,97 @@ describe('DailyPage (AC1, AC3)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Ver detalhes de Tarefa 1' }))
 
     expect(await axe(container)).toHaveNoViolations()
+  })
+})
+
+describe('MigrationBanner integration (AC1)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockUseTodayLogQuery.mockReturnValue({
+      isPending: false,
+      data: { id: 'log-1', logDate: '2026-06-15', tasks: [] },
+    })
+  })
+
+  it('banner aparece quando useMigrationQueueQuery retorna tarefas', async () => {
+    mockGet.mockResolvedValue({
+      data: {
+        logDate: '2026-06-14',
+        tasks: [
+          {
+            id: 'y1',
+            title: 'Pendente de ontem',
+            status: 'pending',
+            eisenhower: null,
+            category: null,
+            subtasks: [],
+          },
+        ],
+      },
+    })
+
+    renderDailyPage()
+
+    expect(
+      await screen.findByText('1 tarefas pendentes de ontem. Iniciar migração?'),
+    ).toBeInTheDocument()
+  })
+
+  it('clicar em Iniciar abre o fluxo de migração com o Migration Card', async () => {
+    mockGet.mockResolvedValue({
+      data: {
+        logDate: '2026-06-14',
+        tasks: [
+          {
+            id: 'y1',
+            title: 'Pendente de ontem',
+            status: 'pending',
+            eisenhower: null,
+            category: null,
+            subtasks: [],
+          },
+        ],
+      },
+    })
+
+    renderDailyPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Iniciar' }))
+
+    expect(await screen.findByText('1 de 1 revisadas')).toBeInTheDocument()
+    expect(screen.getAllByText('Pendente de ontem').length).toBeGreaterThan(0)
+  })
+
+  it('banner some depois que a fila esvazia (migração da última tarefa invalida a query)', async () => {
+    mockGet.mockResolvedValueOnce({
+      data: {
+        logDate: '2026-06-14',
+        tasks: [
+          {
+            id: 'y1',
+            title: 'Pendente de ontem',
+            status: 'pending',
+            eisenhower: null,
+            category: null,
+            subtasks: [],
+          },
+        ],
+      },
+    })
+    mockGet.mockResolvedValue({ data: { logDate: '2026-06-14', tasks: [] } })
+    mockPost.mockResolvedValue({
+      data: { id: 'y1', title: 'Pendente de ontem', status: 'migrated', subtasks: [] },
+    })
+
+    renderDailyPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Iniciar' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Migrar para hoje' }))
+
+    await waitFor(() =>
+      expect(
+        screen.queryByText('1 tarefas pendentes de ontem. Iniciar migração?'),
+      ).not.toBeInTheDocument(),
+    )
   })
 })

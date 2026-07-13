@@ -1,18 +1,18 @@
 """Testes de `TodayLogView`/`TaskTransitionView` (AC #1, #2)."""
 
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
-from bujo.models import Task
+from bujo.models import Log, Task
 from bujo.services.logs import (
     get_or_create_daily_log,
     get_or_create_monthly_log,
     get_or_create_weekly_log,
 )
-from bujo.tests.factories import MonthlyLogFactory, TaskFactory, WeeklyLogFactory
+from bujo.tests.factories import LogFactory, MonthlyLogFactory, TaskFactory, WeeklyLogFactory
 from core.calendar import today_for, week_start_of
 from core.tenant import current_user_id, tenant_context
 
@@ -695,3 +695,204 @@ def test_post_subtask_create_de_tarefa_de_monthly_log_herda_monthly_log_do_pai(
         child = Task.objects.get(id=response.data["id"])
         assert child.monthly_log_id == monthly_log.id
         assert child.log_id is None
+
+
+# --- MigrationQueueView / TaskMigrateView (AC #1, #2, #3) ---------------------
+
+
+@pytest.mark.django_db
+def test_get_migration_queue_sem_log_de_ontem_retorna_vazio_e_nao_materializa_log(
+    auth_client, user
+):
+    response = auth_client.get("/api/bujo/migration/queue/")
+
+    assert response.status_code == 200
+    assert response.data["tasks"] == []
+    with tenant_context(user):
+        assert Log.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_get_migration_queue_so_traz_raizes_pending_started_de_ontem(auth_client, user):
+    with tenant_context(user):
+        yesterday = today_for(user) - timedelta(days=1)
+        yesterday_log = LogFactory(user=user, log_date=yesterday)
+        pending = TaskFactory(
+            user=user, log=yesterday_log, status=Task.Status.PENDING, title="Pendente"
+        )
+        TaskFactory(user=user, log=yesterday_log, status=Task.Status.STARTED, title="Iniciada")
+        TaskFactory(user=user, log=yesterday_log, status=Task.Status.COMPLETED, title="Concluída")
+        TaskFactory(user=user, log=yesterday_log, status=Task.Status.CANCELLED, title="Cancelada")
+        TaskFactory(
+            user=user,
+            log=yesterday_log,
+            parent_task=pending,
+            status=Task.Status.PENDING,
+            title="Subtarefa",
+        )
+
+    response = auth_client.get("/api/bujo/migration/queue/")
+
+    assert response.status_code == 200
+    titles = {task["title"] for task in response.data["tasks"]}
+    assert titles == {"Pendente", "Iniciada"}
+
+
+@pytest.mark.django_db
+def test_post_migrate_destination_today_migra_para_daily_log_de_hoje(auth_client, user):
+    with tenant_context(user):
+        yesterday_log = LogFactory(user=user, log_date=today_for(user) - timedelta(days=1))
+        task = TaskFactory(user=user, log=yesterday_log, status=Task.Status.PENDING)
+
+    response = auth_client.post(
+        f"/api/bujo/tasks/{task.id}/migrate/", {"destination": "today"}, format="json"
+    )
+
+    assert response.status_code == 200
+    # `migrate_task` retorna a ORIGEM recarregada (status atualizado +
+    # `migrated_to_task`), não o novo registro — ver Dev Notes do dispatcher.
+    assert response.data["status"] == "migrated"
+    assert response.data["id"] == str(task.id)
+    with tenant_context(user):
+        task.refresh_from_db()
+        assert task.status == "migrated"
+        today_log = get_or_create_daily_log(user=user, log_date=today_for(user))
+        assert today_log.tasks.filter(id=task.migrated_to_task_id).exists()
+
+
+@pytest.mark.django_db
+def test_post_migrate_destination_month_sem_scheduled_date_retorna_400(auth_client, user):
+    with tenant_context(user):
+        task = TaskFactory(user=user, status=Task.Status.PENDING)
+
+    response = auth_client.post(
+        f"/api/bujo/tasks/{task.id}/migrate/", {"destination": "month"}, format="json"
+    )
+
+    assert response.status_code == 400
+
+
+@pytest.mark.django_db
+def test_post_migrate_destination_month_com_scheduled_date_postpoe_no_mes_corrente(
+    auth_client, user
+):
+    with tenant_context(user):
+        task = TaskFactory(user=user, status=Task.Status.PENDING)
+        current_month_first = today_for(user).replace(day=1)
+        scheduled_date = current_month_first.replace(day=2)
+
+    response = auth_client.post(
+        f"/api/bujo/tasks/{task.id}/migrate/",
+        {"destination": "month", "scheduledDate": scheduled_date.isoformat()},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert response.data["status"] == "postponed"
+    with tenant_context(user):
+        task.refresh_from_db()
+        assert task.status == "postponed"
+        monthly_log = get_or_create_monthly_log(user=user, month_first=current_month_first)
+        assert monthly_log.tasks.filter(id=task.migrated_to_task_id).exists()
+
+
+@pytest.mark.django_db
+def test_post_migrate_destination_future_com_month_first_do_mes_corrente_retorna_400(
+    auth_client, user
+):
+    with tenant_context(user):
+        task = TaskFactory(user=user, status=Task.Status.PENDING)
+        current_month_first = today_for(user).replace(day=1)
+
+    response = auth_client.post(
+        f"/api/bujo/tasks/{task.id}/migrate/",
+        {"destination": "future", "monthFirst": current_month_first.isoformat()},
+        format="json",
+    )
+
+    assert response.status_code == 400
+
+
+@pytest.mark.django_db
+def test_post_migrate_destination_future_com_scheduled_date_fora_do_mes_retorna_400(
+    auth_client, user
+):
+    with tenant_context(user):
+        task = TaskFactory(user=user, status=Task.Status.PENDING)
+        current_month_first = today_for(user).replace(day=1)
+        future_month = date(current_month_first.year + 1, current_month_first.month, 1)
+        outro_mes = date(future_month.year, future_month.month % 12 + 1, 5)
+
+    response = auth_client.post(
+        f"/api/bujo/tasks/{task.id}/migrate/",
+        {
+            "destination": "future",
+            "monthFirst": future_month.isoformat(),
+            "scheduledDate": outro_mes.isoformat(),
+        },
+        format="json",
+    )
+
+    assert response.status_code == 400
+
+
+@pytest.mark.django_db
+def test_post_migrate_destination_future_sem_scheduled_date_postpoe_sem_dia(auth_client, user):
+    with tenant_context(user):
+        task = TaskFactory(user=user, status=Task.Status.PENDING)
+        current_month_first = today_for(user).replace(day=1)
+        future_month = date(current_month_first.year + 1, current_month_first.month, 1)
+
+    response = auth_client.post(
+        f"/api/bujo/tasks/{task.id}/migrate/",
+        {"destination": "future", "monthFirst": future_month.isoformat()},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert response.data["status"] == "postponed"
+    with tenant_context(user):
+        task.refresh_from_db()
+        assert task.status == "postponed"
+        assert task.migrated_to_task.scheduled_date is None
+
+
+@pytest.mark.django_db
+def test_post_migrate_destination_cancel_cancela_sem_lineage(auth_client, user):
+    with tenant_context(user):
+        task = TaskFactory(user=user, status=Task.Status.PENDING)
+        count_before = Task.objects.count()
+
+    response = auth_client.post(
+        f"/api/bujo/tasks/{task.id}/migrate/", {"destination": "cancel"}, format="json"
+    )
+
+    assert response.status_code == 200
+    assert response.data["status"] == "cancelled"
+    with tenant_context(user):
+        assert Task.objects.count() == count_before
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("status", ["completed", "cancelled", "migrated"])
+def test_post_migrate_status_nao_migravel_retorna_409(auth_client, user, status):
+    with tenant_context(user):
+        task = TaskFactory(user=user, status=status)
+
+    response = auth_client.post(
+        f"/api/bujo/tasks/{task.id}/migrate/", {"destination": "today"}, format="json"
+    )
+
+    assert response.status_code == 409
+
+
+@pytest.mark.django_db
+def test_post_migrate_escopado_por_tenant(auth_client, user, other_user):
+    with tenant_context(other_user):
+        task = TaskFactory(user=other_user, status=Task.Status.PENDING)
+
+    response = auth_client.post(
+        f"/api/bujo/tasks/{task.id}/migrate/", {"destination": "today"}, format="json"
+    )
+
+    assert response.status_code == 404

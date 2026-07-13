@@ -12,13 +12,15 @@ from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from bujo.models import MonthlyLog, Task
+from bujo.models import Log, MonthlyLog, Task
 from bujo.serializers import (
     FutureLogMonthGroupSerializer,
     LogSerializer,
+    MigrationQueueSerializer,
     MonthlyLogSerializer,
     MonthlyTaskCreateSerializer,
     TaskCreateSerializer,
+    TaskMigrateSerializer,
     TaskReorderSerializer,
     TaskSerializer,
     TaskUpdateSerializer,
@@ -29,6 +31,7 @@ from bujo.services.logs import (
     get_or_create_monthly_log,
     get_or_create_weekly_log,
 )
+from bujo.services.migration import migrate_task
 from bujo.services.state_machine import transition_task
 from bujo.services.tasks import create_task, reorder_task, update_task
 from core.calendar import today_for, week_start_of
@@ -209,3 +212,52 @@ class FutureLogView(APIView):
             for monthly_log in monthly_logs
         ]
         return Response(FutureLogMonthGroupSerializer(groups, many=True).data)
+
+
+class MigrationQueueView(APIView):
+    @extend_schema(responses=MigrationQueueSerializer)
+    def get(self, request):
+        yesterday = today_for(request.user) - timedelta(days=1)
+        log = Log.objects.filter(log_date=yesterday).first()  # nunca materializa o log de ontem
+        if log is None:
+            tasks = Task.objects.none()
+        else:
+            tasks = log.tasks.filter(
+                status__in=[Task.Status.PENDING, Task.Status.STARTED], parent_task__isnull=True
+            )
+        data = {"log_date": yesterday, "tasks": tasks}
+        return Response(MigrationQueueSerializer(data).data)
+
+
+class TaskMigrateView(APIView):
+    @extend_schema(request=TaskMigrateSerializer, responses=TaskSerializer)
+    def post(self, request, pk):
+        body = TaskMigrateSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        validated = body.validated_data
+        destination = validated["destination"]
+
+        month_first = validated.get("month_first")
+        current_month_first = today_for(request.user).replace(day=1)
+        if destination == "month":
+            month_first = current_month_first
+        elif (
+            destination == "future"
+            and month_first is not None
+            and month_first <= current_month_first
+        ):
+            raise serializers.ValidationError(
+                {"month_first": "Use 'month' para o mês corrente."}
+            )
+
+        try:
+            task = migrate_task(
+                user=request.user,
+                task_id=pk,
+                destination=destination,
+                month_first=month_first,
+                scheduled_date=validated.get("scheduled_date"),
+            )
+        except Task.DoesNotExist:
+            raise NotFound() from None
+        return Response(TaskSerializer(task).data)

@@ -2,7 +2,7 @@ import { test as base, expect, type Page } from '@playwright/test'
 
 // Um usuário novo por teste (signup real via UI) garante um Daily Log de hoje
 // vazio e isola os testes entre si — nenhum reaproveita tarefas de outro.
-async function signUpAndLandOnToday(page: Page) {
+async function signUpAndLandOnToday(page: Page): Promise<string> {
   const email = `e2e-${crypto.randomUUID()}@e2e.test`
   const password = 'SenhaE2e!2026'
 
@@ -13,12 +13,24 @@ async function signUpAndLandOnToday(page: Page) {
 
   await expect(page).toHaveURL('/today')
   await expect(page.getByText('Nenhuma tarefa para hoje.')).toBeVisible()
+
+  return email
 }
 
-export const test = base.extend({
+// email por página, para specs (ex.: migration-flow) que precisam do endereço
+// do usuário recém-criado para seedar dados via backend fora da UI.
+const emailByPage = new WeakMap<Page, string>()
+
+export const test = base.extend<{ email: string }>({
   page: async ({ page }, use) => {
-    await signUpAndLandOnToday(page)
+    const email = await signUpAndLandOnToday(page)
+    emailByPage.set(page, email)
     await use(page)
+  },
+  email: async ({ page }, use) => {
+    const email = emailByPage.get(page)
+    if (!email) throw new Error('email fixture usada antes do signup (page fixture)')
+    await use(email)
   },
 })
 

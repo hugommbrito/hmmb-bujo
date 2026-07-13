@@ -6,6 +6,7 @@ import { mapTaskTree, reorderTaskTree } from './taskTree'
 import type {
   FutureLogMonthGroup,
   Log,
+  MigrationQueue,
   MonthlyLog,
   Task,
   TaskCategory,
@@ -221,6 +222,47 @@ export function useCreateMonthlyTaskMutation() {
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: keys.bujo.monthlyLog(variables.monthFirst) })
       queryClient.invalidateQueries({ queryKey: keys.bujo.futureLog() })
+    },
+  })
+}
+
+async function fetchMigrationQueue(): Promise<MigrationQueue> {
+  const response = await client.get<MigrationQueue>('/api/bujo/migration/queue/')
+  return response.data
+}
+
+export function useMigrationQueueQuery() {
+  return useQuery({
+    queryKey: keys.bujo.migrationQueue(),
+    queryFn: fetchMigrationQueue,
+  })
+}
+
+export type MigrationDestination = 'today' | 'month' | 'future' | 'cancel'
+
+interface MigrateTaskVariables {
+  taskId: string
+  destination: MigrationDestination
+  monthFirst?: string
+  scheduledDate?: string | null
+}
+
+async function migrateTask({ taskId, ...fields }: MigrateTaskVariables): Promise<Task> {
+  const response = await client.post<Task>(`/api/bujo/tasks/${taskId}/migrate/`, fields)
+  return response.data
+}
+
+export function useMigrateTaskMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: migrateTask,
+    onSuccess: () => {
+      // Invalidação por prefixo (mesma técnica de useCreateMonthlyTaskMutation):
+      // cobre todas as variantes de monthFirst sem reconstruir qual foi afetada.
+      queryClient.invalidateQueries({ queryKey: keys.bujo.migrationQueue() })
+      queryClient.invalidateQueries({ queryKey: keys.bujo.todayLog() })
+      queryClient.invalidateQueries({ queryKey: ['bujo', 'monthlyLog'] })
+      queryClient.invalidateQueries({ queryKey: ['bujo', 'futureLog'] })
     },
   })
 }

@@ -1,6 +1,7 @@
 """Testes dos serviços de `bujo` (AC #1, #2, #3)."""
 
 import itertools
+from datetime import date
 
 import pytest
 
@@ -10,9 +11,11 @@ from bujo.services.logs import (
     get_or_create_monthly_log,
     get_or_create_weekly_log,
 )
+from bujo.services.migration import migrate_task
 from bujo.services.state_machine import ALLOWED, transition_task
 from bujo.services.tasks import create_task, reorder_task, update_task
 from bujo.tests.factories import LogFactory, MonthlyLogFactory, TaskFactory, WeeklyLogFactory
+from core.calendar import today_for
 from core.exceptions import InvalidReorderTarget, InvalidTransition
 from core.tenant import tenant_context
 
@@ -362,3 +365,205 @@ def test_reorder_task_de_duas_tarefas_daily_continua_correto_com_filtro_ampliado
         )
 
         assert result.order_index == (target.order_index + neighbor.order_index) / 2
+
+
+# --- migrate_task (AC #3, AD-08 item 11) --------------------------------------
+
+
+@pytest.mark.django_db
+def test_migrar_pai_recria_apenas_filhos_nao_dispostos(user):
+    """Cenário-âncora AD-08 item 11 (guardrail retro Epic 3 §5): migrar um pai
+    com um filho concluído e um filho pendente recria no destino só o pai e o
+    filho pendente; o filho concluído fica intocado na origem, junto com a
+    árvore original inteira. `migrate_task` retorna a ORIGEM recarregada
+    (status atualizado + `migrated_to_task` apontando pro novo registro) — não
+    o novo registro em si (ver Dev Notes/comentário do dispatcher)."""
+    with tenant_context(user):
+        log = LogFactory(user=user)
+        parent = TaskFactory(user=user, log=log, status=Task.Status.PENDING, title="Pai")
+        completed_child = TaskFactory(
+            user=user,
+            log=log,
+            parent_task=parent,
+            status=Task.Status.COMPLETED,
+            title="Filho concluído",
+        )
+        pending_child = TaskFactory(
+            user=user,
+            log=log,
+            parent_task=parent,
+            status=Task.Status.PENDING,
+            title="Filho pendente",
+        )
+
+        result = migrate_task(user=user, task_id=parent.id, destination="today")
+
+        # Origem: árvore original inteira permanece, pai e filho pendente migrated,
+        # filho concluído intocado. `result` é a própria origem recarregada.
+        completed_child.refresh_from_db()
+        pending_child.refresh_from_db()
+        assert result.id == parent.id
+        assert result.status == Task.Status.MIGRATED
+        assert completed_child.status == Task.Status.COMPLETED
+        assert completed_child.parent_task_id == parent.id
+        assert completed_child.migrated_to_task_id is None
+        assert pending_child.status == Task.Status.MIGRATED
+        assert pending_child.parent_task_id == parent.id
+
+        # Destino: pai recriado + só o filho pendente (recriado, pending, migration_count=1).
+        new_parent = result.migrated_to_task
+        assert new_parent is not None
+        assert new_parent.status == Task.Status.PENDING
+        assert new_parent.migration_count == 1
+        assert new_parent.title == "Pai"
+        destino_filhos = list(new_parent.subtasks.all())
+        assert len(destino_filhos) == 1
+        assert destino_filhos[0].title == "Filho pendente"
+        assert destino_filhos[0].status == Task.Status.PENDING
+        assert destino_filhos[0].migration_count == 1
+        assert destino_filhos[0].parent_task_id == new_parent.id
+        assert destino_filhos[0].id == pending_child.migrated_to_task_id
+
+
+@pytest.mark.django_db
+def test_migrate_task_destination_today_torna_origem_migrated_e_cria_no_daily_de_hoje(user):
+    with tenant_context(user):
+        yesterday_log = LogFactory(user=user)
+        task = TaskFactory(user=user, log=yesterday_log, status=Task.Status.PENDING)
+
+        result = migrate_task(user=user, task_id=task.id, destination="today")
+
+        today_log = get_or_create_daily_log(user=user, log_date=today_for(user))
+        assert result.status == Task.Status.MIGRATED
+        new_task = result.migrated_to_task
+        assert new_task is not None
+        assert new_task.status == Task.Status.PENDING
+        assert new_task.migration_count == 1
+        assert new_task.log_id == today_log.id
+        assert new_task.parent_task is None
+
+
+@pytest.mark.django_db
+def test_migrate_task_destination_month_torna_origem_postponed_e_cria_no_monthly_corrente(user):
+    with tenant_context(user):
+        log = LogFactory(user=user)
+        task = TaskFactory(user=user, log=log, status=Task.Status.PENDING)
+        current_month_first = today_for(user).replace(day=1)
+        scheduled_date = current_month_first.replace(day=2)
+
+        result = migrate_task(
+            user=user,
+            task_id=task.id,
+            destination="month",
+            month_first=current_month_first,
+            scheduled_date=scheduled_date,
+        )
+
+        monthly_log = get_or_create_monthly_log(user=user, month_first=current_month_first)
+        assert result.status == Task.Status.POSTPONED
+        new_task = result.migrated_to_task
+        assert new_task.status == Task.Status.PENDING
+        assert new_task.monthly_log_id == monthly_log.id
+        assert new_task.scheduled_date == scheduled_date
+
+
+@pytest.mark.django_db
+def test_migrate_task_destination_future_com_e_sem_scheduled_date(user):
+    with tenant_context(user):
+        log = LogFactory(user=user)
+        task_a = TaskFactory(user=user, log=log, status=Task.Status.PENDING)
+        task_b = TaskFactory(user=user, log=log, status=Task.Status.PENDING)
+        current_month_first = today_for(user).replace(day=1)
+        future_month = date(current_month_first.year + 1, current_month_first.month, 1)
+
+        result_a = migrate_task(
+            user=user,
+            task_id=task_a.id,
+            destination="future",
+            month_first=future_month,
+            scheduled_date=future_month.replace(day=10),
+        )
+        result_b = migrate_task(
+            user=user, task_id=task_b.id, destination="future", month_first=future_month
+        )
+
+        assert result_a.status == Task.Status.POSTPONED
+        new_task_a = result_a.migrated_to_task
+        new_task_b = result_b.migrated_to_task
+        assert new_task_a.scheduled_date == future_month.replace(day=10)
+        assert new_task_b.scheduled_date is None
+        assert new_task_a.monthly_log_id == new_task_b.monthly_log_id
+
+
+@pytest.mark.django_db
+def test_migrate_task_destination_cancel_nao_cria_lineage(user):
+    with tenant_context(user):
+        log = LogFactory(user=user)
+        task = TaskFactory(user=user, log=log, status=Task.Status.PENDING)
+        count_before = Task.objects.count()
+
+        result = migrate_task(user=user, task_id=task.id, destination="cancel")
+
+        assert result.status == Task.Status.CANCELLED
+        assert result.migrated_to_task_id is None
+        assert Task.objects.count() == count_before
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("status", [Task.Status.COMPLETED, Task.Status.MIGRATED])
+def test_migrate_task_status_nao_migravel_levanta_invalid_transition(user, status):
+    with tenant_context(user):
+        log = LogFactory(user=user)
+        task = TaskFactory(user=user, log=log, status=status)
+
+        with pytest.raises(InvalidTransition):
+            migrate_task(user=user, task_id=task.id, destination="today")
+
+
+@pytest.mark.django_db
+def test_migrate_task_encadeada_soma_migration_count_sem_resetar(user):
+    with tenant_context(user):
+        log = LogFactory(user=user)
+        task = TaskFactory(user=user, log=log, status=Task.Status.PENDING)
+
+        first_result = migrate_task(user=user, task_id=task.id, destination="today")
+        new_task_1 = first_result.migrated_to_task
+        assert new_task_1.migration_count == 1
+
+        second_result = migrate_task(user=user, task_id=new_task_1.id, destination="today")
+        new_task_2 = second_result.migrated_to_task
+        assert new_task_2.migration_count == 2
+
+
+@pytest.mark.django_db
+def test_migrate_task_subarvore_dois_niveis_preserva_hierarquia(user):
+    with tenant_context(user):
+        log = LogFactory(user=user)
+        grandparent = TaskFactory(user=user, log=log, status=Task.Status.PENDING, title="Avô")
+        parent = TaskFactory(
+            user=user, log=log, parent_task=grandparent, status=Task.Status.PENDING, title="Pai"
+        )
+        TaskFactory(
+            user=user, log=log, parent_task=parent, status=Task.Status.PENDING, title="Filho"
+        )
+
+        result = migrate_task(user=user, task_id=grandparent.id, destination="today")
+
+        new_grandparent = result.migrated_to_task
+        new_parent = new_grandparent.subtasks.get()
+        new_child = new_parent.subtasks.get()
+        assert new_parent.title == "Pai"
+        assert new_child.title == "Filho"
+        assert new_parent.parent_task_id == new_grandparent.id
+        assert new_child.parent_task_id == new_parent.id
+
+
+@pytest.mark.django_db
+def test_migrate_task_escopado_por_tenant(user, other_user):
+    with tenant_context(user):
+        log = LogFactory(user=user)
+        task = TaskFactory(user=user, log=log, status=Task.Status.PENDING)
+
+    with tenant_context(other_user):
+        with pytest.raises(Task.DoesNotExist):
+            migrate_task(user=other_user, task_id=task.id, destination="today")
