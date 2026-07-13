@@ -1,13 +1,19 @@
 """Testes de `TodayLogView`/`TaskTransitionView` (AC #1, #2)."""
 
+from datetime import date
+
 import pytest
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from bujo.models import Task
-from bujo.services.logs import get_or_create_daily_log
-from bujo.tests.factories import TaskFactory
-from core.calendar import today_for
+from bujo.services.logs import (
+    get_or_create_daily_log,
+    get_or_create_monthly_log,
+    get_or_create_weekly_log,
+)
+from bujo.tests.factories import MonthlyLogFactory, TaskFactory, WeeklyLogFactory
+from core.calendar import today_for, week_start_of
 from core.tenant import current_user_id, tenant_context
 
 
@@ -445,3 +451,247 @@ def test_patch_task_detail_titulo_em_branco_retorna_400(auth_client, user):
     response = auth_client.patch(f"/api/bujo/tasks/{task.id}/", {"title": ""}, format="json")
 
     assert response.status_code == 400
+
+
+# --- WeeklyLogView ---------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_get_weekly_log_sem_param_usa_semana_corrente_e_week_start_e_segunda(
+    auth_client, user
+):
+    with tenant_context(user):
+        expected_week_start = week_start_of(today_for(user))
+        weekly_log = get_or_create_weekly_log(user=user, week_start=expected_week_start)
+        TaskFactory(
+            user=user,
+            weekly_log=weekly_log,
+            title="Com dia",
+            scheduled_date=expected_week_start,
+        )
+        TaskFactory(user=user, weekly_log=weekly_log, title="Sem dia", scheduled_date=None)
+
+    response = auth_client.get("/api/bujo/logs/weekly/")
+
+    assert response.status_code == 200
+    assert response.data["week_start"] == expected_week_start.isoformat()
+    assert len(response.data["days"]) == 7
+    first_day = response.data["days"][0]
+    assert first_day["date"] == expected_week_start.isoformat()
+    assert [task["title"] for task in first_day["tasks"]] == ["Com dia"]
+    assert [task["title"] for task in response.data["unscheduled"]] == ["Sem dia"]
+
+
+@pytest.mark.django_db
+def test_get_weekly_log_com_week_start_no_meio_da_semana_normaliza_para_segunda(
+    auth_client, user
+):
+    mid_week = date(2026, 7, 15)  # quarta-feira
+    expected_week_start = week_start_of(mid_week)
+
+    response = auth_client.get(f"/api/bujo/logs/weekly/?week_start={mid_week.isoformat()}")
+
+    assert response.status_code == 200
+    assert response.data["week_start"] == expected_week_start.isoformat()
+
+
+@pytest.mark.django_db
+def test_get_weekly_log_week_start_malformado_retorna_400(auth_client):
+    """Achado de review (Story 4.1): `date.fromisoformat` sem tratamento levantava
+    `ValueError` não capturado -> 500. Query param inválido deve virar 400, como
+    o resto da API (ex.: `title` ausente em `POST /tasks/`)."""
+    response = auth_client.get("/api/bujo/logs/weekly/?week_start=not-a-date")
+
+    assert response.status_code == 400
+
+
+@pytest.mark.django_db
+def test_get_weekly_log_escopado_por_tenant(auth_client, user, other_user):
+    with tenant_context(other_user):
+        other_weekly_log = WeeklyLogFactory(
+            user=other_user, week_start=week_start_of(today_for(other_user))
+        )
+        TaskFactory(
+            user=other_user,
+            weekly_log=other_weekly_log,
+            scheduled_date=other_weekly_log.week_start,
+            title="Da outra tenant",
+        )
+
+    response = auth_client.get("/api/bujo/logs/weekly/")
+
+    assert response.status_code == 200
+    all_titles = [task["title"] for day in response.data["days"] for task in day["tasks"]]
+    all_titles += [task["title"] for task in response.data["unscheduled"]]
+    assert "Da outra tenant" not in all_titles
+
+
+# --- MonthlyLogView ----------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_get_monthly_log_sem_param_usa_mes_corrente_e_month_first_e_dia_1(auth_client, user):
+    with tenant_context(user):
+        expected_month_first = today_for(user).replace(day=1)
+        monthly_log = get_or_create_monthly_log(user=user, month_first=expected_month_first)
+        TaskFactory(user=user, monthly_log=monthly_log, title="Tarefa do mês")
+
+    response = auth_client.get("/api/bujo/logs/monthly/")
+
+    assert response.status_code == 200
+    assert response.data["month_first"] == expected_month_first.isoformat()
+    assert [task["title"] for task in response.data["tasks"]] == ["Tarefa do mês"]
+
+
+@pytest.mark.django_db
+def test_get_monthly_log_month_first_malformado_retorna_400(auth_client):
+    """Achado de review (Story 4.1): mesmo gap do `week_start` -- query param
+    inválido levantava `ValueError` não capturado -> 500."""
+    response = auth_client.get("/api/bujo/logs/monthly/?month_first=not-a-date")
+
+    assert response.status_code == 400
+
+
+@pytest.mark.django_db
+def test_post_monthly_log_month_first_nao_e_dia_1_retorna_400(auth_client):
+    """Achado de review (Story 4.1): sem validação no serializer, `month_first`
+    fora do dia 1 chegava intacto em `get_or_create_monthly_log` e violava o
+    CHECK `month_first_is_day_one` no banco -> `IntegrityError` não capturado
+    -> 500. Deve ser rejeitado como 400, como qualquer outro campo inválido."""
+    response = auth_client.post(
+        "/api/bujo/logs/monthly/",
+        {"monthFirst": "2026-07-15", "title": "Data inválida"},
+        format="json",
+    )
+
+    assert response.status_code == 400
+
+
+@pytest.mark.django_db
+def test_post_monthly_log_com_scheduled_date_cria_tarefa_no_dia_certo(auth_client, user):
+    response = auth_client.post(
+        "/api/bujo/logs/monthly/",
+        {"monthFirst": "2026-07-01", "title": "Com dia", "scheduledDate": "2026-07-20"},
+        format="json",
+    )
+
+    assert response.status_code == 201
+    assert response.data["scheduled_date"] == "2026-07-20"
+
+    with tenant_context(user):
+        monthly_log = get_or_create_monthly_log(user=user, month_first=date(2026, 7, 1))
+        assert monthly_log.tasks.filter(title="Com dia", scheduled_date=date(2026, 7, 20)).exists()
+
+
+@pytest.mark.django_db
+def test_post_monthly_log_sem_scheduled_date_cria_tarefa_so_mes(auth_client, user):
+    response = auth_client.post(
+        "/api/bujo/logs/monthly/",
+        {"monthFirst": "2026-07-01", "title": "Só mês"},
+        format="json",
+    )
+
+    assert response.status_code == 201
+    assert response.data["scheduled_date"] is None
+
+
+@pytest.mark.django_db
+def test_post_monthly_log_scheduled_date_fora_do_mes_retorna_400(auth_client):
+    response = auth_client.post(
+        "/api/bujo/logs/monthly/",
+        {"monthFirst": "2026-07-01", "title": "Data errada", "scheduledDate": "2026-08-05"},
+        format="json",
+    )
+
+    assert response.status_code == 400
+
+
+# --- FutureLogView -----------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_get_future_log_agrupa_meses_futuros_com_tarefas_em_ordem_cronologica(
+    auth_client, user
+):
+    with tenant_context(user):
+        current_month_first = today_for(user).replace(day=1)
+        far_future = MonthlyLogFactory(
+            user=user, month_first=date(current_month_first.year + 1, 3, 1)
+        )
+        near_future = MonthlyLogFactory(
+            user=user, month_first=date(current_month_first.year + 1, 1, 1)
+        )
+        TaskFactory(user=user, monthly_log=far_future, title="Tarefa distante")
+        TaskFactory(user=user, monthly_log=near_future, title="Tarefa próxima")
+
+    response = auth_client.get("/api/bujo/future-log/")
+
+    assert response.status_code == 200
+    assert [group["month"] for group in response.data] == [1, 3]
+    assert [task["title"] for task in response.data[0]["tasks"]] == ["Tarefa próxima"]
+
+
+@pytest.mark.django_db
+def test_get_future_log_mes_corrente_nao_aparece(auth_client, user):
+    with tenant_context(user):
+        current_month_first = today_for(user).replace(day=1)
+        current_monthly_log = get_or_create_monthly_log(
+            user=user, month_first=current_month_first
+        )
+        TaskFactory(user=user, monthly_log=current_monthly_log, title="Tarefa do mês corrente")
+
+    response = auth_client.get("/api/bujo/future-log/")
+
+    assert response.status_code == 200
+    assert response.data == []
+
+
+@pytest.mark.django_db
+def test_get_future_log_mes_futuro_sem_tarefas_nao_aparece(auth_client, user):
+    with tenant_context(user):
+        current_month_first = today_for(user).replace(day=1)
+        MonthlyLogFactory(user=user, month_first=date(current_month_first.year + 1, 6, 1))
+
+    response = auth_client.get("/api/bujo/future-log/")
+
+    assert response.status_code == 200
+    assert response.data == []
+
+
+@pytest.mark.django_db
+def test_post_monthly_log_mes_futuro_aparece_no_future_log(auth_client):
+    create_response = auth_client.post(
+        "/api/bujo/logs/monthly/",
+        {"monthFirst": "2030-12-01", "title": "Item do futuro"},
+        format="json",
+    )
+    assert create_response.status_code == 201
+
+    future_response = auth_client.get("/api/bujo/future-log/")
+
+    assert future_response.status_code == 200
+    matching = [g for g in future_response.data if g["year"] == 2030 and g["month"] == 12]
+    assert len(matching) == 1
+    assert [task["title"] for task in matching[0]["tasks"]] == ["Item do futuro"]
+
+
+# --- Subtarefa herda container do pai (weekly/monthly) ------------------------
+
+
+@pytest.mark.django_db
+def test_post_subtask_create_de_tarefa_de_monthly_log_herda_monthly_log_do_pai(
+    auth_client, user
+):
+    with tenant_context(user):
+        monthly_log = MonthlyLogFactory(user=user)
+        parent = TaskFactory(user=user, monthly_log=monthly_log, title="Pai mensal")
+
+    response = auth_client.post(
+        f"/api/bujo/tasks/{parent.id}/subtasks/", {"title": "Filha"}, format="json"
+    )
+
+    assert response.status_code == 201
+    with tenant_context(user):
+        child = Task.objects.get(id=response.data["id"])
+        assert child.monthly_log_id == monthly_log.id
+        assert child.log_id is None

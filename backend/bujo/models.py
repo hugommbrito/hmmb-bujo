@@ -24,6 +24,46 @@ class Log(TenantModel):
         ]
 
 
+class WeeklyLog(TenantModel):
+    """Weekly Log — um por (user, week_start), week_start SEMPRE segunda (AD-05)."""
+
+    week_start = models.DateField()
+    body = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        db_table = "weekly_log"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user_id", "week_start"], name="uniq_weekly_log_user_id_week_start"
+            ),
+            models.CheckConstraint(
+                condition=models.Q(week_start__iso_week_day=1), name="week_start_is_monday"
+            ),
+        ]
+
+
+class MonthlyLog(TenantModel):
+    """Monthly Log — um por (user, month_first), month_first SEMPRE dia 1 (AD-05).
+
+    O Future Log NÃO é uma entidade separada: é o conjunto dos MonthlyLog de
+    meses futuros (ver Dev Notes "Future Log = monthly_log futuro").
+    """
+
+    month_first = models.DateField()
+    body = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        db_table = "monthly_log"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user_id", "month_first"], name="uniq_monthly_log_user_id_month_first"
+            ),
+            models.CheckConstraint(
+                condition=models.Q(month_first__day=1), name="month_first_is_day_one"
+            ),
+        ]
+
+
 class TaskStatus(models.TextChoices):
     """Definida no nível do módulo (não aninhada em ``Task``): uma classe
     aninhada em ``Meta`` não enxerga o namespace de ``Task`` (só o do módulo),
@@ -57,7 +97,18 @@ class Task(TenantModel):
         GREEN = "green"
         BLUE = "blue"
 
-    log = models.ForeignKey(Log, on_delete=models.CASCADE, related_name="tasks")
+    log = models.ForeignKey(
+        Log, null=True, blank=True, on_delete=models.CASCADE, related_name="tasks"
+    )
+    weekly_log = models.ForeignKey(
+        WeeklyLog, null=True, blank=True, on_delete=models.CASCADE, related_name="tasks"
+    )
+    monthly_log = models.ForeignKey(
+        MonthlyLog, null=True, blank=True, on_delete=models.CASCADE, related_name="tasks"
+    )
+    # Dia específico opcional dentro de um weekly/monthly log. null = "só o mês/semana,
+    # sem dia" (Future Log parcial, FR-1.2). Em daily log fica null (o dia é o do log).
+    scheduled_date = models.DateField(null=True, blank=True)
     status = models.CharField(
         max_length=16, choices=Status.choices, default=Status.PENDING
     )
@@ -98,5 +149,13 @@ class Task(TenantModel):
             models.CheckConstraint(
                 condition=models.Q(status__in=TaskStatus.values),
                 name="task_status_valid",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(log__isnull=False, weekly_log__isnull=True, monthly_log__isnull=True)
+                    | models.Q(log__isnull=True, weekly_log__isnull=False, monthly_log__isnull=True)
+                    | models.Q(log__isnull=True, weekly_log__isnull=True, monthly_log__isnull=False)
+                ),
+                name="task_exactly_one_log",
             ),
         ]

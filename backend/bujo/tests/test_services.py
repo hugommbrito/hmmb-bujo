@@ -4,11 +4,15 @@ import itertools
 
 import pytest
 
-from bujo.models import Log, Task
-from bujo.services.logs import get_or_create_daily_log
+from bujo.models import Log, MonthlyLog, Task, WeeklyLog
+from bujo.services.logs import (
+    get_or_create_daily_log,
+    get_or_create_monthly_log,
+    get_or_create_weekly_log,
+)
 from bujo.services.state_machine import ALLOWED, transition_task
 from bujo.services.tasks import create_task, reorder_task, update_task
-from bujo.tests.factories import LogFactory, TaskFactory
+from bujo.tests.factories import LogFactory, MonthlyLogFactory, TaskFactory, WeeklyLogFactory
 from core.exceptions import InvalidReorderTarget, InvalidTransition
 from core.tenant import tenant_context
 
@@ -266,3 +270,95 @@ def test_reorder_task_escopado_por_tenant(user, other_user):
             reorder_task(
                 user=other_user, task_id=task.id, target_task_id=target.id, position="after"
             )
+
+
+@pytest.mark.django_db
+def test_get_or_create_weekly_log_idempotente(user):
+    with tenant_context(user):
+        first = get_or_create_weekly_log(user=user, week_start="2026-07-13")
+        second = get_or_create_weekly_log(user=user, week_start="2026-07-13")
+
+        assert first.id == second.id
+        assert WeeklyLog.objects.filter(week_start="2026-07-13").count() == 1
+
+
+@pytest.mark.django_db
+def test_get_or_create_weekly_log_escopado_por_tenant(user, other_user):
+    with tenant_context(user):
+        log_user = get_or_create_weekly_log(user=user, week_start="2026-07-13")
+
+    with tenant_context(other_user):
+        log_other_user = get_or_create_weekly_log(user=other_user, week_start="2026-07-13")
+
+    assert log_user.id != log_other_user.id
+
+
+@pytest.mark.django_db
+def test_get_or_create_monthly_log_idempotente(user):
+    with tenant_context(user):
+        first = get_or_create_monthly_log(user=user, month_first="2026-07-01")
+        second = get_or_create_monthly_log(user=user, month_first="2026-07-01")
+
+        assert first.id == second.id
+        assert MonthlyLog.objects.filter(month_first="2026-07-01").count() == 1
+
+
+@pytest.mark.django_db
+def test_get_or_create_monthly_log_escopado_por_tenant(user, other_user):
+    with tenant_context(user):
+        log_user = get_or_create_monthly_log(user=user, month_first="2026-07-01")
+
+    with tenant_context(other_user):
+        log_other_user = get_or_create_monthly_log(user=other_user, month_first="2026-07-01")
+
+    assert log_user.id != log_other_user.id
+
+
+@pytest.mark.django_db
+def test_create_task_com_monthly_log_e_scheduled_date_grava_e_calcula_order_index(user):
+    with tenant_context(user):
+        monthly_log = MonthlyLogFactory(user=user)
+        other_monthly_log = MonthlyLogFactory(user=user)
+
+        first = create_task(
+            user=user, monthly_log=monthly_log, scheduled_date="2026-07-20", title="Primeira"
+        )
+        second = create_task(user=user, monthly_log=monthly_log, title="Segunda")
+        other = create_task(user=user, monthly_log=other_monthly_log, title="Outro mês")
+
+        assert first.monthly_log_id == monthly_log.id
+        assert str(first.scheduled_date) == "2026-07-20"
+        assert first.log_id is None
+        assert first.weekly_log_id is None
+        assert [first.order_index, second.order_index] == [0.0, 1.0]
+        assert other.order_index == 0.0
+
+
+@pytest.mark.django_db
+def test_create_task_subtarefa_herda_container_do_pai(user):
+    with tenant_context(user):
+        weekly_log = WeeklyLogFactory(user=user)
+        parent = create_task(user=user, weekly_log=weekly_log, title="Pai semanal")
+
+        child = create_task(
+            user=user, weekly_log=parent.weekly_log, parent_task=parent, title="Filha"
+        )
+
+        assert child.weekly_log_id == weekly_log.id
+        assert child.log_id is None
+        assert child.monthly_log_id is None
+
+
+@pytest.mark.django_db
+def test_reorder_task_de_duas_tarefas_daily_continua_correto_com_filtro_ampliado(user):
+    with tenant_context(user):
+        log = LogFactory(user=user)
+        target = TaskFactory(user=user, log=log, order_index=0.0)
+        neighbor = TaskFactory(user=user, log=log, order_index=1.0)
+        moved = TaskFactory(user=user, log=log, order_index=2.0)
+
+        result = reorder_task(
+            user=user, task_id=moved.id, target_task_id=target.id, position="after"
+        )
+
+        assert result.order_index == (target.order_index + neighbor.order_index) / 2

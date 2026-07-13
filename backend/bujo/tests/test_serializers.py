@@ -33,6 +33,7 @@ def test_task_serializer_expoe_exatamente_os_campos_esperados():
         "status",
         "eisenhower",
         "category",
+        "scheduled_date",
         "subtasks",
     }
 

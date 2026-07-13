@@ -12,6 +12,9 @@ export const keys = {
   // usuário, cobrindo o risco que o userId na chave mitigaria.
   bujo: {
     todayLog: () => ['bujo', 'dailyLog', 'today'] as const,
+    weeklyLog: (weekStart?: string) => ['bujo', 'weeklyLog', weekStart ?? 'current'] as const,
+    monthlyLog: (monthFirst?: string) => ['bujo', 'monthlyLog', monthFirst ?? 'current'] as const,
+    futureLog: () => ['bujo', 'futureLog', 'list'] as const,
   },
   // Adicionados nas stories:
   // habits: { logs: { ... } }  → Story 6.x

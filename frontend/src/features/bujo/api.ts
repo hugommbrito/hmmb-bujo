@@ -1,9 +1,18 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import client from '../../api/client'
 import { keys } from '../../api/keys'
 import { useOptimisticMutation } from '../../shared/hooks/useOptimisticMutation'
 import { mapTaskTree, reorderTaskTree } from './taskTree'
-import type { Log, Task, TaskCategory, TaskEisenhower, TaskStatus } from './types'
+import type {
+  FutureLogMonthGroup,
+  Log,
+  MonthlyLog,
+  Task,
+  TaskCategory,
+  TaskEisenhower,
+  TaskStatus,
+  WeeklyLog,
+} from './types'
 
 async function fetchTodayLog(): Promise<Log> {
   const response = await client.get<Log>('/api/bujo/logs/today/')
@@ -147,6 +156,71 @@ export function useReorderTaskMutation() {
     updater: (current, { taskId, targetTaskId, position }) => {
       if (!current) return current as unknown as Log
       return { ...current, tasks: reorderTaskTree(current.tasks, taskId, targetTaskId, position) }
+    },
+  })
+}
+
+async function fetchWeeklyLog(weekStart?: string): Promise<WeeklyLog> {
+  const response = await client.get<WeeklyLog>('/api/bujo/logs/weekly/', {
+    params: weekStart ? { week_start: weekStart } : undefined,
+  })
+  return response.data
+}
+
+export function useWeeklyLogQuery(weekStart?: string) {
+  return useQuery({
+    queryKey: keys.bujo.weeklyLog(weekStart),
+    queryFn: () => fetchWeeklyLog(weekStart),
+  })
+}
+
+async function fetchMonthlyLog(monthFirst?: string): Promise<MonthlyLog> {
+  const response = await client.get<MonthlyLog>('/api/bujo/logs/monthly/', {
+    params: monthFirst ? { month_first: monthFirst } : undefined,
+  })
+  return response.data
+}
+
+export function useMonthlyLogQuery(monthFirst?: string) {
+  return useQuery({
+    queryKey: keys.bujo.monthlyLog(monthFirst),
+    queryFn: () => fetchMonthlyLog(monthFirst),
+  })
+}
+
+async function fetchFutureLog(): Promise<FutureLogMonthGroup[]> {
+  const response = await client.get<FutureLogMonthGroup[]>('/api/bujo/future-log/')
+  return response.data
+}
+
+export function useFutureLogQuery() {
+  return useQuery({
+    queryKey: keys.bujo.futureLog(),
+    queryFn: fetchFutureLog,
+  })
+}
+
+interface CreateMonthlyTaskVariables {
+  monthFirst: string
+  title: string
+  scheduledDate?: string | null
+  description?: string | null
+  eisenhower?: TaskEisenhower | null
+  category?: TaskCategory | null
+}
+
+async function createMonthlyTask(fields: CreateMonthlyTaskVariables): Promise<Task> {
+  const response = await client.post<Task>('/api/bujo/logs/monthly/', fields)
+  return response.data
+}
+
+export function useCreateMonthlyTaskMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: createMonthlyTask,
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: keys.bujo.monthlyLog(variables.monthFirst) })
+      queryClient.invalidateQueries({ queryKey: keys.bujo.futureLog() })
     },
   })
 }

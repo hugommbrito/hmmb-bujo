@@ -7,6 +7,9 @@ import { useAuth } from '../shared/hooks/useAuth'
 import { AppLayout } from './layout/AppLayout'
 import { PlaceholderPage } from '../pages/PlaceholderPage'
 import { DailyPage } from '../pages/daily/DailyPage'
+import { WeeklyPage } from '../pages/planner/WeeklyPage'
+import { MonthlyPage } from '../pages/planner/MonthlyPage'
+import { FuturePage } from '../pages/planner/FuturePage'
 
 function LoginPageRoute() {
   const { isAuthenticated } = useAuth()
@@ -57,17 +60,17 @@ export const routeDefinitions: RouteObject[] = [
       { path: 'today', element: <DailyPage />, handle: { title: 'Hoje' } },
       {
         path: 'planner/week',
-        element: <PlaceholderPage title="Esta Semana" />,
+        element: <WeeklyPage />,
         handle: { title: 'Esta Semana' },
       },
       {
         path: 'planner/month',
-        element: <PlaceholderPage title="Este Mês" />,
+        element: <MonthlyPage />,
         handle: { title: 'Este Mês' },
       },
       {
         path: 'planner/future',
-        element: <PlaceholderPage title="Futuro" />,
+        element: <FuturePage />,
         handle: { title: 'Futuro' },
       },
       { path: 'habits', element: <PlaceholderPage title="Hábitos" />, handle: { title: 'Hábitos' } },

@@ -16,8 +16,12 @@ import {
   useCreateSubtaskMutation,
   useUpdateTaskMutation,
   useReorderTaskMutation,
+  useWeeklyLogQuery,
+  useMonthlyLogQuery,
+  useFutureLogQuery,
+  useCreateMonthlyTaskMutation,
 } from './api'
-import type { Log } from './types'
+import type { FutureLogMonthGroup, Log, MonthlyLog, WeeklyLog } from './types'
 
 const mockGet = client.get as ReturnType<typeof vi.fn>
 const mockPost = client.post as ReturnType<typeof vi.fn>
@@ -303,5 +307,129 @@ describe('useUpdateTaskMutation (AC2)', () => {
 
     await waitFor(() => expect(result.current.isError).toBe(true))
     expect(qc.getQueryData<Log>(keys.bujo.todayLog())).toEqual(LOG)
+  })
+})
+
+const WEEKLY_LOG: WeeklyLog = {
+  weekStart: '2026-07-13',
+  days: [
+    { date: '2026-07-13', tasks: [] },
+    { date: '2026-07-14', tasks: [] },
+    { date: '2026-07-15', tasks: [] },
+    { date: '2026-07-16', tasks: [] },
+    { date: '2026-07-17', tasks: [] },
+    { date: '2026-07-18', tasks: [] },
+    { date: '2026-07-19', tasks: [] },
+  ],
+  unscheduled: [],
+}
+
+const MONTHLY_LOG: MonthlyLog = {
+  monthFirst: '2026-07-01',
+  tasks: [],
+}
+
+const FUTURE_LOG_GROUPS: FutureLogMonthGroup[] = [
+  { year: 2026, month: 8, tasks: [] },
+]
+
+describe('useWeeklyLogQuery (AC3)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+  })
+
+  it('busca a semana corrente sem parâmetro', async () => {
+    mockGet.mockResolvedValueOnce({ data: WEEKLY_LOG })
+    const { wrapper } = makeWrapper()
+
+    const { result } = renderHook(() => useWeeklyLogQuery(), { wrapper })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data).toEqual(WEEKLY_LOG)
+    expect(mockGet).toHaveBeenCalledWith('/api/bujo/logs/weekly/', { params: undefined })
+  })
+
+  it('busca uma semana específica pelo param week_start', async () => {
+    mockGet.mockResolvedValueOnce({ data: WEEKLY_LOG })
+    const { wrapper } = makeWrapper()
+
+    const { result } = renderHook(() => useWeeklyLogQuery('2026-07-13'), { wrapper })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(mockGet).toHaveBeenCalledWith('/api/bujo/logs/weekly/', {
+      params: { week_start: '2026-07-13' },
+    })
+  })
+})
+
+describe('useMonthlyLogQuery (AC2)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+  })
+
+  it('busca o mês corrente sem parâmetro', async () => {
+    mockGet.mockResolvedValueOnce({ data: MONTHLY_LOG })
+    const { wrapper } = makeWrapper()
+
+    const { result } = renderHook(() => useMonthlyLogQuery(), { wrapper })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data).toEqual(MONTHLY_LOG)
+    expect(mockGet).toHaveBeenCalledWith('/api/bujo/logs/monthly/', { params: undefined })
+  })
+
+  it('busca um mês específico pelo param month_first', async () => {
+    mockGet.mockResolvedValueOnce({ data: MONTHLY_LOG })
+    const { wrapper } = makeWrapper()
+
+    const { result } = renderHook(() => useMonthlyLogQuery('2026-07-01'), { wrapper })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(mockGet).toHaveBeenCalledWith('/api/bujo/logs/monthly/', {
+      params: { month_first: '2026-07-01' },
+    })
+  })
+})
+
+describe('useFutureLogQuery (AC2)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+  })
+
+  it('busca os grupos de meses futuros', async () => {
+    mockGet.mockResolvedValueOnce({ data: FUTURE_LOG_GROUPS })
+    const { wrapper } = makeWrapper()
+
+    const { result } = renderHook(() => useFutureLogQuery(), { wrapper })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data).toEqual(FUTURE_LOG_GROUPS)
+    expect(mockGet).toHaveBeenCalledWith('/api/bujo/future-log/')
+  })
+})
+
+describe('useCreateMonthlyTaskMutation (AC2)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+  })
+
+  it('invalida monthlyLog e futureLog no sucesso', async () => {
+    const { qc, wrapper } = makeWrapper()
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+    mockPost.mockResolvedValueOnce({
+      data: { id: 'task-1', title: 'Item do futuro', status: 'pending', subtasks: [] },
+    })
+
+    const { result } = renderHook(() => useCreateMonthlyTaskMutation(), { wrapper })
+
+    result.current.mutate({ monthFirst: '2026-08-01', title: 'Item do futuro' })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(mockPost).toHaveBeenCalledWith('/api/bujo/logs/monthly/', {
+      monthFirst: '2026-08-01',
+      title: 'Item do futuro',
+    })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.bujo.monthlyLog('2026-08-01') })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.bujo.futureLog() })
   })
 })

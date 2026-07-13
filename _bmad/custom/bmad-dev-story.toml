@@ -1,6 +1,8 @@
 # Team override for bmad-dev-story.
-# Origem: itens de ação #1, #2 e #3 da retrospectiva do Epic 3
-# (_bmad-output/implementation-artifacts/epic-3-retro-2026-07-08.md, Seção 8).
+# Origem: itens de ação #1, #2, #3 (processo) e #4, #5 (qualidade) da
+# retrospectiva do Epic 3 (_bmad-output/implementation-artifacts/epic-3-retro-2026-07-08.md, Seção 8).
+# #4 e #5 são condicionais (auto-gated pela própria redação) — não disparam em
+# stories que não tocam auth / que não são a migração de subárvore da 4.2.
 # persistent_facts APPENDS aos fatos da base — não substitui.
 
 [workflow]
@@ -8,4 +10,6 @@ persistent_facts = [
   "Antes de escrever a contagem de testes em Completion Notes ou de finalizar a story (Step 9), rode o comando real da suite de testes (pytest/vitest) e cole a contagem observada literalmente — nunca escreva um número de memória ou estimado. (Retro Epic 3: Story 3.1 regrediu nisso — Completion Notes dizia '119 passed', o real era 121, corrigido em code review como achado M1.)",
   "A checagem final de File List (Step 9) deve ser a ÚLTIMA coisa feita antes de marcar a story como 'review': rode git status --short e git diff --stat DEPOIS de qualquer etapa de verificação manual (E2E, scripts de debug, Playwright) e reconcilie o File List documentado contra essa saída real, não apenas contra o que foi lembrado durante a implementação. (Retro Epic 3: o mesmo padrão se repetiu nas Stories 3.3 e 3.4 — arquivos criados na verificação manual ficaram fora do File List.)",
   "Se um gap de especificação for encontrado durante a implementação (campo, contrato ou comportamento que o código precisa mas que architecture.md/prd.md não documentam), a atualização do documento-fonte correspondente entra no escopo de fechamento da story — não marque a story como pronta para review com um gap de documentação conhecido e não resolvido. (Retro Epic 3: o campo category só voltou para architecture.md/prd.md na retrospectiva do épico seguinte, não na story que o introduziu.)",
+  "Se esta story tocar DEFAULT_AUTHENTICATION_CLASSES ou qualquer configuração de autenticação, rode `manage.py spectacular` e compare `security`/`securitySchemes` do schema.yaml gerado MANUALMENTE contra o commitado antes de fechar — o guardrail de CI só compara types.gen.ts, e a perda de `security` no schema OpenAPI não muda os tipos TS, então passa despercebida. (Retro Epic 3 #4: na Story 3.2 trocar a auth class derrubou `security` de todos os endpoints e só foi pego por checagem manual.)",
+  "Ao implementar a migração de subárvore (Story 4.2, AD-08 item 11 — migrar um pai recria a subárvore de filhos ainda não-dispostos no destino), escreva o teste do cenário 'pai com filho concluído + filho pendente' como o PRIMEIRO teste, não como caso de borda adicionado depois — é o cenário-âncora citado na AD-08 e o mais fácil de errar (qual filho viaja para o destino, qual permanece na origem). (Retro Epic 3 #5.)",
 ]

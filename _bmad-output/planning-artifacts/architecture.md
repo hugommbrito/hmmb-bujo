@@ -166,7 +166,10 @@ medication_logs (id, user_id, medication_id, block, date, confirmed_at)
 tasks:
   id                    uuid  PK
   user_id               uuid  FK → users
-  log_id                uuid  FK → logs
+  log_id                uuid  nullable, FK → logs
+  weekly_log_id         uuid  nullable, FK → weekly_log
+  monthly_log_id        uuid  nullable, FK → monthly_log
+  scheduled_date         DATE  nullable  -- dia opcional dentro de um weekly/monthly log
   status                enum(pending, started, completed, cancelled, migrated, postponed)
   migrated_to_task_id   uuid  nullable, FK → tasks (self-referential)
   migration_count       integer  default 0
@@ -178,6 +181,8 @@ tasks:
   created_at            timestamptz
   updated_at            timestamptz
 ```
+
+**Generalização do vínculo Task↔log (Story 4.1, aditiva ao congelamento do Epic 3, aprovada por Hugo).** O congelamento da Story 3.1 assumia só o Daily Log. O modelo do Épico 4 exige que uma tarefa possa morar em qualquer horizonte (daily **ou** weekly **ou** monthly), então `log_id` passou a nulável e ganhou duas FKs irmãs nuláveis (`weekly_log_id`, `monthly_log_id`) mais `scheduled_date` (dia específico opcional dentro de um weekly/monthly log; `null` = só o mês/semana, sem dia — o parcial do Future Log, FR-1.2). Um `CHECK` (`task_exactly_one_log`) garante no banco que **exatamente um** dos três containers está preenchido. A mudança é aditiva e segura: linhas daily existentes já têm `log_id` preenchido e as duas FKs novas nulas, satisfazendo o CHECK sem migração de dado. Subtarefas herdam o container do pai.
 
 ---
 
@@ -193,7 +198,7 @@ tasks:
    - `timestamptz` (armazenado em UTC; `USE_TZ = True` no Django) para instantes de evento/auditoria: `created_at`, `updated_at`, `completed_at`, `migrated_at`, confirmação de medicamento, etc. Respondem "que instante absoluto".
    - `DATE` puro (sem hora, sem fuso) para a "página do diário": `log_date`, data de hábito, data de métrica de saúde. Conceito calendárico — a página "17 de junho" é a mesma de qualquer lugar do mundo.
 
-3. **Função única de "hoje".** `today_for(user) = timezone.now().astimezone(ZoneInfo(user.timezone)).date()` em `core/time.py`. **Nenhum módulo** chama `date.today()` ou `timezone.now().date()` diretamente. Guardrail: grep no CI / teste de arquitetura que falha o build em uso direto. A virada do dia é **meia-noite no fuso do usuário**. O cutover configurável (~04h) foi **descartado** como complexidade desnecessária — onde a data importa ela é `DATE`, então um off-by-one de instante não causa prejuízo de dado. Pode ser revisitado como conforto futuro.
+3. **Função única de "hoje".** `today_for(user) = timezone.now().astimezone(ZoneInfo(user.timezone)).date()` em `core/calendar.py`. **Nenhum módulo** chama `date.today()` ou `timezone.now().date()` diretamente. Guardrail: grep no CI / teste de arquitetura que falha o build em uso direto. A virada do dia é **meia-noite no fuso do usuário**. O cutover configurável (~04h) foi **descartado** como complexidade desnecessária — onde a data importa ela é `DATE`, então um off-by-one de instante não causa prejuízo de dado. Pode ser revisitado como conforto futuro.
 
 4. **Dia lógico da sessão congela na abertura da página.** Sem auto-refresh do "hoje" no meio de uma sessão ativa — quem está escrevendo às 23h59 termina no dia em que começou; a virada ocorre numa ação explícita (reabrir, navegar, Catch-Up).
 
@@ -257,7 +262,7 @@ CREATE TABLE monthly_log (
 );
 ```
 
-**Funções de derivação (em `core/time.py`):**
+**Funções de derivação (em `core/calendar.py`):**
 
 ```python
 def week_start_of(d: date) -> date:        # segunda-feira da semana de d (chave da Weekly)
@@ -277,6 +282,8 @@ def months_of_week(week_start) -> set[tuple[int,int]]:   # 1 ou 2 (ano, mês) a 
 ```
 
 **Casos de teste-âncora:** `week_start_of(2023-01-01) == 2022-12-26`; `months_of_week(2022-12-26) == {(2022,12),(2023,1)}`; `weeks_of_month(2022,12)[-1] == weeks_of_month(2023,1)[0] == 2022-12-26` (mesma linha nas duas visões).
+
+**Future Log = `monthly_log` futuro (Story 4.1, decisão de Hugo).** O Future Log **não é uma entidade separada** — não existe tabela `future_log_item`. É o próprio conjunto dos `monthly_log` com `month_first` maior que o mês corrente. "Jogar uma tarefa pro futuro" é criar uma `Task` num `monthly_log` de um mês futuro, com `scheduled_date` opcional (parcial = sem dia, FR-1.2). O `POST /api/bujo/logs/monthly/` é o único write path — serve tanto o Monthly Log do mês corrente quanto o Future Log; `GET /api/bujo/future-log/` é só uma visão agrupada por mês. Editar/excluir um item do Future Log usa os endpoints de tarefa já existentes.
 
 ---
 

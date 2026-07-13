@@ -57,6 +57,55 @@ paths:
               schema:
                 $ref: '#/components/schemas/TokenRefresh'
           description: ''
+  /api/bujo/future-log/:
+    get:
+      operationId: bujo_future_log_list
+      tags:
+      - bujo
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FutureLogMonthGroup'
+          description: ''
+  /api/bujo/logs/monthly/:
+    get:
+      operationId: bujo_logs_monthly_retrieve
+      tags:
+      - bujo
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MonthlyLog'
+          description: ''
+    post:
+      operationId: bujo_logs_monthly_create
+      tags:
+      - bujo
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MonthlyTaskCreate'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+          description: ''
   /api/bujo/logs/today/:
     get:
       operationId: bujo_logs_today_retrieve
@@ -70,6 +119,20 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Log'
+          description: ''
+  /api/bujo/logs/weekly/:
+    get:
+      operationId: bujo_logs_weekly_retrieve
+      tags:
+      - bujo
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeeklyLog'
           description: ''
   /api/bujo/tasks/:
     post:
@@ -231,6 +294,21 @@ components:
         * `u` - Urgent
         * `i` - Important
         * `none` - None
+    FutureLogMonthGroup:
+      type: object
+      properties:
+        year:
+          type: integer
+        month:
+          type: integer
+        tasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/Task'
+      required:
+      - month
+      - tasks
+      - year
     Log:
       type: object
       properties:
@@ -250,6 +328,48 @@ components:
       - id
       - logDate
       - tasks
+    MonthlyLog:
+      type: object
+      properties:
+        monthFirst:
+          type: string
+          format: date
+        tasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/Task'
+      required:
+      - monthFirst
+      - tasks
+    MonthlyTaskCreate:
+      type: object
+      properties:
+        monthFirst:
+          type: string
+          format: date
+        title:
+          type: string
+          maxLength: 500
+        scheduledDate:
+          type: string
+          format: date
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        eisenhower:
+          nullable: true
+          oneOf:
+          - $ref: '#/components/schemas/EisenhowerEnum'
+          - $ref: '#/components/schemas/NullEnum'
+        category:
+          nullable: true
+          oneOf:
+          - $ref: '#/components/schemas/CategoryEnum'
+          - $ref: '#/components/schemas/NullEnum'
+      required:
+      - monthFirst
+      - title
     NullEnum:
       enum:
       - null
@@ -323,6 +443,10 @@ components:
           - $ref: '#/components/schemas/CategoryEnum'
           - $ref: '#/components/schemas/BlankEnum'
           - $ref: '#/components/schemas/NullEnum'
+        scheduledDate:
+          type: string
+          format: date
+          nullable: true
         subtasks:
           type: array
           items:
@@ -418,6 +542,37 @@ components:
       required:
       - access
       - refresh
+    WeeklyDay:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        tasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/Task'
+      required:
+      - date
+      - tasks
+    WeeklyLog:
+      type: object
+      properties:
+        weekStart:
+          type: string
+          format: date
+        days:
+          type: array
+          items:
+            $ref: '#/components/schemas/WeeklyDay'
+        unscheduled:
+          type: array
+          items:
+            $ref: '#/components/schemas/Task'
+      required:
+      - days
+      - unscheduled
+      - weekStart
   securitySchemes:
     jwtAuth:
       type: http

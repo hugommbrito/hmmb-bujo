@@ -14,7 +14,16 @@ class TaskSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Task
-        fields = ["id", "title", "description", "status", "eisenhower", "category", "subtasks"]
+        fields = [
+            "id",
+            "title",
+            "description",
+            "status",
+            "eisenhower",
+            "category",
+            "scheduled_date",
+            "subtasks",
+        ]
 
     def get_subtasks(self, obj):
         return TaskSerializer(obj.subtasks.all(), many=True).data
@@ -64,3 +73,54 @@ class TaskUpdateSerializer(serializers.Serializer):
 class TaskReorderSerializer(serializers.Serializer):
     target_task_id = serializers.UUIDField()
     position = serializers.ChoiceField(choices=["before", "after"])
+
+
+class WeeklyDaySerializer(serializers.Serializer):
+    date = serializers.DateField()
+    tasks = TaskSerializer(many=True)
+
+
+class WeeklyLogSerializer(serializers.Serializer):
+    week_start = serializers.DateField()
+    days = WeeklyDaySerializer(many=True)
+    unscheduled = TaskSerializer(many=True)
+
+
+class MonthlyLogSerializer(serializers.Serializer):
+    month_first = serializers.DateField()
+    tasks = TaskSerializer(many=True)
+
+
+class FutureLogMonthGroupSerializer(serializers.Serializer):
+    year = serializers.IntegerField()
+    month = serializers.IntegerField()
+    tasks = TaskSerializer(many=True)
+
+
+class MonthlyTaskCreateSerializer(serializers.Serializer):
+    month_first = serializers.DateField()
+    title = serializers.CharField(max_length=500)
+    scheduled_date = serializers.DateField(required=False, allow_null=True)
+    description = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    eisenhower = serializers.ChoiceField(
+        choices=Task.Eisenhower.choices, required=False, allow_null=True
+    )
+    category = serializers.ChoiceField(
+        choices=Task.Category.choices, required=False, allow_null=True
+    )
+
+    def validate(self, attrs):
+        month_first = attrs["month_first"]
+        if month_first.day != 1:
+            raise serializers.ValidationError(
+                {"month_first": "Deve ser o primeiro dia do mês."}
+            )
+        scheduled_date = attrs.get("scheduled_date")
+        if scheduled_date is not None and (
+            scheduled_date.year,
+            scheduled_date.month,
+        ) != (month_first.year, month_first.month):
+            raise serializers.ValidationError(
+                {"scheduled_date": "A data deve pertencer ao mês/ano de month_first."}
+            )
+        return attrs

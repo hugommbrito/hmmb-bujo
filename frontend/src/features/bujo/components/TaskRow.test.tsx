@@ -206,6 +206,65 @@ describe('TaskRow (AC2)', () => {
   })
 })
 
+describe('TaskRow — somente-leitura (Story 4.1, Weekly/Monthly)', () => {
+  beforeEach(() => {
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    })
+  })
+
+  it('renderiza só com a prop task, sem quebrar e sem chamar handlers', () => {
+    render(
+      <ThemeProvider theme={createBujoTheme('light')}>
+        <TaskRow task={baseTask({ title: 'Tarefa da semana' })} />
+      </ThemeProvider>,
+    )
+
+    expect(screen.getByText('Tarefa da semana')).toBeInTheDocument()
+  })
+
+  it('ícone de status fica desabilitado quando onTransition não é passado', () => {
+    render(
+      <ThemeProvider theme={createBujoTheme('light')}>
+        <TaskRow task={baseTask({ status: 'pending' })} />
+      </ThemeProvider>,
+    )
+
+    expect(screen.getByRole('button', { name: 'Pendente' })).toBeDisabled()
+  })
+
+  it('título não é um botão clicável quando onOpenDetail não é passado', () => {
+    render(
+      <ThemeProvider theme={createBujoTheme('light')}>
+        <TaskRow task={baseTask({ title: 'Sem detalhe' })} />
+      </ThemeProvider>,
+    )
+
+    expect(screen.queryByRole('button', { name: /Ver detalhes de/ })).not.toBeInTheDocument()
+    expect(screen.getByText('Sem detalhe')).toBeInTheDocument()
+  })
+
+  it('linha não é arrastável quando onReorder não é passado', () => {
+    render(
+      <ThemeProvider theme={createBujoTheme('light')}>
+        <TaskRow task={baseTask()} />
+      </ThemeProvider>,
+    )
+
+    expect(screen.getByTestId('task-row')).toHaveAttribute('draggable', 'false')
+  })
+})
+
 describe('TaskRow — reorder (AC1, AC2)', () => {
   const target = baseTask({ id: 'task-2', title: 'Outra tarefa' })
 

@@ -10,16 +10,33 @@ from core.exceptions import InvalidReorderTarget
 
 @transaction.atomic
 def create_task(
-    *, user, log, title, description=None, eisenhower=None, category=None, parent_task=None
+    *,
+    user,
+    log=None,
+    weekly_log=None,
+    monthly_log=None,
+    scheduled_date=None,
+    title,
+    description=None,
+    eisenhower=None,
+    category=None,
+    parent_task=None,
 ) -> Task:
-    """`order_index` é sempre calculado por irmãos (`log` + `parent_task`
-    idênticos) — uma subtarefa nunca compete por posição com a tarefa-pai nem
-    com filhos de outro pai (AD-08 item 12)."""
-    siblings = Task.objects.filter(log=log, parent_task=parent_task)
+    """`order_index` é sempre calculado por irmãos (mesmo container —
+    `log`/`weekly_log`/`monthly_log` — + `parent_task` idênticos) — uma
+    subtarefa nunca compete por posição com a tarefa-pai nem com filhos de
+    outro pai (AD-08 item 12). O CHECK `task_exactly_one_log` garante no banco
+    que o chamador passou exatamente um container."""
+    siblings = Task.objects.filter(
+        log=log, weekly_log=weekly_log, monthly_log=monthly_log, parent_task=parent_task
+    )
     max_order = siblings.aggregate(models.Max("order_index"))["order_index__max"]
     order_index = 0.0 if max_order is None else max_order + 1.0
     return Task.objects.create(
         log=log,
+        weekly_log=weekly_log,
+        monthly_log=monthly_log,
+        scheduled_date=scheduled_date,
         parent_task=parent_task,
         title=title,
         description=description,
@@ -50,7 +67,12 @@ def reorder_task(*, user, task_id, target_task_id, position) -> Task:
     target = Task.objects.get(id=target_task_id)  # idem — DoesNotExist -> 404 na view
 
     siblings = list(
-        Task.objects.filter(log=task.log, parent_task=task.parent_task)
+        Task.objects.filter(
+            log=task.log,
+            weekly_log=task.weekly_log,
+            monthly_log=task.monthly_log,
+            parent_task=task.parent_task,
+        )
         .exclude(id=task.id)
         .order_by("order_index")
     )

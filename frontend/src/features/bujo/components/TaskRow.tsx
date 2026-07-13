@@ -54,8 +54,11 @@ function eisenhowerChipInfo(eisenhower: Task['eisenhower']) {
 
 interface TaskRowProps {
   task: Task
-  onTransition: (taskId: string, toStatus: TaskStatus) => void
-  onOpenDetail: (taskId: string) => void
+  // Opcionais: Weekly/Monthly Log (Story 4.1) reusam `TaskRow` somente-leitura
+  // (só a prop `task`) — migração/transição a partir dessas superfícies é
+  // escopo das Stories 4.2/4.3.
+  onTransition?: (taskId: string, toStatus: TaskStatus) => void
+  onOpenDetail?: (taskId: string) => void
   siblings?: Task[]
   onReorder?: (taskId: string, targetTaskId: string, position: 'before' | 'after') => void
 }
@@ -77,7 +80,7 @@ export function TaskRow({ task, onTransition, onOpenDetail, siblings, onReorder 
   const isReorderable = Boolean(onReorder)
 
   function handleStatusClick() {
-    if (!nextStatus) return
+    if (!nextStatus || !onTransition) return
     onTransition(task.id, nextStatus)
     setAnnouncement(`Tarefa marcada como ${STATUS_LABEL[nextStatus]}`)
   }
@@ -169,31 +172,44 @@ export function TaskRow({ task, onTransition, onOpenDetail, siblings, onReorder 
           size="small"
           aria-label={STATUS_LABEL[status]}
           onClick={handleStatusClick}
-          disabled={!nextStatus}
+          disabled={!nextStatus || !onTransition}
           sx={{ color: status === 'completed' ? (theme) => theme.palette.category.green : 'text.secondary' }}
         >
           <StatusIcon fontSize="small" />
         </IconButton>
-        <Typography
-          component="button"
-          type="button"
-          onClick={() => onOpenDetail(task.id)}
-          aria-label={`Ver detalhes de ${task.title}`}
-          variant="body2"
-          sx={{
-            flex: 1,
-            textAlign: 'left',
-            background: 'none',
-            border: 'none',
-            font: 'inherit',
-            padding: 0,
-            cursor: 'pointer',
-            textDecoration: status === 'cancelled' ? 'line-through' : 'none',
-            color: status === 'completed' ? 'text.disabled' : 'text.primary',
-          }}
-        >
-          {task.title}
-        </Typography>
+        {onOpenDetail ? (
+          <Typography
+            component="button"
+            type="button"
+            onClick={() => onOpenDetail(task.id)}
+            aria-label={`Ver detalhes de ${task.title}`}
+            variant="body2"
+            sx={{
+              flex: 1,
+              textAlign: 'left',
+              background: 'none',
+              border: 'none',
+              font: 'inherit',
+              padding: 0,
+              cursor: 'pointer',
+              textDecoration: status === 'cancelled' ? 'line-through' : 'none',
+              color: status === 'completed' ? 'text.disabled' : 'text.primary',
+            }}
+          >
+            {task.title}
+          </Typography>
+        ) : (
+          <Typography
+            variant="body2"
+            sx={{
+              flex: 1,
+              textDecoration: status === 'cancelled' ? 'line-through' : 'none',
+              color: status === 'completed' ? 'text.disabled' : 'text.primary',
+            }}
+          >
+            {task.title}
+          </Typography>
+        )}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           {eisenhowerChip && (
             <Chip

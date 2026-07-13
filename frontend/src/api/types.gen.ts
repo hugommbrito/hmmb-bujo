@@ -60,6 +60,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/bujo/future-log/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["bujo_future_log_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bujo/logs/monthly/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["bujo_logs_monthly_retrieve"];
+        put?: never;
+        post: operations["bujo_logs_monthly_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/bujo/logs/today/": {
         parameters: {
             query?: never;
@@ -68,6 +100,22 @@ export interface paths {
             cookie?: never;
         };
         get: operations["bujo_logs_today_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bujo/logs/weekly/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["bujo_logs_weekly_retrieve"];
         put?: never;
         post?: never;
         delete?: never;
@@ -180,12 +228,32 @@ export interface components {
          * @enum {string}
          */
         EisenhowerEnum: "ui" | "u" | "i" | "none";
+        FutureLogMonthGroup: {
+            year: number;
+            month: number;
+            tasks: components["schemas"]["Task"][];
+        };
         Log: {
             /** Format: uuid */
             readonly id: string;
             /** Format: date */
             logDate: string;
             readonly tasks: components["schemas"]["Task"][];
+        };
+        MonthlyLog: {
+            /** Format: date */
+            monthFirst: string;
+            tasks: components["schemas"]["Task"][];
+        };
+        MonthlyTaskCreate: {
+            /** Format: date */
+            monthFirst: string;
+            title: string;
+            /** Format: date */
+            scheduledDate?: string | null;
+            description?: string | null;
+            eisenhower?: (components["schemas"]["EisenhowerEnum"] | components["schemas"]["NullEnum"]) | null;
+            category?: (components["schemas"]["CategoryEnum"] | components["schemas"]["NullEnum"]) | null;
         };
         /** @enum {unknown} */
         NullEnum: null;
@@ -219,6 +287,8 @@ export interface components {
             status?: components["schemas"]["StatusEnum"];
             eisenhower?: (components["schemas"]["EisenhowerEnum"] | components["schemas"]["BlankEnum"] | components["schemas"]["NullEnum"]) | null;
             category?: (components["schemas"]["CategoryEnum"] | components["schemas"]["BlankEnum"] | components["schemas"]["NullEnum"]) | null;
+            /** Format: date */
+            scheduledDate?: string | null;
             readonly subtasks: components["schemas"]["Task"][];
         };
         TaskCreate: {
@@ -254,6 +324,17 @@ export interface components {
         TokenRefresh: {
             readonly access: string;
             refresh: string;
+        };
+        WeeklyDay: {
+            /** Format: date */
+            date: string;
+            tasks: components["schemas"]["Task"][];
+        };
+        WeeklyLog: {
+            /** Format: date */
+            weekStart: string;
+            days: components["schemas"]["WeeklyDay"][];
+            unscheduled: components["schemas"]["Task"][];
         };
     };
     responses: never;
@@ -328,6 +409,67 @@ export interface operations {
             };
         };
     };
+    bujo_future_log_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FutureLogMonthGroup"][];
+                };
+            };
+        };
+    };
+    bujo_logs_monthly_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MonthlyLog"];
+                };
+            };
+        };
+    };
+    bujo_logs_monthly_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MonthlyTaskCreate"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+        };
+    };
     bujo_logs_today_retrieve: {
         parameters: {
             query?: never;
@@ -343,6 +485,25 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Log"];
+                };
+            };
+        };
+    };
+    bujo_logs_weekly_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WeeklyLog"];
                 };
             };
         };

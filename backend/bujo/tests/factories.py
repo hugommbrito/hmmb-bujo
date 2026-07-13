@@ -17,7 +17,8 @@ import factory
 from factory.django import DjangoModelFactory
 
 from accounts.tests.factories import UserFactory
-from bujo.models import Log, Task
+from bujo.models import Log, MonthlyLog, Task, WeeklyLog
+from core.calendar import week_start_of
 from core.tests.registry import register_isolation_case
 
 
@@ -32,6 +33,33 @@ class LogFactory(DjangoModelFactory):
     log_date = factory.Sequence(lambda n: date(2026, 1, 1) + timedelta(days=n))
 
 
+class WeeklyLogFactory(DjangoModelFactory):
+    class Meta:
+        model = WeeklyLog
+
+    class Params:
+        user = factory.SubFactory(UserFactory)
+
+    user_id = factory.SelfAttribute("user.id")
+    # week_start_of garante segunda-feira mesmo com o Sequence avançando por semanas.
+    week_start = factory.Sequence(
+        lambda n: week_start_of(date(2026, 1, 1) + timedelta(weeks=n))
+    )
+
+
+class MonthlyLogFactory(DjangoModelFactory):
+    class Meta:
+        model = MonthlyLog
+
+    class Params:
+        user = factory.SubFactory(UserFactory)
+
+    user_id = factory.SelfAttribute("user.id")
+    month_first = factory.Sequence(
+        lambda n: date(2026, 1, 1).replace(year=2026 + (n // 12), month=(n % 12) + 1)
+    )
+
+
 class TaskFactory(DjangoModelFactory):
     class Meta:
         model = Task
@@ -40,7 +68,16 @@ class TaskFactory(DjangoModelFactory):
         user = factory.SubFactory(UserFactory)
 
     user_id = factory.SelfAttribute("user.id")
-    log = factory.SubFactory(LogFactory, user=factory.SelfAttribute("..user"))
+    # Default: daily log (comportamento pré-existente). Passar weekly_log= ou
+    # monthly_log= explicitamente sobrescreve `log` para None — o CHECK
+    # task_exactly_one_log exige exatamente um container preenchido.
+    weekly_log = None
+    monthly_log = None
+    log = factory.LazyAttribute(
+        lambda o: None
+        if (o.weekly_log is not None or o.monthly_log is not None)
+        else LogFactory(user=o.user)
+    )
     title = factory.Sequence(lambda n: f"Tarefa {n}")
     order_index = factory.Sequence(lambda n: float(n))
 
