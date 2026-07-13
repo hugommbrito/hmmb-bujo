@@ -27,6 +27,8 @@ vi.mock('../features/bujo', () => ({
   useCreateTaskMutation: () => ({ mutate: vi.fn() }),
   useReorderTaskMutation: () => ({ mutate: vi.fn() }),
   MigrationBanner: () => null,
+  WeeklyReviewBanner: () => null,
+  MonthlyReviewBanner: () => null,
 }))
 
 // TaskDetailPanel usa mutações do TanStack Query (`../api`) diretamente, fora

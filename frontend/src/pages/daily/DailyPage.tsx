@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { Box, Typography } from '@mui/material'
 import {
   MigrationBanner,
+  MonthlyReviewBanner,
+  WeeklyReviewBanner,
   useCreateTaskMutation,
   useReorderTaskMutation,
   useTransitionTaskMutation,
@@ -70,6 +72,8 @@ export function DailyPage() {
   return (
     <Box component="main" aria-label="Hoje" sx={{ p: 3 }}>
       <MigrationBanner />
+      <WeeklyReviewBanner />
+      <MonthlyReviewBanner />
       <DayHeader logDate={logDate} pendingCount={pendingCount}>
         {tasks.length === 0 ? (
           <Typography variant="body2" color="text.secondary" sx={{ px: 3, py: 2 }}>

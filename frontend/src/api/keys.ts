@@ -16,6 +16,8 @@ export const keys = {
     monthlyLog: (monthFirst?: string) => ['bujo', 'monthlyLog', monthFirst ?? 'current'] as const,
     futureLog: () => ['bujo', 'futureLog', 'list'] as const,
     migrationQueue: () => ['bujo', 'migrationQueue', 'list'] as const,
+    weeklyReviewQueue: () => ['bujo', 'weeklyReviewQueue', 'list'] as const,
+    monthlyReviewQueue: () => ['bujo', 'monthlyReviewQueue', 'list'] as const,
   },
   // Adicionados nas stories:
   // habits: { logs: { ... } }  → Story 6.x

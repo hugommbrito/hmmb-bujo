@@ -1,12 +1,15 @@
 import { useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react'
 import { Box, Button, TextField, Typography } from '@mui/material'
 import type { MigrationDestination } from '../api'
+import { MONTH_NAMES_PT } from '../monthNames'
 import type { Task } from '../types'
 
 export interface MigrationDecisionExtra {
   monthFirst?: string
   scheduledDate?: string | null
 }
+
+export type MigrationFlowType = 'daily' | 'weekly' | 'monthly'
 
 interface MigrationCardProps {
   task: Task
@@ -15,6 +18,7 @@ interface MigrationCardProps {
   activePicker: 'none' | 'month' | 'future'
   onOpenPicker: (picker: 'month' | 'future') => void
   onDecide: (destination: MigrationDestination, extra?: MigrationDecisionExtra) => void
+  flowType?: MigrationFlowType
 }
 
 // Mês corrente calculado no frontend a partir de `new Date()` local — cálculo
@@ -29,6 +33,10 @@ function currentMonthBounds() {
   return { min: `${year}-${pad(month)}-01`, max: `${year}-${pad(month)}-${pad(lastDay)}` }
 }
 
+function currentMonthLabel() {
+  return MONTH_NAMES_PT[new Date().getMonth()]
+}
+
 export function MigrationCard({
   task,
   index,
@@ -36,11 +44,26 @@ export function MigrationCard({
   activePicker,
   onOpenPicker,
   onDecide,
+  flowType = 'daily',
 }: MigrationCardProps) {
   const [futureDay, setFutureDay] = useState('')
   const buttonRefs = useRef<(HTMLButtonElement | null)[]>([])
   const subtasks = task.subtasks ?? []
   const { min, max } = currentMonthBounds()
+
+  // Task 6.1/6.2 — 'monthly' não tem botão 1 (a origem já É o mês corrente);
+  // 'weekly' reaproveita a mesma anatomia de 4 botões do 'daily', só troca
+  // rótulo/destino do botão 1 (ver Dev Notes "Anatomia do card por contexto").
+  const primaryAction =
+    flowType === 'monthly'
+      ? null
+      : {
+          label: flowType === 'weekly' ? 'Migrar para esta semana' : 'Migrar para hoje',
+          destination: (flowType === 'weekly' ? 'week' : 'today') as MigrationDestination,
+        }
+  const monthLabel = flowType === 'monthly' ? `Definir data em ${currentMonthLabel()}` : 'Adiar no mês'
+  // Numeração dos atalhos exibidos: 1-4 quando há botão 1, 1-3 quando não há.
+  const shortcutOffset = primaryAction ? 1 : 0
 
   function handleMonthDateChange(event: ChangeEvent<HTMLInputElement>) {
     const value = event.target.value
@@ -93,30 +116,32 @@ export function MigrationCard({
         sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}
         onKeyDown={handleArrowKeyDown}
       >
+        {primaryAction && (
+          <Button
+            ref={(el) => {
+              buttonRefs.current[0] = el
+            }}
+            variant="outlined"
+            sx={{ justifyContent: 'space-between' }}
+            onClick={() => onDecide(primaryAction.destination)}
+          >
+            {primaryAction.label}
+            <Typography component="span" variant="body-sm" color="text.secondary" aria-hidden="true">
+              1
+            </Typography>
+          </Button>
+        )}
         <Button
           ref={(el) => {
-            buttonRefs.current[0] = el
-          }}
-          variant="outlined"
-          sx={{ justifyContent: 'space-between' }}
-          onClick={() => onDecide('today')}
-        >
-          Migrar para hoje
-          <Typography component="span" variant="body-sm" color="text.secondary" aria-hidden="true">
-            1
-          </Typography>
-        </Button>
-        <Button
-          ref={(el) => {
-            buttonRefs.current[1] = el
+            buttonRefs.current[shortcutOffset] = el
           }}
           variant="outlined"
           sx={{ justifyContent: 'space-between' }}
           onClick={() => onOpenPicker('month')}
         >
-          Adiar no mês
+          {monthLabel}
           <Typography component="span" variant="body-sm" color="text.secondary" aria-hidden="true">
-            2
+            {shortcutOffset + 1}
           </Typography>
         </Button>
         {activePicker === 'month' && (
@@ -130,7 +155,7 @@ export function MigrationCard({
         )}
         <Button
           ref={(el) => {
-            buttonRefs.current[2] = el
+            buttonRefs.current[shortcutOffset + 1] = el
           }}
           variant="outlined"
           sx={{ justifyContent: 'space-between' }}
@@ -138,7 +163,7 @@ export function MigrationCard({
         >
           Adiar no Futuro
           <Typography component="span" variant="body-sm" color="text.secondary" aria-hidden="true">
-            3
+            {shortcutOffset + 2}
           </Typography>
         </Button>
         {activePicker === 'future' && (
@@ -163,7 +188,7 @@ export function MigrationCard({
         )}
         <Button
           ref={(el) => {
-            buttonRefs.current[3] = el
+            buttonRefs.current[shortcutOffset + 2] = el
           }}
           variant="outlined"
           sx={{ justifyContent: 'space-between' }}
@@ -171,7 +196,7 @@ export function MigrationCard({
         >
           Cancelar
           <Typography component="span" variant="body-sm" color="text.secondary" aria-hidden="true">
-            4
+            {shortcutOffset + 3}
           </Typography>
         </Button>
       </Box>

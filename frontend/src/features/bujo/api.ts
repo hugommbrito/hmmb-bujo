@@ -8,11 +8,13 @@ import type {
   Log,
   MigrationQueue,
   MonthlyLog,
+  MonthlyReviewQueue,
   Task,
   TaskCategory,
   TaskEisenhower,
   TaskStatus,
   WeeklyLog,
+  WeeklyReviewQueue,
 } from './types'
 
 async function fetchTodayLog(): Promise<Log> {
@@ -58,6 +60,7 @@ interface TaskFields {
   description?: string | null
   eisenhower?: TaskEisenhower | null
   category?: TaskCategory | null
+  scheduledDate?: string | null
 }
 
 function optimisticTask(fields: TaskFields): Task {
@@ -123,6 +126,7 @@ async function updateTask({ taskId, ...patch }: UpdateTaskVariables): Promise<Ta
 }
 
 export function useUpdateTaskMutation() {
+  const queryClient = useQueryClient()
   return useOptimisticMutation<Task, unknown, UpdateTaskVariables, Log>({
     mutationFn: updateTask,
     queryKey: keys.bujo.todayLog(),
@@ -132,6 +136,14 @@ export function useUpdateTaskMutation() {
         ...current,
         tasks: mapTaskTree(current.tasks, taskId, (task) => ({ ...task, ...patch })),
       }
+    },
+    mutationOptions: {
+      onSuccess: () => {
+        // A task de monthly_log (ex.: confirmação de data do Future Log, Task 8)
+        // não aparece no cache do Daily Log — o updater otimista acima é um
+        // no-op seguro nesse caso; invalidar por prefixo garante o refetch.
+        queryClient.invalidateQueries({ queryKey: ['bujo', 'monthlyLog'] })
+      },
     },
   })
 }
@@ -238,7 +250,31 @@ export function useMigrationQueueQuery() {
   })
 }
 
-export type MigrationDestination = 'today' | 'month' | 'future' | 'cancel'
+async function fetchWeeklyReviewQueue(): Promise<WeeklyReviewQueue> {
+  const response = await client.get<WeeklyReviewQueue>('/api/bujo/weekly-review/queue/')
+  return response.data
+}
+
+export function useWeeklyReviewQueueQuery() {
+  return useQuery({
+    queryKey: keys.bujo.weeklyReviewQueue(),
+    queryFn: fetchWeeklyReviewQueue,
+  })
+}
+
+async function fetchMonthlyReviewQueue(): Promise<MonthlyReviewQueue> {
+  const response = await client.get<MonthlyReviewQueue>('/api/bujo/monthly-review/queue/')
+  return response.data
+}
+
+export function useMonthlyReviewQueueQuery() {
+  return useQuery({
+    queryKey: keys.bujo.monthlyReviewQueue(),
+    queryFn: fetchMonthlyReviewQueue,
+  })
+}
+
+export type MigrationDestination = 'today' | 'week' | 'month' | 'future' | 'cancel'
 
 interface MigrateTaskVariables {
   taskId: string
@@ -260,7 +296,10 @@ export function useMigrateTaskMutation() {
       // Invalidação por prefixo (mesma técnica de useCreateMonthlyTaskMutation):
       // cobre todas as variantes de monthFirst sem reconstruir qual foi afetada.
       queryClient.invalidateQueries({ queryKey: keys.bujo.migrationQueue() })
+      queryClient.invalidateQueries({ queryKey: keys.bujo.weeklyReviewQueue() })
+      queryClient.invalidateQueries({ queryKey: keys.bujo.monthlyReviewQueue() })
       queryClient.invalidateQueries({ queryKey: keys.bujo.todayLog() })
+      queryClient.invalidateQueries({ queryKey: ['bujo', 'weeklyLog'] })
       queryClient.invalidateQueries({ queryKey: ['bujo', 'monthlyLog'] })
       queryClient.invalidateQueries({ queryKey: ['bujo', 'futureLog'] })
     },

@@ -12,12 +12,13 @@ from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from bujo.models import Log, MonthlyLog, Task
+from bujo.models import Log, MonthlyLog, Task, WeeklyLog
 from bujo.serializers import (
     FutureLogMonthGroupSerializer,
     LogSerializer,
     MigrationQueueSerializer,
     MonthlyLogSerializer,
+    MonthlyReviewQueueSerializer,
     MonthlyTaskCreateSerializer,
     TaskCreateSerializer,
     TaskMigrateSerializer,
@@ -25,6 +26,7 @@ from bujo.serializers import (
     TaskSerializer,
     TaskUpdateSerializer,
     WeeklyLogSerializer,
+    WeeklyReviewQueueSerializer,
 )
 from bujo.services.logs import (
     get_or_create_daily_log,
@@ -60,10 +62,28 @@ class TaskDetailView(APIView):
     def patch(self, request, pk):
         body = TaskUpdateSerializer(data=request.data, partial=True)
         body.is_valid(raise_exception=True)
+        validated = body.validated_data
         try:
-            task = update_task(user=request.user, task_id=pk, **body.validated_data)
+            existing = Task.objects.get(id=pk)
         except Task.DoesNotExist:
             raise NotFound() from None
+
+        # Validação de mês (Task 2.5): só se aplica a tarefas do Monthly Log —
+        # o serializer não tem acesso à instância, por isso a checagem vive
+        # aqui. Daily/Weekly Log (sem monthly_log) não têm semântica de "mês".
+        scheduled_date = validated.get("scheduled_date")
+        if (
+            "scheduled_date" in validated
+            and scheduled_date is not None
+            and existing.monthly_log_id is not None
+            and (scheduled_date.year, scheduled_date.month)
+            != (existing.monthly_log.month_first.year, existing.monthly_log.month_first.month)
+        ):
+            raise serializers.ValidationError(
+                {"scheduled_date": "A data deve pertencer ao mês do Monthly Log."}
+            )
+
+        task = update_task(user=request.user, task_id=pk, **validated)
         return Response(TaskSerializer(task).data)
 
 
@@ -227,6 +247,38 @@ class MigrationQueueView(APIView):
             )
         data = {"log_date": yesterday, "tasks": tasks}
         return Response(MigrationQueueSerializer(data).data)
+
+
+class WeeklyReviewQueueView(APIView):
+    @extend_schema(responses=WeeklyReviewQueueSerializer)
+    def get(self, request):
+        previous_week_start = week_start_of(today_for(request.user)) - timedelta(weeks=1)
+        log = WeeklyLog.objects.filter(week_start=previous_week_start).first()  # nunca materializa
+        if log is None:
+            tasks = Task.objects.none()
+        else:
+            tasks = log.tasks.filter(
+                status__in=[Task.Status.PENDING, Task.Status.STARTED], parent_task__isnull=True
+            )
+        data = {"week_start": previous_week_start, "tasks": tasks}
+        return Response(WeeklyReviewQueueSerializer(data).data)
+
+
+class MonthlyReviewQueueView(APIView):
+    @extend_schema(responses=MonthlyReviewQueueSerializer)
+    def get(self, request):
+        current_month_first = today_for(request.user).replace(day=1)
+        previous_month_first = (current_month_first - timedelta(days=1)).replace(day=1)
+        # nunca materializa
+        log = MonthlyLog.objects.filter(month_first=previous_month_first).first()
+        if log is None:
+            tasks = Task.objects.none()
+        else:
+            tasks = log.tasks.filter(
+                status__in=[Task.Status.PENDING, Task.Status.STARTED], parent_task__isnull=True
+            )
+        data = {"month_first": previous_month_first, "tasks": tasks}
+        return Response(MonthlyReviewQueueSerializer(data).data)
 
 
 class TaskMigrateView(APIView):

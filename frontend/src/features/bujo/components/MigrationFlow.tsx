@@ -3,18 +3,19 @@ import { Dialog, useMediaQuery } from '@mui/material'
 import { useMigrateTaskMutation } from '../api'
 import type { MigrationDestination } from '../api'
 import type { Task } from '../types'
-import { MigrationCard, type MigrationDecisionExtra } from './MigrationCard'
+import { MigrationCard, type MigrationDecisionExtra, type MigrationFlowType } from './MigrationCard'
 
 interface MigrationFlowProps {
   queue: Task[]
   open: boolean
   onClose: () => void
+  flowType?: MigrationFlowType
 }
 
 // Overlay real com backdrop (Dialog do MUI) — desktop centralizado, mobile
 // full-screen (breakpoint canônico de TaskRow/TaskDetailPanel). Ver Dev Notes
 // "Modal overlay vs. full-page".
-export function MigrationFlow({ queue, open, onClose }: MigrationFlowProps) {
+export function MigrationFlow({ queue, open, onClose, flowType = 'daily' }: MigrationFlowProps) {
   const isMobile = useMediaQuery('(max-width: 767px)')
   const [snapshot, setSnapshot] = useState<Task[]>([])
   const [currentIndex, setCurrentIndex] = useState(0)
@@ -54,12 +55,35 @@ export function MigrationFlow({ queue, open, onClose }: MigrationFlowProps) {
     [currentTask, currentIndex, migrate, onClose, snapshot.length],
   )
 
-  // Atalhos de teclado (nível do Dialog, só enquanto aberto): 1/4 confirmam
-  // direto, 2/3 só abrem o picker (a confirmação vem do onChange do input,
-  // MigrationCard). Esc é tratado pelo próprio Dialog do MUI (onClose) — pausa
-  // sem decidir, a tarefa atual continua na fila.
+  // Atalhos de teclado (nível do Dialog, só enquanto aberto), tabela por
+  // `flowType` (Task 6.3) — em vez de um if/else aninhado, os 3 casos ficam
+  // legíveis lado a lado: 'daily'/'weekly' têm 4 atalhos (1 confirma direto o
+  // botão 1, 2/3 abrem picker, 4 cancela); 'monthly' tem 3 (sem atalho para
+  // "hoje/semana" — não existe botão 1). Confirmação de mês/futuro vem do
+  // onChange do input, MigrationCard. Esc é tratado pelo próprio Dialog do MUI
+  // (onClose) — pausa sem decidir, a tarefa atual continua na fila.
   useEffect(() => {
     if (!open) return
+
+    const shortcuts: Record<MigrationFlowType, Record<string, () => void>> = {
+      daily: {
+        '1': () => handleDecide('today'),
+        '2': () => setActivePicker('month'),
+        '3': () => setActivePicker('future'),
+        '4': () => handleDecide('cancel'),
+      },
+      weekly: {
+        '1': () => handleDecide('week'),
+        '2': () => setActivePicker('month'),
+        '3': () => setActivePicker('future'),
+        '4': () => handleDecide('cancel'),
+      },
+      monthly: {
+        '1': () => setActivePicker('month'),
+        '2': () => setActivePicker('future'),
+        '3': () => handleDecide('cancel'),
+      },
+    }
 
     function handleKeyDown(event: KeyboardEvent) {
       const target = event.target as HTMLElement
@@ -67,15 +91,12 @@ export function MigrationFlow({ queue, open, onClose }: MigrationFlowProps) {
         target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable
       if (isEditable) return
 
-      if (event.key === '1') handleDecide('today')
-      else if (event.key === '2') setActivePicker('month')
-      else if (event.key === '3') setActivePicker('future')
-      else if (event.key === '4') handleDecide('cancel')
+      shortcuts[flowType][event.key]?.()
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [open, handleDecide])
+  }, [open, handleDecide, flowType])
 
   if (!currentTask) return null
 
@@ -96,6 +117,7 @@ export function MigrationFlow({ queue, open, onClose }: MigrationFlowProps) {
         activePicker={activePicker}
         onOpenPicker={setActivePicker}
         onDecide={handleDecide}
+        flowType={flowType}
       />
     </Dialog>
   )

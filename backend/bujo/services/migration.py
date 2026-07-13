@@ -8,10 +8,14 @@
 from django.db import transaction
 
 from bujo.models import Task
-from bujo.services.logs import get_or_create_daily_log, get_or_create_monthly_log
+from bujo.services.logs import (
+    get_or_create_daily_log,
+    get_or_create_monthly_log,
+    get_or_create_weekly_log,
+)
 from bujo.services.state_machine import transition_task
 from bujo.services.tasks import create_task, update_task
-from core.calendar import today_for
+from core.calendar import today_for, week_start_of
 
 
 def _migrate_subtree(
@@ -52,8 +56,10 @@ def _migrate_subtree(
 
 @transaction.atomic
 def migrate_task(*, user, task_id, destination, month_first=None, scheduled_date=None) -> Task:
-    """destination: "today" | "month" | "future" | "cancel".
+    """destination: "today" | "week" | "month" | "future" | "cancel".
     "today"  -> destino = Daily Log de hoje; origem vira MIGRATED.
+    "week"   -> destino = Weekly Log da SEMANA CORRENTE (week_start calculado
+                 aqui via today_for, NUNCA aceito do cliente); origem vira MIGRATED.
     "month"  -> destino = Monthly Log do MÊS CORRENTE (month_first calculado
                  aqui via today_for, NUNCA aceito do cliente); scheduled_date
                  obrigatório; origem vira POSTPONED.
@@ -70,6 +76,10 @@ def migrate_task(*, user, task_id, destination, month_first=None, scheduled_date
     if destination == "today":
         container_field = "log"
         container = get_or_create_daily_log(user=user, log_date=today_for(user))
+        new_status, root_scheduled_date = Task.Status.MIGRATED, None
+    elif destination == "week":
+        container_field = "weekly_log"
+        container = get_or_create_weekly_log(user=user, week_start=week_start_of(today_for(user)))
         new_status, root_scheduled_date = Task.Status.MIGRATED, None
     else:  # "month" ou "future"
         container_field = "monthly_log"

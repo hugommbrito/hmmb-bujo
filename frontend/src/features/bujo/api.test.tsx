@@ -22,8 +22,18 @@ import {
   useCreateMonthlyTaskMutation,
   useMigrationQueueQuery,
   useMigrateTaskMutation,
+  useWeeklyReviewQueueQuery,
+  useMonthlyReviewQueueQuery,
 } from './api'
-import type { FutureLogMonthGroup, Log, MigrationQueue, MonthlyLog, WeeklyLog } from './types'
+import type {
+  FutureLogMonthGroup,
+  Log,
+  MigrationQueue,
+  MonthlyLog,
+  MonthlyReviewQueue,
+  WeeklyLog,
+  WeeklyReviewQueue,
+} from './types'
 
 const mockGet = client.get as ReturnType<typeof vi.fn>
 const mockPost = client.post as ReturnType<typeof vi.fn>
@@ -310,6 +320,24 @@ describe('useUpdateTaskMutation (AC2)', () => {
     await waitFor(() => expect(result.current.isError).toBe(true))
     expect(qc.getQueryData<Log>(keys.bujo.todayLog())).toEqual(LOG)
   })
+
+  it('com scheduledDate invalida monthlyLog por prefixo (confirmação de item do Future Log)', async () => {
+    const { qc, wrapper } = makeWrapper()
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+    mockPatch.mockResolvedValueOnce({
+      data: { id: 'task-1', title: 'Item do futuro', status: 'pending', subtasks: [] },
+    })
+
+    const { result } = renderHook(() => useUpdateTaskMutation(), { wrapper })
+
+    result.current.mutate({ taskId: 'task-1', scheduledDate: '2026-08-05' })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(mockPatch).toHaveBeenCalledWith('/api/bujo/tasks/task-1/', {
+      scheduledDate: '2026-08-05',
+    })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'monthlyLog'] })
+  })
 })
 
 const WEEKLY_LOG: WeeklyLog = {
@@ -465,7 +493,7 @@ describe('useMigrateTaskMutation (AC3)', () => {
     vi.resetAllMocks()
   })
 
-  it('destination=today monta o payload certo e invalida as 4 chaves esperadas', async () => {
+  it('destination=today monta o payload certo e invalida as chaves esperadas', async () => {
     const { qc, wrapper } = makeWrapper()
     const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
     mockPost.mockResolvedValueOnce({
@@ -481,9 +509,28 @@ describe('useMigrateTaskMutation (AC3)', () => {
       destination: 'today',
     })
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.bujo.migrationQueue() })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.bujo.weeklyReviewQueue() })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.bujo.monthlyReviewQueue() })
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.bujo.todayLog() })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'weeklyLog'] })
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'monthlyLog'] })
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'futureLog'] })
+  })
+
+  it('destination=week monta o payload certo', async () => {
+    const { wrapper } = makeWrapper()
+    mockPost.mockResolvedValueOnce({
+      data: { id: 'task-1', title: 'Pendente da semana anterior', status: 'migrated', subtasks: [] },
+    })
+
+    const { result } = renderHook(() => useMigrateTaskMutation(), { wrapper })
+
+    result.current.mutate({ taskId: 'task-1', destination: 'week' })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(mockPost).toHaveBeenCalledWith('/api/bujo/tasks/task-1/migrate/', {
+      destination: 'week',
+    })
   })
 
   it('destination=month monta o payload com scheduledDate', async () => {
@@ -540,5 +587,53 @@ describe('useMigrateTaskMutation (AC3)', () => {
     expect(mockPost).toHaveBeenCalledWith('/api/bujo/tasks/task-1/migrate/', {
       destination: 'cancel',
     })
+  })
+})
+
+const WEEKLY_REVIEW_QUEUE: WeeklyReviewQueue = {
+  weekStart: '2026-07-06',
+  tasks: [
+    { id: 'task-1', title: 'Pendente da semana anterior', status: 'pending', eisenhower: null, category: null, subtasks: [] },
+  ],
+}
+
+describe('useWeeklyReviewQueueQuery (AC1)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+  })
+
+  it('busca a fila de revisão semanal', async () => {
+    mockGet.mockResolvedValueOnce({ data: WEEKLY_REVIEW_QUEUE })
+    const { wrapper } = makeWrapper()
+
+    const { result } = renderHook(() => useWeeklyReviewQueueQuery(), { wrapper })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data).toEqual(WEEKLY_REVIEW_QUEUE)
+    expect(mockGet).toHaveBeenCalledWith('/api/bujo/weekly-review/queue/')
+  })
+})
+
+const MONTHLY_REVIEW_QUEUE: MonthlyReviewQueue = {
+  monthFirst: '2026-06-01',
+  tasks: [
+    { id: 'task-2', title: 'Pendente do mês anterior', status: 'pending', eisenhower: null, category: null, subtasks: [] },
+  ],
+}
+
+describe('useMonthlyReviewQueueQuery (AC2)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+  })
+
+  it('busca a fila de revisão mensal', async () => {
+    mockGet.mockResolvedValueOnce({ data: MONTHLY_REVIEW_QUEUE })
+    const { wrapper } = makeWrapper()
+
+    const { result } = renderHook(() => useMonthlyReviewQueueQuery(), { wrapper })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data).toEqual(MONTHLY_REVIEW_QUEUE)
+    expect(mockGet).toHaveBeenCalledWith('/api/bujo/monthly-review/queue/')
   })
 })

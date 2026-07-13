@@ -6,7 +6,7 @@ import pytest
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
-from bujo.models import Log, Task
+from bujo.models import Log, MonthlyLog, Task, WeeklyLog
 from bujo.services.logs import (
     get_or_create_daily_log,
     get_or_create_monthly_log,
@@ -896,3 +896,217 @@ def test_post_migrate_escopado_por_tenant(auth_client, user, other_user):
     )
 
     assert response.status_code == 404
+
+
+@pytest.mark.django_db
+def test_post_migrate_destination_week_migra_para_weekly_log_corrente(auth_client, user):
+    with tenant_context(user):
+        previous_week = WeeklyLogFactory(
+            user=user, week_start=week_start_of(today_for(user)) - timedelta(weeks=1)
+        )
+        task = TaskFactory(user=user, weekly_log=previous_week, status=Task.Status.PENDING)
+
+    response = auth_client.post(
+        f"/api/bujo/tasks/{task.id}/migrate/", {"destination": "week"}, format="json"
+    )
+
+    assert response.status_code == 200
+    assert response.data["status"] == "migrated"
+    with tenant_context(user):
+        task.refresh_from_db()
+        assert task.status == "migrated"
+        current_weekly_log = get_or_create_weekly_log(
+            user=user, week_start=week_start_of(today_for(user))
+        )
+        assert current_weekly_log.tasks.filter(id=task.migrated_to_task_id).exists()
+
+
+# --- WeeklyReviewQueueView / MonthlyReviewQueueView (AC #1, #2) --------------
+
+
+@pytest.mark.django_db
+def test_get_weekly_review_queue_sem_semana_anterior_retorna_vazio_e_nao_materializa(
+    auth_client, user
+):
+    response = auth_client.get("/api/bujo/weekly-review/queue/")
+
+    assert response.status_code == 200
+    assert response.data["tasks"] == []
+    with tenant_context(user):
+        assert WeeklyLog.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_get_weekly_review_queue_so_traz_raizes_pending_started_da_semana_anterior(
+    auth_client, user
+):
+    with tenant_context(user):
+        previous_week_start = week_start_of(today_for(user)) - timedelta(weeks=1)
+        previous_week = WeeklyLogFactory(user=user, week_start=previous_week_start)
+        pending = TaskFactory(
+            user=user, weekly_log=previous_week, status=Task.Status.PENDING, title="Pendente"
+        )
+        TaskFactory(
+            user=user, weekly_log=previous_week, status=Task.Status.STARTED, title="Iniciada"
+        )
+        TaskFactory(
+            user=user, weekly_log=previous_week, status=Task.Status.COMPLETED, title="Concluída"
+        )
+        TaskFactory(
+            user=user, weekly_log=previous_week, status=Task.Status.CANCELLED, title="Cancelada"
+        )
+        TaskFactory(
+            user=user,
+            weekly_log=previous_week,
+            parent_task=pending,
+            status=Task.Status.PENDING,
+            title="Subtarefa",
+        )
+
+    response = auth_client.get("/api/bujo/weekly-review/queue/")
+
+    assert response.status_code == 200
+    titles = {task["title"] for task in response.data["tasks"]}
+    assert titles == {"Pendente", "Iniciada"}
+
+
+@pytest.mark.django_db
+def test_get_weekly_review_queue_escopado_por_tenant(auth_client, user, other_user):
+    with tenant_context(other_user):
+        previous_week = WeeklyLogFactory(
+            user=other_user, week_start=week_start_of(today_for(other_user)) - timedelta(weeks=1)
+        )
+        TaskFactory(
+            user=other_user,
+            weekly_log=previous_week,
+            status=Task.Status.PENDING,
+            title="Da outra tenant",
+        )
+
+    response = auth_client.get("/api/bujo/weekly-review/queue/")
+
+    assert response.status_code == 200
+    assert response.data["tasks"] == []
+
+
+@pytest.mark.django_db
+def test_get_monthly_review_queue_sem_mes_anterior_retorna_vazio_e_nao_materializa(
+    auth_client, user
+):
+    response = auth_client.get("/api/bujo/monthly-review/queue/")
+
+    assert response.status_code == 200
+    assert response.data["tasks"] == []
+    with tenant_context(user):
+        assert MonthlyLog.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_get_monthly_review_queue_so_traz_raizes_pending_started_do_mes_anterior(
+    auth_client, user
+):
+    with tenant_context(user):
+        current_month_first = today_for(user).replace(day=1)
+        previous_month_first = (current_month_first - timedelta(days=1)).replace(day=1)
+        previous_month = MonthlyLogFactory(user=user, month_first=previous_month_first)
+        pending = TaskFactory(
+            user=user, monthly_log=previous_month, status=Task.Status.PENDING, title="Pendente"
+        )
+        TaskFactory(
+            user=user, monthly_log=previous_month, status=Task.Status.STARTED, title="Iniciada"
+        )
+        TaskFactory(
+            user=user, monthly_log=previous_month, status=Task.Status.COMPLETED, title="Concluída"
+        )
+        TaskFactory(
+            user=user, monthly_log=previous_month, status=Task.Status.CANCELLED, title="Cancelada"
+        )
+        TaskFactory(
+            user=user,
+            monthly_log=previous_month,
+            parent_task=pending,
+            status=Task.Status.PENDING,
+            title="Subtarefa",
+        )
+
+    response = auth_client.get("/api/bujo/monthly-review/queue/")
+
+    assert response.status_code == 200
+    titles = {task["title"] for task in response.data["tasks"]}
+    assert titles == {"Pendente", "Iniciada"}
+
+
+@pytest.mark.django_db
+def test_get_monthly_review_queue_escopado_por_tenant(auth_client, user, other_user):
+    with tenant_context(other_user):
+        current_month_first = today_for(other_user).replace(day=1)
+        previous_month_first = (current_month_first - timedelta(days=1)).replace(day=1)
+        previous_month = MonthlyLogFactory(user=other_user, month_first=previous_month_first)
+        TaskFactory(
+            user=other_user,
+            monthly_log=previous_month,
+            status=Task.Status.PENDING,
+            title="Da outra tenant",
+        )
+
+    response = auth_client.get("/api/bujo/monthly-review/queue/")
+
+    assert response.status_code == 200
+    assert response.data["tasks"] == []
+
+
+# --- TaskDetailView PATCH scheduledDate (AC #2 — confirmação do Future Log) --
+
+
+@pytest.mark.django_db
+def test_patch_task_detail_scheduled_date_dentro_do_mes_do_monthly_log_atualiza(
+    auth_client, user
+):
+    with tenant_context(user):
+        current_month_first = today_for(user).replace(day=1)
+        monthly_log = MonthlyLogFactory(user=user, month_first=current_month_first)
+        task = TaskFactory(user=user, monthly_log=monthly_log, scheduled_date=None)
+        new_date = current_month_first.replace(day=15)
+
+    response = auth_client.patch(
+        f"/api/bujo/tasks/{task.id}/", {"scheduledDate": new_date.isoformat()}, format="json"
+    )
+
+    assert response.status_code == 200
+    assert response.data["scheduled_date"] == new_date.isoformat()
+    with tenant_context(user):
+        task.refresh_from_db()
+        assert task.scheduled_date == new_date
+
+
+@pytest.mark.django_db
+def test_patch_task_detail_scheduled_date_fora_do_mes_do_monthly_log_retorna_400(
+    auth_client, user
+):
+    with tenant_context(user):
+        current_month_first = today_for(user).replace(day=1)
+        monthly_log = MonthlyLogFactory(user=user, month_first=current_month_first)
+        task = TaskFactory(user=user, monthly_log=monthly_log, scheduled_date=None)
+        outro_mes = date(current_month_first.year, current_month_first.month % 12 + 1, 5)
+
+    response = auth_client.patch(
+        f"/api/bujo/tasks/{task.id}/", {"scheduledDate": outro_mes.isoformat()}, format="json"
+    )
+
+    assert response.status_code == 400
+
+
+@pytest.mark.django_db
+def test_patch_task_detail_scheduled_date_sem_monthly_log_aceito_sem_checagem_de_mes(
+    auth_client, user
+):
+    with tenant_context(user):
+        yesterday_log = LogFactory(user=user)
+        task = TaskFactory(user=user, log=yesterday_log, scheduled_date=None)
+
+    response = auth_client.patch(
+        f"/api/bujo/tasks/{task.id}/", {"scheduledDate": "2099-12-25"}, format="json"
+    )
+
+    assert response.status_code == 200
+    assert response.data["scheduled_date"] == "2099-12-25"

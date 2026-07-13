@@ -15,7 +15,7 @@ from bujo.services.migration import migrate_task
 from bujo.services.state_machine import ALLOWED, transition_task
 from bujo.services.tasks import create_task, reorder_task, update_task
 from bujo.tests.factories import LogFactory, MonthlyLogFactory, TaskFactory, WeeklyLogFactory
-from core.calendar import today_for
+from core.calendar import today_for, week_start_of
 from core.exceptions import InvalidReorderTarget, InvalidTransition
 from core.tenant import tenant_context
 
@@ -440,6 +440,74 @@ def test_migrate_task_destination_today_torna_origem_migrated_e_cria_no_daily_de
         assert new_task.status == Task.Status.PENDING
         assert new_task.migration_count == 1
         assert new_task.log_id == today_log.id
+        assert new_task.parent_task is None
+
+
+@pytest.mark.django_db
+def test_migrar_pai_com_filho_pendente_e_filho_completo_para_destino_week(user):
+    """Cenário-âncora AD-08 item 11 (guardrail retro Epic 3 §5), variante do
+    destino "week" desta story: pai com um filho `pending` e um filho
+    `completed` migrado para a Weekly Log corrente recria no destino só o pai
+    e o filho pendente; o filho concluído fica intocado na origem."""
+    with tenant_context(user):
+        log = LogFactory(user=user)
+        parent = TaskFactory(user=user, log=log, status=Task.Status.PENDING, title="Pai")
+        completed_child = TaskFactory(
+            user=user,
+            log=log,
+            parent_task=parent,
+            status=Task.Status.COMPLETED,
+            title="Filho concluído",
+        )
+        pending_child = TaskFactory(
+            user=user,
+            log=log,
+            parent_task=parent,
+            status=Task.Status.PENDING,
+            title="Filho pendente",
+        )
+
+        result = migrate_task(user=user, task_id=parent.id, destination="week")
+
+        completed_child.refresh_from_db()
+        pending_child.refresh_from_db()
+        assert result.status == Task.Status.MIGRATED
+        assert completed_child.status == Task.Status.COMPLETED
+        assert completed_child.parent_task_id == parent.id
+        assert completed_child.migrated_to_task_id is None
+        assert pending_child.status == Task.Status.MIGRATED
+
+        current_week_start = week_start_of(today_for(user))
+        weekly_log = get_or_create_weekly_log(user=user, week_start=current_week_start)
+        new_parent = result.migrated_to_task
+        assert new_parent is not None
+        assert new_parent.weekly_log_id == weekly_log.id
+        assert new_parent.status == Task.Status.PENDING
+        assert new_parent.migration_count == 1
+        destino_filhos = list(new_parent.subtasks.all())
+        assert len(destino_filhos) == 1
+        assert destino_filhos[0].title == "Filho pendente"
+        assert destino_filhos[0].status == Task.Status.PENDING
+        assert destino_filhos[0].weekly_log_id == weekly_log.id
+        assert destino_filhos[0].id == pending_child.migrated_to_task_id
+
+
+@pytest.mark.django_db
+def test_migrate_task_destination_week_torna_origem_migrated_e_cria_no_weekly_corrente(user):
+    with tenant_context(user):
+        log = LogFactory(user=user)
+        task = TaskFactory(user=user, log=log, status=Task.Status.PENDING)
+
+        result = migrate_task(user=user, task_id=task.id, destination="week")
+
+        current_week_start = week_start_of(today_for(user))
+        weekly_log = get_or_create_weekly_log(user=user, week_start=current_week_start)
+        assert result.status == Task.Status.MIGRATED
+        new_task = result.migrated_to_task
+        assert new_task is not None
+        assert new_task.status == Task.Status.PENDING
+        assert new_task.migration_count == 1
+        assert new_task.weekly_log_id == weekly_log.id
         assert new_task.parent_task is None
 
 

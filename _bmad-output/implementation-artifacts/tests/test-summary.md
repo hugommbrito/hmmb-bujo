@@ -802,4 +802,74 @@ E2E:      npx playwright test → 14 passed (9 pré-existentes + 5 novos), execu
 
 - Story 4.3 (revisão semanal/mensal) e Story 4.4 (Catch-Up genérico) reaproveitam `migrate_task` — `seedYesterdayQueue.ts` pode virar a base de um seed mais genérico por tipo de log (weekly/monthly) quando essas stories chegarem, em vez de duplicar a técnica.
 - Nenhum job de CI sobe backend+frontend juntos hoje (mesmo gap apontado nas Stories 3.1/3.3/3.4) — os E2E continuam rodando só localmente contra o Neon dev branch.
+
+---
+
+# Resumo de Automação de Testes — Story 4.3: Revisão semanal/mensal e pull automático do Future Log
+
+**Data:** 2026-07-13
+**Story:** 4.3 — Revisão semanal/mensal e pull automático do Future Log
+**Framework:** pytest + DRF `APIClient` (backend) · Vitest 4.1 + @testing-library/react + jest-axe (frontend) · Playwright 1.61 (E2E de browser real)
+
+A story já chegou implementada com um spec E2E **permanente** escrito pelo próprio dev-story (`weekly-monthly-review.spec.ts` + `seedReviewScenario.ts`, mesmo molde de `migration-flow.spec.ts`/`seedYesterdayQueue.ts` da 4.2 — lição do achado MEDIUM da revisão da 4.2 aplicada preventivamente). Cobertura unitária extensa também já presente (`WeeklyReviewBanner`/`MonthlyReviewBanner`/`MigrationCard`/`MigrationFlow` com as 3 variantes de `flowType`/`MonthlyPage`). Esta rodada de QA auditou o spec E2E existente contra as ACs/Tasks da story (não gerou infraestrutura nova) e encontrou 2 gaps de asserção — ambos corrigidos no próprio arquivo.
+
+## Gaps Descobertos e Fechados
+
+| Gap | Arquivo | Descrição |
+|-----|---------|-----------|
+| Destino `"week"` nunca verificado no destino real | `frontend/e2e/weekly-monthly-review.spec.ts` | O spec confirmava que o `Dialog` fechava e o banner semanal sumia após a migração, mas nunca navegava até a Weekly Log corrente (`/planner/week`) para confirmar que a tarefa (pai + filho pendente, sem o filho concluído) realmente chegou lá — a própria essência do destino `"week"` do dispatcher de `migrate_task` (Task 1.1). Fechado com navegação para "Esta Semana" + asserções de `task-row` (pai e filho pendente presentes, filho concluído ausente). |
+| Ordem da seção "Itens do Future Log" nunca verificada | `frontend/e2e/weekly-monthly-review.spec.ts` | O spec confirmava que os textos "Itens do Future Log para [Mês]" e o título da tarefa com data apareciam na página, mas não que a seção sem data vem **antes** da seção com data — que é a própria regra de negócio da Task 8.1 (em qualquer mês que não o corrente a ordem é invertida). Sem essa asserção, um regresso que reordenasse as seções passaria despercebido. Fechado com comparação de `indexOf` no texto do `<main>`. |
+
+## Testes Ajustados
+
+### `frontend/e2e/weekly-monthly-review.spec.ts` (existente, estendido nesta rodada — mesmo teste, 2 blocos de asserção novos)
+
+- [x] Após a migração semanal (atalho `1`, `flowType=weekly`): navega para "Esta Semana" e confirma `task-row` de "Planejar sprint" + "Subtarefa pendente" visíveis, "Subtarefa concluída" ausente (AD-08 item 11, agora também provado no destino real, não só na origem).
+- [x] Após abrir o Monthly Log corrente: `mainText.indexOf('Itens do Future Log para') < mainText.indexOf('Revisar orçamento')` — confirma a inversão de ordem exigida pela Task 8.1 quando o mês exibido é o corrente.
+
+## Cobertura por AC
+
+| AC | Critério | Coberto por |
+|----|----------|-------------|
+| AC1 | Banner semanal com contagem exata, só raízes | `WeeklyReviewBanner.test.tsx` (pré-existente) + `weekly-monthly-review.spec.ts` (browser real) |
+| AC1 | Migration Card `flowType=weekly` — destino `"week"` migra para a Weekly Log CORRENTE | `test_services.py`/`test_views.py` (pré-existente) + `weekly-monthly-review.spec.ts` ← **gap fechado nesta rodada: agora verificado no destino real (`/planner/week`), não só pelo desaparecimento do banner** |
+| AC1 | Migração de subárvore no destino `"week"`: só filho pendente viaja | `test_services.py` (pré-existente, cenário-âncora) + `weekly-monthly-review.spec.ts` ← **gap fechado: `task-row` do filho concluído ausente na Weekly Log corrente** |
+| AC2 | Banner mensal com contagem exata, só raízes | `MonthlyReviewBanner.test.tsx` (pré-existente) + `weekly-monthly-review.spec.ts` (browser real) |
+| AC2 | Migration Card `flowType=monthly` — 3 botões, sem "hoje/semana" | `MigrationCard.test.tsx` (pré-existente) + `weekly-monthly-review.spec.ts` (browser real) |
+| AC2 | Pull do Future Log: seção "Itens do Future Log para [Mês]" no topo do mês corrente | `MonthlyPage.test.tsx` (pré-existente) + `weekly-monthly-review.spec.ts` ← **gap fechado nesta rodada: ordem da seção verificada via `indexOf`, não só presença dos textos** |
+| AC2 | Confirmação de data inline (`scheduledDate` via PATCH) tira o item da seção sem data | `MonthlyPage.test.tsx` (pré-existente) + `weekly-monthly-review.spec.ts` (browser real, `input[type=date]` real) |
+
+## Observações
+
+- **Timeout ajustado, não é um gap de produto:** a primeira execução da asserção nova (`task-row` de "Planejar sprint" na Weekly Log corrente) falhou intermitentemente com o timeout padrão de 5s — reproduzido isoladamente via `curl` direto no backend (`manage.py runserver` + Neon dev), que confirmou os dados corretos e disponíveis (a tarefa migrada aparece em `unscheduled` da resposta de `/api/bujo/logs/weekly/` imediatamente após o `POST /migrate/`). O problema era só orçamento de tempo insuficiente para a latência real de rede contra o Neon dev branch após uma sequência de operações (fechar dialog anterior + navegação + fetch), mesmo padrão já usado em outras partes do próprio spec (`timeout: 10_000` na confirmação de data). Ajustado para `10_000` — sem isso o teste ficaria flake, não a feature quebrada.
+- **Flake pré-existente, não desta story:** a suíte completa (`npx playwright test`, 15 specs) rodou com 14 passed / 1 failed, sempre em `migration-flow.spec.ts` (Story 4.2) e em testes diferentes a cada execução — mesma concorrência de signups simultâneos contra o Neon dev branch compartilhado já documentada nas Completion Notes da própria 4.3 (Debug Log References, Task 10.4). `weekly-monthly-review.spec.ts` rodou verde 2x consecutivas isoladamente. Não é uma regressão desta rodada de QA nem está no escopo da 4.3 corrigir.
+
+## Execução
+
+```
+Backend:  não alterado nesta rodada de QA (sem gap de backend identificado — cobertura de
+          serviço/view já extensa pelo dev-story).
+E2E:      npx playwright test e2e/weekly-monthly-review.spec.ts → 1 passed (2 execuções
+          consecutivas, sem flake)
+          npx playwright test (suíte completa, 15 specs) → 14 passed, 1 failed
+          (falha em migration-flow.spec.ts, flake de concorrência pré-existente,
+          não relacionado a esta rodada)
+```
+
+## Checklist de Validação
+
+- [x] Testes E2E auditados e estendidos (2 gaps de asserção fechados no spec já existente — nenhum teste novo precisou ser criado, a infraestrutura de seed/spec já cobria os cenários)
+- [x] Usam APIs padrão do framework já adotado (`@playwright/test`) — nenhuma ferramenta nova introduzida
+- [x] Cobrem happy path (2 banners, 2 revisões, pull do Future Log, confirmação de data) — sem casos de erro adicionais nesta rodada (não identificados gaps de erro crítico)
+- [x] Teste-alvo passa (2 execuções consecutivas, sem flake)
+- [x] Locators semânticos (`getByRole`, `getByLabel`, `getByText`, `data-testid` já existente para `task-row`)
+- [x] Sem waits/sleeps artificiais — `page.waitForResponse` (já existente) + timeout explícito ajustado por latência real de rede, não por sleep
+- [x] Teste independente (cria seu próprio usuário via signup + seed isolado)
+- [x] Summary salvo em `_bmad-output/implementation-artifacts/tests/test-summary.md`
+- [x] Teste mantido no diretório correto (`frontend/e2e/weekly-monthly-review.spec.ts`)
+
+## Próximos Passos
+
+- Nenhuma ação pendente desta story.
+- O flake de `migration-flow.spec.ts` (concorrência entre signups no Neon dev branch compartilhado) segue como débito conhecido desde a 4.2 — candidato a resolver com `fullyParallel: false` para specs dependentes de estado global ou um banco de teste isolado por worker, fora do escopo desta rodada.
 - Nenhuma ação bloqueante pendente para esta story.

@@ -140,6 +140,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/bujo/monthly-review/queue/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["bujo_monthly_review_queue_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/bujo/tasks/": {
         parameters: {
             query?: never;
@@ -236,6 +252,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/bujo/weekly-review/queue/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["bujo_weekly_review_queue_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -254,12 +286,13 @@ export interface components {
         CategoryEnum: "teal" | "purple" | "pink" | "yellow" | "green" | "blue";
         /**
          * @description * `today` - today
+         *     * `week` - week
          *     * `month` - month
          *     * `future` - future
          *     * `cancel` - cancel
          * @enum {string}
          */
-        DestinationEnum: "today" | "month" | "future" | "cancel";
+        DestinationEnum: "today" | "week" | "month" | "future" | "cancel";
         /**
          * @description * `ui` - Urgent Important
          *     * `u` - Urgent
@@ -290,6 +323,11 @@ export interface components {
             monthFirst: string;
             tasks: components["schemas"]["Task"][];
         };
+        MonthlyReviewQueue: {
+            /** Format: date */
+            monthFirst: string;
+            tasks: components["schemas"]["Task"][];
+        };
         MonthlyTaskCreate: {
             /** Format: date */
             monthFirst: string;
@@ -307,6 +345,8 @@ export interface components {
             description?: string | null;
             eisenhower?: (components["schemas"]["EisenhowerEnum"] | components["schemas"]["NullEnum"]) | null;
             category?: (components["schemas"]["CategoryEnum"] | components["schemas"]["NullEnum"]) | null;
+            /** Format: date */
+            scheduledDate?: string | null;
         };
         /**
          * @description * `before` - before
@@ -387,6 +427,11 @@ export interface components {
             weekStart: string;
             days: components["schemas"]["WeeklyDay"][];
             unscheduled: components["schemas"]["Task"][];
+        };
+        WeeklyReviewQueue: {
+            /** Format: date */
+            weekStart: string;
+            tasks: components["schemas"]["Task"][];
         };
     };
     responses: never;
@@ -579,6 +624,25 @@ export interface operations {
             };
         };
     };
+    bujo_monthly_review_queue_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MonthlyReviewQueue"];
+                };
+            };
+        };
+    };
     bujo_tasks_create: {
         parameters: {
             query?: never;
@@ -723,6 +787,25 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Task"];
+                };
+            };
+        };
+    };
+    bujo_weekly_review_queue_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WeeklyReviewQueue"];
                 };
             };
         };

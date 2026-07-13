@@ -29,6 +29,7 @@ function renderCard(props: {
   index?: number
   total?: number
   activePicker?: 'none' | 'month' | 'future'
+  flowType?: 'daily' | 'weekly' | 'monthly'
 } = {}) {
   const onDecide = vi.fn()
   const onOpenPicker = vi.fn()
@@ -41,6 +42,7 @@ function renderCard(props: {
         activePicker={props.activePicker ?? 'none'}
         onOpenPicker={onOpenPicker}
         onDecide={onDecide}
+        flowType={props.flowType}
       />
     </ThemeProvider>,
   )
@@ -129,6 +131,71 @@ describe('MigrationCard (AC2)', () => {
 
   it('sem violações de acessibilidade (jest-axe) contra o componente real', async () => {
     const { container } = renderCard()
+
+    expect(await axe(container)).toHaveNoViolations()
+  })
+})
+
+describe('MigrationCard flowType="weekly" (Task 6)', () => {
+  it('botão 1 tem o rótulo "Migrar para esta semana" e chama onDecide com destination=week', () => {
+    const { onDecide } = renderCard({ flowType: 'weekly' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Migrar para esta semana' }))
+
+    expect(onDecide).toHaveBeenCalledWith('week')
+  })
+
+  it('mantém os 4 botões (mesma anatomia do diário)', () => {
+    renderCard({ flowType: 'weekly' })
+
+    expect(screen.getByRole('button', { name: 'Migrar para esta semana' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Adiar no mês' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Adiar no Futuro' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Cancelar' })).toBeInTheDocument()
+  })
+
+  it('sem violações de acessibilidade (jest-axe)', async () => {
+    const { container } = renderCard({ flowType: 'weekly' })
+
+    expect(await axe(container)).toHaveNoViolations()
+  })
+})
+
+describe('MigrationCard flowType="monthly" (Task 6)', () => {
+  it('não renderiza um botão "hoje/semana" — só 3 botões', () => {
+    renderCard({ flowType: 'monthly' })
+
+    expect(
+      screen.queryByRole('button', { name: 'Migrar para hoje' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Migrar para esta semana' }),
+    ).not.toBeInTheDocument()
+    expect(screen.getAllByRole('button')).toHaveLength(3)
+  })
+
+  it('rótulo do botão de mês é "Definir data em [Mês]" e atalhos são 1-3', () => {
+    renderCard({ flowType: 'monthly' })
+
+    const buttons = screen.getAllByRole('button')
+    expect(buttons[0]).toHaveTextContent(/^Definir data em /)
+    expect(buttons[0]).toHaveTextContent('1')
+    expect(buttons[1]).toHaveTextContent('Adiar no Futuro')
+    expect(buttons[1]).toHaveTextContent('2')
+    expect(buttons[2]).toHaveTextContent('Cancelar')
+    expect(buttons[2]).toHaveTextContent('3')
+  })
+
+  it('clicar em "Definir data em [Mês]" chama onOpenPicker("month")', () => {
+    const { onOpenPicker } = renderCard({ flowType: 'monthly' })
+
+    fireEvent.click(screen.getAllByRole('button')[0])
+
+    expect(onOpenPicker).toHaveBeenCalledWith('month')
+  })
+
+  it('sem violações de acessibilidade (jest-axe)', async () => {
+    const { container } = renderCard({ flowType: 'monthly' })
 
     expect(await axe(container)).toHaveNoViolations()
   })

@@ -148,6 +148,20 @@ paths:
               schema:
                 $ref: '#/components/schemas/MigrationQueue'
           description: ''
+  /api/bujo/monthly-review/queue/:
+    get:
+      operationId: bujo_monthly_review_queue_retrieve
+      tags:
+      - bujo
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MonthlyReviewQueue'
+          description: ''
   /api/bujo/tasks/:
     post:
       operationId: bujo_tasks_create
@@ -302,6 +316,20 @@ paths:
               schema:
                 $ref: '#/components/schemas/Task'
           description: ''
+  /api/bujo/weekly-review/queue/:
+    get:
+      operationId: bujo_weekly_review_queue_retrieve
+      tags:
+      - bujo
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeeklyReviewQueue'
+          description: ''
 components:
   schemas:
     BlankEnum:
@@ -326,12 +354,14 @@ components:
     DestinationEnum:
       enum:
       - today
+      - week
       - month
       - future
       - cancel
       type: string
       description: |-
         * `today` - today
+        * `week` - week
         * `month` - month
         * `future` - future
         * `cancel` - cancel
@@ -407,6 +437,19 @@ components:
       required:
       - monthFirst
       - tasks
+    MonthlyReviewQueue:
+      type: object
+      properties:
+        monthFirst:
+          type: string
+          format: date
+        tasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/Task'
+      required:
+      - monthFirst
+      - tasks
     MonthlyTaskCreate:
       type: object
       properties:
@@ -458,6 +501,10 @@ components:
           oneOf:
           - $ref: '#/components/schemas/CategoryEnum'
           - $ref: '#/components/schemas/NullEnum'
+        scheduledDate:
+          type: string
+          format: date
+          nullable: true
     PositionEnum:
       enum:
       - before
@@ -652,6 +699,19 @@ components:
       required:
       - days
       - unscheduled
+      - weekStart
+    WeeklyReviewQueue:
+      type: object
+      properties:
+        weekStart:
+          type: string
+          format: date
+        tasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/Task'
+      required:
+      - tasks
       - weekStart
   securitySchemes:
     jwtAuth:

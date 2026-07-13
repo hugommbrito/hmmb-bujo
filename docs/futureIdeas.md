@@ -12,3 +12,9 @@
 
 [ ] AppMobile? É possível fazer widgets sem um app?
 
+[ ] Aba de "Histórico", para ver logs, weeks e months passados.
+
+
+BUGs
+[ ] Testes poluindo o banco de dados.
+[ ] Logs diários passados ficando com Tasks em estado Pending

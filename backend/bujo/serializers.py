@@ -68,6 +68,7 @@ class TaskUpdateSerializer(serializers.Serializer):
     category = serializers.ChoiceField(
         choices=Task.Category.choices, required=False, allow_null=True
     )
+    scheduled_date = serializers.DateField(required=False, allow_null=True)
 
 
 class TaskReorderSerializer(serializers.Serializer):
@@ -102,8 +103,18 @@ class MigrationQueueSerializer(serializers.Serializer):
     tasks = TaskSerializer(many=True)
 
 
+class WeeklyReviewQueueSerializer(serializers.Serializer):
+    week_start = serializers.DateField()
+    tasks = TaskSerializer(many=True)
+
+
+class MonthlyReviewQueueSerializer(serializers.Serializer):
+    month_first = serializers.DateField()
+    tasks = TaskSerializer(many=True)
+
+
 class TaskMigrateSerializer(serializers.Serializer):
-    destination = serializers.ChoiceField(choices=["today", "month", "future", "cancel"])
+    destination = serializers.ChoiceField(choices=["today", "week", "month", "future", "cancel"])
     month_first = serializers.DateField(required=False)
     scheduled_date = serializers.DateField(required=False, allow_null=True)
 
