@@ -738,7 +738,7 @@ So that eu tenha o histórico auditável que é o valor central do BuJo (FR-1.10
 **Given** um ciclo (semana/mês) em que todas as tarefas têm disposição,
 **When** a condição de fechamento é avaliada,
 **Then** o ciclo é marcado "Fechado" (texto, sem ícone celebratório) considerando a subárvore completa de cada tarefa,
-**And** o ciclo fechado move para o Arquivo.
+**And** o ciclo fechado passa a aparecer no Arquivo (fechamento computado na leitura — o registro não é movido; continua acessível pela navegação normal e passa a ser listado no Arquivo também).
 
 **Given** a superfície Arquivo,
 **When** Hugo a acessa,

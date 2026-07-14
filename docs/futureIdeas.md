@@ -11,7 +11,6 @@
 
 BUGs Epico 4:
 - [ ] Testes poluindo o banco de dados. O banco atualmente possui mais de 200 usuários, mas eu sou o único cadastrado na plataforma.
-- [x] Logs diários passados ficando com Tasks em estado Pending
 - [ ] Recorrentes: Remover de dentro de configurações (Criar aba "Recorrentes" dentro de "Planner")
 - [ ] Recorrentes: Filtros e abas (ativo, recorrência, etc.)
 - [ ] Recorrentes: Na aba este mês esta semana, o recorrente deve desaparecer ao ser definido o placemente (Filtro para exibir apenas os recorrentes que não estejam citados como )
@@ -21,4 +20,3 @@ BUGs Epico 4:
 - [ ] Esta Semana: Devo poder adicionar uma task em um dia desta semana.
 - [ ] Uma task em qualquer lugar (log, esta semana, este mês ou futuro) deve poder ser migrada ou adiada
   - Premissa: Se eu quero antecipar para hoje uma tarefa de amanhã (esta semana) ou da próxima semana (este mês), devo ter essa opção e o mesmo acontece ao contrário, caso uma tarefa do log deva ser feita amanhã, na próxima semana ou no próximo mês, devo poder adiá-la.
-  
