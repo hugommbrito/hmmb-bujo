@@ -14,6 +14,7 @@ from rest_framework.views import APIView
 
 from bujo.models import Log, MonthlyLog, Task, WeeklyLog
 from bujo.serializers import (
+    CatchUpQueueSerializer,
     FutureLogMonthGroupSerializer,
     LogSerializer,
     MigrationQueueSerializer,
@@ -279,6 +280,37 @@ class MonthlyReviewQueueView(APIView):
             )
         data = {"month_first": previous_month_first, "tasks": tasks}
         return Response(MonthlyReviewQueueSerializer(data).data)
+
+
+class CatchUpQueueView(APIView):
+    @extend_schema(responses=CatchUpQueueSerializer)
+    def get(self, request):
+        today = today_for(request.user)
+        yesterday = today - timedelta(days=1)
+        previous_week_start = week_start_of(today) - timedelta(weeks=1)
+        previous_month_first = (today.replace(day=1) - timedelta(days=1)).replace(day=1)
+
+        def undisposed_roots(queryset):
+            return queryset.filter(
+                status__in=[Task.Status.PENDING, Task.Status.STARTED], parent_task__isnull=True
+            )
+
+        monthly_tasks = undisposed_roots(
+            Task.objects.filter(monthly_log__month_first__lt=previous_month_first)
+        ).order_by("monthly_log__month_first")
+        weekly_tasks = undisposed_roots(
+            Task.objects.filter(weekly_log__week_start__lt=previous_week_start)
+        ).order_by("weekly_log__week_start")
+        daily_tasks = undisposed_roots(
+            Task.objects.filter(log__log_date__lt=yesterday)
+        ).order_by("log__log_date")
+
+        data = {
+            "monthly_tasks": monthly_tasks,
+            "weekly_tasks": weekly_tasks,
+            "daily_tasks": daily_tasks,
+        }
+        return Response(CatchUpQueueSerializer(data).data)
 
 
 class TaskMigrateView(APIView):

@@ -18,6 +18,7 @@ export const keys = {
     migrationQueue: () => ['bujo', 'migrationQueue', 'list'] as const,
     weeklyReviewQueue: () => ['bujo', 'weeklyReviewQueue', 'list'] as const,
     monthlyReviewQueue: () => ['bujo', 'monthlyReviewQueue', 'list'] as const,
+    catchUpQueue: () => ['bujo', 'catchUpQueue', 'list'] as const,
   },
   // Adicionados nas stories:
   // habits: { logs: { ... } }  → Story 6.x

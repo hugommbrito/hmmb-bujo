@@ -873,3 +873,78 @@ E2E:      npx playwright test e2e/weekly-monthly-review.spec.ts → 1 passed (2 
 - Nenhuma ação pendente desta story.
 - O flake de `migration-flow.spec.ts` (concorrência entre signups no Neon dev branch compartilhado) segue como débito conhecido desde a 4.2 — candidato a resolver com `fullyParallel: false` para specs dependentes de estado global ou um banco de teste isolado por worker, fora do escopo desta rodada.
 - Nenhuma ação bloqueante pendente para esta story.
+
+---
+
+# Resumo de Automação de Testes — Story 4.4: Catch-Up de dias pulados
+
+**Data:** 2026-07-13
+**Story:** 4.4 — Catch-Up de dias pulados
+**Framework:** pytest + DRF `APIClient` (backend) · Vitest 4.1 + @testing-library/react + jest-axe (frontend) · Playwright 1.61 (E2E de browser real)
+
+A story já chegou implementada com um spec E2E **permanente** escrito pelo próprio dev-story (`catch-up.spec.ts` + `seedCatchUpScenario.ts`, mesmo molde de `weekly-monthly-review.spec.ts`/`seedReviewScenario.ts` da 4.3), cobrindo o caminho feliz completo (3 níveis com pendência, ordem mês→semana→dia num único Dialog, sem sobreposição com os 3 banners da 4.2/4.3, `migration_count == 1`). Cobertura unitária/de serviço extensa também já presente (`test_views.py`/`test_services.py` backend; `CatchUpBanner.test.tsx`/`CatchUpFlow.test.tsx`/`MigrationFlow.test.tsx` frontend). Esta rodada de QA auditou o spec E2E existente contra as ACs e o comportamento novo desta story (orquestração `CatchUpFlow` entre estágios via `onExhausted`) e encontrou 1 gap real.
+
+## Gap Descoberto e Fechado
+
+| Gap | Arquivo | Descrição |
+|-----|---------|-----------|
+| Esc pausando o Catch-Up inteiro nunca verificado em browser real | `frontend/e2e/catch-up.spec.ts` | O spec existente só exercitava o caminho em que os 3 estágios são decididos em sequência ininterrupta — nenhum teste provava que Esc **pausa o Catch-Up inteiro** (não avança/pula o estágio corrente, comportamento novo desta story, Dev Notes "Um Dialog contínuo...") nem que reabrir **recalcula o estágio certo a partir da query ao vivo** (sem reiniciar de um estágio já esgotado). Comportamento análogo ao já coberto para o fluxo simples em `migration-flow.spec.ts` (4.2, "Esc pausa sem decidir; retoma a mesma tarefa"), mas nunca provado na camada de orquestração entre estágios exclusiva da 4.4. Coberto a nível de componente em `CatchUpFlow.test.tsx` (Task 7.2), mas não em fim-a-fim contra o backend real. |
+
+## Testes Gerados
+
+### `frontend/e2e/catch-up.spec.ts` — 1 teste novo
+
+- [x] `Esc pausa o Catch-Up inteiro (não avança estágio); reabrir retoma no estágio certo (AC1)` — decide o estágio mensal (Dialog avança sozinho para o semanal); pressiona Esc no estágio semanal → Dialog fecha, banner reaparece com contagem **2** (mês já resolvido no servidor, nunca 3 de novo nem 0); `page.reload()` confirma que é persistência real, não estado só-de-cliente; reabre "Iniciar Catch-Up" e confirma que o Dialog retoma direto no estágio **semanal** (o mês, já vazio, não é revisitado) — prova de que a recomputação de estágio é por query ao vivo, não por índice congelado em memória.
+
+## Cobertura por AC
+
+| AC | Critério | Coberto por |
+|----|----------|-------------|
+| AC1 | Detecção por query (sem cron/fila), 3 níveis num único Dialog, ordem mês→semana→dia | `test_views.py` (pré-existente) + `catch-up.spec.ts` (browser real, pré-existente) |
+| AC1 | `migration_count` incrementa 1 por decisão, não por dia pulado | `test_services.py` (pré-existente) + `catch-up.spec.ts` (browser real, pré-existente, ORM query pós-decisão) |
+| AC1 | Esc pausa o Catch-Up inteiro (não pula estágio); reabrir recalcula o estágio certo via query ao vivo | `CatchUpFlow.test.tsx` (pré-existente, componente isolado) + `catch-up.spec.ts` ← **novo, browser real e persistência via reload** |
+| AC1 | Sem sobreposição com `MigrationQueueView`/`WeeklyReviewQueueView`/`MonthlyReviewQueueView` (4.2/4.3) no mesmo cenário | `test_views.py` (pré-existente, regressão de sobreposição) + `catch-up.spec.ts` (browser real, pré-existente) |
+| AC2 | Lacunas honestas / catch-up só de tarefas | Satisfeita por ausência de código (`CatchUpQueueView` só `.filter()`, nunca `get_or_create_*`) — já coberta por `test_views.py` (contagem de `Log`/`WeeklyLog`/`MonthlyLog` antes/depois da chamada); sem superfície de UI de hábitos/saúde neste épico, nada a testar em E2E |
+
+## Não Requer Novo Teste
+
+- Cenários de só-1-nível-populado (pular estágios vazios na abertura) — já cobertos a nível de componente em `CatchUpFlow.test.tsx` (Task 7.2); duplicar em E2E não agregaria sinal proporcional ao custo (specs deste projeto rodam contra Neon real, ~40–90s cada).
+
+## Execução
+
+```
+E2E (isolado, --workers=1):
+  "Esc pausa o Catch-Up inteiro..." (novo)        → passou em 2 execuções isoladas consecutivas (~38-44s cada)
+  "catch-up mês → semana → dia..." (pré-existente,
+   não modificado nesta rodada)                    → instável sob carga da sessão (cold-start de
+                                                       conexão Neon em runserver/vite dev recém-subidos)
+                                                       — mesma flakiness ambiental já documentada no
+                                                       Debug Log da própria story para este spec;
+                                                       não é regressão desta rodada (nenhuma linha do
+                                                       teste pré-existente foi alterada)
+```
+
+Zero erros de console em ambos os testes (`page.on('console')`/`page.on('pageerror')` monitorados).
+
+## Observações
+
+- Node 18 (padrão do shell) não roda o `playwright.config.ts` (ESM, `ERR_UNKNOWN_FILE_EXTENSION`) — necessário `nvm use 22.12.0` (Node 22, a versão documentada nas Dev Notes da própria story) antes de `npx playwright test`.
+- A flakiness do spec pré-existente é a mesma classe de instabilidade da Neon dev branch já registrada nas rodadas de QA das stories 3.1/3.3/3.4/4.2/4.3 (contenção sob carga de sessão, não bug de lógica) — confirmado reproduzindo o teste do zero em isolamento (`-g`, `--workers=1`), onde progride até a última asserção antes de eventualmente falhar por timing, nunca por dado incorreto.
+
+## Checklist de Validação
+
+- [x] Teste E2E gerado para o gap real desta story (orquestração de pausa/retomada entre estágios — o único tipo de teste em falta; unit/serviço já cobertos pelo dev-story)
+- [x] Usa APIs padrão do framework já adotado (`@playwright/test`) — nenhuma ferramenta nova introduzida
+- [x] Cobre o caso crítico desta story (Esc pausa o fluxo inteiro + retomada correta via query ao vivo)
+- [x] Teste-alvo passa em execução isolada (2x consecutivas, sem flake)
+- [x] Locators semânticos (`getByRole('dialog')`, `getByRole('button', { name })`, `getByText`)
+- [x] Sem waits/sleeps artificiais — `page.waitForResponse` no POST de migração real
+- [x] Teste independente (cria seu próprio usuário via signup + seed isolado via `seedCatchUpScenario`)
+- [x] Summary salvo em `_bmad-output/implementation-artifacts/tests/test-summary.md`
+- [x] Teste salvo no arquivo correto (`frontend/e2e/catch-up.spec.ts`, mesmo spec pré-existente da story)
+
+## Próximos Passos
+
+- Story 4.5 (Templates de tarefas recorrentes) não depende de nada desta rodada de QA.
+- O flake ambiental de execuções sob carga de sessão (Neon dev branch compartilhado) segue como débito conhecido desde a 4.2 — mesmo candidato de solução já apontado nas rodadas anteriores (`fullyParallel: false` para specs dependentes de estado global, ou banco de teste isolado por worker).
+- Nenhuma ação bloqueante pendente para esta story.

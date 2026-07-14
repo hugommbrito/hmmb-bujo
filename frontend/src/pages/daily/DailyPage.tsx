@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Box, Typography } from '@mui/material'
 import {
+  CatchUpBanner,
   MigrationBanner,
   MonthlyReviewBanner,
   WeeklyReviewBanner,
@@ -74,6 +75,7 @@ export function DailyPage() {
       <MigrationBanner />
       <WeeklyReviewBanner />
       <MonthlyReviewBanner />
+      <CatchUpBanner />
       <DayHeader logDate={logDate} pendingCount={pendingCount}>
         {tasks.length === 0 ? (
           <Typography variant="body2" color="text.secondary" sx={{ px: 3, py: 2 }}>

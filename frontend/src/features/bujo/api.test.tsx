@@ -24,8 +24,10 @@ import {
   useMigrateTaskMutation,
   useWeeklyReviewQueueQuery,
   useMonthlyReviewQueueQuery,
+  useCatchUpQueueQuery,
 } from './api'
 import type {
+  CatchUpQueue,
   FutureLogMonthGroup,
   Log,
   MigrationQueue,
@@ -511,6 +513,7 @@ describe('useMigrateTaskMutation (AC3)', () => {
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.bujo.migrationQueue() })
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.bujo.weeklyReviewQueue() })
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.bujo.monthlyReviewQueue() })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.bujo.catchUpQueue() })
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.bujo.todayLog() })
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'weeklyLog'] })
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'monthlyLog'] })
@@ -635,5 +638,32 @@ describe('useMonthlyReviewQueueQuery (AC2)', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
     expect(result.current.data).toEqual(MONTHLY_REVIEW_QUEUE)
     expect(mockGet).toHaveBeenCalledWith('/api/bujo/monthly-review/queue/')
+  })
+})
+
+const CATCH_UP_QUEUE: CatchUpQueue = {
+  monthlyTasks: [
+    { id: 'task-3', title: 'Pendente de 3 meses atrás', status: 'pending', eisenhower: null, category: null, subtasks: [] },
+  ],
+  weeklyTasks: [],
+  dailyTasks: [
+    { id: 'task-4', title: 'Pendente de 10 dias atrás', status: 'pending', eisenhower: null, category: null, subtasks: [] },
+  ],
+}
+
+describe('useCatchUpQueueQuery (AC1)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+  })
+
+  it('busca a fila de catch-up', async () => {
+    mockGet.mockResolvedValueOnce({ data: CATCH_UP_QUEUE })
+    const { wrapper } = makeWrapper()
+
+    const { result } = renderHook(() => useCatchUpQueueQuery(), { wrapper })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data).toEqual(CATCH_UP_QUEUE)
+    expect(mockGet).toHaveBeenCalledWith('/api/bujo/catch-up/queue/')
   })
 })

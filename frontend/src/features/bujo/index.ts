@@ -13,10 +13,12 @@ export {
   useMigrateTaskMutation,
   useWeeklyReviewQueueQuery,
   useMonthlyReviewQueueQuery,
+  useCatchUpQueueQuery,
 } from './api'
 export { MigrationBanner } from './components/MigrationBanner'
 export { WeeklyReviewBanner } from './components/WeeklyReviewBanner'
 export { MonthlyReviewBanner } from './components/MonthlyReviewBanner'
+export { CatchUpBanner } from './components/CatchUpBanner'
 export type { MigrationDestination } from './api'
 export type {
   Log,
@@ -31,4 +33,5 @@ export type {
   MigrationQueue,
   WeeklyReviewQueue,
   MonthlyReviewQueue,
+  CatchUpQueue,
 } from './types'

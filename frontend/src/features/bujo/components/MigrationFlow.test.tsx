@@ -21,10 +21,17 @@ function renderFlow(
   queue: Task[] = QUEUE,
   onClose = vi.fn(),
   flowType?: 'daily' | 'weekly' | 'monthly',
+  onExhausted?: () => void,
 ) {
   const utils = render(
     <ThemeProvider theme={createBujoTheme('light')}>
-      <MigrationFlow queue={queue} open onClose={onClose} flowType={flowType} />
+      <MigrationFlow
+        queue={queue}
+        open
+        onClose={onClose}
+        flowType={flowType}
+        onExhausted={onExhausted}
+      />
     </ThemeProvider>,
   )
   return { ...utils, onClose }
@@ -131,6 +138,42 @@ describe('MigrationFlow flowType="weekly" (Task 6)', () => {
 
     expect(screen.getByText('Segunda')).toBeInTheDocument()
     expect(mockMutate).toHaveBeenCalledWith({ taskId: 't1', destination: 'week' })
+  })
+})
+
+describe('MigrationFlow onExhausted (Task 6)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('com onExhausted fornecido, decidir a última tarefa chama onExhausted e não onClose', () => {
+    const onExhausted = vi.fn()
+    const { onClose } = renderFlow([QUEUE[1]], vi.fn(), 'daily', onExhausted)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }))
+
+    expect(onExhausted).toHaveBeenCalledTimes(1)
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('sem onExhausted, decidir a última tarefa chama onClose (regressão do comportamento atual)', () => {
+    const { onClose } = renderFlow([QUEUE[1]])
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }))
+
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('Esc sempre chama só onClose, nunca onExhausted, mesmo com onExhausted fornecido', () => {
+    const onExhausted = vi.fn()
+    const { onClose } = renderFlow(QUEUE, vi.fn(), 'daily', onExhausted)
+
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Migrar para hoje' }), {
+      key: 'Escape',
+    })
+
+    expect(onClose).toHaveBeenCalledTimes(1)
+    expect(onExhausted).not.toHaveBeenCalled()
   })
 })
 

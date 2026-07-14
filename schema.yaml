@@ -57,6 +57,20 @@ paths:
               schema:
                 $ref: '#/components/schemas/TokenRefresh'
           description: ''
+  /api/bujo/catch-up/queue/:
+    get:
+      operationId: bujo_catch_up_queue_retrieve
+      tags:
+      - bujo
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatchUpQueue'
+          description: ''
   /api/bujo/future-log/:
     get:
       operationId: bujo_future_log_list
@@ -335,6 +349,25 @@ components:
     BlankEnum:
       enum:
       - ''
+    CatchUpQueue:
+      type: object
+      properties:
+        monthlyTasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/Task'
+        weeklyTasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/Task'
+        dailyTasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/Task'
+      required:
+      - dailyTasks
+      - monthlyTasks
+      - weeklyTasks
     CategoryEnum:
       enum:
       - teal

@@ -46,16 +46,18 @@ const mockUseTodayLogQuery = useTodayLogQuery as ReturnType<typeof vi.fn>
 const mockGet = client.get as ReturnType<typeof vi.fn>
 const mockPost = client.post as ReturnType<typeof vi.fn>
 
-// `MigrationBanner`/`WeeklyReviewBanner`/`MonthlyReviewBanner` chamam 3 GETs
-// distintos (todos via `client.get`, sem passar por `useTodayLogQuery`, que já
-// é mockado à parte) — um `mockGet.mockResolvedValue` genérico (sem roteamento
-// por URL) contaminaria as 3 filas com a mesma resposta. Este helper roteia
-// por URL, com um "once" opcional por endpoint (para simular a query antes/
-// depois de uma invalidação) e um valor persistente por endpoint depois disso.
+// `MigrationBanner`/`WeeklyReviewBanner`/`MonthlyReviewBanner`/`CatchUpBanner`
+// chamam 4 GETs distintos (todos via `client.get`, sem passar por
+// `useTodayLogQuery`, que já é mockado à parte) — um `mockGet.mockResolvedValue`
+// genérico (sem roteamento por URL) contaminaria as 4 filas com a mesma
+// resposta. Este helper roteia por URL, com um "once" opcional por endpoint
+// (para simular a query antes/depois de uma invalidação) e um valor
+// persistente por endpoint depois disso.
 const GET_DEFAULTS: Record<string, unknown> = {
   '/api/bujo/migration/queue/': { logDate: '2026-06-14', tasks: [] },
   '/api/bujo/weekly-review/queue/': { weekStart: '2026-06-08', tasks: [] },
   '/api/bujo/monthly-review/queue/': { monthFirst: '2026-06-01', tasks: [] },
+  '/api/bujo/catch-up/queue/': { monthlyTasks: [], weeklyTasks: [], dailyTasks: [] },
 }
 let getPersistent: Record<string, unknown> = {}
 let getOnceQueues: Record<string, unknown[]> = {}
@@ -448,9 +450,10 @@ describe('MigrationBanner integration (AC1)', () => {
   })
 })
 
-describe('WeeklyReviewBanner/MonthlyReviewBanner integration (AC1, AC2, Task 9/10)', () => {
+describe('WeeklyReviewBanner/MonthlyReviewBanner/CatchUpBanner integration (AC1, AC2, Task 9/10)', () => {
   const WEEK_TASK = { ...YESTERDAY_TASK, id: 'w1', title: 'Pendente da semana anterior' }
   const MONTH_TASK = { ...YESTERDAY_TASK, id: 'm1', title: 'Pendente do mês anterior' }
+  const CATCH_UP_TASK = { ...YESTERDAY_TASK, id: 'c1', title: 'Pendente de 10 dias atrás' }
 
   beforeEach(() => {
     vi.clearAllMocks()
@@ -461,10 +464,15 @@ describe('WeeklyReviewBanner/MonthlyReviewBanner integration (AC1, AC2, Task 9/1
     })
   })
 
-  it('os 3 banners aparecem/desaparecem independentemente conforme cada query retorna tarefas ou não', async () => {
+  it('os 4 banners aparecem/desaparecem independentemente conforme cada query retorna tarefas ou não', async () => {
     setGetResponse('/api/bujo/migration/queue/', { logDate: '2026-06-14', tasks: [YESTERDAY_TASK] })
     setGetResponse('/api/bujo/weekly-review/queue/', { weekStart: '2026-06-08', tasks: [] })
     setGetResponse('/api/bujo/monthly-review/queue/', { monthFirst: '2026-06-01', tasks: [MONTH_TASK] })
+    setGetResponse('/api/bujo/catch-up/queue/', {
+      monthlyTasks: [],
+      weeklyTasks: [],
+      dailyTasks: [CATCH_UP_TASK],
+    })
 
     renderDailyPage()
 
@@ -475,8 +483,34 @@ describe('WeeklyReviewBanner/MonthlyReviewBanner integration (AC1, AC2, Task 9/1
       await screen.findByText('Mês anterior tem 1 tarefas sem disposição. Revisar mês anterior?'),
     ).toBeInTheDocument()
     expect(
+      await screen.findByText(
+        '1 tarefas sem disposição de dias, semanas ou meses anteriores. Iniciar Catch-Up?',
+      ),
+    ).toBeInTheDocument()
+    expect(
       screen.queryByText(/Semana anterior tem \d+ tarefas sem disposição\. Revisar\?/),
     ).not.toBeInTheDocument()
+  })
+
+  it('CatchUpBanner sozinho: aparece com fila de catch-up e abre o fluxo com flowType daily', async () => {
+    setGetResponse('/api/bujo/catch-up/queue/', {
+      monthlyTasks: [],
+      weeklyTasks: [],
+      dailyTasks: [CATCH_UP_TASK],
+    })
+
+    renderDailyPage()
+
+    expect(
+      await screen.findByText(
+        '1 tarefas sem disposição de dias, semanas ou meses anteriores. Iniciar Catch-Up?',
+      ),
+    ).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Iniciar Catch-Up' }))
+
+    expect(await screen.findByText('1 de 1 revisadas')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Migrar para hoje' })).toBeInTheDocument()
   })
 
   it('WeeklyReviewBanner sozinho: aparece com fila da semana anterior e abre o fluxo com flowType weekly', async () => {
@@ -509,11 +543,12 @@ describe('WeeklyReviewBanner/MonthlyReviewBanner integration (AC1, AC2, Task 9/1
     expect(screen.queryByRole('button', { name: 'Migrar para hoje' })).not.toBeInTheDocument()
   })
 
-  it('nenhum banner aparece quando as 3 filas estão vazias', () => {
+  it('nenhum banner aparece quando as 4 filas estão vazias', () => {
     renderDailyPage()
 
     expect(screen.queryByText(/tarefas pendentes de ontem/)).not.toBeInTheDocument()
     expect(screen.queryByText(/Semana anterior tem/)).not.toBeInTheDocument()
     expect(screen.queryByText(/Mês anterior tem/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/sem disposição de dias, semanas ou meses anteriores/)).not.toBeInTheDocument()
   })
 })

@@ -1055,6 +1055,171 @@ def test_get_monthly_review_queue_escopado_por_tenant(auth_client, user, other_u
     assert response.data["tasks"] == []
 
 
+# --- CatchUpQueueView (AC #1, #2) --------------------------------------------
+
+
+@pytest.mark.django_db
+def test_get_catch_up_queue_nao_sobrepoe_migration_weekly_monthly_review(auth_client, user):
+    """Regressão de sobreposição (a mais importante desta story): tarefas só
+    em "ontem"/"semana anterior"/"mês anterior" já são cobertas por
+    `MigrationQueueView`/`WeeklyReviewQueueView`/`MonthlyReviewQueueView` — não
+    podem aparecer duplicadas no Catch-Up."""
+    with tenant_context(user):
+        yesterday = today_for(user) - timedelta(days=1)
+        previous_week_start = week_start_of(today_for(user)) - timedelta(weeks=1)
+        current_month_first = today_for(user).replace(day=1)
+        previous_month_first = (current_month_first - timedelta(days=1)).replace(day=1)
+
+        yesterday_log = LogFactory(user=user, log_date=yesterday)
+        TaskFactory(user=user, log=yesterday_log, status=Task.Status.PENDING, title="Ontem")
+
+        previous_week = WeeklyLogFactory(user=user, week_start=previous_week_start)
+        TaskFactory(
+            user=user, weekly_log=previous_week, status=Task.Status.PENDING, title="Semana"
+        )
+
+        previous_month = MonthlyLogFactory(user=user, month_first=previous_month_first)
+        TaskFactory(
+            user=user, monthly_log=previous_month, status=Task.Status.PENDING, title="Mês"
+        )
+
+    response = auth_client.get("/api/bujo/catch-up/queue/")
+
+    assert response.status_code == 200
+    assert response.data["daily_tasks"] == []
+    assert response.data["weekly_tasks"] == []
+    assert response.data["monthly_tasks"] == []
+
+
+@pytest.mark.django_db
+def test_get_catch_up_queue_diaria_so_traz_raizes_pending_started_mais_antigas(
+    auth_client, user
+):
+    with tenant_context(user):
+        old_date = today_for(user) - timedelta(days=10)
+        old_log = LogFactory(user=user, log_date=old_date)
+        pending = TaskFactory(
+            user=user, log=old_log, status=Task.Status.PENDING, title="Pendente"
+        )
+        TaskFactory(user=user, log=old_log, status=Task.Status.STARTED, title="Iniciada")
+        TaskFactory(user=user, log=old_log, status=Task.Status.COMPLETED, title="Concluída")
+        TaskFactory(user=user, log=old_log, status=Task.Status.CANCELLED, title="Cancelada")
+        TaskFactory(
+            user=user,
+            log=old_log,
+            parent_task=pending,
+            status=Task.Status.PENDING,
+            title="Subtarefa",
+        )
+
+    response = auth_client.get("/api/bujo/catch-up/queue/")
+
+    assert response.status_code == 200
+    titles = {task["title"] for task in response.data["daily_tasks"]}
+    assert titles == {"Pendente", "Iniciada"}
+
+
+@pytest.mark.django_db
+def test_get_catch_up_queue_semanal_so_traz_raizes_pending_started_mais_antigas(
+    auth_client, user
+):
+    with tenant_context(user):
+        old_week_start = week_start_of(today_for(user)) - timedelta(weeks=3)
+        old_week = WeeklyLogFactory(user=user, week_start=old_week_start)
+        pending = TaskFactory(
+            user=user, weekly_log=old_week, status=Task.Status.PENDING, title="Pendente"
+        )
+        TaskFactory(user=user, weekly_log=old_week, status=Task.Status.STARTED, title="Iniciada")
+        TaskFactory(
+            user=user, weekly_log=old_week, status=Task.Status.COMPLETED, title="Concluída"
+        )
+        TaskFactory(
+            user=user, weekly_log=old_week, status=Task.Status.CANCELLED, title="Cancelada"
+        )
+        TaskFactory(
+            user=user,
+            weekly_log=old_week,
+            parent_task=pending,
+            status=Task.Status.PENDING,
+            title="Subtarefa",
+        )
+
+    response = auth_client.get("/api/bujo/catch-up/queue/")
+
+    assert response.status_code == 200
+    titles = {task["title"] for task in response.data["weekly_tasks"]}
+    assert titles == {"Pendente", "Iniciada"}
+
+
+@pytest.mark.django_db
+def test_get_catch_up_queue_mensal_so_traz_raizes_pending_started_mais_antigas(
+    auth_client, user
+):
+    with tenant_context(user):
+        current_month_first = today_for(user).replace(day=1)
+        old_month_first = current_month_first.replace(year=current_month_first.year - 1)
+        old_month = MonthlyLogFactory(user=user, month_first=old_month_first)
+        pending = TaskFactory(
+            user=user, monthly_log=old_month, status=Task.Status.PENDING, title="Pendente"
+        )
+        TaskFactory(user=user, monthly_log=old_month, status=Task.Status.STARTED, title="Iniciada")
+        TaskFactory(
+            user=user, monthly_log=old_month, status=Task.Status.COMPLETED, title="Concluída"
+        )
+        TaskFactory(
+            user=user, monthly_log=old_month, status=Task.Status.CANCELLED, title="Cancelada"
+        )
+        TaskFactory(
+            user=user,
+            monthly_log=old_month,
+            parent_task=pending,
+            status=Task.Status.PENDING,
+            title="Subtarefa",
+        )
+
+    response = auth_client.get("/api/bujo/catch-up/queue/")
+
+    assert response.status_code == 200
+    titles = {task["title"] for task in response.data["monthly_tasks"]}
+    assert titles == {"Pendente", "Iniciada"}
+
+
+@pytest.mark.django_db
+def test_get_catch_up_queue_nao_materializa_nenhum_log(auth_client, user):
+    with tenant_context(user):
+        old_date = today_for(user) - timedelta(days=10)
+        old_log = LogFactory(user=user, log_date=old_date)
+        TaskFactory(user=user, log=old_log, status=Task.Status.PENDING, title="Pendente")
+        log_count_before = Log.objects.count()
+        weekly_log_count_before = WeeklyLog.objects.count()
+        monthly_log_count_before = MonthlyLog.objects.count()
+
+    response = auth_client.get("/api/bujo/catch-up/queue/")
+
+    assert response.status_code == 200
+    with tenant_context(user):
+        assert Log.objects.count() == log_count_before
+        assert WeeklyLog.objects.count() == weekly_log_count_before
+        assert MonthlyLog.objects.count() == monthly_log_count_before
+
+
+@pytest.mark.django_db
+def test_get_catch_up_queue_escopado_por_tenant(auth_client, user, other_user):
+    with tenant_context(other_user):
+        old_date = today_for(other_user) - timedelta(days=10)
+        old_log = LogFactory(user=other_user, log_date=old_date)
+        TaskFactory(
+            user=other_user, log=old_log, status=Task.Status.PENDING, title="Da outra tenant"
+        )
+
+    response = auth_client.get("/api/bujo/catch-up/queue/")
+
+    assert response.status_code == 200
+    assert response.data["daily_tasks"] == []
+    assert response.data["weekly_tasks"] == []
+    assert response.data["monthly_tasks"] == []
+
+
 # --- TaskDetailView PATCH scheduledDate (AC #2 — confirmação do Future Log) --
 
 

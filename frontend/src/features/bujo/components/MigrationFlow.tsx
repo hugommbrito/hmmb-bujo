@@ -10,12 +10,19 @@ interface MigrationFlowProps {
   open: boolean
   onClose: () => void
   flowType?: MigrationFlowType
+  onExhausted?: () => void
 }
 
 // Overlay real com backdrop (Dialog do MUI) — desktop centralizado, mobile
 // full-screen (breakpoint canônico de TaskRow/TaskDetailPanel). Ver Dev Notes
 // "Modal overlay vs. full-page".
-export function MigrationFlow({ queue, open, onClose, flowType = 'daily' }: MigrationFlowProps) {
+export function MigrationFlow({
+  queue,
+  open,
+  onClose,
+  flowType = 'daily',
+  onExhausted,
+}: MigrationFlowProps) {
   const isMobile = useMediaQuery('(max-width: 767px)')
   const [snapshot, setSnapshot] = useState<Task[]>([])
   const [currentIndex, setCurrentIndex] = useState(0)
@@ -47,12 +54,16 @@ export function MigrationFlow({ queue, open, onClose, flowType = 'daily' }: Migr
       // while rendering a different component" e quebra o próximo render do
       // `MigrationBanner` (a invalidação da query nunca reflete na UI).
       if (nextIndex >= snapshot.length) {
-        onClose()
+        // `onExhausted?.() ?? onClose()` chamaria as duas funções: como
+        // `onExhausted` retorna `void` (undefined), a expressão sempre cai no
+        // `??`. Selecionar a função primeiro evita a dupla-chamada.
+        const onQueueExhausted = onExhausted ?? onClose
+        onQueueExhausted()
       } else {
         setCurrentIndex(nextIndex)
       }
     },
-    [currentTask, currentIndex, migrate, onClose, snapshot.length],
+    [currentTask, currentIndex, migrate, onClose, onExhausted, snapshot.length],
   )
 
   // Atalhos de teclado (nível do Dialog, só enquanto aberto), tabela por

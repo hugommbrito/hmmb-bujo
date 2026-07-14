@@ -4,6 +4,7 @@ import { keys } from '../../api/keys'
 import { useOptimisticMutation } from '../../shared/hooks/useOptimisticMutation'
 import { mapTaskTree, reorderTaskTree } from './taskTree'
 import type {
+  CatchUpQueue,
   FutureLogMonthGroup,
   Log,
   MigrationQueue,
@@ -274,6 +275,18 @@ export function useMonthlyReviewQueueQuery() {
   })
 }
 
+async function fetchCatchUpQueue(): Promise<CatchUpQueue> {
+  const response = await client.get<CatchUpQueue>('/api/bujo/catch-up/queue/')
+  return response.data
+}
+
+export function useCatchUpQueueQuery() {
+  return useQuery({
+    queryKey: keys.bujo.catchUpQueue(),
+    queryFn: fetchCatchUpQueue,
+  })
+}
+
 export type MigrationDestination = 'today' | 'week' | 'month' | 'future' | 'cancel'
 
 interface MigrateTaskVariables {
@@ -298,6 +311,7 @@ export function useMigrateTaskMutation() {
       queryClient.invalidateQueries({ queryKey: keys.bujo.migrationQueue() })
       queryClient.invalidateQueries({ queryKey: keys.bujo.weeklyReviewQueue() })
       queryClient.invalidateQueries({ queryKey: keys.bujo.monthlyReviewQueue() })
+      queryClient.invalidateQueries({ queryKey: keys.bujo.catchUpQueue() })
       queryClient.invalidateQueries({ queryKey: keys.bujo.todayLog() })
       queryClient.invalidateQueries({ queryKey: ['bujo', 'weeklyLog'] })
       queryClient.invalidateQueries({ queryKey: ['bujo', 'monthlyLog'] })

@@ -1,7 +1,7 @@
 """Testes dos serviços de `bujo` (AC #1, #2, #3)."""
 
 import itertools
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 
@@ -601,6 +601,22 @@ def test_migrate_task_encadeada_soma_migration_count_sem_resetar(user):
         second_result = migrate_task(user=user, task_id=new_task_1.id, destination="today")
         new_task_2 = second_result.migrated_to_task
         assert new_task_2.migration_count == 2
+
+
+@pytest.mark.django_db
+def test_migrate_task_catch_up_conta_por_decisao_nao_por_dia_pulado(user):
+    """AC #1: `migration_count` incrementa em 1 por decisão, não por dia de
+    calendário pulado — mesmo migrando uma tarefa de um `Log` 10 dias no
+    passado, uma única chamada a `migrate_task` produz `migration_count == 1`."""
+    with tenant_context(user):
+        old_date = today_for(user) - timedelta(days=10)
+        log = LogFactory(user=user, log_date=old_date)
+        task = TaskFactory(user=user, log=log, status=Task.Status.PENDING, migration_count=0)
+
+        result = migrate_task(user=user, task_id=task.id, destination="today")
+        new_task = result.migrated_to_task
+
+        assert new_task.migration_count == 1
 
 
 @pytest.mark.django_db

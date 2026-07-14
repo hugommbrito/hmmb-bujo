@@ -60,6 +60,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/bujo/catch-up/queue/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["bujo_catch_up_queue_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/bujo/future-log/": {
         parameters: {
             query?: never;
@@ -274,6 +290,11 @@ export interface components {
     schemas: {
         /** @enum {unknown} */
         BlankEnum: "";
+        CatchUpQueue: {
+            monthlyTasks: components["schemas"]["Task"][];
+            weeklyTasks: components["schemas"]["Task"][];
+            dailyTasks: components["schemas"]["Task"][];
+        };
         /**
          * @description * `teal` - Teal
          *     * `purple` - Purple
@@ -502,6 +523,25 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TokenRefresh"];
+                };
+            };
+        };
+    };
+    bujo_catch_up_queue_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatchUpQueue"];
                 };
             };
         };

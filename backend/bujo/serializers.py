@@ -113,6 +113,12 @@ class MonthlyReviewQueueSerializer(serializers.Serializer):
     tasks = TaskSerializer(many=True)
 
 
+class CatchUpQueueSerializer(serializers.Serializer):
+    monthly_tasks = TaskSerializer(many=True)
+    weekly_tasks = TaskSerializer(many=True)
+    daily_tasks = TaskSerializer(many=True)
+
+
 class TaskMigrateSerializer(serializers.Serializer):
     destination = serializers.ChoiceField(choices=["today", "week", "month", "future", "cancel"])
     month_first = serializers.DateField(required=False)

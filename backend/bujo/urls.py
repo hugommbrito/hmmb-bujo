@@ -1,6 +1,7 @@
 from django.urls import path
 
 from bujo.views import (
+    CatchUpQueueView,
     FutureLogView,
     MigrationQueueView,
     MonthlyLogView,
@@ -34,4 +35,5 @@ urlpatterns = [
     path("tasks/<uuid:pk>/transition/", TaskTransitionView.as_view(), name="bujo-task-transition"),
     path("tasks/<uuid:pk>/reorder/", TaskReorderView.as_view(), name="bujo-task-reorder"),
     path("tasks/<uuid:pk>/migrate/", TaskMigrateView.as_view(), name="bujo-task-migrate"),
+    path("catch-up/queue/", CatchUpQueueView.as_view(), name="bujo-catch-up-queue"),
 ]
