@@ -57,6 +57,22 @@ paths:
               schema:
                 $ref: '#/components/schemas/TokenRefresh'
           description: ''
+  /api/bujo/archive/:
+    get:
+      operationId: bujo_archive_list
+      tags:
+      - bujo
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ArchiveEntry'
+          description: ''
   /api/bujo/catch-up/queue/:
     get:
       operationId: bujo_catch_up_queue_retrieve
@@ -433,6 +449,21 @@ paths:
           description: ''
 components:
   schemas:
+    ArchiveEntry:
+      type: object
+      properties:
+        type:
+          $ref: '#/components/schemas/TypeEnum'
+        weekStart:
+          type: string
+          format: date
+          nullable: true
+        monthFirst:
+          type: string
+          format: date
+          nullable: true
+      required:
+      - type
     BlankEnum:
       enum:
       - ''
@@ -554,7 +585,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Task'
+        closed:
+          type: boolean
       required:
+      - closed
       - monthFirst
       - tasks
     MonthlyReviewQueue:
@@ -783,6 +817,14 @@ components:
           items:
             $ref: '#/components/schemas/Task'
           readOnly: true
+        migrationCount:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        migratedToTask:
+          type: string
+          format: uuid
+          nullable: true
       required:
       - id
       - subtasks
@@ -887,6 +929,14 @@ components:
       required:
       - access
       - refresh
+    TypeEnum:
+      enum:
+      - weekly
+      - monthly
+      type: string
+      description: |-
+        * `weekly` - weekly
+        * `monthly` - monthly
     WeeklyDay:
       type: object
       properties:
@@ -914,7 +964,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Task'
+        closed:
+          type: boolean
       required:
+      - closed
       - days
       - unscheduled
       - weekStart

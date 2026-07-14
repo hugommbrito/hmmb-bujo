@@ -18,6 +18,7 @@ export {
   useCreateRecurringTemplateMutation,
   useUpdateRecurringTemplateMutation,
   usePlaceRecurringTemplateMutation,
+  useArchiveQuery,
 } from './api'
 export { MigrationBanner } from './components/MigrationBanner'
 export { WeeklyReviewBanner } from './components/WeeklyReviewBanner'
@@ -42,4 +43,5 @@ export type {
   CatchUpQueue,
   RecurringTaskTemplate,
   RecurrenceGroup,
+  ArchiveEntry,
 } from './types'

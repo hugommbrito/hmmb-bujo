@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { ThemeProvider } from '@mui/material'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { axe } from 'jest-axe'
@@ -52,7 +53,28 @@ function renderWeeklyPage() {
   return render(
     <QueryClientProvider client={qc}>
       <ThemeProvider theme={createBujoTheme('light')}>
-        <WeeklyPage />
+        <MemoryRouter>
+          <WeeklyPage />
+        </MemoryRouter>
+      </ThemeProvider>
+    </QueryClientProvider>,
+  )
+}
+
+// Modo Arquivo (Task 8.1): rota parametrizada `archive/weekly/:weekStart` — só
+// esta variante monta `useParams` com valor real.
+function renderWeeklyPageAtArchiveRoute(weekStart: string) {
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  })
+  return render(
+    <QueryClientProvider client={qc}>
+      <ThemeProvider theme={createBujoTheme('light')}>
+        <MemoryRouter initialEntries={[`/archive/weekly/${weekStart}`]}>
+          <Routes>
+            <Route path="archive/weekly/:weekStart" element={<WeeklyPage />} />
+          </Routes>
+        </MemoryRouter>
       </ThemeProvider>
     </QueryClientProvider>,
   )
@@ -71,6 +93,7 @@ const DAYS = [
 const WEEKLY_LOG = {
   weekStart: '2026-07-13',
   days: DAYS,
+  closed: false,
   unscheduled: [
     { id: 'u1', title: 'Tarefa sem dia', status: 'pending', eisenhower: null, category: null, subtasks: [] },
   ],
@@ -222,5 +245,40 @@ describe('RecurringPlacementSection integration (AC2)', () => {
         scheduledDate: '2026-07-15',
       }),
     )
+  })
+})
+
+describe('Indicador "Fechada" e modo Arquivo (AC1/AC2)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockMatchMedia(false)
+    mockGet.mockResolvedValue({ data: [] })
+  })
+
+  it('closed: true mostra o texto "Fechada"', () => {
+    mockUseWeeklyLogQuery.mockReturnValue({ isPending: false, data: { ...WEEKLY_LOG, closed: true } })
+
+    renderWeeklyPage()
+
+    expect(screen.getByText('Fechada')).toBeInTheDocument()
+  })
+
+  it('closed: false não mostra o texto "Fechada"', () => {
+    mockUseWeeklyLogQuery.mockReturnValue({ isPending: false, data: { ...WEEKLY_LOG, closed: false } })
+
+    renderWeeklyPage()
+
+    expect(screen.queryByText('Fechada')).not.toBeInTheDocument()
+  })
+
+  it('rota /archive/weekly/:weekStart chama useWeeklyLogQuery com o weekStart da URL e esconde recorrentes', async () => {
+    mockUseWeeklyLogQuery.mockReturnValue({ isPending: false, data: { ...WEEKLY_LOG, closed: true } })
+
+    renderWeeklyPageAtArchiveRoute('2026-07-13')
+
+    expect(mockUseWeeklyLogQuery.mock.calls[0][0]).toBe('2026-07-13')
+    expect(screen.getByLabelText('Arquivo — Semana de 2026-07-13')).toBeInTheDocument()
+    expect(mockGet).not.toHaveBeenCalledWith('/api/bujo/recurring-templates/')
+    expect(screen.queryByRole('button', { name: 'Definir placement' })).not.toBeInTheDocument()
   })
 })

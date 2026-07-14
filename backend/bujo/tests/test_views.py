@@ -12,6 +12,7 @@ from bujo.services.logs import (
     get_or_create_monthly_log,
     get_or_create_weekly_log,
 )
+from bujo.services.state_machine import transition_task
 from bujo.tests.factories import (
     LogFactory,
     MonthlyLogFactory,
@@ -532,6 +533,26 @@ def test_get_weekly_log_escopado_por_tenant(auth_client, user, other_user):
     assert "Da outra tenant" not in all_titles
 
 
+@pytest.mark.django_db
+def test_get_weekly_log_closed_e_false_com_tarefa_pending_e_true_apos_disposicao(
+    auth_client, user
+):
+    with tenant_context(user):
+        expected_week_start = week_start_of(today_for(user))
+        weekly_log = get_or_create_weekly_log(user=user, week_start=expected_week_start)
+        task = TaskFactory(user=user, weekly_log=weekly_log, status=Task.Status.PENDING)
+
+    response = auth_client.get("/api/bujo/logs/weekly/")
+    assert response.data["closed"] is False
+
+    with tenant_context(user):
+        transition_task(user=user, task_id=task.id, to_status=Task.Status.STARTED)
+        transition_task(user=user, task_id=task.id, to_status=Task.Status.COMPLETED)
+
+    response = auth_client.get("/api/bujo/logs/weekly/")
+    assert response.data["closed"] is True
+
+
 # --- MonthlyLogView ----------------------------------------------------------
 
 
@@ -612,6 +633,25 @@ def test_post_monthly_log_scheduled_date_fora_do_mes_retorna_400(auth_client):
     assert response.status_code == 400
 
 
+@pytest.mark.django_db
+def test_get_monthly_log_closed_e_false_com_tarefa_pending_e_true_apos_disposicao(
+    auth_client, user
+):
+    with tenant_context(user):
+        expected_month_first = today_for(user).replace(day=1)
+        monthly_log = get_or_create_monthly_log(user=user, month_first=expected_month_first)
+        task = TaskFactory(user=user, monthly_log=monthly_log, status=Task.Status.PENDING)
+
+    response = auth_client.get("/api/bujo/logs/monthly/")
+    assert response.data["closed"] is False
+
+    with tenant_context(user):
+        transition_task(user=user, task_id=task.id, to_status=Task.Status.CANCELLED)
+
+    response = auth_client.get("/api/bujo/logs/monthly/")
+    assert response.data["closed"] is True
+
+
 # --- FutureLogView -----------------------------------------------------------
 
 
@@ -679,6 +719,50 @@ def test_post_monthly_log_mes_futuro_aparece_no_future_log(auth_client):
     matching = [g for g in future_response.data if g["year"] == 2030 and g["month"] == 12]
     assert len(matching) == 1
     assert [task["title"] for task in matching[0]["tasks"]] == ["Item do futuro"]
+
+
+# --- ArchiveView (AC #2) -------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_get_archive_vazio_retorna_200_com_lista_vazia(auth_client):
+    response = auth_client.get("/api/bujo/archive/")
+
+    assert response.status_code == 200
+    assert response.data == []
+
+
+@pytest.mark.django_db
+def test_get_archive_com_semana_e_mes_fechados_retorna_as_duas_entradas(auth_client, user):
+    with tenant_context(user):
+        closed_weekly = WeeklyLogFactory(user=user, week_start=date(2026, 6, 1))
+        TaskFactory(user=user, weekly_log=closed_weekly, status=Task.Status.COMPLETED)
+
+        closed_monthly = MonthlyLogFactory(user=user, month_first=date(2026, 5, 1))
+        TaskFactory(user=user, monthly_log=closed_monthly, status=Task.Status.CANCELLED)
+
+    response = auth_client.get("/api/bujo/archive/")
+
+    assert response.status_code == 200
+    assert len(response.data) == 2
+    assert response.data[0]["type"] == "weekly"
+    assert response.data[0]["week_start"] == "2026-06-01"
+    assert response.data[0]["month_first"] is None
+    assert response.data[1]["type"] == "monthly"
+    assert response.data[1]["week_start"] is None
+    assert response.data[1]["month_first"] == "2026-05-01"
+
+
+@pytest.mark.django_db
+def test_get_archive_escopado_por_tenant(auth_client, user, other_user):
+    with tenant_context(other_user):
+        other_closed = WeeklyLogFactory(user=other_user, week_start=date(2026, 6, 1))
+        TaskFactory(user=other_user, weekly_log=other_closed, status=Task.Status.COMPLETED)
+
+    response = auth_client.get("/api/bujo/archive/")
+
+    assert response.status_code == 200
+    assert response.data == []
 
 
 # --- Subtarefa herda container do pai (weekly/monthly) ------------------------

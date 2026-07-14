@@ -1,6 +1,7 @@
 from django.urls import path
 
 from bujo.views import (
+    ArchiveView,
     CatchUpQueueView,
     FutureLogView,
     MigrationQueueView,
@@ -24,6 +25,7 @@ urlpatterns = [
     path("logs/today/", TodayLogView.as_view(), name="bujo-today-log"),
     path("logs/weekly/", WeeklyLogView.as_view(), name="bujo-weekly-log"),
     path("logs/monthly/", MonthlyLogView.as_view(), name="bujo-monthly-log"),
+    path("archive/", ArchiveView.as_view(), name="bujo-archive"),
     path("future-log/", FutureLogView.as_view(), name="bujo-future-log"),
     path("migration/queue/", MigrationQueueView.as_view(), name="bujo-migration-queue"),
     path("weekly-review/queue/", WeeklyReviewQueueView.as_view(), name="bujo-weekly-review-queue"),

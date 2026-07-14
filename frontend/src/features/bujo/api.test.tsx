@@ -29,8 +29,10 @@ import {
   useCreateRecurringTemplateMutation,
   useUpdateRecurringTemplateMutation,
   usePlaceRecurringTemplateMutation,
+  useArchiveQuery,
 } from './api'
 import type {
+  ArchiveEntry,
   CatchUpQueue,
   FutureLogMonthGroup,
   Log,
@@ -359,11 +361,13 @@ const WEEKLY_LOG: WeeklyLog = {
     { date: '2026-07-19', tasks: [] },
   ],
   unscheduled: [],
+  closed: false,
 }
 
 const MONTHLY_LOG: MonthlyLog = {
   monthFirst: '2026-07-01',
   tasks: [],
+  closed: false,
 }
 
 const FUTURE_LOG_GROUPS: FutureLogMonthGroup[] = [
@@ -790,5 +794,27 @@ describe('usePlaceRecurringTemplateMutation (AC2)', () => {
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.bujo.recurringTemplates() })
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'weeklyLog'] })
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'monthlyLog'] })
+  })
+})
+
+const ARCHIVE_ENTRIES: ArchiveEntry[] = [
+  { type: 'weekly', weekStart: '2026-06-01', monthFirst: null },
+  { type: 'monthly', weekStart: null, monthFirst: '2026-05-01' },
+]
+
+describe('useArchiveQuery (AC2)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+  })
+
+  it('busca os ciclos fechados', async () => {
+    mockGet.mockResolvedValueOnce({ data: ARCHIVE_ENTRIES })
+    const { wrapper } = makeWrapper()
+
+    const { result } = renderHook(() => useArchiveQuery(), { wrapper })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data).toEqual(ARCHIVE_ENTRIES)
+    expect(mockGet).toHaveBeenCalledWith('/api/bujo/archive/')
   })
 })

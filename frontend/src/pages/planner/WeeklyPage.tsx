@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useParams } from 'react-router-dom'
 import { Box, Typography, useMediaQuery } from '@mui/material'
 import {
   RecurringPlacementSection,
@@ -12,7 +13,9 @@ import { TaskRow } from '../../features/bujo/components/TaskRow'
 import { WeekDaySelector } from '../../features/bujo/components/WeekDaySelector'
 
 export function WeeklyPage() {
-  const weeklyLog = useWeeklyLogQuery()
+  const { weekStart: routeWeekStart } = useParams<{ weekStart: string }>()
+  const isArchiveView = Boolean(routeWeekStart)
+  const weeklyLog = useWeeklyLogQuery(routeWeekStart)
   const placeTemplate = usePlaceRecurringTemplateMutation()
   const isMobile = useMediaQuery('(max-width: 767px)')
   const [selectedDayIndex, setSelectedDayIndex] = useState(0)
@@ -28,11 +31,20 @@ export function WeeklyPage() {
 
   if (!weeklyLog.data) return null
 
-  const { days, unscheduled, weekStart } = weeklyLog.data
+  const { days, unscheduled, weekStart, closed } = weeklyLog.data
   const selectedDay = days[selectedDayIndex]
 
   return (
-    <Box component="main" aria-label="Esta Semana" sx={{ p: 3 }}>
+    <Box
+      component="main"
+      aria-label={isArchiveView ? `Arquivo — Semana de ${weekStart}` : 'Esta Semana'}
+      sx={{ p: 3 }}
+    >
+      {closed && (
+        <Typography variant="heading" sx={{ px: 1, mb: 1 }}>
+          Fechada
+        </Typography>
+      )}
       {isMobile ? (
         <>
           <WeekDaySelector
@@ -86,24 +98,28 @@ export function WeeklyPage() {
           ))}
         </Box>
       )}
-      <RecurringPlacementSection
-        recurrenceGroups={['weekly']}
-        onPlace={setPlacingTemplateId}
-      />
-      <RecurringPlacementDialog
-        open={placingTemplateId !== null}
-        dateFieldType="date"
-        onClose={() => setPlacingTemplateId(null)}
-        onConfirm={(scheduledDate) => {
-          if (!placingTemplateId) return
-          placeTemplate.mutate({
-            templateId: placingTemplateId,
-            weekStart,
-            scheduledDate: scheduledDate || undefined,
-          })
-          setPlacingTemplateId(null)
-        }}
-      />
+      {!isArchiveView && (
+        <>
+          <RecurringPlacementSection
+            recurrenceGroups={['weekly']}
+            onPlace={setPlacingTemplateId}
+          />
+          <RecurringPlacementDialog
+            open={placingTemplateId !== null}
+            dateFieldType="date"
+            onClose={() => setPlacingTemplateId(null)}
+            onConfirm={(scheduledDate) => {
+              if (!placingTemplateId) return
+              placeTemplate.mutate({
+                templateId: placingTemplateId,
+                weekStart,
+                scheduledDate: scheduledDate || undefined,
+              })
+              setPlacingTemplateId(null)
+            }}
+          />
+        </>
+      )}
     </Box>
   )
 }

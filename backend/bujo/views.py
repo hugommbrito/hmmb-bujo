@@ -14,6 +14,7 @@ from rest_framework.views import APIView
 
 from bujo.models import Log, MonthlyLog, RecurringTaskTemplate, Task, WeeklyLog
 from bujo.serializers import (
+    ArchiveEntrySerializer,
     CatchUpQueueSerializer,
     FutureLogMonthGroupSerializer,
     LogSerializer,
@@ -33,6 +34,7 @@ from bujo.serializers import (
     WeeklyLogSerializer,
     WeeklyReviewQueueSerializer,
 )
+from bujo.services.archive import is_container_closed, list_closed_cycles
 from bujo.services.logs import (
     get_or_create_daily_log,
     get_or_create_monthly_log,
@@ -233,7 +235,12 @@ class WeeklyLogView(APIView):
             scheduled_date__isnull=True, parent_task__isnull=True
         )
 
-        data = {"week_start": weekly_log.week_start, "days": days, "unscheduled": unscheduled}
+        data = {
+            "week_start": weekly_log.week_start,
+            "days": days,
+            "unscheduled": unscheduled,
+            "closed": is_container_closed(weekly_log),
+        }
         return Response(WeeklyLogSerializer(data).data)
 
 
@@ -253,7 +260,11 @@ class MonthlyLogView(APIView):
         monthly_log = get_or_create_monthly_log(user=request.user, month_first=month_first)
         tasks = monthly_log.tasks.filter(parent_task__isnull=True)
 
-        data = {"month_first": monthly_log.month_first, "tasks": tasks}
+        data = {
+            "month_first": monthly_log.month_first,
+            "tasks": tasks,
+            "closed": is_container_closed(monthly_log),
+        }
         return Response(MonthlyLogSerializer(data).data)
 
     @extend_schema(request=MonthlyTaskCreateSerializer, responses=TaskSerializer)
@@ -312,6 +323,13 @@ class MigrationQueueView(APIView):
             )
         data = {"log_date": yesterday, "tasks": tasks}
         return Response(MigrationQueueSerializer(data).data)
+
+
+class ArchiveView(APIView):
+    @extend_schema(responses=ArchiveEntrySerializer(many=True))
+    def get(self, request):
+        entries = list_closed_cycles(user=request.user)
+        return Response(ArchiveEntrySerializer(entries, many=True).data)
 
 
 class WeeklyReviewQueueView(APIView):

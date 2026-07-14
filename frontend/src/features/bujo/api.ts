@@ -4,6 +4,7 @@ import { keys } from '../../api/keys'
 import { useOptimisticMutation } from '../../shared/hooks/useOptimisticMutation'
 import { mapTaskTree, reorderTaskTree } from './taskTree'
 import type {
+  ArchiveEntry,
   CatchUpQueue,
   FutureLogMonthGroup,
   Log,
@@ -429,5 +430,17 @@ export function usePlaceRecurringTemplateMutation() {
       queryClient.invalidateQueries({ queryKey: ['bujo', 'weeklyLog'] })
       queryClient.invalidateQueries({ queryKey: ['bujo', 'monthlyLog'] })
     },
+  })
+}
+
+async function fetchArchive(): Promise<ArchiveEntry[]> {
+  const response = await client.get<ArchiveEntry[]>('/api/bujo/archive/')
+  return response.data
+}
+
+export function useArchiveQuery() {
+  return useQuery({
+    queryKey: keys.bujo.archive(),
+    queryFn: fetchArchive,
   })
 }

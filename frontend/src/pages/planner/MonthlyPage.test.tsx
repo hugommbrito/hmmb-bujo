@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { ThemeProvider } from '@mui/material'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { axe } from 'jest-axe'
@@ -42,7 +43,28 @@ function renderMonthlyPage() {
   return render(
     <QueryClientProvider client={qc}>
       <ThemeProvider theme={createBujoTheme('light')}>
-        <MonthlyPage />
+        <MemoryRouter>
+          <MonthlyPage />
+        </MemoryRouter>
+      </ThemeProvider>
+    </QueryClientProvider>,
+  )
+}
+
+// Modo Arquivo (Task 8.2): rota parametrizada `archive/monthly/:monthFirst` —
+// só esta variante monta `useParams` com valor real.
+function renderMonthlyPageAtArchiveRoute(monthFirst: string) {
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  })
+  return render(
+    <QueryClientProvider client={qc}>
+      <ThemeProvider theme={createBujoTheme('light')}>
+        <MemoryRouter initialEntries={[`/archive/monthly/${monthFirst}`]}>
+          <Routes>
+            <Route path="archive/monthly/:monthFirst" element={<MonthlyPage />} />
+          </Routes>
+        </MemoryRouter>
       </ThemeProvider>
     </QueryClientProvider>,
   )
@@ -56,6 +78,7 @@ const FIXED_TODAY = new Date('2026-07-15T12:00:00')
 // 4.1: título continua "Sem dia definido", ordem inalterada.
 const MONTHLY_LOG = {
   monthFirst: '2026-06-01',
+  closed: false,
   tasks: [
     {
       id: 't1',
@@ -82,6 +105,7 @@ const MONTHLY_LOG = {
 // para Julho" deve aparecer antes da seção com data (Task 8.1).
 const MONTHLY_LOG_CURRENT = {
   monthFirst: '2026-07-01',
+  closed: false,
   tasks: [
     {
       id: 't3',
@@ -356,5 +380,57 @@ describe('RecurringPlacementSection integration (AC2)', () => {
         scheduledDate: '2026-07-05',
       }),
     )
+  })
+})
+
+describe('Indicador "Fechado" e modo Arquivo (AC1/AC2)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+    vi.setSystemTime(FIXED_TODAY)
+    mockGet.mockResolvedValue({ data: [] })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('closed: true mostra o texto "Fechado"', () => {
+    mockUseMonthlyLogQuery.mockReturnValue({
+      isPending: false,
+      data: { ...MONTHLY_LOG, closed: true },
+      refetch: mockRefetch,
+    })
+
+    renderMonthlyPage()
+
+    expect(screen.getByText('Fechado')).toBeInTheDocument()
+  })
+
+  it('closed: false não mostra o texto "Fechado"', () => {
+    mockUseMonthlyLogQuery.mockReturnValue({
+      isPending: false,
+      data: { ...MONTHLY_LOG, closed: false },
+      refetch: mockRefetch,
+    })
+
+    renderMonthlyPage()
+
+    expect(screen.queryByText('Fechado')).not.toBeInTheDocument()
+  })
+
+  it('rota /archive/monthly/:monthFirst chama useMonthlyLogQuery com o monthFirst da URL e esconde form + recorrentes', () => {
+    mockUseMonthlyLogQuery.mockReturnValue({
+      isPending: false,
+      data: { ...MONTHLY_LOG, closed: true },
+      refetch: mockRefetch,
+    })
+
+    renderMonthlyPageAtArchiveRoute('2026-06-01')
+
+    expect(mockUseMonthlyLogQuery.mock.calls[0][0]).toBe('2026-06-01')
+    expect(screen.getByLabelText('Arquivo — Mês de 2026-06-01')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Adicionar tarefa ao mês')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Definir placement' })).not.toBeInTheDocument()
   })
 })

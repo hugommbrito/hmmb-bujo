@@ -9,6 +9,7 @@ from bujo.serializers import (
     RecurringTaskTemplateUpdateSerializer,
     TaskSerializer,
 )
+from bujo.services.migration import migrate_task
 from bujo.tests.factories import LogFactory, TaskFactory
 from core.tenant import tenant_context
 
@@ -40,6 +41,8 @@ def test_task_serializer_expoe_exatamente_os_campos_esperados():
         "category",
         "scheduled_date",
         "subtasks",
+        "migration_count",
+        "migrated_to_task",
     }
 
 
@@ -99,6 +102,32 @@ def test_task_serializer_subtasks_aninha_na_ordem_de_order_index(user):
             "Primeira filha",
             "Segunda filha",
         ]
+
+
+@pytest.mark.django_db
+def test_task_serializer_migrated_to_task_e_null_quando_nunca_migrou(user):
+    with tenant_context(user):
+        task = TaskFactory(user=user)
+
+        data = TaskSerializer(task).data
+
+        assert data["migration_count"] == 0
+        assert data["migrated_to_task"] is None
+
+
+@pytest.mark.django_db
+def test_task_serializer_migrated_to_task_e_o_id_da_tarefa_de_destino_apos_migrar(user):
+    with tenant_context(user):
+        task = TaskFactory(user=user, status=Task.Status.PENDING)
+
+        # `migrate_task` retorna a ORIGEM recarregada (Task.Status.MIGRATED,
+        # `migrated_to_task` populado) — não a tarefa de destino nova.
+        migrated_source = migrate_task(user=user, task_id=task.id, destination="today")
+        data = TaskSerializer(migrated_source).data
+
+        assert data["migrated_to_task"] == migrated_source.migrated_to_task_id
+        new_task = migrated_source.migrated_to_task
+        assert TaskSerializer(new_task).data["migration_count"] == 1
 
 
 @pytest.mark.django_db

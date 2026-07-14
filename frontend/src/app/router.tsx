@@ -11,6 +11,7 @@ import { WeeklyPage } from '../pages/planner/WeeklyPage'
 import { MonthlyPage } from '../pages/planner/MonthlyPage'
 import { FuturePage } from '../pages/planner/FuturePage'
 import { SettingsPage } from '../pages/settings/SettingsPage'
+import { ArchivePage } from '../pages/archive/ArchivePage'
 
 function LoginPageRoute() {
   const { isAuthenticated } = useAuth()
@@ -95,7 +96,17 @@ export const routeDefinitions: RouteObject[] = [
         element: <PlaceholderPage title="Brain Dump" />,
         handle: { title: 'Brain Dump' },
       },
-      { path: 'archive', element: <PlaceholderPage title="Arquivo" />, handle: { title: 'Arquivo' } },
+      { path: 'archive', element: <ArchivePage />, handle: { title: 'Arquivo' } },
+      {
+        path: 'archive/weekly/:weekStart',
+        element: <WeeklyPage />,
+        handle: { title: 'Arquivo — Semana' },
+      },
+      {
+        path: 'archive/monthly/:monthFirst',
+        element: <MonthlyPage />,
+        handle: { title: 'Arquivo — Mês' },
+      },
       {
         path: 'settings',
         element: <SettingsPage />,

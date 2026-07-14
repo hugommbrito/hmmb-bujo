@@ -23,6 +23,8 @@ class TaskSerializer(serializers.ModelSerializer):
             "category",
             "scheduled_date",
             "subtasks",
+            "migration_count",
+            "migrated_to_task",
         ]
 
     def get_subtasks(self, obj):
@@ -85,11 +87,19 @@ class WeeklyLogSerializer(serializers.Serializer):
     week_start = serializers.DateField()
     days = WeeklyDaySerializer(many=True)
     unscheduled = TaskSerializer(many=True)
+    closed = serializers.BooleanField()
 
 
 class MonthlyLogSerializer(serializers.Serializer):
     month_first = serializers.DateField()
     tasks = TaskSerializer(many=True)
+    closed = serializers.BooleanField()
+
+
+class ArchiveEntrySerializer(serializers.Serializer):
+    type = serializers.ChoiceField(choices=["weekly", "monthly"])
+    week_start = serializers.DateField(required=False, allow_null=True)
+    month_first = serializers.DateField(required=False, allow_null=True)
 
 
 class FutureLogMonthGroupSerializer(serializers.Serializer):

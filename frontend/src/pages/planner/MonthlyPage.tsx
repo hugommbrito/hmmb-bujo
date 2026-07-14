@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { useParams } from 'react-router-dom'
 import { Box, Button, TextField, Typography } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import {
@@ -48,7 +49,9 @@ function groupTasksByScheduledDate(tasks: Task[]) {
 }
 
 export function MonthlyPage() {
-  const monthlyLog = useMonthlyLogQuery()
+  const { monthFirst: routeMonthFirst } = useParams<{ monthFirst: string }>()
+  const isArchiveView = Boolean(routeMonthFirst)
+  const monthlyLog = useMonthlyLogQuery(routeMonthFirst)
   const createMonthlyTask = useCreateMonthlyTaskMutation()
   const updateTask = useUpdateTaskMutation()
   const placeTemplate = usePlaceRecurringTemplateMutation()
@@ -66,7 +69,7 @@ export function MonthlyPage() {
 
   if (!monthlyLog.data) return null
 
-  const { monthFirst, tasks } = monthlyLog.data
+  const { monthFirst, tasks, closed } = monthlyLog.data
   const { withDate, withoutDate } = groupTasksByScheduledDate(tasks)
   // Task 8.1: mês exibido é o mês corrente → seção `withoutDate` vem antes de
   // `withDate`, com o rótulo "Itens do Future Log para [Mês]" (itens que já
@@ -135,7 +138,16 @@ export function MonthlyPage() {
   }
 
   return (
-    <Box component="main" aria-label="Este Mês" sx={{ p: 3 }}>
+    <Box
+      component="main"
+      aria-label={isArchiveView ? `Arquivo — Mês de ${monthFirst}` : 'Este Mês'}
+      sx={{ p: 3 }}
+    >
+      {closed && (
+        <Typography variant="heading" sx={{ px: 1, mb: 1 }}>
+          Fechado
+        </Typography>
+      )}
       {tasks.length === 0 ? (
         <Typography variant="body2" color="text.secondary" sx={{ px: 1, mb: 2 }}>
           Nenhuma tarefa neste mês.
@@ -171,45 +183,60 @@ export function MonthlyPage() {
           {withoutDateSection}
         </>
       )}
-      <Box
-        component="form"
-        onSubmit={handleSubmit}
-        aria-label="Adicionar tarefa ao mês"
-        sx={{ display: 'flex', gap: 1, alignItems: 'flex-end', flexWrap: 'wrap', px: 1, py: 1, mt: 3 }}
-      >
-        <TextField
-          label="Título"
-          size="small"
-          value={title}
-          onChange={(event) => setTitle(event.target.value)}
-        />
-        <TextField
-          label="Dia (opcional)"
-          type="number"
-          size="small"
-          value={day}
-          onChange={(event) => setDay(event.target.value)}
-          slotProps={{ htmlInput: { min: 1, max: 31 } }}
-          sx={{ width: 140 }}
-        />
-        <Button type="submit" startIcon={<AddIcon />}>
-          Adicionar
-        </Button>
-      </Box>
-      <RecurringPlacementSection recurrenceGroups={recurrenceGroups} onPlace={setPlacingTemplateId} />
-      <RecurringPlacementDialog
-        open={placingTemplateId !== null}
-        dateFieldType="day"
-        onClose={() => setPlacingTemplateId(null)}
-        onConfirm={(dayValue) => {
-          if (!placingTemplateId) return
-          const scheduledDate = dayValue
-            ? `${monthFirst.slice(0, 7)}-${dayValue.padStart(2, '0')}`
-            : undefined
-          placeTemplate.mutate({ templateId: placingTemplateId, monthFirst, scheduledDate })
-          setPlacingTemplateId(null)
-        }}
-      />
+      {!isArchiveView && (
+        <>
+          <Box
+            component="form"
+            onSubmit={handleSubmit}
+            aria-label="Adicionar tarefa ao mês"
+            sx={{
+              display: 'flex',
+              gap: 1,
+              alignItems: 'flex-end',
+              flexWrap: 'wrap',
+              px: 1,
+              py: 1,
+              mt: 3,
+            }}
+          >
+            <TextField
+              label="Título"
+              size="small"
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+            />
+            <TextField
+              label="Dia (opcional)"
+              type="number"
+              size="small"
+              value={day}
+              onChange={(event) => setDay(event.target.value)}
+              slotProps={{ htmlInput: { min: 1, max: 31 } }}
+              sx={{ width: 140 }}
+            />
+            <Button type="submit" startIcon={<AddIcon />}>
+              Adicionar
+            </Button>
+          </Box>
+          <RecurringPlacementSection
+            recurrenceGroups={recurrenceGroups}
+            onPlace={setPlacingTemplateId}
+          />
+          <RecurringPlacementDialog
+            open={placingTemplateId !== null}
+            dateFieldType="day"
+            onClose={() => setPlacingTemplateId(null)}
+            onConfirm={(dayValue) => {
+              if (!placingTemplateId) return
+              const scheduledDate = dayValue
+                ? `${monthFirst.slice(0, 7)}-${dayValue.padStart(2, '0')}`
+                : undefined
+              placeTemplate.mutate({ templateId: placingTemplateId, monthFirst, scheduledDate })
+              setPlacingTemplateId(null)
+            }}
+          />
+        </>
+      )}
     </Box>
   )
 }

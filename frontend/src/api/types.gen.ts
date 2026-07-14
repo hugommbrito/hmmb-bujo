@@ -60,6 +60,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/bujo/archive/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["bujo_archive_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/bujo/catch-up/queue/": {
         parameters: {
             query?: never;
@@ -336,6 +352,13 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        ArchiveEntry: {
+            type: components["schemas"]["TypeEnum"];
+            /** Format: date */
+            weekStart?: string | null;
+            /** Format: date */
+            monthFirst?: string | null;
+        };
         /** @enum {unknown} */
         BlankEnum: "";
         CatchUpQueue: {
@@ -391,6 +414,7 @@ export interface components {
             /** Format: date */
             monthFirst: string;
             tasks: components["schemas"]["Task"][];
+            closed: boolean;
         };
         MonthlyReviewQueue: {
             /** Format: date */
@@ -486,6 +510,9 @@ export interface components {
             /** Format: date */
             scheduledDate?: string | null;
             readonly subtasks: components["schemas"]["Task"][];
+            migrationCount?: number;
+            /** Format: uuid */
+            migratedToTask?: string | null;
         };
         TaskCreate: {
             title: string;
@@ -528,6 +555,12 @@ export interface components {
             readonly access: string;
             refresh: string;
         };
+        /**
+         * @description * `weekly` - weekly
+         *     * `monthly` - monthly
+         * @enum {string}
+         */
+        TypeEnum: "weekly" | "monthly";
         WeeklyDay: {
             /** Format: date */
             date: string;
@@ -538,6 +571,7 @@ export interface components {
             weekStart: string;
             days: components["schemas"]["WeeklyDay"][];
             unscheduled: components["schemas"]["Task"][];
+            closed: boolean;
         };
         WeeklyReviewQueue: {
             /** Format: date */
@@ -613,6 +647,25 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TokenRefresh"];
+                };
+            };
+        };
+    };
+    bujo_archive_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveEntry"][];
                 };
             };
         };

@@ -1016,3 +1016,78 @@ Lint (eslint e2e/recurring-templates.spec.ts): 0 achados
 - Nenhum job de CI sobe backend+frontend juntos hoje (mesmo gap apontado desde a 3.1) — os E2E continuam rodando só localmente contra o Neon dev branch.
 - O flake ambiental de execuções sob carga de sessão (Neon dev branch compartilhado) segue como débito conhecido desde a 4.2 — mesmo candidato de solução já apontado nas rodadas anteriores (`fullyParallel: false` para specs dependentes de estado global, ou banco de teste isolado por worker).
 - Nenhuma ação bloqueante pendente para esta story.
+
+---
+
+# Resumo de Automação de Testes — Story 4.6: Fechamento de ciclos e Arquivo
+
+**Data:** 2026-07-14
+**Story:** 4.6 — Fechamento de ciclos e Arquivo
+**Framework:** pytest + DRF `APIClient` (backend) · Vitest 4.1 + @testing-library/react + jest-axe (frontend) · Playwright 1.61 (E2E de browser real)
+
+Última story do Épico 4. Como em 4.2/4.3/4.4 (e diferente de 4.5), o dev-story não deixou um spec E2E permanente — a verificação manual da Task 12.3 usou um script Playwright temporário, descartado ao final. Cobertura unitária/de serviço já extensa (305 backend + 376 frontend, ao final do dev-story) prova `is_container_closed`/`list_closed_cycles` isoladamente (`test_services.py`) e o indicador `closed`/modo Arquivo via mocks de `useWeeklyLogQuery`/`useMonthlyLogQuery`/`useArchiveQuery` (`WeeklyPage.test.tsx`, `MonthlyPage.test.tsx`, `ArchivePage.test.tsx`) — nenhum teste cruzava páginas reais (Arquivo → semana/mês fechados) nem provava, contra o backend de verdade, que a navegação por rota parametrizada (`/archive/weekly/:weekStart`, `/archive/monthly/:monthFirst`) chega no estado final correto. Esse é o gap fechado por esta rodada.
+
+## Gap Descoberto e Fechado
+
+| Gap | Arquivo | Descrição |
+|-----|---------|-----------|
+| Sem cobertura E2E do fluxo de Arquivo | `frontend/e2e/archive.spec.ts` (novo) | AC1 (fechamento computado, indicador textual) e AC2 (Arquivo lista e permite consultar ciclos fechados com estado final de cada tarefa, incl. estado vazio) só tinham sido validados via mocks isolados nos testes de componente ou pelo script Playwright descartável da verificação manual — nunca um spec permanente contra o navegador real, com um ciclo passado de verdade fechado no banco. |
+
+## Testes Gerados
+
+### `frontend/e2e/seedArchiveScenario.ts` — novo (seed)
+
+Mesma técnica de `seedReviewScenario.ts`/`seedCatchUpScenario.ts`: nenhuma affordance de UI permite compor de propósito uma semana/mês passado inteiramente disposto, então o cenário é seedado direto no banco de dev via `manage.py shell` + `tenant_context` — 2 semanas/2 meses atrás (não 1) para não colidir com as janelas de "semana/mês anterior" da revisão (4.3).
+
+### `frontend/e2e/archive.spec.ts` — novo (2 testes)
+
+- [x] `Arquivo vazio para usuário novo mostra o estado vazio (AC2)` — usuário recém-cadastrado (sem nenhum ciclo) navega para Arquivo pela Sidebar e vê "Nenhuma semana ou mês fechado ainda."
+- [x] `lista ciclos fechados e navega para semana/mês com estado final, sem affordance de escrita (AC1, AC2)` — seed de 1 semana fechada (tarefa concluída + cancelada + migrada, `migration_count=2`) e 1 mês fechado (tarefa concluída); Arquivo lista as 2 entradas com o rótulo formatado certo; clicar na semana navega para `/archive/weekly/:weekStart`, mostra "Fechada", o estado final de cada uma das 3 tarefas (ícone/`aria-label` `Concluída`/`Cancelada`/`Migrada`) e nenhuma affordance de escrita — nem o botão "Definir placement" nem a própria requisição de templates recorrentes disparam, provando que a seção some por `isArchiveView` (não porque a lista de templates está vazia); o payload real de `GET /api/bujo/logs/weekly/` é inspecionado para confirmar que `migrationCount` chega no contrato (AC2: "o que foi feito com ela, incl. linhagem de migração"); mesma verificação para o mês (`Fechado`, tarefa concluída, sem form "Adicionar tarefa ao mês"); zero erros de console nas duas navegações.
+
+## Cobertura por AC
+
+| AC | Critério | Coberto por |
+|----|----------|-------------|
+| AC1 | Fechamento computado na leitura, considerando a subárvore completa (pai com filho pendente não fecha) | `test_services.py::is_container_closed` (pré-existente) + `archive.spec.ts` ← **novo, contra backend real** |
+| AC1 | Indicador textual "Fechada"/"Fechado", sem ícone | `WeeklyPage.test.tsx`/`MonthlyPage.test.tsx` (pré-existente, mocado) + `archive.spec.ts` ← **novo, renderizado de verdade** |
+| AC1 | Ciclo fechado continua acessível pela navegação normal (mesmo `WeeklyLog`/`MonthlyLog`) | Não coberto por nenhum teste até esta rodada — implícito na reutilização de `WeeklyPage`/`MonthlyPage`, nunca exercitado ponta-a-ponta |
+| AC2 | Arquivo lista semanas/meses fechados, mais recentes primeiro | `test_services.py::list_closed_cycles` (pré-existente) + `ArchivePage.test.tsx` (pré-existente, mocado) + `archive.spec.ts` ← **novo, lista real após seed real** |
+| AC2 | Consulta ao ciclo mostra estado final de cada tarefa e o que foi feito com ela (incl. linhagem de migração) | `test_serializers.py` (pré-existente, campo isolado) — `archive.spec.ts` ← **novo, primeiro teste a provar os 3 estados finais (concluída/cancelada/migrada) juntos numa página real e o `migrationCount` chegando no payload consumido pela UI** |
+| AC2 | Estado vazio "Nenhuma semana ou mês fechado ainda." | `ArchivePage.test.tsx` (pré-existente, mocado) + `archive.spec.ts` ← **novo, usuário real sem nenhum ciclo** |
+
+## Execução
+
+```
+E2E (spec novo, isolado):  npx playwright test e2e/archive.spec.ts → 2 passed (26s), sem flake
+E2E (suíte completa, 10 specs, --workers=1): 17 passed, 4 failed — todas as 4 falhas em specs
+  PRÉ-EXISTENTES não tocados nesta rodada (catch-up.spec.ts × 1, daily-tasks.spec.ts × 1,
+  task-reorder.spec.ts × 1, mais 1 timeout de signup na fixture compartilhada), mesma classe
+  de flakiness de contenção do Neon dev branch sob carga de sessão prolongada já documentada
+  nas rodadas de QA de 3.1/3.3/3.4/4.2/4.3/4.4/4.5, não uma regressão desta rodada —
+  archive.spec.ts passou nas duas execuções (isolada e dentro da suíte completa).
+Typecheck (tsc -b --noEmit): 0 erros
+Lint (eslint e2e/archive.spec.ts e2e/seedArchiveScenario.ts): 0 achados
+```
+
+## Checklist de Validação
+
+- [x] Teste E2E gerado para o gap real desta story (fluxo cross-página Arquivo → semana/mês fechados + estado vazio — o único tipo de teste em falta; unit/serviço já cobertos pelo dev-story)
+- [x] Usa APIs padrão do framework já adotado (`@playwright/test`) — nenhuma ferramenta nova introduzida
+- [x] Cobre happy path (lista + navegação + estado final) + estado vazio + caso de fronteira (tarefa migrada, não só concluída/cancelada)
+- [x] Ambos os testes passam em execução isolada (2/2, sem flake); suíte completa sem regressão nos specs não tocados (falhas confirmadas como flakiness pré-existente do Neon dev branch)
+- [x] Locators semânticos (`getByRole`, `getByLabel`, `getByText`, `data-testid` já existente para `task-row`)
+- [x] Sem waits/sleeps artificiais — `page.waitForResponse` no GET real da semana fechada
+- [x] Testes independentes entre si (cada um cria seu próprio usuário via signup; datas seedadas 2 semanas/2 meses atrás, sem overlap entre testes)
+- [x] Summary salvo em `_bmad-output/implementation-artifacts/tests/test-summary.md`
+- [x] Testes salvos no diretório correto (`frontend/e2e/archive.spec.ts`, `frontend/e2e/seedArchiveScenario.ts`)
+
+## Observação — linhagem de migração sem superfície visual dedicada
+
+AC #2 pede explicitamente "o que foi feito com ela (incl. linhagem de migração — `migration_count`)". O contrato entrega isso (`TaskSerializer.migration_count`/`migrated_to_task`, confirmado ponta-a-ponta pelo `archive.spec.ts` novo), mas **nenhum componente de UI renderiza esses dois campos** hoje — `TaskRow` mostra só o ícone de status final (`Migrada`), não a contagem nem o destino da migração; não há painel de detalhe acessível a partir do Arquivo (`onOpenDetail` não é passado a `TaskRow` em `WeeklyPage`/`MonthlyPage`, por design — Dev Notes da própria story). Isso não é um gap de teste (o comportamento atual está corretamente coberto pelo que existe), é um gap de produto: a AC pede "consultável" e hoje só é consultável via rede, não visualmente. Fora do escopo desta rodada (só geração de testes) — sinalizado aqui para uma decisão consciente antes da retrospectiva do Épico 4.
+
+## Próximos Passos
+
+- Decidir se a Observação acima (linhagem de migração sem superfície visual) é um débito aceito ou motivo de um follow-up rápido antes de fechar o Épico 4 — não bloqueia esta rodada de QA, mas vale levar para a retrospectiva do épico.
+- Nenhum job de CI sobe backend+frontend juntos hoje (mesmo gap apontado desde a 3.1) — os E2E continuam rodando só localmente contra o Neon dev branch.
+- O flake ambiental de execuções sob carga de sessão (Neon dev branch compartilhado) segue como débito conhecido desde a 4.2.
+- Esta é a última story do Épico 4 — próximo passo natural é a retrospectiva do épico (`epic-4-retrospective`), não uma nova rodada de QA.

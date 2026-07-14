@@ -21,6 +21,7 @@ export const keys = {
     catchUpQueue: () => ['bujo', 'catchUpQueue', 'list'] as const,
     recurringTemplates: (params?: { active?: boolean; recurrenceGroup?: string }) =>
       ['bujo', 'recurringTemplates', 'list', params ?? {}] as const,
+    archive: () => ['bujo', 'archive', 'list'] as const,
   },
   // Adicionados nas stories:
   // habits: { logs: { ... } }  → Story 6.x

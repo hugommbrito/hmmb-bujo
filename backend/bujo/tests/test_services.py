@@ -6,6 +6,7 @@ from datetime import date, timedelta
 import pytest
 
 from bujo.models import Log, MonthlyLog, RecurringTaskTemplate, Task, WeeklyLog
+from bujo.services.archive import is_container_closed, list_closed_cycles
 from bujo.services.logs import (
     get_or_create_daily_log,
     get_or_create_monthly_log,
@@ -826,3 +827,104 @@ def test_place_template_escopado_por_tenant(user, other_user):
                 template_id=template.id,
                 week_start=week_start_of(today_for(other_user)),
             )
+
+
+# --- archive.py (AC #1, #2) ----------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_is_container_closed_log_sem_tarefas_retorna_false(user):
+    """Vazio nunca é "fechado" — evita falso-positivo de um log só
+    materializado por navegação (`get_or_create_*`), sem nenhuma tarefa."""
+    with tenant_context(user):
+        weekly_log = WeeklyLogFactory(user=user)
+
+        assert is_container_closed(weekly_log) is False
+
+
+@pytest.mark.django_db
+def test_is_container_closed_log_com_so_tarefas_pending_retorna_false(user):
+    with tenant_context(user):
+        weekly_log = WeeklyLogFactory(user=user)
+        TaskFactory(user=user, weekly_log=weekly_log, status=Task.Status.PENDING)
+
+        assert is_container_closed(weekly_log) is False
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "disposed_status",
+    [
+        Task.Status.COMPLETED,
+        Task.Status.CANCELLED,
+        Task.Status.MIGRATED,
+        Task.Status.POSTPONED,
+    ],
+)
+def test_is_container_closed_log_com_todas_dispostas_retorna_true(user, disposed_status):
+    with tenant_context(user):
+        weekly_log = WeeklyLogFactory(user=user)
+        TaskFactory(user=user, weekly_log=weekly_log, status=disposed_status)
+
+        assert is_container_closed(weekly_log) is True
+
+
+@pytest.mark.django_db
+def test_is_container_closed_pai_completo_com_subtarefa_pending_retorna_false(user):
+    """Prova direta da subárvore completa (FR-1.10): `is_container_closed` não
+    filtra por `parent_task`, então um pai disposto com filho ainda pendente
+    mantém o ciclo aberto."""
+    with tenant_context(user):
+        weekly_log = WeeklyLogFactory(user=user)
+        parent = TaskFactory(user=user, weekly_log=weekly_log, status=Task.Status.COMPLETED)
+        TaskFactory(
+            user=user, weekly_log=weekly_log, parent_task=parent, status=Task.Status.PENDING
+        )
+
+        assert is_container_closed(weekly_log) is False
+
+
+@pytest.mark.django_db
+def test_is_container_closed_funciona_para_monthly_log(user):
+    with tenant_context(user):
+        monthly_log = MonthlyLogFactory(user=user)
+        TaskFactory(user=user, monthly_log=monthly_log, status=Task.Status.CANCELLED)
+
+        assert is_container_closed(monthly_log) is True
+
+
+@pytest.mark.django_db
+def test_list_closed_cycles_so_retorna_ciclos_fechados_ordenados_por_data_desc(user):
+    with tenant_context(user):
+        closed_weekly = WeeklyLogFactory(user=user, week_start=date(2026, 6, 1))
+        TaskFactory(user=user, weekly_log=closed_weekly, status=Task.Status.COMPLETED)
+
+        open_weekly = WeeklyLogFactory(user=user, week_start=date(2026, 6, 8))
+        TaskFactory(user=user, weekly_log=open_weekly, status=Task.Status.PENDING)
+
+        WeeklyLogFactory(user=user, week_start=date(2026, 6, 15))  # vazio — não fechado
+
+        closed_monthly = MonthlyLogFactory(user=user, month_first=date(2026, 5, 1))
+        TaskFactory(user=user, monthly_log=closed_monthly, status=Task.Status.CANCELLED)
+
+        open_monthly = MonthlyLogFactory(user=user, month_first=date(2026, 7, 1))
+        TaskFactory(user=user, monthly_log=open_monthly, status=Task.Status.STARTED)
+
+        entries = list_closed_cycles(user=user)
+
+        assert entries == [
+            {"type": "weekly", "week_start": date(2026, 6, 1), "month_first": None},
+            {"type": "monthly", "week_start": None, "month_first": date(2026, 5, 1)},
+        ]
+
+
+@pytest.mark.django_db
+def test_list_closed_cycles_escopado_por_tenant(user, other_user):
+    with tenant_context(other_user):
+        other_closed = WeeklyLogFactory(user=other_user, week_start=date(2026, 6, 1))
+        TaskFactory(user=other_user, weekly_log=other_closed, status=Task.Status.COMPLETED)
+
+    with tenant_context(user):
+        entries = list_closed_cycles(user=user)
+
+        assert entries == []
