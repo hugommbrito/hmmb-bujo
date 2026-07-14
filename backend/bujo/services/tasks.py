@@ -21,6 +21,7 @@ def create_task(
     eisenhower=None,
     category=None,
     parent_task=None,
+    source_template=None,
 ) -> Task:
     """`order_index` é sempre calculado por irmãos (mesmo container —
     `log`/`weekly_log`/`monthly_log` — + `parent_task` idênticos) — uma
@@ -38,6 +39,7 @@ def create_task(
         monthly_log=monthly_log,
         scheduled_date=scheduled_date,
         parent_task=parent_task,
+        source_template=source_template,
         title=title,
         description=description,
         eisenhower=eisenhower,

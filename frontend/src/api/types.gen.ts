@@ -172,6 +172,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/bujo/recurring-templates/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["bujo_recurring_templates_list"];
+        put?: never;
+        post: operations["bujo_recurring_templates_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bujo/recurring-templates/{id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["bujo_recurring_templates_partial_update"];
+        trace?: never;
+    };
+    "/api/bujo/recurring-templates/{id}/place/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["bujo_recurring_templates_place_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/bujo/tasks/": {
         parameters: {
             query?: never;
@@ -361,6 +409,14 @@ export interface components {
         };
         /** @enum {unknown} */
         NullEnum: null;
+        PatchedRecurringTaskTemplateUpdate: {
+            title?: string;
+            description?: string | null;
+            eisenhower?: (components["schemas"]["EisenhowerEnum"] | components["schemas"]["NullEnum"]) | null;
+            recurrenceGroup?: components["schemas"]["RecurrenceGroupEnum"];
+            recurrenceText?: string;
+            active?: boolean;
+        };
         PatchedTaskUpdate: {
             title?: string;
             description?: string | null;
@@ -375,6 +431,40 @@ export interface components {
          * @enum {string}
          */
         PositionEnum: "before" | "after";
+        /**
+         * @description * `weekly` - Weekly
+         *     * `monthly` - Monthly
+         *     * `annual` - Annual
+         * @enum {string}
+         */
+        RecurrenceGroupEnum: "weekly" | "monthly" | "annual";
+        RecurringTaskTemplate: {
+            /** Format: uuid */
+            readonly id: string;
+            title: string;
+            description?: string | null;
+            eisenhower?: (components["schemas"]["EisenhowerEnum"] | components["schemas"]["BlankEnum"] | components["schemas"]["NullEnum"]) | null;
+            recurrenceGroup: components["schemas"]["RecurrenceGroupEnum"];
+            recurrenceText: string;
+            active?: boolean;
+        };
+        RecurringTaskTemplateCreate: {
+            title: string;
+            description?: string | null;
+            eisenhower?: (components["schemas"]["EisenhowerEnum"] | components["schemas"]["NullEnum"]) | null;
+            recurrenceGroup: components["schemas"]["RecurrenceGroupEnum"];
+            recurrenceText: string;
+            /** @default true */
+            active: boolean;
+        };
+        RecurringTaskTemplatePlace: {
+            /** Format: date */
+            weekStart?: string;
+            /** Format: date */
+            monthFirst?: string;
+            /** Format: date */
+            scheduledDate?: string | null;
+        };
         /**
          * @description * `pending` - Pending
          *     * `started` - Started
@@ -679,6 +769,98 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MonthlyReviewQueue"];
+                };
+            };
+        };
+    };
+    bujo_recurring_templates_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecurringTaskTemplate"][];
+                };
+            };
+        };
+    };
+    bujo_recurring_templates_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecurringTaskTemplateCreate"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecurringTaskTemplate"];
+                };
+            };
+        };
+    };
+    bujo_recurring_templates_partial_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PatchedRecurringTaskTemplateUpdate"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecurringTaskTemplate"];
+                };
+            };
+        };
+    };
+    bujo_recurring_templates_place_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["RecurringTaskTemplatePlace"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
                 };
             };
         };

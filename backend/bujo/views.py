@@ -12,7 +12,7 @@ from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from bujo.models import Log, MonthlyLog, Task, WeeklyLog
+from bujo.models import Log, MonthlyLog, RecurringTaskTemplate, Task, WeeklyLog
 from bujo.serializers import (
     CatchUpQueueSerializer,
     FutureLogMonthGroupSerializer,
@@ -21,6 +21,10 @@ from bujo.serializers import (
     MonthlyLogSerializer,
     MonthlyReviewQueueSerializer,
     MonthlyTaskCreateSerializer,
+    RecurringTaskTemplateCreateSerializer,
+    RecurringTaskTemplatePlaceSerializer,
+    RecurringTaskTemplateSerializer,
+    RecurringTaskTemplateUpdateSerializer,
     TaskCreateSerializer,
     TaskMigrateSerializer,
     TaskReorderSerializer,
@@ -35,6 +39,7 @@ from bujo.services.logs import (
     get_or_create_weekly_log,
 )
 from bujo.services.migration import migrate_task
+from bujo.services.recurring import create_template, place_template, update_template
 from bujo.services.state_machine import transition_task
 from bujo.services.tasks import create_task, reorder_task, update_task
 from core.calendar import today_for, week_start_of
@@ -141,6 +146,65 @@ class TaskReorderView(APIView):
         except Task.DoesNotExist:
             raise NotFound() from None
         return Response(TaskSerializer(task).data)
+
+
+class RecurringTaskTemplateListView(APIView):
+    @extend_schema(responses=RecurringTaskTemplateSerializer(many=True))
+    def get(self, request):
+        templates = RecurringTaskTemplate.objects.all()
+        active_param = request.query_params.get("active")
+        if active_param is not None:
+            templates = templates.filter(active=active_param.lower() == "true")
+        recurrence_group_param = request.query_params.get("recurrence_group")
+        if recurrence_group_param:
+            templates = templates.filter(recurrence_group=recurrence_group_param)
+        return Response(RecurringTaskTemplateSerializer(templates, many=True).data)
+
+    @extend_schema(
+        request=RecurringTaskTemplateCreateSerializer, responses=RecurringTaskTemplateSerializer
+    )
+    def post(self, request):
+        body = RecurringTaskTemplateCreateSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        template = create_template(user=request.user, **body.validated_data)
+        return Response(
+            RecurringTaskTemplateSerializer(template).data, status=status.HTTP_201_CREATED
+        )
+
+
+class RecurringTaskTemplateDetailView(APIView):
+    @extend_schema(
+        request=RecurringTaskTemplateUpdateSerializer, responses=RecurringTaskTemplateSerializer
+    )
+    def patch(self, request, pk):
+        body = RecurringTaskTemplateUpdateSerializer(data=request.data, partial=True)
+        body.is_valid(raise_exception=True)
+        try:
+            template = update_template(
+                user=request.user, template_id=pk, **body.validated_data
+            )
+        except RecurringTaskTemplate.DoesNotExist:
+            raise NotFound() from None
+        return Response(RecurringTaskTemplateSerializer(template).data)
+
+
+class RecurringTaskTemplatePlaceView(APIView):
+    @extend_schema(request=RecurringTaskTemplatePlaceSerializer, responses=TaskSerializer)
+    def post(self, request, pk):
+        body = RecurringTaskTemplatePlaceSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        validated = body.validated_data
+        try:
+            task = place_template(
+                user=request.user,
+                template_id=pk,
+                week_start=validated.get("week_start"),
+                month_first=validated.get("month_first"),
+                scheduled_date=validated.get("scheduled_date"),
+            )
+        except RecurringTaskTemplate.DoesNotExist:
+            raise NotFound() from None
+        return Response(TaskSerializer(task).data, status=status.HTTP_201_CREATED)
 
 
 class WeeklyLogView(APIView):

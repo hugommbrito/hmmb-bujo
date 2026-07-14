@@ -14,11 +14,17 @@ export {
   useWeeklyReviewQueueQuery,
   useMonthlyReviewQueueQuery,
   useCatchUpQueueQuery,
+  useRecurringTemplatesQuery,
+  useCreateRecurringTemplateMutation,
+  useUpdateRecurringTemplateMutation,
+  usePlaceRecurringTemplateMutation,
 } from './api'
 export { MigrationBanner } from './components/MigrationBanner'
 export { WeeklyReviewBanner } from './components/WeeklyReviewBanner'
 export { MonthlyReviewBanner } from './components/MonthlyReviewBanner'
 export { CatchUpBanner } from './components/CatchUpBanner'
+export { RecurringTemplateManager } from './components/RecurringTemplateManager'
+export { RecurringPlacementSection } from './components/RecurringPlacementSection'
 export type { MigrationDestination } from './api'
 export type {
   Log,
@@ -34,4 +40,6 @@ export type {
   WeeklyReviewQueue,
   MonthlyReviewQueue,
   CatchUpQueue,
+  RecurringTaskTemplate,
+  RecurrenceGroup,
 } from './types'

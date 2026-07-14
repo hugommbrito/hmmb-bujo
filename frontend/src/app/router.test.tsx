@@ -30,6 +30,7 @@ vi.mock('../features/bujo', () => ({
   WeeklyReviewBanner: () => null,
   MonthlyReviewBanner: () => null,
   CatchUpBanner: () => null,
+  RecurringTemplateManager: () => null,
 }))
 
 // TaskDetailPanel usa mutações do TanStack Query (`../api`) diretamente, fora

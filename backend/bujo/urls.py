@@ -6,6 +6,9 @@ from bujo.views import (
     MigrationQueueView,
     MonthlyLogView,
     MonthlyReviewQueueView,
+    RecurringTaskTemplateDetailView,
+    RecurringTaskTemplateListView,
+    RecurringTaskTemplatePlaceView,
     SubtaskCreateView,
     TaskCreateView,
     TaskDetailView,
@@ -36,4 +39,19 @@ urlpatterns = [
     path("tasks/<uuid:pk>/reorder/", TaskReorderView.as_view(), name="bujo-task-reorder"),
     path("tasks/<uuid:pk>/migrate/", TaskMigrateView.as_view(), name="bujo-task-migrate"),
     path("catch-up/queue/", CatchUpQueueView.as_view(), name="bujo-catch-up-queue"),
+    path(
+        "recurring-templates/",
+        RecurringTaskTemplateListView.as_view(),
+        name="bujo-recurring-template-list",
+    ),
+    path(
+        "recurring-templates/<uuid:pk>/",
+        RecurringTaskTemplateDetailView.as_view(),
+        name="bujo-recurring-template-detail",
+    ),
+    path(
+        "recurring-templates/<uuid:pk>/place/",
+        RecurringTaskTemplatePlaceView.as_view(),
+        name="bujo-recurring-template-place",
+    ),
 ]

@@ -10,6 +10,8 @@ import type {
   MigrationQueue,
   MonthlyLog,
   MonthlyReviewQueue,
+  RecurrenceGroup,
+  RecurringTaskTemplate,
   Task,
   TaskCategory,
   TaskEisenhower,
@@ -316,6 +318,116 @@ export function useMigrateTaskMutation() {
       queryClient.invalidateQueries({ queryKey: ['bujo', 'weeklyLog'] })
       queryClient.invalidateQueries({ queryKey: ['bujo', 'monthlyLog'] })
       queryClient.invalidateQueries({ queryKey: ['bujo', 'futureLog'] })
+    },
+  })
+}
+
+interface RecurringTemplatesParams {
+  active?: boolean
+  recurrenceGroup?: RecurrenceGroup
+}
+
+async function fetchRecurringTemplates(
+  params?: RecurringTemplatesParams,
+): Promise<RecurringTaskTemplate[]> {
+  const response = await client.get<RecurringTaskTemplate[]>('/api/bujo/recurring-templates/', {
+    // snake_case: espelha o backend real (Task 7.1), não a convenção
+    // camelCase aspiracional do §6.3 que WeeklyLogView/MonthlyLogView já não seguem.
+    params: params
+      ? { active: params.active, recurrence_group: params.recurrenceGroup }
+      : undefined,
+  })
+  return response.data
+}
+
+export function useRecurringTemplatesQuery(params?: RecurringTemplatesParams) {
+  return useQuery({
+    queryKey: keys.bujo.recurringTemplates(params),
+    queryFn: () => fetchRecurringTemplates(params),
+  })
+}
+
+interface RecurringTemplateFields {
+  title: string
+  description?: string | null
+  eisenhower?: TaskEisenhower | null
+  recurrenceGroup: RecurrenceGroup
+  recurrenceText: string
+  active?: boolean
+}
+
+async function createRecurringTemplate(
+  fields: RecurringTemplateFields,
+): Promise<RecurringTaskTemplate> {
+  const response = await client.post<RecurringTaskTemplate>('/api/bujo/recurring-templates/', fields)
+  return response.data
+}
+
+export function useCreateRecurringTemplateMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: createRecurringTemplate,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: keys.bujo.recurringTemplates() })
+    },
+  })
+}
+
+interface UpdateRecurringTemplateVariables extends Partial<RecurringTemplateFields> {
+  templateId: string
+}
+
+async function updateRecurringTemplate({
+  templateId,
+  ...patch
+}: UpdateRecurringTemplateVariables): Promise<RecurringTaskTemplate> {
+  const response = await client.patch<RecurringTaskTemplate>(
+    `/api/bujo/recurring-templates/${templateId}/`,
+    patch,
+  )
+  return response.data
+}
+
+export function useUpdateRecurringTemplateMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: updateRecurringTemplate,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: keys.bujo.recurringTemplates() })
+    },
+  })
+}
+
+interface PlaceRecurringTemplateVariables {
+  templateId: string
+  weekStart?: string
+  monthFirst?: string
+  scheduledDate?: string | null
+}
+
+async function placeRecurringTemplate({
+  templateId,
+  ...fields
+}: PlaceRecurringTemplateVariables): Promise<Task> {
+  const response = await client.post<Task>(
+    `/api/bujo/recurring-templates/${templateId}/place/`,
+    fields,
+  )
+  return response.data
+}
+
+export function usePlaceRecurringTemplateMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: placeRecurringTemplate,
+    onSuccess: () => {
+      // A lista de templates ativos não muda com um placement, mas simplifica
+      // invalidar por prefixo; o log afetado (semanal ou mensal) sim muda —
+      // mesma técnica de invalidação cruzada de useMigrateTaskMutation:
+      // invalidar ambos os prefixos é seguro mesmo quando só um se aplica.
+      queryClient.invalidateQueries({ queryKey: keys.bujo.recurringTemplates() })
+      queryClient.invalidateQueries({ queryKey: ['bujo', 'weeklyLog'] })
+      queryClient.invalidateQueries({ queryKey: ['bujo', 'monthlyLog'] })
     },
   })
 }

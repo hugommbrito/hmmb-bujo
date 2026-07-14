@@ -10,6 +10,7 @@ import { DailyPage } from '../pages/daily/DailyPage'
 import { WeeklyPage } from '../pages/planner/WeeklyPage'
 import { MonthlyPage } from '../pages/planner/MonthlyPage'
 import { FuturePage } from '../pages/planner/FuturePage'
+import { SettingsPage } from '../pages/settings/SettingsPage'
 
 function LoginPageRoute() {
   const { isAuthenticated } = useAuth()
@@ -97,7 +98,7 @@ export const routeDefinitions: RouteObject[] = [
       { path: 'archive', element: <PlaceholderPage title="Arquivo" />, handle: { title: 'Arquivo' } },
       {
         path: 'settings',
-        element: <PlaceholderPage title="Configurações" />,
+        element: <SettingsPage />,
         handle: { title: 'Configurações' },
       },
       { path: '*', element: <Navigate to="/today" replace /> },

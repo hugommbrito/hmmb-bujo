@@ -5,18 +5,25 @@ from datetime import date, timedelta
 
 import pytest
 
-from bujo.models import Log, MonthlyLog, Task, WeeklyLog
+from bujo.models import Log, MonthlyLog, RecurringTaskTemplate, Task, WeeklyLog
 from bujo.services.logs import (
     get_or_create_daily_log,
     get_or_create_monthly_log,
     get_or_create_weekly_log,
 )
 from bujo.services.migration import migrate_task
+from bujo.services.recurring import create_template, place_template, update_template
 from bujo.services.state_machine import ALLOWED, transition_task
 from bujo.services.tasks import create_task, reorder_task, update_task
-from bujo.tests.factories import LogFactory, MonthlyLogFactory, TaskFactory, WeeklyLogFactory
+from bujo.tests.factories import (
+    LogFactory,
+    MonthlyLogFactory,
+    RecurringTaskTemplateFactory,
+    TaskFactory,
+    WeeklyLogFactory,
+)
 from core.calendar import today_for, week_start_of
-from core.exceptions import InvalidReorderTarget, InvalidTransition
+from core.exceptions import InvalidReorderTarget, InvalidTransition, WrongPlacementContainer
 from core.tenant import tenant_context
 
 ALL_STATUSES = list(Task.Status.values)
@@ -651,3 +658,171 @@ def test_migrate_task_escopado_por_tenant(user, other_user):
     with tenant_context(other_user):
         with pytest.raises(Task.DoesNotExist):
             migrate_task(user=other_user, task_id=task.id, destination="today")
+
+
+# --- recurring.py (AC #1, #2, #3) ----------------------------------------------
+
+
+@pytest.mark.django_db
+def test_create_template_grava_campos_passados(user):
+    with tenant_context(user):
+        template = create_template(
+            user=user,
+            title="Revisão semanal",
+            recurrence_group=RecurringTaskTemplate.RecurrenceGroup.WEEKLY,
+            recurrence_text="toda sexta",
+        )
+
+        assert template.title == "Revisão semanal"
+        assert template.recurrence_group == RecurringTaskTemplate.RecurrenceGroup.WEEKLY
+        assert template.recurrence_text == "toda sexta"
+        assert template.active is True
+
+
+@pytest.mark.django_db
+def test_create_template_escopado_por_tenant(user, other_user):
+    with tenant_context(user):
+        create_template(
+            user=user,
+            title="Template do user",
+            recurrence_group=RecurringTaskTemplate.RecurrenceGroup.WEEKLY,
+            recurrence_text="toda segunda",
+        )
+
+    with tenant_context(other_user):
+        assert RecurringTaskTemplate.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_update_template_altera_so_os_campos_passados(user):
+    with tenant_context(user):
+        template = RecurringTaskTemplateFactory(user=user, title="Original", active=True)
+
+        updated = update_template(user=user, template_id=template.id, title="Atualizado")
+
+        assert updated.title == "Atualizado"
+        assert updated.active is True
+
+
+@pytest.mark.django_db
+def test_update_template_escopado_por_tenant(user, other_user):
+    with tenant_context(user):
+        template = RecurringTaskTemplateFactory(user=user, title="Original")
+
+    with tenant_context(other_user):
+        with pytest.raises(RecurringTaskTemplate.DoesNotExist):
+            update_template(user=other_user, template_id=template.id, title="Invadido")
+
+
+@pytest.mark.django_db
+def test_place_template_weekly_cria_task_com_campos_esperados(user):
+    with tenant_context(user):
+        template = RecurringTaskTemplateFactory(
+            user=user,
+            title="Revisão semanal",
+            description="Descrição",
+            eisenhower=Task.Eisenhower.IMPORTANT,
+            recurrence_group=RecurringTaskTemplate.RecurrenceGroup.WEEKLY,
+        )
+        week_start = week_start_of(today_for(user))
+
+        task = place_template(user=user, template_id=template.id, week_start=week_start)
+
+        weekly_log = get_or_create_weekly_log(user=user, week_start=week_start)
+        assert task.weekly_log_id == weekly_log.id
+        assert task.status == Task.Status.PENDING
+        assert task.parent_task is None
+        assert task.migration_count == 0
+        assert task.source_template_id == template.id
+        assert task.title == "Revisão semanal"
+        assert task.description == "Descrição"
+        assert task.eisenhower == Task.Eisenhower.IMPORTANT
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "recurrence_group",
+    [RecurringTaskTemplate.RecurrenceGroup.MONTHLY, RecurringTaskTemplate.RecurrenceGroup.ANNUAL],
+)
+def test_place_template_monthly_e_annual_colocam_no_mesmo_container(user, recurrence_group):
+    """AD-08 item 5: `recurrence_group` controla apresentação, não placement —
+    monthly e annual colocam ambos no Monthly Log, não existe "log anual"."""
+    with tenant_context(user):
+        template = RecurringTaskTemplateFactory(
+            user=user, recurrence_group=recurrence_group, title="Recorrente"
+        )
+        month_first = today_for(user).replace(day=1)
+
+        task = place_template(user=user, template_id=template.id, month_first=month_first)
+
+        monthly_log = get_or_create_monthly_log(user=user, month_first=month_first)
+        assert task.monthly_log_id == monthly_log.id
+
+
+@pytest.mark.django_db
+def test_place_template_weekly_sem_week_start_levanta_wrong_placement_container(user):
+    with tenant_context(user):
+        template = RecurringTaskTemplateFactory(
+            user=user, recurrence_group=RecurringTaskTemplate.RecurrenceGroup.WEEKLY
+        )
+
+        with pytest.raises(WrongPlacementContainer):
+            place_template(user=user, template_id=template.id)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "recurrence_group",
+    [RecurringTaskTemplate.RecurrenceGroup.MONTHLY, RecurringTaskTemplate.RecurrenceGroup.ANNUAL],
+)
+def test_place_template_monthly_annual_sem_month_first_levanta_wrong_placement_container(
+    user, recurrence_group
+):
+    with tenant_context(user):
+        template = RecurringTaskTemplateFactory(user=user, recurrence_group=recurrence_group)
+
+        with pytest.raises(WrongPlacementContainer):
+            place_template(user=user, template_id=template.id)
+
+
+@pytest.mark.django_db
+def test_place_template_independencia_instancia_template_ac3(user):
+    """AC #3: editar o template depois do placement não altera a Task já
+    criada; colocar o mesmo template de novo (após a edição) usa os campos
+    atualizados; editar a Task não afeta o template."""
+    with tenant_context(user):
+        template = RecurringTaskTemplateFactory(
+            user=user,
+            title="Título original",
+            recurrence_group=RecurringTaskTemplate.RecurrenceGroup.WEEKLY,
+        )
+        week_start = week_start_of(today_for(user))
+
+        first_task = place_template(user=user, template_id=template.id, week_start=week_start)
+        update_template(user=user, template_id=template.id, title="Título atualizado")
+        first_task.refresh_from_db()
+
+        assert first_task.title == "Título original"
+
+        second_task = place_template(user=user, template_id=template.id, week_start=week_start)
+        assert second_task.title == "Título atualizado"
+
+        update_task(user=user, task_id=first_task.id, title="Editada na instância")
+        template.refresh_from_db()
+        assert template.title == "Título atualizado"
+
+
+@pytest.mark.django_db
+def test_place_template_escopado_por_tenant(user, other_user):
+    with tenant_context(user):
+        template = RecurringTaskTemplateFactory(
+            user=user, recurrence_group=RecurringTaskTemplate.RecurrenceGroup.WEEKLY
+        )
+
+    with tenant_context(other_user):
+        with pytest.raises(RecurringTaskTemplate.DoesNotExist):
+            place_template(
+                user=other_user,
+                template_id=template.id,
+                week_start=week_start_of(today_for(other_user)),
+            )

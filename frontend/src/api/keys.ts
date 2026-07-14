@@ -19,6 +19,8 @@ export const keys = {
     weeklyReviewQueue: () => ['bujo', 'weeklyReviewQueue', 'list'] as const,
     monthlyReviewQueue: () => ['bujo', 'monthlyReviewQueue', 'list'] as const,
     catchUpQueue: () => ['bujo', 'catchUpQueue', 'list'] as const,
+    recurringTemplates: (params?: { active?: boolean; recurrenceGroup?: string }) =>
+      ['bujo', 'recurringTemplates', 'list', params ?? {}] as const,
   },
   // Adicionados nas stories:
   // habits: { logs: { ... } }  → Story 6.x

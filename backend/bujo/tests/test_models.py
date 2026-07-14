@@ -6,7 +6,13 @@ import pytest
 from django.db import IntegrityError, transaction
 
 from bujo.models import MonthlyLog, Task, WeeklyLog
-from bujo.tests.factories import LogFactory, MonthlyLogFactory, TaskFactory, WeeklyLogFactory
+from bujo.tests.factories import (
+    LogFactory,
+    MonthlyLogFactory,
+    RecurringTaskTemplateFactory,
+    TaskFactory,
+    WeeklyLogFactory,
+)
 from core.tenant import tenant_context
 
 
@@ -182,3 +188,43 @@ def test_task_scheduled_date_nulavel_grava_com_e_sem_valor(user):
 
         assert with_date.scheduled_date == date(2026, 7, 20)
         assert without_date.scheduled_date is None
+
+
+# --- RecurringTaskTemplate (AC #1) ---------------------------------------------
+
+
+@pytest.mark.django_db
+def test_recurring_task_template_nao_tem_campos_de_ciclo_de_vida(user):
+    """AD-08 item 1: um template não é uma `Task` e nunca migra — sem
+    `status`/`log`/`weekly_log`/`monthly_log`/`parent_task`."""
+    with tenant_context(user):
+        template = RecurringTaskTemplateFactory(user=user)
+
+        for field in ("status", "log", "weekly_log", "monthly_log", "parent_task"):
+            assert not hasattr(template, field)
+
+
+@pytest.mark.django_db
+def test_task_source_template_aceita_none_e_instancia(user):
+    with tenant_context(user):
+        template = RecurringTaskTemplateFactory(user=user)
+        task_sem_template = TaskFactory(user=user)
+        task_com_template = TaskFactory(user=user, source_template=template)
+
+        assert task_sem_template.source_template is None
+        assert task_com_template.source_template_id == template.id
+
+
+@pytest.mark.django_db
+def test_deletar_template_nao_deleta_a_task_instancia_set_null(user):
+    """AD-08 item 2: `source_template` não é referência viva — `on_delete=SET_NULL`
+    garante que deletar o template nunca quebra a instância já colocada."""
+    with tenant_context(user):
+        template = RecurringTaskTemplateFactory(user=user)
+        task = TaskFactory(user=user, source_template=template)
+
+        template.delete()
+        task.refresh_from_db()
+
+        assert Task.objects.filter(id=task.id).exists()
+        assert task.source_template_id is None

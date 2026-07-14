@@ -2,8 +2,13 @@
 
 import pytest
 
-from bujo.models import Task
-from bujo.serializers import LogSerializer, TaskSerializer
+from bujo.models import RecurringTaskTemplate, Task
+from bujo.serializers import (
+    LogSerializer,
+    RecurringTaskTemplateCreateSerializer,
+    RecurringTaskTemplateUpdateSerializer,
+    TaskSerializer,
+)
 from bujo.tests.factories import LogFactory, TaskFactory
 from core.tenant import tenant_context
 
@@ -110,3 +115,51 @@ def test_log_serializer_tasks_nao_inclui_subtarefas_na_raiz(user):
 
         assert [task["title"] for task in data["tasks"]] == ["Pai"]
         assert data["tasks"][0]["subtasks"][0]["title"] == "Filha"
+
+
+# --- RecurringTaskTemplate serializers (AC #1) ---------------------------------
+
+
+@pytest.mark.parametrize("recurrence_group", list(RecurringTaskTemplate.RecurrenceGroup.values))
+def test_create_serializer_aceita_todos_os_recurrence_group_validos(recurrence_group):
+    serializer = RecurringTaskTemplateCreateSerializer(
+        data={
+            "title": "Template",
+            "recurrence_group": recurrence_group,
+            "recurrence_text": "toda segunda",
+        }
+    )
+
+    assert serializer.is_valid(), serializer.errors
+
+
+def test_create_serializer_recurrence_group_fora_do_enum_e_invalido():
+    serializer = RecurringTaskTemplateCreateSerializer(
+        data={"title": "Template", "recurrence_group": "bogus", "recurrence_text": "texto"}
+    )
+
+    assert not serializer.is_valid()
+    assert "recurrence_group" in serializer.errors
+
+
+def test_create_serializer_description_e_eisenhower_aceitam_null():
+    serializer = RecurringTaskTemplateCreateSerializer(
+        data={
+            "title": "Template",
+            "description": None,
+            "eisenhower": None,
+            "recurrence_group": "weekly",
+            "recurrence_text": "toda segunda",
+        }
+    )
+
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["description"] is None
+    assert serializer.validated_data["eisenhower"] is None
+
+
+def test_update_serializer_todos_os_campos_sao_opcionais():
+    serializer = RecurringTaskTemplateUpdateSerializer(data={}, partial=True)
+
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data == {}

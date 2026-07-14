@@ -6,13 +6,19 @@ import pytest
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
-from bujo.models import Log, MonthlyLog, Task, WeeklyLog
+from bujo.models import Log, MonthlyLog, RecurringTaskTemplate, Task, WeeklyLog
 from bujo.services.logs import (
     get_or_create_daily_log,
     get_or_create_monthly_log,
     get_or_create_weekly_log,
 )
-from bujo.tests.factories import LogFactory, MonthlyLogFactory, TaskFactory, WeeklyLogFactory
+from bujo.tests.factories import (
+    LogFactory,
+    MonthlyLogFactory,
+    RecurringTaskTemplateFactory,
+    TaskFactory,
+    WeeklyLogFactory,
+)
 from core.calendar import today_for, week_start_of
 from core.tenant import current_user_id, tenant_context
 
@@ -1275,3 +1281,159 @@ def test_patch_task_detail_scheduled_date_sem_monthly_log_aceito_sem_checagem_de
 
     assert response.status_code == 200
     assert response.data["scheduled_date"] == "2099-12-25"
+
+
+# --- RecurringTaskTemplateView* (AC #1, #2, #3) --------------------------------
+
+
+@pytest.mark.django_db
+def test_post_recurring_template_cria_e_retorna_201(auth_client):
+    response = auth_client.post(
+        "/api/bujo/recurring-templates/",
+        {
+            "title": "Revisão semanal",
+            "recurrenceGroup": "weekly",
+            "recurrenceText": "toda sexta",
+        },
+        format="json",
+    )
+
+    assert response.status_code == 201
+    assert response.data["title"] == "Revisão semanal"
+    assert response.data["recurrence_group"] == "weekly"
+    assert response.data["active"] is True
+
+
+@pytest.mark.django_db
+def test_get_recurring_templates_lista_todos_sem_filtro(auth_client, user):
+    with tenant_context(user):
+        RecurringTaskTemplateFactory(user=user, title="Ativo", active=True)
+        RecurringTaskTemplateFactory(user=user, title="Inativo", active=False)
+
+    response = auth_client.get("/api/bujo/recurring-templates/")
+
+    assert response.status_code == 200
+    assert {t["title"] for t in response.data} == {"Ativo", "Inativo"}
+
+
+@pytest.mark.django_db
+def test_get_recurring_templates_filtra_por_active(auth_client, user):
+    with tenant_context(user):
+        RecurringTaskTemplateFactory(user=user, title="Ativo", active=True)
+        RecurringTaskTemplateFactory(user=user, title="Inativo", active=False)
+
+    response = auth_client.get("/api/bujo/recurring-templates/?active=true")
+
+    assert response.status_code == 200
+    assert [t["title"] for t in response.data] == ["Ativo"]
+
+
+@pytest.mark.django_db
+def test_get_recurring_templates_filtra_por_recurrence_group(auth_client, user):
+    with tenant_context(user):
+        RecurringTaskTemplateFactory(
+            user=user,
+            title="Semanal",
+            recurrence_group=RecurringTaskTemplate.RecurrenceGroup.WEEKLY,
+        )
+        RecurringTaskTemplateFactory(
+            user=user,
+            title="Mensal",
+            recurrence_group=RecurringTaskTemplate.RecurrenceGroup.MONTHLY,
+        )
+
+    response = auth_client.get("/api/bujo/recurring-templates/?recurrence_group=monthly")
+
+    assert response.status_code == 200
+    assert [t["title"] for t in response.data] == ["Mensal"]
+
+
+@pytest.mark.django_db
+def test_patch_recurring_template_atualiza_e_retorna_200(auth_client, user):
+    with tenant_context(user):
+        template = RecurringTaskTemplateFactory(user=user, title="Original")
+
+    response = auth_client.patch(
+        f"/api/bujo/recurring-templates/{template.id}/",
+        {"title": "Atualizado"},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert response.data["title"] == "Atualizado"
+
+
+@pytest.mark.django_db
+def test_patch_recurring_template_de_outro_tenant_retorna_404(auth_client, other_user):
+    with tenant_context(other_user):
+        template = RecurringTaskTemplateFactory(user=other_user, title="De outro tenant")
+
+    response = auth_client.patch(
+        f"/api/bujo/recurring-templates/{template.id}/",
+        {"title": "Invadido"},
+        format="json",
+    )
+
+    assert response.status_code == 404
+
+
+@pytest.mark.django_db
+def test_post_place_weekly_cria_task_201(auth_client, user):
+    with tenant_context(user):
+        template = RecurringTaskTemplateFactory(
+            user=user, recurrence_group=RecurringTaskTemplate.RecurrenceGroup.WEEKLY
+        )
+        week_start = week_start_of(today_for(user))
+
+    response = auth_client.post(
+        f"/api/bujo/recurring-templates/{template.id}/place/",
+        {"weekStart": week_start.isoformat()},
+        format="json",
+    )
+
+    assert response.status_code == 201
+    assert response.data["title"] == template.title
+
+
+@pytest.mark.django_db
+def test_post_place_monthly_cria_task_201(auth_client, user):
+    with tenant_context(user):
+        template = RecurringTaskTemplateFactory(
+            user=user, recurrence_group=RecurringTaskTemplate.RecurrenceGroup.MONTHLY
+        )
+        month_first = today_for(user).replace(day=1)
+
+    response = auth_client.post(
+        f"/api/bujo/recurring-templates/{template.id}/place/",
+        {"monthFirst": month_first.isoformat()},
+        format="json",
+    )
+
+    assert response.status_code == 201
+    assert response.data["title"] == template.title
+
+
+@pytest.mark.django_db
+def test_post_place_sem_o_parametro_de_container_certo_retorna_409(auth_client, user):
+    with tenant_context(user):
+        template = RecurringTaskTemplateFactory(
+            user=user, recurrence_group=RecurringTaskTemplate.RecurrenceGroup.WEEKLY
+        )
+
+    response = auth_client.post(
+        f"/api/bujo/recurring-templates/{template.id}/place/", {}, format="json"
+    )
+
+    assert response.status_code == 409
+    assert "detail" in response.data
+
+
+@pytest.mark.django_db
+def test_post_place_template_inexistente_retorna_404(auth_client):
+    response = auth_client.post(
+        "/api/bujo/recurring-templates/00000000-0000-0000-0000-000000000000/place/",
+        {"weekStart": "2026-07-13"},
+        format="json",
+    )
+
+    assert response.status_code == 404

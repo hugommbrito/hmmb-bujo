@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { ThemeProvider } from '@mui/material'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { axe } from 'jest-axe'
 import { createBujoTheme } from '../../theme'
 import { MonthlyPage } from './MonthlyPage'
@@ -9,21 +10,41 @@ const mockCreateMutate = vi.fn()
 const mockUpdateMutate = vi.fn()
 const mockRefetch = vi.fn()
 
-vi.mock('../../features/bujo', () => ({
-  useMonthlyLogQuery: vi.fn(),
-  useCreateMonthlyTaskMutation: vi.fn(() => ({ mutate: mockCreateMutate })),
-  useUpdateTaskMutation: vi.fn(() => ({ mutate: mockUpdateMutate })),
+// `RecurringPlacementSection` não é mockada aqui (importOriginal) — ela chama
+// `useRecurringTemplatesQuery`/`usePlaceRecurringTemplateMutation` direto de
+// `../api`, fora deste mock, então continua real e precisa de `client`
+// mockado + `QueryClientProvider` de verdade (mesma técnica de WeeklyPage.test.tsx).
+vi.mock('../../features/bujo', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../features/bujo')>()
+  return {
+    ...actual,
+    useMonthlyLogQuery: vi.fn(),
+    useCreateMonthlyTaskMutation: vi.fn(() => ({ mutate: mockCreateMutate })),
+    useUpdateTaskMutation: vi.fn(() => ({ mutate: mockUpdateMutate })),
+  }
+})
+
+vi.mock('../../api/client', () => ({
+  default: { get: vi.fn(), post: vi.fn(), patch: vi.fn() },
 }))
 
 import { useMonthlyLogQuery } from '../../features/bujo'
+import client from '../../api/client'
 
 const mockUseMonthlyLogQuery = useMonthlyLogQuery as ReturnType<typeof vi.fn>
+const mockGet = client.get as ReturnType<typeof vi.fn>
+const mockPost = client.post as ReturnType<typeof vi.fn>
 
 function renderMonthlyPage() {
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  })
   return render(
-    <ThemeProvider theme={createBujoTheme('light')}>
-      <MonthlyPage />
-    </ThemeProvider>,
+    <QueryClientProvider client={qc}>
+      <ThemeProvider theme={createBujoTheme('light')}>
+        <MonthlyPage />
+      </ThemeProvider>
+    </QueryClientProvider>,
   )
 }
 
@@ -88,6 +109,9 @@ describe('MonthlyPage (AC2)', () => {
     vi.clearAllMocks()
     vi.useFakeTimers()
     vi.setSystemTime(FIXED_TODAY)
+    // Sem templates recorrentes por padrão — `RecurringPlacementSection` fica
+    // sem DOM (banner vazio) e não interfere nos testes que não são sobre ela.
+    mockGet.mockResolvedValue({ data: [] })
   })
 
   afterEach(() => {
@@ -219,5 +243,118 @@ describe('MonthlyPage (AC2)', () => {
     })
 
     expect(mockUpdateMutate).toHaveBeenCalledWith({ taskId: 't4', scheduledDate: '2026-07-25' })
+  })
+})
+
+const MONTHLY_TEMPLATE = {
+  id: 'tpl-1',
+  title: 'Revisão mensal',
+  description: null,
+  eisenhower: null,
+  recurrenceGroup: 'monthly',
+  recurrenceText: 'todo dia 1',
+  active: true,
+}
+
+const ANNUAL_TEMPLATE = {
+  id: 'tpl-2',
+  title: 'Revisão anual',
+  description: null,
+  eisenhower: null,
+  recurrenceGroup: 'annual',
+  recurrenceText: 'toda virada de ano',
+  active: true,
+}
+
+function routeRecurringTemplatesGet(templates: unknown[]) {
+  mockGet.mockImplementation((requestUrl: string) => {
+    if (requestUrl === '/api/bujo/recurring-templates/') {
+      return Promise.resolve({ data: templates })
+    }
+    return Promise.resolve({ data: [] })
+  })
+}
+
+describe('RecurringPlacementSection integration (AC2)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+    vi.setSystemTime(FIXED_TODAY)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('mês corrente (não-janeiro): seção mostra só templates monthly', async () => {
+    routeRecurringTemplatesGet([MONTHLY_TEMPLATE, ANNUAL_TEMPLATE])
+    mockUseMonthlyLogQuery.mockReturnValue({
+      isPending: false,
+      data: MONTHLY_LOG_CURRENT,
+      refetch: mockRefetch,
+    })
+
+    renderMonthlyPage()
+    vi.useRealTimers()
+
+    expect(await screen.findByText(/Revisão mensal/)).toBeInTheDocument()
+    expect(screen.queryByText(/Revisão anual/)).not.toBeInTheDocument()
+  })
+
+  it('mês corrente = janeiro: seção mostra templates monthly e annual', async () => {
+    routeRecurringTemplatesGet([MONTHLY_TEMPLATE, ANNUAL_TEMPLATE])
+    mockUseMonthlyLogQuery.mockReturnValue({
+      isPending: false,
+      data: { ...MONTHLY_LOG_CURRENT, monthFirst: '2026-01-01' },
+      refetch: mockRefetch,
+    })
+    vi.setSystemTime(new Date('2026-01-15T12:00:00'))
+
+    renderMonthlyPage()
+    vi.useRealTimers()
+
+    expect(await screen.findByText(/Revisão mensal/)).toBeInTheDocument()
+    expect(await screen.findByText(/Revisão anual/)).toBeInTheDocument()
+  })
+
+  it('mês NÃO-corrente: seção não aparece mesmo com templates ativos', async () => {
+    routeRecurringTemplatesGet([MONTHLY_TEMPLATE])
+    mockUseMonthlyLogQuery.mockReturnValue({ isPending: false, data: MONTHLY_LOG, refetch: mockRefetch })
+
+    renderMonthlyPage()
+    vi.useRealTimers()
+
+    await waitFor(() => expect(mockGet).toHaveBeenCalled())
+    expect(screen.queryByText(/Revisão mensal/)).not.toBeInTheDocument()
+  })
+
+  it('clicar "Definir placement" + confirmar chama a mutation com monthFirst e o dia informado', async () => {
+    routeRecurringTemplatesGet([MONTHLY_TEMPLATE])
+    mockUseMonthlyLogQuery.mockReturnValue({
+      isPending: false,
+      data: MONTHLY_LOG_CURRENT,
+      refetch: mockRefetch,
+    })
+    mockPost.mockResolvedValueOnce({
+      data: { id: 'task-1', title: 'Revisão mensal', status: 'pending', subtasks: [] },
+    })
+
+    renderMonthlyPage()
+    vi.useRealTimers()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Definir placement' }))
+    // "Dia (opcional)" também é o rótulo do form "Adicionar tarefa ao mês" —
+    // o campo do diálogo é o último no DOM (MUI Dialog é renderizado por
+    // último via portal).
+    const dayInputs = screen.getAllByLabelText('Dia (opcional)')
+    fireEvent.change(dayInputs[dayInputs.length - 1], { target: { value: '5' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar' }))
+
+    await waitFor(() =>
+      expect(mockPost).toHaveBeenCalledWith('/api/bujo/recurring-templates/tpl-1/place/', {
+        monthFirst: '2026-07-01',
+        scheduledDate: '2026-07-05',
+      }),
+    )
   })
 })

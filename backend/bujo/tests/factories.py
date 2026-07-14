@@ -17,7 +17,7 @@ import factory
 from factory.django import DjangoModelFactory
 
 from accounts.tests.factories import UserFactory
-from bujo.models import Log, MonthlyLog, Task, WeeklyLog
+from bujo.models import Log, MonthlyLog, RecurringTaskTemplate, Task, WeeklyLog
 from core.calendar import week_start_of
 from core.tests.registry import register_isolation_case
 
@@ -82,6 +82,20 @@ class TaskFactory(DjangoModelFactory):
     order_index = factory.Sequence(lambda n: float(n))
 
 
+class RecurringTaskTemplateFactory(DjangoModelFactory):
+    class Meta:
+        model = RecurringTaskTemplate
+
+    class Params:
+        user = factory.SubFactory(UserFactory)
+
+    user_id = factory.SelfAttribute("user.id")
+    title = factory.Sequence(lambda n: f"Template {n}")
+    recurrence_group = RecurringTaskTemplate.RecurrenceGroup.WEEKLY
+    recurrence_text = "toda segunda"
+    active = True
+
+
 register_isolation_case(
     id="bujo.Log",
     model=Log,
@@ -94,5 +108,14 @@ register_isolation_case(
         "log": Log.objects.create(log_date=date(2026, 1, 1)),
         "title": "Tarefa de isolamento",
         "order_index": 0.0,
+    },
+)
+register_isolation_case(
+    id="bujo.RecurringTaskTemplate",
+    model=RecurringTaskTemplate,
+    make=lambda: {
+        "title": "Template de isolamento",
+        "recurrence_group": "weekly",
+        "recurrence_text": "toda segunda",
     },
 )

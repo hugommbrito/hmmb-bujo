@@ -6,7 +6,7 @@ serviços.
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-from bujo.models import Log, Task
+from bujo.models import Log, RecurringTaskTemplate, Task
 
 
 class TaskSerializer(serializers.ModelSerializer):
@@ -177,3 +177,49 @@ class MonthlyTaskCreateSerializer(serializers.Serializer):
                 {"scheduled_date": "A data deve pertencer ao mês/ano de month_first."}
             )
         return attrs
+
+
+class RecurringTaskTemplateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = RecurringTaskTemplate
+        fields = [
+            "id",
+            "title",
+            "description",
+            "eisenhower",
+            "recurrence_group",
+            "recurrence_text",
+            "active",
+        ]
+
+
+class RecurringTaskTemplateCreateSerializer(serializers.Serializer):
+    title = serializers.CharField(max_length=500)
+    description = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    eisenhower = serializers.ChoiceField(
+        choices=Task.Eisenhower.choices, required=False, allow_null=True
+    )
+    recurrence_group = serializers.ChoiceField(
+        choices=RecurringTaskTemplate.RecurrenceGroup.choices
+    )
+    recurrence_text = serializers.CharField()
+    active = serializers.BooleanField(required=False, default=True)
+
+
+class RecurringTaskTemplateUpdateSerializer(serializers.Serializer):
+    title = serializers.CharField(max_length=500, required=False)
+    description = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    eisenhower = serializers.ChoiceField(
+        choices=Task.Eisenhower.choices, required=False, allow_null=True
+    )
+    recurrence_group = serializers.ChoiceField(
+        choices=RecurringTaskTemplate.RecurrenceGroup.choices, required=False
+    )
+    recurrence_text = serializers.CharField(required=False)
+    active = serializers.BooleanField(required=False)
+
+
+class RecurringTaskTemplatePlaceSerializer(serializers.Serializer):
+    week_start = serializers.DateField(required=False)
+    month_first = serializers.DateField(required=False)
+    scheduled_date = serializers.DateField(required=False, allow_null=True)

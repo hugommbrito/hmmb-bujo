@@ -1,17 +1,33 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { ThemeProvider } from '@mui/material'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { axe } from 'jest-axe'
 import { createBujoTheme } from '../../theme'
 import { WeeklyPage } from './WeeklyPage'
 
-vi.mock('../../features/bujo', () => ({
-  useWeeklyLogQuery: vi.fn(),
+// `RecurringPlacementSection` não é mockada aqui (importOriginal) — ela chama
+// `useRecurringTemplatesQuery`/`usePlaceRecurringTemplateMutation` direto de
+// `../api`, fora deste mock, então continua real e precisa de `client`
+// mockado + `QueryClientProvider` de verdade (mesma técnica de DailyPage.test.tsx).
+vi.mock('../../features/bujo', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../features/bujo')>()
+  return {
+    ...actual,
+    useWeeklyLogQuery: vi.fn(),
+  }
+})
+
+vi.mock('../../api/client', () => ({
+  default: { get: vi.fn(), post: vi.fn(), patch: vi.fn() },
 }))
 
 import { useWeeklyLogQuery } from '../../features/bujo'
+import client from '../../api/client'
 
 const mockUseWeeklyLogQuery = useWeeklyLogQuery as ReturnType<typeof vi.fn>
+const mockGet = client.get as ReturnType<typeof vi.fn>
+const mockPost = client.post as ReturnType<typeof vi.fn>
 
 function mockMatchMedia(matchesMobile: boolean) {
   Object.defineProperty(window, 'matchMedia', {
@@ -30,10 +46,15 @@ function mockMatchMedia(matchesMobile: boolean) {
 }
 
 function renderWeeklyPage() {
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  })
   return render(
-    <ThemeProvider theme={createBujoTheme('light')}>
-      <WeeklyPage />
-    </ThemeProvider>,
+    <QueryClientProvider client={qc}>
+      <ThemeProvider theme={createBujoTheme('light')}>
+        <WeeklyPage />
+      </ThemeProvider>
+    </QueryClientProvider>,
   )
 }
 
@@ -59,6 +80,9 @@ describe('WeeklyPage (AC3)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockMatchMedia(false)
+    // Sem templates recorrentes por padrão — `RecurringPlacementSection` fica
+    // sem DOM (banner vazio) e não interfere nos testes que não são sobre ela.
+    mockGet.mockResolvedValue({ data: [] })
   })
 
   it('mostra skeleton enquanto o log está carregando', () => {
@@ -131,5 +155,72 @@ describe('WeeklyPage (AC3)', () => {
     const { container } = renderWeeklyPage()
 
     expect(await axe(container)).toHaveNoViolations()
+  })
+})
+
+const WEEKLY_TEMPLATE = {
+  id: 'tpl-1',
+  title: 'Revisão semanal',
+  description: null,
+  eisenhower: null,
+  recurrenceGroup: 'weekly',
+  recurrenceText: 'toda sexta',
+  active: true,
+}
+
+function routeRecurringTemplatesGet(templates: unknown[]) {
+  mockGet.mockImplementation((requestUrl: string) => {
+    if (requestUrl === '/api/bujo/recurring-templates/') {
+      return Promise.resolve({ data: templates })
+    }
+    return Promise.resolve({ data: [] })
+  })
+}
+
+describe('RecurringPlacementSection integration (AC2)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockMatchMedia(false)
+    mockUseWeeklyLogQuery.mockReturnValue({ isPending: false, data: WEEKLY_LOG })
+  })
+
+  it('seção não aparece quando não há templates weekly ativos', async () => {
+    routeRecurringTemplatesGet([])
+
+    renderWeeklyPage()
+
+    await waitFor(() => expect(mockGet).toHaveBeenCalled())
+    expect(screen.queryByText('Recorrentes')).not.toBeInTheDocument()
+  })
+
+  it('seção aparece com o template weekly ativo e some se ele for inativo', async () => {
+    routeRecurringTemplatesGet([WEEKLY_TEMPLATE])
+
+    renderWeeklyPage()
+
+    expect(await screen.findByText(/Revisão semanal/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Definir placement' })).toBeInTheDocument()
+  })
+
+  it('clicar "Definir placement" + confirmar chama a mutation com os parâmetros certos', async () => {
+    routeRecurringTemplatesGet([WEEKLY_TEMPLATE])
+    mockPost.mockResolvedValueOnce({
+      data: { id: 'task-1', title: 'Revisão semanal', status: 'pending', subtasks: [] },
+    })
+
+    renderWeeklyPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Definir placement' }))
+    fireEvent.change(screen.getByLabelText('Data (opcional)'), {
+      target: { value: '2026-07-15' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar' }))
+
+    await waitFor(() =>
+      expect(mockPost).toHaveBeenCalledWith('/api/bujo/recurring-templates/tpl-1/place/', {
+        weekStart: '2026-07-13',
+        scheduledDate: '2026-07-15',
+      }),
+    )
   })
 })

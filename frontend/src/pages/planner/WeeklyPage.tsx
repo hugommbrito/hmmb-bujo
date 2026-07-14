@@ -1,15 +1,22 @@
 import { useState } from 'react'
 import { Box, Typography, useMediaQuery } from '@mui/material'
-import { useWeeklyLogQuery } from '../../features/bujo'
+import {
+  RecurringPlacementSection,
+  usePlaceRecurringTemplateMutation,
+  useWeeklyLogQuery,
+} from '../../features/bujo'
 import { DayHeader } from '../../features/bujo/components/DayHeader'
 import { PlannerSkeleton } from '../../features/bujo/components/PlannerSkeleton'
+import { RecurringPlacementDialog } from '../../features/bujo/components/RecurringPlacementDialog'
 import { TaskRow } from '../../features/bujo/components/TaskRow'
 import { WeekDaySelector } from '../../features/bujo/components/WeekDaySelector'
 
 export function WeeklyPage() {
   const weeklyLog = useWeeklyLogQuery()
+  const placeTemplate = usePlaceRecurringTemplateMutation()
   const isMobile = useMediaQuery('(max-width: 767px)')
   const [selectedDayIndex, setSelectedDayIndex] = useState(0)
+  const [placingTemplateId, setPlacingTemplateId] = useState<string | null>(null)
 
   if (weeklyLog.isPending) {
     return (
@@ -21,7 +28,7 @@ export function WeeklyPage() {
 
   if (!weeklyLog.data) return null
 
-  const { days, unscheduled } = weeklyLog.data
+  const { days, unscheduled, weekStart } = weeklyLog.data
   const selectedDay = days[selectedDayIndex]
 
   return (
@@ -79,6 +86,24 @@ export function WeeklyPage() {
           ))}
         </Box>
       )}
+      <RecurringPlacementSection
+        recurrenceGroups={['weekly']}
+        onPlace={setPlacingTemplateId}
+      />
+      <RecurringPlacementDialog
+        open={placingTemplateId !== null}
+        dateFieldType="date"
+        onClose={() => setPlacingTemplateId(null)}
+        onConfirm={(scheduledDate) => {
+          if (!placingTemplateId) return
+          placeTemplate.mutate({
+            templateId: placingTemplateId,
+            weekStart,
+            scheduledDate: scheduledDate || undefined,
+          })
+          setPlacingTemplateId(null)
+        }}
+      />
     </Box>
   )
 }

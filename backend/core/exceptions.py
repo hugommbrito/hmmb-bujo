@@ -56,6 +56,10 @@ class InvalidReorderTarget(DomainError):
         super().__init__(f"Invalid reorder target: {task_id} -> {target_task_id}")
 
 
+class WrongPlacementContainer(DomainError):
+    """Placement de um template weekly sem week_start, ou monthly/annual sem month_first."""
+
+
 class TenantScopeViolation(DomainError):
     """A tenant-scoped query/write ran without a tenant context set (AD-12).
 

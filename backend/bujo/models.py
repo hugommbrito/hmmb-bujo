@@ -140,7 +140,17 @@ class Task(TenantModel):
         on_delete=models.CASCADE,
         related_name="subtasks",
     )
-    source_template_id = models.UUIDField(null=True, blank=True)
+    # Nome do campo Python SEM `_id` — Django adiciona o sufixo à coluna
+    # automaticamente, então a coluna continua `source_template_id`, igual ao
+    # nome usado desde a 3.1 (mesma convenção de parent_task/migrated_to_task).
+    # "RecurringTaskTemplate" como string: a classe só é definida abaixo de Task.
+    source_template = models.ForeignKey(
+        "RecurringTaskTemplate",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="instances",
+    )
 
     class Meta:
         db_table = "tasks"
@@ -159,3 +169,28 @@ class Task(TenantModel):
                 name="task_exactly_one_log",
             ),
         ]
+
+
+class RecurringTaskTemplate(TenantModel):
+    """Catálogo de recorrentes (AD-08) — tabela separada de `Task`, sem
+    `status`/`log_id`/ciclo de vida: um template nunca migra, só é colocado
+    (placement manual, sem auto-placement) e vira uma `Task` snapshot."""
+
+    class RecurrenceGroup(models.TextChoices):
+        WEEKLY = "weekly"
+        MONTHLY = "monthly"
+        ANNUAL = "annual"
+
+    title = models.CharField(max_length=500)
+    description = models.TextField(null=True, blank=True)  # noqa: DJ001 - mesma semântica nulável de Task.description
+    eisenhower = models.CharField(  # noqa: DJ001 - default copiado no placement; ausência é valor válido
+        max_length=8, choices=Task.Eisenhower.choices, null=True, blank=True
+    )
+    recurrence_group = models.CharField(max_length=8, choices=RecurrenceGroup.choices)
+    # livre, NÃO parseado (addendum AD-08 item 4) — só exibição
+    recurrence_text = models.TextField()
+    # booleano simples, SEM versionamento (AD-08 item 6 — YAGNI consciente)
+    active = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = "recurring_task_templates"

@@ -2,13 +2,16 @@ import { useState, type FormEvent } from 'react'
 import { Box, Button, TextField, Typography } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import {
+  RecurringPlacementSection,
   useCreateMonthlyTaskMutation,
   useMonthlyLogQuery,
+  usePlaceRecurringTemplateMutation,
   useUpdateTaskMutation,
 } from '../../features/bujo'
-import type { Task } from '../../features/bujo'
+import type { RecurrenceGroup, Task } from '../../features/bujo'
 import { DayHeader } from '../../features/bujo/components/DayHeader'
 import { PlannerSkeleton } from '../../features/bujo/components/PlannerSkeleton'
+import { RecurringPlacementDialog } from '../../features/bujo/components/RecurringPlacementDialog'
 import { TaskRow } from '../../features/bujo/components/TaskRow'
 import { capitalize, MONTH_NAMES_PT } from '../../features/bujo/monthNames'
 
@@ -48,8 +51,10 @@ export function MonthlyPage() {
   const monthlyLog = useMonthlyLogQuery()
   const createMonthlyTask = useCreateMonthlyTaskMutation()
   const updateTask = useUpdateTaskMutation()
+  const placeTemplate = usePlaceRecurringTemplateMutation()
   const [title, setTitle] = useState('')
   const [day, setDay] = useState('')
+  const [placingTemplateId, setPlacingTemplateId] = useState<string | null>(null)
 
   if (monthlyLog.isPending) {
     return (
@@ -69,6 +74,14 @@ export function MonthlyPage() {
   // futuro, AD-03) aguardando confirmação de data. Qualquer outro mês mantém
   // o comportamento pré-4.3 (withDate primeiro, "Sem dia definido" depois).
   const isCurrentMonth = monthFirst === currentMonthFirst()
+  // Task 12.3: a seção só aparece no mês corrente (mesmo `isCurrentMonth` de
+  // 4.3 acima); `annual` só se soma quando o mês exibido é janeiro — AD-08
+  // item 5, "abertura do ano" análoga à primeira abertura de mês (Dev Notes).
+  const recurrenceGroups: RecurrenceGroup[] = isCurrentMonth
+    ? Number(monthFirst.slice(5, 7)) === 1
+      ? ['monthly', 'annual']
+      : ['monthly']
+    : []
   const withoutDateTitle = isCurrentMonth
     ? `Itens do Future Log para ${capitalize(MONTH_NAMES_PT[Number(monthFirst.slice(5, 7)) - 1])}`
     : 'Sem dia definido'
@@ -183,6 +196,20 @@ export function MonthlyPage() {
           Adicionar
         </Button>
       </Box>
+      <RecurringPlacementSection recurrenceGroups={recurrenceGroups} onPlace={setPlacingTemplateId} />
+      <RecurringPlacementDialog
+        open={placingTemplateId !== null}
+        dateFieldType="day"
+        onClose={() => setPlacingTemplateId(null)}
+        onConfirm={(dayValue) => {
+          if (!placingTemplateId) return
+          const scheduledDate = dayValue
+            ? `${monthFirst.slice(0, 7)}-${dayValue.padStart(2, '0')}`
+            : undefined
+          placeTemplate.mutate({ templateId: placingTemplateId, monthFirst, scheduledDate })
+          setPlacingTemplateId(null)
+        }}
+      />
     </Box>
   )
 }

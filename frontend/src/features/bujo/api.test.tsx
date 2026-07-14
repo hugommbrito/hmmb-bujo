@@ -25,6 +25,10 @@ import {
   useWeeklyReviewQueueQuery,
   useMonthlyReviewQueueQuery,
   useCatchUpQueueQuery,
+  useRecurringTemplatesQuery,
+  useCreateRecurringTemplateMutation,
+  useUpdateRecurringTemplateMutation,
+  usePlaceRecurringTemplateMutation,
 } from './api'
 import type {
   CatchUpQueue,
@@ -33,6 +37,7 @@ import type {
   MigrationQueue,
   MonthlyLog,
   MonthlyReviewQueue,
+  RecurringTaskTemplate,
   WeeklyLog,
   WeeklyReviewQueue,
 } from './types'
@@ -665,5 +670,125 @@ describe('useCatchUpQueueQuery (AC1)', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
     expect(result.current.data).toEqual(CATCH_UP_QUEUE)
     expect(mockGet).toHaveBeenCalledWith('/api/bujo/catch-up/queue/')
+  })
+})
+
+const RECURRING_TEMPLATES: RecurringTaskTemplate[] = [
+  {
+    id: 'tpl-1',
+    title: 'Revisão semanal',
+    description: null,
+    eisenhower: null,
+    recurrenceGroup: 'weekly',
+    recurrenceText: 'toda sexta',
+    active: true,
+  },
+]
+
+describe('useRecurringTemplatesQuery (AC1, AC2)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+  })
+
+  it('busca todos os templates sem filtro', async () => {
+    mockGet.mockResolvedValueOnce({ data: RECURRING_TEMPLATES })
+    const { wrapper } = makeWrapper()
+
+    const { result } = renderHook(() => useRecurringTemplatesQuery(), { wrapper })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data).toEqual(RECURRING_TEMPLATES)
+    expect(mockGet).toHaveBeenCalledWith('/api/bujo/recurring-templates/', { params: undefined })
+  })
+
+  it('busca com filtros active/recurrenceGroup como query params snake_case', async () => {
+    mockGet.mockResolvedValueOnce({ data: RECURRING_TEMPLATES })
+    const { wrapper } = makeWrapper()
+
+    const { result } = renderHook(
+      () => useRecurringTemplatesQuery({ active: true, recurrenceGroup: 'weekly' }),
+      { wrapper },
+    )
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(mockGet).toHaveBeenCalledWith('/api/bujo/recurring-templates/', {
+      params: { active: true, recurrence_group: 'weekly' },
+    })
+  })
+})
+
+describe('useCreateRecurringTemplateMutation (AC1)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+  })
+
+  it('cria o template e invalida a lista por prefixo', async () => {
+    const { qc, wrapper } = makeWrapper()
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+    mockPost.mockResolvedValueOnce({ data: RECURRING_TEMPLATES[0] })
+
+    const { result } = renderHook(() => useCreateRecurringTemplateMutation(), { wrapper })
+
+    result.current.mutate({
+      title: 'Revisão semanal',
+      recurrenceGroup: 'weekly',
+      recurrenceText: 'toda sexta',
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(mockPost).toHaveBeenCalledWith('/api/bujo/recurring-templates/', {
+      title: 'Revisão semanal',
+      recurrenceGroup: 'weekly',
+      recurrenceText: 'toda sexta',
+    })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.bujo.recurringTemplates() })
+  })
+})
+
+describe('useUpdateRecurringTemplateMutation (AC3)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+  })
+
+  it('edita o template e invalida a lista por prefixo', async () => {
+    const { qc, wrapper } = makeWrapper()
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+    mockPatch.mockResolvedValueOnce({ data: { ...RECURRING_TEMPLATES[0], active: false } })
+
+    const { result } = renderHook(() => useUpdateRecurringTemplateMutation(), { wrapper })
+
+    result.current.mutate({ templateId: 'tpl-1', active: false })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(mockPatch).toHaveBeenCalledWith('/api/bujo/recurring-templates/tpl-1/', {
+      active: false,
+    })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.bujo.recurringTemplates() })
+  })
+})
+
+describe('usePlaceRecurringTemplateMutation (AC2)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+  })
+
+  it('coloca o template e invalida templates + weeklyLog + monthlyLog', async () => {
+    const { qc, wrapper } = makeWrapper()
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+    mockPost.mockResolvedValueOnce({
+      data: { id: 'task-1', title: 'Revisão semanal', status: 'pending', subtasks: [] },
+    })
+
+    const { result } = renderHook(() => usePlaceRecurringTemplateMutation(), { wrapper })
+
+    result.current.mutate({ templateId: 'tpl-1', weekStart: '2026-07-13' })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(mockPost).toHaveBeenCalledWith('/api/bujo/recurring-templates/tpl-1/place/', {
+      weekStart: '2026-07-13',
+    })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.bujo.recurringTemplates() })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'weeklyLog'] })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'monthlyLog'] })
   })
 })

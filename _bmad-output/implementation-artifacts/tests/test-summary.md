@@ -948,3 +948,71 @@ Zero erros de console em ambos os testes (`page.on('console')`/`page.on('pageerr
 - Story 4.5 (Templates de tarefas recorrentes) não depende de nada desta rodada de QA.
 - O flake ambiental de execuções sob carga de sessão (Neon dev branch compartilhado) segue como débito conhecido desde a 4.2 — mesmo candidato de solução já apontado nas rodadas anteriores (`fullyParallel: false` para specs dependentes de estado global, ou banco de teste isolado por worker).
 - Nenhuma ação bloqueante pendente para esta story.
+
+---
+
+# Resumo de Automação de Testes — Story 4.5: Templates de tarefas recorrentes com placement manual
+
+**Data:** 2026-07-14
+**Story:** 4.5 — Templates de tarefas recorrentes com placement manual
+**Framework:** pytest + DRF `APIClient` (backend) · Vitest 4.1 + @testing-library/react + jest-axe (frontend) · Playwright 1.61 (E2E de browser real)
+
+Diferente de 4.2/4.3/4.4, o dev-story desta story **não** deixou um spec E2E permanente: a verificação manual ponta-a-ponta (Task 13.3) foi feita com um script Playwright temporário, criado e apagado na mesma sessão (Debug Log References/Completion Notes da própria story). Cobertura unitária/de serviço já extensa (288 backend + 365 frontend, ao final do dev-story), toda ela contra mocks de `useRecurringTemplatesQuery`/mutations (`RecurringTemplateManager.test.tsx`, `RecurringPlacementSection.test.tsx`) — nenhum teste cruzava páginas reais (Configurações → Weekly/Monthly Log) nem provava a independência instância/template (AC3) contra o backend de verdade. Esse é o gap fechado por esta rodada.
+
+## Gap Descoberto e Fechado
+
+| Gap | Arquivo | Descrição |
+|-----|---------|-----------|
+| Sem cobertura E2E do fluxo de templates recorrentes | `frontend/e2e/recurring-templates.spec.ts` (novo) | AC1 (CRUD em Configurações), AC2 (placement filtra por `recurrence_group`/mês corrente, chega ao Weekly/Monthly Log real) e AC3 (independência instância/template) só tinham sido validados via mocks isolados nos testes de componente ou pelo script Playwright descartável da verificação manual — nunca um spec permanente contra o navegador real. |
+
+## Testes Gerados
+
+### `frontend/e2e/recurring-templates.spec.ts` — novo (2 testes)
+
+- [x] `CRUD de templates em Configurações + placement filtra por grupo e chega ao Weekly/Monthly Log real (AC1, AC2)` — cria um template `weekly` e um `monthly` via form real; confirma que a seção de placement de "Esta Semana" mostra só o `weekly` ativo (e "Este Mês" só o `monthly`, mês corrente); "Definir placement" sem data → a instância aparece como `task-row` real no log correto; desativar um template (`PATCH active=false`) o remove da seção de placement mas mantém a instância já colocada intacta e o template ainda editável em Configurações.
+- [x] `AC3 — editar o template depois de um placement não muda a instância já colocada; colocar de novo usa os campos atualizados` — coloca um template, edita o título do template depois (inline, em Configurações), confirma que a `Task` já criada mantém o título antigo na Weekly Log, que a seção de placement já reflete o título novo, e que colocar o mesmo template de novo gera uma segunda instância com o título atualizado — as duas coexistem sem se afetar.
+
+Ambos os testes escopam o botão "Desativar"/o campo "Título" em ambiguidade de múltiplas linhas via `xpath=ancestor::div[N]` a partir do texto exato do título (estrutura de `TemplateRow`) ou por posição no DOM (linha da lista renderiza antes do form de criação, mesma técnica já documentada no Debug Log da própria story para `WeeklyPage`/`MonthlyPage`).
+
+## Cobertura por AC
+
+| AC | Critério | Coberto por |
+|----|----------|-------------|
+| AC1 | Template gravado em `recurring_task_templates`, separado de `tasks`, sempre plano | `test_models.py` (pré-existente) + `RecurringTemplateManager.test.tsx` (pré-existente, mocado) + `recurring-templates.spec.ts` ← **novo, CRUD real em Configurações** |
+| AC2 | Lista de recorrentes ativos na abertura de ciclo, sem auto-placement, botão "Definir placement" | `test_views.py`/`test_services.py` (pré-existente) + `RecurringPlacementSection.test.tsx` (pré-existente, mocado) + `recurring-templates.spec.ts` ← **novo, filtro por grupo/mês corrente contra backend real** |
+| AC2 | Placement cria `Task` snapshot com `source_template`, `status=pending`, `parent_task_id=NULL`, `migration_count=0` | `test_services.py::place_template` (pré-existente) + `recurring-templates.spec.ts` ← **novo, instância real refletida como `task-row` no Weekly/Monthly Log** |
+| AC3 | Editar a instância toca só aquela `Task`; editar o template afeta só placements futuros | `test_services.py::test_place_template_independencia_instancia_template_ac3` (pré-existente) + `recurring-templates.spec.ts` ← **novo, provado cruzando páginas reais (Configurações → Esta Semana) contra o backend real** |
+| — | Desativar um template não afeta placements já feitos; template desativado continua editável | Não coberto por nenhum teste até esta rodada — `recurring-templates.spec.ts` ← **novo** |
+
+## Execução
+
+```
+E2E (spec novo, isolado):  npx playwright test e2e/recurring-templates.spec.ts --workers=1 → 2 passed (63s), sem flake
+E2E (suíte completa, 9 specs, --workers=1): 15 passed, 4 failed — todas as 4 falhas em specs
+  PRÉ-EXISTENTES não tocados nesta rodada (task-reorder.spec.ts × 3, daily-tasks.spec.ts × 1),
+  reproduzidas isoladamente como PASS (task-reorder.spec.ts: 3 passed isolado;
+  daily-tasks.spec.ts "bottom sheet no mobile": 1 passed isolado) — mesma classe de
+  flakiness de contenção do Neon dev branch sob carga de sessão prolongada já
+  documentada nas rodadas de QA de 3.1/3.3/3.4/4.2/4.3/4.4, não uma regressão
+  desta rodada.
+Typecheck (tsc -b --noEmit): 0 erros
+Lint (eslint e2e/recurring-templates.spec.ts): 0 achados
+```
+
+## Checklist de Validação
+
+- [x] Teste E2E gerado para o gap real desta story (fluxo cross-página Configurações → Weekly/Monthly Log + AC3 — o único tipo de teste em falta; unit/serviço já cobertos pelo dev-story)
+- [x] Usa APIs padrão do framework já adotado (`@playwright/test`) — nenhuma ferramenta nova introduzida
+- [x] Cobre happy path (CRUD, placement weekly/monthly) + casos críticos (AC3 independência, desativação não retroativa)
+- [x] Ambos os testes passam em execução isolada (2/2, sem flake); suíte completa sem regressão nos specs não tocados (falhas confirmadas como flakiness pré-existente, reproduzidas como PASS isoladamente)
+- [x] Locators semânticos (`getByRole`, `getByLabel`, `getByText`, `data-testid` já existente para `task-row`)
+- [x] Sem waits/sleeps artificiais — `page.waitForResponse` nos POSTs/PATCH reais
+- [x] Testes independentes entre si (cada um cria seu próprio usuário via signup)
+- [x] Summary salvo em `_bmad-output/implementation-artifacts/tests/test-summary.md`
+- [x] Teste salvo no diretório correto (`frontend/e2e/recurring-templates.spec.ts`)
+
+## Próximos Passos
+
+- Nenhum job de CI sobe backend+frontend juntos hoje (mesmo gap apontado desde a 3.1) — os E2E continuam rodando só localmente contra o Neon dev branch.
+- O flake ambiental de execuções sob carga de sessão (Neon dev branch compartilhado) segue como débito conhecido desde a 4.2 — mesmo candidato de solução já apontado nas rodadas anteriores (`fullyParallel: false` para specs dependentes de estado global, ou banco de teste isolado por worker).
+- Nenhuma ação bloqueante pendente para esta story.
