@@ -74,6 +74,11 @@ export function TaskRow({ task, onTransition, onOpenDetail, siblings, onReorder 
   const StatusIcon = STATUS_ICON[status]
   const nextStatus = NEXT_STATUS[status]
   const statusChipLabel = STATUS_CHIP_LABEL[status]
+  // Linhagem de migração (Story 4.6 AC#2): `migration_count` é consultável.
+  // > 0 significa "esta tarefa já foi carregada N vezes até aqui" — o sinal
+  // clássico do BuJo de tarefa que vive escapando. Exibido em qualquer status
+  // (uma pending com count alto é justamente o que se quer enxergar).
+  const migrationCount = task.migrationCount ?? 0
   const eisenhowerChip = eisenhowerChipInfo(task.eisenhower)
   const category = task.category || null
   const subtasks = task.subtasks ?? []
@@ -232,6 +237,20 @@ export function TaskRow({ task, onTransition, onOpenDetail, siblings, onReorder 
               sx={{
                 borderColor: (theme) => theme.palette.category[status === 'started' ? 'yellow' : 'green'],
                 color: (theme) => theme.palette.category[status === 'started' ? 'yellow' : 'green'],
+                height: 18,
+              }}
+            />
+          )}
+          {migrationCount > 0 && (
+            <Chip
+              label={`↻ ${migrationCount}×`}
+              size="small"
+              variant="outlined"
+              aria-label={`Migrada ${migrationCount} ${migrationCount === 1 ? 'vez' : 'vezes'}`}
+              sx={{
+                borderColor: 'divider',
+                color: 'text.secondary',
+                fontSize: '11px',
                 height: 18,
               }}
             />

@@ -155,6 +155,22 @@ describe('TaskRow (AC2)', () => {
     expect(screen.queryByText('Feita')).not.toBeInTheDocument()
   })
 
+  it('linhagem de migração exibida quando migrationCount > 0 (Story 4.6 AC#2)', () => {
+    renderTaskRow(baseTask({ status: 'migrated', migrationCount: 2 }))
+    expect(screen.getByText('↻ 2×')).toBeInTheDocument()
+    expect(screen.getByLabelText('Migrada 2 vezes')).toBeInTheDocument()
+  })
+
+  it('linhagem singular usa "vez" para migrationCount === 1', () => {
+    renderTaskRow(baseTask({ status: 'postponed', migrationCount: 1 }))
+    expect(screen.getByLabelText('Migrada 1 vez')).toBeInTheDocument()
+  })
+
+  it('nenhum chip de linhagem quando migrationCount é 0 ou ausente', () => {
+    renderTaskRow(baseTask({ status: 'pending', migrationCount: 0 }))
+    expect(screen.queryByText(/↻/)).not.toBeInTheDocument()
+  })
+
   it('anuncia o novo estado após o clique (aria-live)', () => {
     renderTaskRow(baseTask({ status: 'pending' }))
 
