@@ -2,13 +2,16 @@ import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { DJANGO_SETTINGS_MODULE } from './backendEnv'
+
 // Story 4.2 (Migração diária) só existe a partir de tarefas `pending`/`started`
 // de ONTEM (`today_for(user) - 1 dia`) — e não há nenhuma affordance na UI para
 // criar dados no passado (de propósito: a app nunca deixa o cliente rotular um
 // dia como "ontem"). O único jeito de montar esse cenário para um E2E real é
-// seedar direto no banco de dev que o backend do Playwright já sobe
-// (`config.settings.dev`, mesmo Neon dev branch), do mesmo jeito que a
-// verificação manual da story fez via `manage.py shell` + `tenant_context`.
+// seedar direto no banco que o backend do Playwright já sobe
+// (`config.settings.e2e`, branch Neon `e2e` dedicada — story 11.1), do mesmo
+// jeito que a verificação manual da story fez via `manage.py shell` +
+// `tenant_context`.
 const backendDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../backend')
 
 export interface SeedTaskInput {
@@ -55,7 +58,7 @@ with tenant_context(user):
 
   execFileSync('uv', ['run', 'python', 'manage.py', 'shell', '-c', script], {
     cwd: backendDir,
-    env: { ...process.env, DJANGO_SETTINGS_MODULE: 'config.settings.dev' },
+    env: { ...process.env, DJANGO_SETTINGS_MODULE },
     stdio: 'pipe',
   })
 }

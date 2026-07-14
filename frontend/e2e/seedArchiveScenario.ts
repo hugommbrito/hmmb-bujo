@@ -2,11 +2,14 @@ import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { DJANGO_SETTINGS_MODULE } from './backendEnv'
+
 // Story 4.6 (Fechamento de ciclos e Arquivo): um ciclo só entra no Arquivo se
 // TODAS as suas tarefas já tiverem disposição (FR-1.10) — não há affordance
 // de UI para o cliente compor de propósito uma semana/mês passado inteiramente
-// disposto, por isso o seed direto no banco de dev via `manage.py shell` +
-// `tenant_context`, mesma técnica de `seedReviewScenario.ts` (4.3). 2
+// disposto, por isso o seed direto no banco de teste (branch Neon `e2e`) via
+// `manage.py shell` + `tenant_context`, mesma técnica de
+// `seedReviewScenario.ts` (4.3). 2
 // semanas/meses atrás (não 1) evita qualquer sobreposição com as janelas de
 // "semana/mês anterior" da revisão (4.3), que ficariam pendentes e disparariam
 // banners não relacionados a este cenário caso o teste volte para `/today`.
@@ -81,7 +84,7 @@ with tenant_context(user):
 
   const output = execFileSync('uv', ['run', 'python', 'manage.py', 'shell', '-c', script], {
     cwd: backendDir,
-    env: { ...process.env, DJANGO_SETTINGS_MODULE: 'config.settings.dev' },
+    env: { ...process.env, DJANGO_SETTINGS_MODULE },
     stdio: 'pipe',
   })
   // `manage.py shell -c` imprime um banner antes de rodar o script — só a

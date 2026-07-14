@@ -2,14 +2,16 @@ import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { DJANGO_SETTINGS_MODULE } from './backendEnv'
+
 // Story 4.3 (Revisão semanal/mensal e pull automático do Future Log): as
 // filas de revisão só existem a partir de Weekly/Monthly Log ANTERIORES, e o
 // "pull do Future Log" só é observável com uma tarefa já residente no Monthly
 // Log CORRENTE sem `scheduledDate` (Dev Notes "Pull do Future Log é
 // armazenamento, não uma ação nova"). Nenhuma dessas 3 situações tem
 // affordance de UI para o cliente criar diretamente — mesma técnica de
-// `seedYesterdayQueue.ts` (4.2): seed direto no banco de dev via
-// `manage.py shell` + `tenant_context`.
+// `seedYesterdayQueue.ts` (4.2): seed direto no banco de teste (branch Neon
+// `e2e`) via `manage.py shell` + `tenant_context`.
 const backendDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../backend')
 
 export interface SeedTaskInput {
@@ -75,7 +77,7 @@ with tenant_context(user):
 
   execFileSync('uv', ['run', 'python', 'manage.py', 'shell', '-c', script], {
     cwd: backendDir,
-    env: { ...process.env, DJANGO_SETTINGS_MODULE: 'config.settings.dev' },
+    env: { ...process.env, DJANGO_SETTINGS_MODULE },
     stdio: 'pipe',
   })
 }

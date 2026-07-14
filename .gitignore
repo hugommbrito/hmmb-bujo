@@ -2,6 +2,7 @@
 .env
 .env.dev
 .env.prod
+.env.e2e
 .env.*.local
 
 # Python / Django

@@ -1091,3 +1091,92 @@ AC #2 pede explicitamente "o que foi feito com ela (incl. linhagem de migração
 - Nenhum job de CI sobe backend+frontend juntos hoje (mesmo gap apontado desde a 3.1) — os E2E continuam rodando só localmente contra o Neon dev branch.
 - O flake ambiental de execuções sob carga de sessão (Neon dev branch compartilhado) segue como débito conhecido desde a 4.2.
 - Esta é a última story do Épico 4 — próximo passo natural é a retrospectiva do épico (`epic-4-retrospective`), não uma nova rodada de QA.
+
+---
+
+# Resumo de Automação de Testes — Story 11.1: Isolamento de teste via branch Neon dedicada
+
+**Data:** 2026-07-14
+**Story:** 11.1 — Isolamento de teste via branch Neon dedicada
+**Framework:** pytest-django 4.12 + factory-boy 3.3 (backend) · Playwright (E2E)
+
+---
+
+## Contexto
+
+A story 11.1 é majoritariamente **plumbing de config/ambiente**: novo settings
+`config.settings.e2e`, `.env.e2e`, repointing dos seeds E2E via `backendEnv.ts`,
+runbook `docs/e2e-neon-reset.md`. Esses artefatos não expõem comportamento de
+usuário novo — o próprio critério da AC1 é que a suíte E2E **existente** passa
+sem mudar lógica de spec (por isso nenhum `.spec.ts` novo foi criado: seria
+contra o escopo declarado da story).
+
+O único artefato com lógica testável de fato entregue pela story é o management
+command **`purge_e2e_users`** (AC2/AC3): comando **destrutivo**, entregue **sem
+cobertura**, carregando dois guardrails sutis que, se quebrados, apagam ou órfãos
+dados silenciosamente. Essa era a lacuna de teste real e foi auto-aplicada.
+
+## Gap descoberto e auto-aplicado
+
+| Gap | Arquivo | Descrição |
+|-----|---------|-----------|
+| Command destrutivo `purge_e2e_users` sem nenhum teste | `backend/core/tests/test_purge_e2e_users.py` (NOVO) | Sem cobertura dos dois guardrails críticos: (a) AD-12 "sem cascade" — apagar o `User` não remove suas linhas tenant-scoped, o comando precisa varrê-las por `user_id`; (b) uso de `all_objects` (não `objects`) para a varredura cross-tenant fora de um request |
+
+## Testes gerados
+
+### `backend/core/tests/test_purge_e2e_users.py` — novo (6 testes)
+
+- [x] `test_apaga_usuario_e2e_e_todas_as_linhas_tenant_scoped` — usuário `@e2e.test` **e** suas linhas nos 5 models (`Task`/`Log`/`WeeklyLog`/`MonthlyLog`/`RecurringTaskTemplate`) somem juntos (guardrail AD-12 sem cascade) (AC3)
+- [x] `test_preserva_usuario_real_e_suas_linhas` — usuário real (`user*@test.com`) e suas linhas ficam intactos; só `@e2e.test` é alvo (AC3)
+- [x] `test_near_miss_de_email_nao_e_apagado` — `e2e-fake@example.com` casa o prefixo mas não o sufixo `@e2e.test` → não é apagado (escopo por `endswith`)
+- [x] `test_dry_run_nao_apaga_nada` — `--dry-run` só conta; nenhum usuário/linha removido (AC2)
+- [x] `test_sem_usuarios_alvo_encerra_limpo` — sem alvos no banco: reporta "Nada a apagar" e não toca em nada
+- [x] `test_varredura_cross_tenant_sem_contexto` — rodando fora de request (sem `tenant_context`), varre **múltiplos** usuários e2e → prova uso de `all_objects` (se usasse `objects` escopado, falharia-fechado e deixaria linhas órfãs)
+
+### Testes E2E (Playwright)
+
+- Nenhum spec novo. A story é isolamento de infra e explicitamente **não deve
+  tocar specs `.spec.ts`**. A AC1 (repointing não quebra a lógica dos specs) é
+  verificada rodando a suíte E2E existente contra a branch `e2e`, não adicionando
+  specs. Sem superfície de UI/API nova para cobrir.
+
+## Cobertura
+
+| AC | Critério | Coberto por |
+|----|----------|-------------|
+| AC2 | Comando de reset apaga usuários `@e2e.test` e suas linhas tenant-scoped | `test_apaga_...`, `test_varredura_cross_tenant_sem_contexto` |
+| AC2 | `--dry-run` não apaga nada (só conta) | `test_dry_run_nao_apaga_nada` |
+| AC3 | Guardrail AD-12: sem cascade — linhas tenant-scoped varridas explicitamente | `test_apaga_...` |
+| AC3 | Só `@e2e.test` é alvo; usuário real preservado | `test_preserva_usuario_real_e_suas_linhas`, `test_near_miss_de_email_nao_e_apagado` |
+| AC3 | Varredura cross-tenant via `all_objects` (não `objects` fail-closed) | `test_varredura_cross_tenant_sem_contexto` |
+| AC1 | Repointing E2E não altera lógica de spec | Suíte E2E existente contra branch `e2e` (verificado na story; sem spec novo) |
+
+## Resultado da execução
+
+```
+uv run pytest core/tests/test_purge_e2e_users.py -v --create-db
+6 passed, 1 warning in 207.74s
+ruff check core/tests/test_purge_e2e_users.py → All checks passed!
+```
+
+O único warning é o teardown de `test_neondb` com conexão presa — cosmético e
+pré-existente (documentado nas Completion Notes da story; resolvido pelo
+procedimento `pg_terminate_backend` de `docs/e2e-neon-reset.md §4`), não-fatal e
+não relacionado aos testes novos.
+
+## Checklist de Validação
+
+- [x] Testes de backend gerados para o único artefato com lógica da story (`purge_e2e_users`)
+- [x] Usam APIs padrão do framework já adotado (`pytest-django` + `factory_boy` + `tenant_context` + `call_command`) — nenhuma ferramenta nova
+- [x] Cobrem happy path + casos críticos (dry-run, no-op, near-miss de e-mail, cross-tenant)
+- [x] Todos os 6 testes passam
+- [x] Sem waits/sleeps artificiais
+- [x] Testes independentes entre si (cada um cria seus próprios usuários/linhas via factories)
+- [x] Descrições claras em pt-BR, seguindo a convenção `test_*` do projeto
+- [x] Summary salvo em `_bmad-output/implementation-artifacts/tests/test-summary.md`
+- [x] Testes salvos no diretório correto (`backend/core/tests/`, junto ao command em `core/management/`)
+
+## Próximos Passos
+
+- O command test entra no gate `pytest` do backend — nenhuma ação de CI adicional necessária.
+- Nenhuma dívida de edge case adicional identificada para esta story (a flakiness ambiental do E2E segue owned pelas ações #4/#5 da retro do Épico 4, fora do escopo desta story).

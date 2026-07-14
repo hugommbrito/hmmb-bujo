@@ -2,7 +2,8 @@
 
 Bullet Journal digital multi-tenant. Monorepo com **backend** Django + DRF e
 **frontend** React + Vite + MUI. Banco PostgreSQL via [Neon](https://neon.tech)
-(branch `dev` ↔ `.env.dev`, branch `main` ↔ `.env.prod`).
+(branch `dev` ↔ `.env.dev`, branch `main` ↔ `.env.prod`, branch `e2e` ↔
+`.env.e2e` para a suíte E2E).
 
 ## Estrutura
 
@@ -38,14 +39,17 @@ uv run pytest
 
 ### Ambientes (dev/prod)
 
-A configuração é lida via `django-environ`. Crie `.env.dev` e `.env.prod`
-(ambos **git-ignored**) a partir de `backend/.env.example`:
+A configuração é lida via `django-environ`. Crie `.env.dev`, `.env.prod` e
+`.env.e2e` (todos **git-ignored**) a partir de `backend/.env.example`:
 
 - `.env.dev` → branch **dev** do Neon
 - `.env.prod` → branch **main** do Neon
+- `.env.e2e` → branch **e2e** do Neon (usada pela suíte E2E do Playwright; ver
+  [runbook de reset](docs/e2e-neon-reset.md))
 
-`DJANGO_SETTINGS_MODULE` seleciona o settings (`config.settings.dev` ou
-`config.settings.prod`). CORS e base-URL da API são configuráveis por ambiente.
+`DJANGO_SETTINGS_MODULE` seleciona o settings (`config.settings.dev`,
+`config.settings.prod` ou `config.settings.e2e`). CORS e base-URL da API são
+configuráveis por ambiente.
 
 ## Frontend
 

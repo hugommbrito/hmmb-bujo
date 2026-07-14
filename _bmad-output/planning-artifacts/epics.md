@@ -271,6 +271,11 @@ Completa o **ciclo BuJo** — o marco de "abandono do caderno". Consome o agrega
 **FRs covered:** FR-1.1 (Weekly/Monthly/Future), FR-1.2, FR-1.7, FR-1.8, FR-1.9, FR-1.10, FR-1.11, FR-1.12, FR-1.13
 **Depende de:** Épicos 1, 3. **Standalone:** ciclo de planejamento e migração completo sobre as tarefas do Épico 3.
 
+### Epic 11: Refinamento do Planner & Recorrentes *(refina o Épico 4 — roda antes do Épico 5)*
+Correções e melhorias identificadas em uso após o Épico 4: isola o banco de testes numa branch Neon dedicada; leva os Recorrentes para o Planner com abas/filtros; refina o placement (dedup + modal com calendário de densidade); torna anuais pendentes consultáveis/colocáveis no Future Log o ano todo; habilita CRUD de tarefas em Esta Semana/Este Mês; e permite mover/migrar qualquer tarefa (destino dia-ou-mês) de qualquer superfície. Número 11 é apenas identificador (épicos 5–10 já planejados não foram renumerados) — a execução é logo após o Épico 4.
+**Origem:** lista de bugs/melhorias em `docs/futureIdeas.md` (pós-Épico 4).
+**Depende de:** Épico 4 (refina o que ele entregou). **Standalone:** melhorias incrementais sobre o ciclo BuJo já funcional.
+
 ### Epic 5: Brain Dump & Captura Rápida (Fase 1b)
 A **válvula de escape** do sistema, especialmente no mobile (UJ-4): caixa de entrada sem data, captura rápida pelo FAB, indicador visual persistente (badge como server state derivado) e processamento manual dos itens para os logs corretos. Trivial e desacoplado — antecipado para logo após o ciclo BuJo (AD-15).
 **FRs covered:** FR-5.1, FR-5.2, FR-5.3, FR-5.4
@@ -744,6 +749,143 @@ So that eu tenha o histórico auditável que é o valor central do BuJo (FR-1.10
 **When** Hugo a acessa,
 **Then** lista semanas e meses fechados, consultáveis com o estado final de cada tarefa e o que foi feito com ela (incl. linhagem de migração),
 **And** o estado vazio exibe "Nenhuma semana ou mês fechado ainda."
+
+---
+
+## Epic 11: Refinamento do Planner & Recorrentes
+
+Refinamentos identificados em uso após o Épico 4 (origem: `docs/futureIdeas.md`). Consome o que o Épico 4 entregou; não redesenha o ciclo BuJo. Histórias ordenadas por dependência: (1) isolamento de teste → (2) Recorrentes no Planner → (3) placement + calendário de densidade *(constrói o calendário compartilhado)* → (4) anuais no Future Log *(reusa o placement)* → (5) CRUD em Semana/Mês → (6) mover/migrar de qualquer lugar *(reusa o calendário da 11.3)*. Número 11 é só identificador; executa antes do Épico 5.
+
+### Story 11.1: Isolamento de teste via branch Neon dedicada
+
+As a desenvolvedor do projeto,
+I want que os testes E2E rodem contra uma branch Neon dedicada em vez da branch de dev,
+So that os testes parem de criar/apagar registros no banco onde eu de fato uso o app (item #1 de `futureIdeas.md`).
+
+**Acceptance Criteria:**
+
+**Given** a configuração de E2E (Playwright, que sobe `manage.py runserver`),
+**When** o backend é iniciado para os testes,
+**Then** ele usa um `DATABASE_URL` próprio (ex.: `.env.e2e`) apontando para uma branch Neon dedicada `e2e`, isolada da branch de dev,
+**And** os specs E2E existentes passam sem alteração de lógica — só a origem do banco muda.
+
+**Given** a branch `e2e` acumulando estado entre execuções,
+**When** eu quero limpá-la,
+**Then** existe um comando/runbook de reset documentado (não precisa ser automático por run enquanto não houver CI rodando E2E).
+
+**Given** os 200+ usuários de teste órfãos já acumulados na branch de dev,
+**When** esta story é concluída,
+**Then** eles são removidos da branch de dev (limpeza one-shot) e novas execuções de teste não criam mais registros ali.
+
+### Story 11.2: Recorrentes no Planner com abas e filtro
+
+As a Hugo,
+I want gerenciar meus templates recorrentes dentro do Planner, organizados por tipo e com filtro de ativos,
+So that eu os encontre junto do resto do planejamento em vez de perdidos em Configurações (itens #2, #3).
+
+**Acceptance Criteria:**
+
+**Given** a navegação do Planner,
+**When** acesso a aba "Recorrentes",
+**Then** vejo a gestão de templates (o CRUD já existente da Story 4.5) ali,
+**And** a gestão deixa de existir em Configurações (que volta a placeholder / settings de conta).
+
+**Given** a tela de Recorrentes,
+**When** ela carrega,
+**Then** os templates são organizados em abas por grupo (Semanal / Mensal / Anual),
+**And** um controle "mostrar inativos" inclui/exclui templates com `active=false` (padrão: só ativos).
+
+### Story 11.3: Placement de recorrentes — dedup + modal com calendário de densidade
+
+As a Hugo,
+I want que, ao colocar um recorrente, ele suma da lista do período e que o modal me mostre a recorrência e a densidade de tarefas do mês,
+So that eu não coloque o mesmo recorrente sem querer e decida melhor onde encaixá-lo (itens #4, #5).
+
+**Acceptance Criteria:**
+
+**Given** a lista de recorrentes a colocar em Esta Semana / Este Mês,
+**When** coloco um template naquele período,
+**Then** ele some da lista de sugestões daquele período,
+**And** se eu precisar de outra ocorrência (ex.: "3x por semana", já que `recurrence_text` é texto livre não-parseado), há um caminho explícito para recolocar — sem bloqueio rígido de duplicado.
+
+**Given** o modal de placement,
+**When** ele abre,
+**Then** mostra as informações da recorrência (título, descrição, `recurrence_text`),
+**And** mostra um calendário do mês com indicador de quantas tarefas já existem em cada dia (densidade), apenas informativo.
+
+**Given** o calendário de densidade,
+**Then** é construído como componente reutilizável, para ser reaproveitado no fluxo de mover tarefa (Story 11.6) — tocar num dia pode selecioná-lo; se o clique no calendário custar muito, ele apenas exibe densidade e a seleção fica num date-picker à parte.
+
+### Story 11.4: Anuais pendentes consultáveis e colocáveis no Future Log
+
+As a Hugo,
+I want ver e colocar, direto do Future Log e o ano todo, os recorrentes anuais ainda não colocados no ano,
+So that eu não perca anuais só porque não abri o ciclo de janeiro (item #6).
+
+**Acceptance Criteria:**
+
+**Given** o Future Log,
+**When** ele carrega,
+**Then** exibe uma seção "Anuais pendentes de [ano]" listando os templates de grupo `annual` que ainda não foram colocados neste ano.
+
+**Given** essa seção,
+**When** coloco um anual dali,
+**Then** o placement acontece reusando o fluxo da Story 11.3,
+**And** o item some da seção ao ser colocado.
+
+**Given** um ano em que todos os anuais já foram colocados (ou não há anuais),
+**Then** a seção não aparece (sem estado vazio ruidoso).
+
+*Nota de escopo:* revoga a decisão da Story 4.5 de anuais aparecerem apenas na abertura do ciclo de janeiro.
+
+### Story 11.5: CRUD de tarefas em Esta Semana / Este Mês
+
+As a Hugo,
+I want criar, editar e remover tarefas direto nas telas Esta Semana e Este Mês,
+So that eu planeje semana/mês sem depender do Daily Log ou de um fluxo de migração (itens #7, #8).
+
+**Acceptance Criteria:**
+
+**Given** a tela Esta Semana,
+**When** adiciono uma tarefa,
+**Then** posso atribuí-la a um dia específico da semana (ou deixá-la sem dia); a tela Este Mês permite adicionar ao mês.
+
+**Given** uma tarefa em Semana/Mês,
+**When** a edito,
+**Then** posso alterar seus campos (título, descrição, eisenhower etc.), igual ao Daily Log.
+
+**Given** uma tarefa `pending` sem linhagem de migração,
+**When** a removo,
+**Then** posso excluí-la permanentemente (hard delete); tarefas com histórico/linhagem só podem ser canceladas (`status=cancelled`), preservando a semântica BuJo.
+
+**Given** ciclos já fechados (Arquivo),
+**Then** continuam somente-leitura (sem CRUD).
+
+### Story 11.6: Mover/migrar tarefa de qualquer superfície (destino dia-ou-mês)
+
+As a Hugo,
+I want mover (migrar/adiar) qualquer tarefa — do Daily Log, Semana, Mês ou Futuro — para um dia específico ou para um mês/futuro,
+So that eu reorganize o "quando" de qualquer tarefa em qualquer direção, antecipando ou adiando (item #9).
+
+**Acceptance Criteria:**
+
+**Given** uma tarefa em qualquer superfície,
+**When** aciono "Mover" pelo kebab do TaskRow ou pelo painel de detalhe,
+**Then** abre um seletor de destino.
+
+**Given** o seletor de destino,
+**When** escolho o destino,
+**Then** posso apontar um dia específico (hoje ou qualquer dia — o app deduz a semana a partir da data) usando o calendário de densidade da Story 11.3, ou um mês (este/futuro),
+**And** mover "para esta semana" sempre exige apontar o dia (não há balde de semana sem dia).
+
+**Given** a movimentação executada,
+**Then** a regra de estado atual é mantida — destino dia (hoje / dentro de semana) → origem vira `migrated`; destino mês/futuro → origem vira `postponed`,
+**And** a linhagem (`migration_count`) é incrementada como já ocorre hoje.
+
+**Given** o serviço de backend,
+**Then** `migrate_task` passa a aceitar `scheduled_date` para destinos dentro de semana (hoje / dia específico), estendendo o serviço existente sem duplicá-lo.
+
+*Fora de escopo (registrado):* granularidade fina de "próxima semana" como bucket próprio; exibir o destino da migração (`migrated_to_task`) na UI — a contagem `↻ N×` já entregue basta por ora.
 
 ---
 

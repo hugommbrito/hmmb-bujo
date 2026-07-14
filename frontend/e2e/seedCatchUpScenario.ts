@@ -2,6 +2,8 @@ import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { DJANGO_SETTINGS_MODULE } from './backendEnv'
+
 // Story 4.4 (Catch-Up de dias pulados): `CatchUpQueueView` só cobre o que é
 // MAIS ANTIGO que "ontem"/"semana anterior"/"mês anterior" (as janelas da
 // 4.2/4.3) — não há affordance de UI para criar dados nesse passado mais
@@ -82,7 +84,7 @@ with tenant_context(user):
 
   execFileSync('uv', ['run', 'python', 'manage.py', 'shell', '-c', script], {
     cwd: backendDir,
-    env: { ...process.env, DJANGO_SETTINGS_MODULE: 'config.settings.dev' },
+    env: { ...process.env, DJANGO_SETTINGS_MODULE },
     stdio: 'pipe',
   })
 }
@@ -107,7 +109,7 @@ with tenant_context(user):
 
   const output = execFileSync('uv', ['run', 'python', 'manage.py', 'shell', '-c', script], {
     cwd: backendDir,
-    env: { ...process.env, DJANGO_SETTINGS_MODULE: 'config.settings.dev' },
+    env: { ...process.env, DJANGO_SETTINGS_MODULE },
     stdio: 'pipe',
   })
   // `manage.py shell -c` imprime um banner ("N objects imported automatically...")
