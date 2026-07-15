@@ -1192,6 +1192,55 @@ def test_post_migrate_destination_week_migra_para_weekly_log_corrente(auth_clien
         assert current_weekly_log.tasks.filter(id=task.migrated_to_task_id).exists()
 
 
+@pytest.mark.django_db
+def test_post_migrate_destination_week_com_scheduled_date_migra_para_semana_da_data(
+    auth_client, user
+):
+    with tenant_context(user):
+        task = TaskFactory(user=user, status=Task.Status.PENDING)
+        scheduled_date = week_start_of(today_for(user)) + timedelta(weeks=3)
+
+    response = auth_client.post(
+        f"/api/bujo/tasks/{task.id}/migrate/",
+        {"destination": "week", "scheduledDate": scheduled_date.isoformat()},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert response.data["status"] == "migrated"
+    with tenant_context(user):
+        task.refresh_from_db()
+        assert task.status == "migrated"
+        target_weekly_log = get_or_create_weekly_log(
+            user=user, week_start=week_start_of(scheduled_date)
+        )
+        assert target_weekly_log.tasks.filter(id=task.migrated_to_task_id).exists()
+        assert task.migrated_to_task.scheduled_date == scheduled_date
+
+
+@pytest.mark.django_db
+def test_post_migrate_destination_week_para_semana_fechada_retorna_409_so_com_detail(
+    auth_client, user
+):
+    """Prova, via HTTP, que o guardrail de ciclo fechado da Story 11.5
+    (`_check_container_open`, chamado por dentro de `_migrate_subtree`) já
+    protege o destino desta story sem nenhum código novo."""
+    with tenant_context(user):
+        past_week_start = week_start_of(today_for(user)) - timedelta(weeks=4)
+        closed_weekly_log = WeeklyLogFactory(user=user, week_start=past_week_start)
+        TaskFactory(user=user, weekly_log=closed_weekly_log, status=Task.Status.COMPLETED)
+        task = TaskFactory(user=user, status=Task.Status.PENDING)
+
+    response = auth_client.post(
+        f"/api/bujo/tasks/{task.id}/migrate/",
+        {"destination": "week", "scheduledDate": past_week_start.isoformat()},
+        format="json",
+    )
+
+    assert response.status_code == 409
+    assert "fields" not in response.data
+
+
 # --- WeeklyReviewQueueView / MonthlyReviewQueueView (AC #1, #2) --------------
 
 

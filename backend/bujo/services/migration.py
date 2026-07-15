@@ -58,8 +58,13 @@ def _migrate_subtree(
 def migrate_task(*, user, task_id, destination, month_first=None, scheduled_date=None) -> Task:
     """destination: "today" | "week" | "month" | "future" | "cancel".
     "today"  -> destino = Daily Log de hoje; origem vira MIGRATED.
-    "week"   -> destino = Weekly Log da SEMANA CORRENTE (week_start calculado
-                 aqui via today_for, NUNCA aceito do cliente); origem vira MIGRATED.
+    "week"   -> destino = Weekly Log da semana de `scheduled_date`, quando
+                 informado (week_start_of(scheduled_date); o NOVO registro
+                 nasce com esse dia, a origem não é alterada além do status);
+                 quando `scheduled_date` está ausente, comportamento
+                 pré-existente: semana CORRENTE (week_start calculado aqui
+                 via today_for, novo registro sem dia). Origem vira MIGRATED
+                 em ambos os casos.
     "month"  -> destino = Monthly Log do MÊS CORRENTE (month_first calculado
                  aqui via today_for, NUNCA aceito do cliente); scheduled_date
                  obrigatório; origem vira POSTPONED.
@@ -79,8 +84,11 @@ def migrate_task(*, user, task_id, destination, month_first=None, scheduled_date
         new_status, root_scheduled_date = Task.Status.MIGRATED, None
     elif destination == "week":
         container_field = "weekly_log"
-        container = get_or_create_weekly_log(user=user, week_start=week_start_of(today_for(user)))
-        new_status, root_scheduled_date = Task.Status.MIGRATED, None
+        week_start = (
+            week_start_of(scheduled_date) if scheduled_date else week_start_of(today_for(user))
+        )
+        container = get_or_create_weekly_log(user=user, week_start=week_start)
+        new_status, root_scheduled_date = Task.Status.MIGRATED, scheduled_date
     else:  # "month" ou "future"
         container_field = "monthly_log"
         container = get_or_create_monthly_log(user=user, month_first=month_first)

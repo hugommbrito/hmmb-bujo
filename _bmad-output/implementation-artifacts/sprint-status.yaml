@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-22
-last_updated: 2026-07-15  # story 11.5 → done (code-review)
+last_updated: 2026-07-15  # story 11.6 → done (story-automator-review)
 project: hmmb-bujo
 project_key: NOKEY
 tracking_system: file-system
@@ -84,7 +84,7 @@ development_status:
   11-3-placement-de-recorrentes-dedup-e-calendario-de-densidade: done
   11-4-anuais-pendentes-consultaveis-e-colocaveis-no-future-log: done
   11-5-crud-de-tarefas-em-esta-semana-este-mes: done
-  11-6-mover-migrar-tarefa-de-qualquer-superficie: backlog
+  11-6-mover-migrar-tarefa-de-qualquer-superficie: done
   epic-11-retrospective: optional
 
   # Epic 5: Brain Dump & Captura Rápida (Fase 1b)

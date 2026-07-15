@@ -13,6 +13,7 @@ import {
 import CloseIcon from '@mui/icons-material/Close'
 import { useCreateSubtaskMutation, useDeleteTaskMutation, useUpdateTaskMutation } from '../api'
 import { AddTaskRow } from './AddTaskRow'
+import { TaskDestinationDialog } from './TaskDestinationDialog'
 import type { Task, TaskCategory, TaskEisenhower } from '../types'
 
 const CATEGORY_LABEL: Record<TaskCategory, string> = {
@@ -45,6 +46,7 @@ export function TaskDetailPanel({ task, isSubtask, onClose }: TaskDetailPanelPro
 
   const [title, setTitle] = useState(task?.title ?? '')
   const [description, setDescription] = useState(task?.description ?? '')
+  const [destinationDialogOpen, setDestinationDialogOpen] = useState(false)
 
   if (!task) return null
 
@@ -173,12 +175,28 @@ export function TaskDetailPanel({ task, isSubtask, onClose }: TaskDetailPanelPro
         </Box>
 
         {!isSubtask && (
-          <Button
-            color="error"
-            onClick={() => deleteTask.mutate({ taskId: task.id }, { onSuccess: onClose })}
-          >
-            {willHardDelete ? 'Excluir tarefa' : 'Cancelar tarefa'}
-          </Button>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <Button
+              onClick={() => setDestinationDialogOpen(true)}
+              disabled={task.status !== 'pending' && task.status !== 'started'}
+            >
+              Mover tarefa
+            </Button>
+            <Button
+              color="error"
+              onClick={() => deleteTask.mutate({ taskId: task.id }, { onSuccess: onClose })}
+            >
+              {willHardDelete ? 'Excluir tarefa' : 'Cancelar tarefa'}
+            </Button>
+          </Box>
+        )}
+        {!isSubtask && (
+          <TaskDestinationDialog
+            task={task}
+            open={destinationDialogOpen}
+            onClose={() => setDestinationDialogOpen(false)}
+            onSuccess={onClose}
+          />
         )}
       </Box>
     </Drawer>

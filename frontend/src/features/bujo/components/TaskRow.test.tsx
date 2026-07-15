@@ -5,6 +5,16 @@ import { createBujoTheme } from '../../../theme'
 import { TaskRow } from './TaskRow'
 import type { Task } from '../types'
 
+const mockMigrateMutate = vi.fn()
+
+// TaskRow renderiza o TaskDestinationDialog real (não mockado) desde a
+// 11.6 — jest-axe/lógica só valem contra o componente de verdade (lição
+// recorrente 3.3-11.5). Só os hooks de API do diálogo são mockados aqui.
+vi.mock('../api', () => ({
+  useMigrateTaskMutation: () => ({ mutate: mockMigrateMutate, isError: false }),
+  useTaskDensityQuery: () => ({ data: [] }),
+}))
+
 function baseTask(overrides: Partial<Task> = {}): Task {
   return {
     id: 'task-1',
@@ -480,10 +490,10 @@ describe('TaskRow — reorder (AC1, AC2)', () => {
     vi.useRealTimers()
   })
 
-  it('clique no botão "Mover tarefa" (desktop) abre o mesmo diálogo', () => {
+  it('clique no botão "Reordenar tarefa" (desktop) abre o MoveTaskDialog', () => {
     renderReorderableTaskRow()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Mover tarefa' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Reordenar tarefa' }))
 
     expect(screen.getByText(/Mover ".*" para\.\.\./)).toBeInTheDocument()
   })
@@ -491,7 +501,69 @@ describe('TaskRow — reorder (AC1, AC2)', () => {
   it('nenhum comportamento de reorder aparece quando onReorder/siblings não são passados', () => {
     renderTaskRow(baseTask())
 
-    expect(screen.queryByRole('button', { name: 'Mover tarefa' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Reordenar tarefa' })).not.toBeInTheDocument()
     expect(screen.getByTestId('task-row')).toHaveAttribute('draggable', 'false')
+  })
+})
+
+describe('TaskRow — Mover (Story 11.6, AC1)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    })
+  })
+
+  it('botão "Mover tarefa" aparece em toda TaskRow raiz, mesmo sem onReorder/onOpenDetail', () => {
+    renderTaskRow(baseTask())
+
+    expect(screen.getByRole('button', { name: 'Mover tarefa' })).toBeInTheDocument()
+  })
+
+  it('clique no botão "Mover tarefa" abre o TaskDestinationDialog', () => {
+    renderTaskRow(baseTask({ title: 'Consulado PT' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mover tarefa' }))
+
+    expect(screen.getByRole('dialog', { name: 'Mover tarefa' })).toBeInTheDocument()
+    expect(screen.getAllByText('Consulado PT').length).toBeGreaterThan(0)
+  })
+
+  it.each(['completed', 'cancelled', 'migrated', 'postponed'] as const)(
+    'botão "Mover tarefa" desabilitado para status %s',
+    (status) => {
+      renderTaskRow(baseTask({ status }))
+
+      expect(screen.getByRole('button', { name: 'Mover tarefa' })).toBeDisabled()
+    },
+  )
+
+  it.each(['pending', 'started'] as const)(
+    'botão "Mover tarefa" habilitado para status %s',
+    (status) => {
+      renderTaskRow(baseTask({ status }))
+
+      expect(screen.getByRole('button', { name: 'Mover tarefa' })).toBeEnabled()
+    },
+  )
+
+  it('botão "Mover tarefa" ausente para subtarefas', () => {
+    renderTaskRow(
+      baseTask({
+        subtasks: [{ id: 'sub-1', title: 'Subtarefa 1', status: 'pending', subtasks: [] }],
+      }),
+    )
+
+    expect(screen.getAllByRole('button', { name: 'Mover tarefa' })).toHaveLength(1)
   })
 })

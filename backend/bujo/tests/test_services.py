@@ -643,6 +643,56 @@ def test_migrate_task_destination_week_torna_origem_migrated_e_cria_no_weekly_co
 
 
 @pytest.mark.django_db
+def test_migrate_task_destination_week_com_scheduled_date_deduz_semana_da_data(user):
+    with tenant_context(user):
+        log = LogFactory(user=user)
+        task = TaskFactory(user=user, log=log, status=Task.Status.PENDING)
+        current_week_start = week_start_of(today_for(user))
+        scheduled_date = current_week_start + timedelta(weeks=3)
+
+        result = migrate_task(
+            user=user, task_id=task.id, destination="week", scheduled_date=scheduled_date
+        )
+
+        target_weekly_log = get_or_create_weekly_log(
+            user=user, week_start=week_start_of(scheduled_date)
+        )
+        current_weekly_log = get_or_create_weekly_log(user=user, week_start=current_week_start)
+        assert result.status == Task.Status.MIGRATED
+        new_task = result.migrated_to_task
+        assert new_task is not None
+        assert new_task.weekly_log_id == target_weekly_log.id
+        assert new_task.weekly_log_id != current_weekly_log.id
+        assert new_task.scheduled_date == scheduled_date
+
+
+@pytest.mark.django_db
+def test_migrate_task_destination_week_com_scheduled_date_passada_deduz_semana_anterior(user):
+    """"Antecipar/adiar em qualquer direção" (epics.md linha 868) — mover
+    para trás também funciona, não só para frente. A semana de destino é
+    anterior à corrente, mas ainda não fechada (só uma tarefa `pending`
+    nela após a migração)."""
+    with tenant_context(user):
+        log = LogFactory(user=user)
+        task = TaskFactory(user=user, log=log, status=Task.Status.PENDING)
+        current_week_start = week_start_of(today_for(user))
+        scheduled_date = current_week_start - timedelta(weeks=2)
+
+        result = migrate_task(
+            user=user, task_id=task.id, destination="week", scheduled_date=scheduled_date
+        )
+
+        target_weekly_log = get_or_create_weekly_log(
+            user=user, week_start=week_start_of(scheduled_date)
+        )
+        assert result.status == Task.Status.MIGRATED
+        new_task = result.migrated_to_task
+        assert new_task.weekly_log_id == target_weekly_log.id
+        assert new_task.scheduled_date == scheduled_date
+        assert is_container_closed(target_weekly_log) is False
+
+
+@pytest.mark.django_db
 def test_migrate_task_destination_month_torna_origem_postponed_e_cria_no_monthly_corrente(user):
     with tenant_context(user):
         log = LogFactory(user=user)

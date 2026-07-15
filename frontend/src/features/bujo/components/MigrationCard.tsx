@@ -23,8 +23,11 @@ interface MigrationCardProps {
 
 // Mês corrente calculado no frontend a partir de `new Date()` local — cálculo
 // de UI, não autoridade de domínio (a view valida o mês corrente de verdade
-// via `today_for`).
-function currentMonthBounds() {
+// via `today_for`). Exportadas para reuso pelo TaskDestinationDialog (Story
+// 11.6) — react-refresh reclama de módulo com export não-componente, mas
+// mover pra um arquivo à parte por 2 helpers pequenos seria over-engineering.
+// eslint-disable-next-line react-refresh/only-export-components
+export function currentMonthBounds() {
   const now = new Date()
   const year = now.getFullYear()
   const month = now.getMonth() + 1
@@ -33,7 +36,8 @@ function currentMonthBounds() {
   return { min: `${year}-${pad(month)}-01`, max: `${year}-${pad(month)}-${pad(lastDay)}` }
 }
 
-function currentMonthLabel() {
+// eslint-disable-next-line react-refresh/only-export-components
+export function currentMonthLabel() {
   return MONTH_NAMES_PT[new Date().getMonth()]
 }
 

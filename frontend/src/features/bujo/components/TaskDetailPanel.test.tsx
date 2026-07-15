@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
 import { ThemeProvider, Box } from '@mui/material'
 import { axe } from 'jest-axe'
 import { createBujoTheme } from '../../../theme'
@@ -9,11 +9,17 @@ import type { Task } from '../types'
 const mockUpdateMutate = vi.fn()
 const mockCreateSubtaskMutate = vi.fn()
 const mockDeleteMutate = vi.fn()
+const mockMigrateMutate = vi.fn()
 
+// TaskDetailPanel renderiza o TaskDestinationDialog real (não mockado) desde
+// a 11.6 — jest-axe/lógica só valem contra o componente de verdade (lição
+// recorrente 3.3-11.5). Só os hooks de API do diálogo são mockados aqui.
 vi.mock('../api', () => ({
   useUpdateTaskMutation: () => ({ mutate: mockUpdateMutate }),
   useCreateSubtaskMutation: () => ({ mutate: mockCreateSubtaskMutate }),
   useDeleteTaskMutation: () => ({ mutate: mockDeleteMutate }),
+  useMigrateTaskMutation: () => ({ mutate: mockMigrateMutate, isError: false }),
+  useTaskDensityQuery: () => ({ data: [] }),
 }))
 
 function baseTask(overrides: Partial<Task> = {}): Task {
@@ -178,6 +184,64 @@ describe('TaskDetailPanel (AC2, AC3)', () => {
 
     expect(screen.queryByRole('button', { name: 'Excluir tarefa' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Cancelar tarefa' })).not.toBeInTheDocument()
+  })
+
+  it('botão "Mover tarefa" abre o TaskDestinationDialog', () => {
+    renderPanel(baseTask({ status: 'pending' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mover tarefa' }))
+
+    expect(screen.getByRole('dialog', { name: 'Mover tarefa' })).toBeInTheDocument()
+  })
+
+  it('botão "Mover tarefa" desabilitado fora de pending/started', () => {
+    renderPanel(baseTask({ status: 'completed' }))
+
+    expect(screen.getByRole('button', { name: 'Mover tarefa' })).toBeDisabled()
+  })
+
+  it('botão "Mover tarefa" ausente quando isSubtask', () => {
+    renderPanel(baseTask({ status: 'pending' }), true)
+
+    expect(screen.queryByRole('button', { name: 'Mover tarefa' })).not.toBeInTheDocument()
+  })
+
+  it('sucesso da migração fecha o TaskDestinationDialog e o painel (onClose encadeado)', async () => {
+    const { onClose } = renderPanel(baseTask({ status: 'pending' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mover tarefa' }))
+    fireEvent.click(screen.getByRole('tab', { name: 'Este mês' }))
+    fireEvent.change(screen.getByLabelText('Data no mês corrente'), {
+      target: { value: '2026-07-20' },
+    })
+
+    expect(mockMigrateMutate).toHaveBeenCalledWith(
+      { taskId: 'task-1', destination: 'month', scheduledDate: '2026-07-20' },
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    )
+    act(() => {
+      mockMigrateMutate.mock.calls[0][1].onSuccess()
+    })
+
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Mover tarefa' })).not.toBeInTheDocument(),
+    )
+    expect(onClose).toHaveBeenCalled()
+  })
+
+  it('cancelar o TaskDestinationDialog fecha só o diálogo, não o painel', async () => {
+    const { onClose } = renderPanel(baseTask({ status: 'pending' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mover tarefa' }))
+    expect(screen.getByRole('dialog', { name: 'Mover tarefa' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }))
+
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Mover tarefa' })).not.toBeInTheDocument(),
+    )
+    expect(mockMigrateMutate).not.toHaveBeenCalled()
+    expect(onClose).not.toHaveBeenCalled()
   })
 
   it('Esc fecha o painel', () => {

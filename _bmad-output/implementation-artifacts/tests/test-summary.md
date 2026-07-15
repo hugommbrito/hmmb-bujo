@@ -1566,3 +1566,68 @@ asserção já usado no próprio spec E2E.
   uma story futura, não é bloqueio desta story.
 - AR-22 (observabilidade) segue pendente, sem dono, conforme já registrado pela memória do projeto
   — não é um achado deste workflow, só reforça o que já está escalado.
+
+---
+
+# Resumo de Automação de Testes — Story 11.6: Mover/migrar tarefa de qualquer superfície
+
+**Data:** 2026-07-15
+**Story:** 11.6 — Mover/migrar tarefa de qualquer superfície (destino dia-ou-mês)
+**Framework:** pytest-django + DRF `APIClient` (backend) · Vitest 4.1 + @testing-library/react + jest-axe (frontend) · Playwright (E2E, branch Neon `e2e`)
+
+---
+
+## Contexto
+
+A story já chegou com cobertura extensa gerada pelo próprio dev-story (Tasks 2, 8 e 9): 4 testes novos de backend (`test_services.py`/`test_views.py`, incl. dedução de semana para trás e o guardrail de ciclo fechado via 409), 1 `TaskDestinationDialog.test.tsx` novo (10 testes, incl. jest-axe contra o componente real), atualizações em `TaskRow.test.tsx`/`TaskDetailPanel.test.tsx`/`api.test.tsx`/`MigrationCard.test.tsx` e um `move-task.spec.ts` novo (6 cenários Playwright cobrindo as 4 superfícies). Esta rodada de QA revisou a suíte contra as 4 ACs e o checklist de `bmad-qa-generate-e2e-tests` procurando gaps reais para auto-aplicar.
+
+## Gaps Descobertos
+
+**Nenhum.** A revisão cruzada AC-a-AC não encontrou lacuna de cobertura que justificasse um teste novo:
+
+- **AC1** (disable por estado terminal + ausência em subtarefa): `TaskRow.test.tsx` já cobre as 4 combinações terminais (`completed`/`cancelled`/`migrated`/`postponed`) via `it.each`, as 2 combinações habilitadas (`pending`/`started`), e a ausência do botão em subtarefas — matriz completa, não só o caso feliz.
+- **AC2** (3 abas, calendário ligado, navegação de mês, pickers de mês/futuro): coberto tanto em unitário (`TaskDestinationDialog.test.tsx`) quanto em E2E real (`move-task.spec.ts`, incl. navegação de mês + dedução de semana).
+- **AC3** (regra de estado/linhagem preservada): coberto por testes de backend (semana/mês/futuro pré-existentes, não tocados) + E2E que verifica `status: migrated`/`postponed` na origem.
+- **AC4** (backend estendido, sem duplicar): os 2 testes de `scheduled_date` (futuro e passado) provam a dedução de semana; o teste de guardrail de ciclo fechado (409, sem `fields`) prova que nenhum código novo de proteção foi necessário — exatamente o que a Dev Note do próprio autor da story argumenta.
+
+Um único ponto observado (não é gap de teste, é nota de comportamento): o texto da Task 9.1 diz "some do Daily Log" ao migrar, mas o app **não** filtra tarefas por status nas views de origem (`LogSerializer`/`WeeklyLogView`/`MonthlyLogView` retornam todas as tasks do container, independente de status — mesmo padrão pré-existente desde a Story 3.x). O `move-task.spec.ts` reflete corretamente o comportamento real (assert do label "Migrada"/"Adiada" na própria linha, não de desaparecimento) — não precisou de correção.
+
+## Verificação Executada Nesta Rodada
+
+- **Backend (escopo tocado):** `uv run pytest bujo/tests/test_services.py bujo/tests/test_views.py -q` → **230 passed**, 1 warning de infraestrutura (contenção de teardown do `test_neondb`, mesma instabilidade já registrada em rodadas anteriores — não relacionada ao código desta story).
+- **Frontend (escopo tocado):** `npx vitest run --no-file-parallelism` nos 5 arquivos alterados (`TaskDestinationDialog.test.tsx`, `TaskRow.test.tsx`, `TaskDetailPanel.test.tsx`, `api.test.tsx`, `MigrationCard.test.tsx`) → **133 passed** (Node 22, conforme lição recorrente 11.2-11.5).
+- **E2E (Playwright):** não reexecutado nesta rodada (requer a branch Neon `e2e` dedicada); o Dev Agent Record já registra **6/6 passed** com `--workers=1` para `move-task.spec.ts`, e a leitura do spec confirma que os 6 cenários mapeiam 1:1 para a lista da Task 9.1 (mover do Daily Log via calendário, Esta Semana → Este Mês, Este Mês → Futuro, via painel de detalhe, disable em `completed`, navegação de mês + dedução de semana).
+
+## Cobertura por AC
+
+| AC | Critério | Coberto por |
+|----|----------|-------------|
+| AC1 | "Mover" no kebab do `TaskRow` e no `TaskDetailPanel`, em qualquer superfície | `TaskRow.test.tsx`, `TaskDetailPanel.test.tsx`, `move-task.spec.ts` |
+| AC1 | Disable em estado terminal (matriz `ALLOWED`) | `TaskRow.test.tsx` (`it.each` 4 estados terminais + 2 habilitados), `move-task.spec.ts` (caso `completed`) |
+| AC1 | Ausente em subtarefa | `TaskRow.test.tsx` |
+| AC2 | Aba "Dia" liga `MonthDensityCalendar` (`onSelectDay`/`selectedDate`) | `TaskDestinationDialog.test.tsx`, `move-task.spec.ts` |
+| AC2 | Navegação de mês no calendário, qualquer dia passado/futuro | `TaskDestinationDialog.test.tsx` (Prev/Next), `move-task.spec.ts` (dedução de semana de outro mês) |
+| AC2 | Abas "Este mês"/"Futuro" (mesmo comportamento do `MigrationCard`) | `TaskDestinationDialog.test.tsx`, `move-task.spec.ts` |
+| AC3 | Origem vira `migrated`/`postponed`; linhagem incrementada | `test_services.py`/`test_views.py` (pré-existentes, não regredidos), `move-task.spec.ts` |
+| AC4 | `migrate_task` deduz semana de `scheduled_date` (futuro e passado); comportamento antigo preservado | `test_migrate_task_destination_week_com_scheduled_date_deduz_semana_da_data`, `..._passada_deduz_semana_anterior`, `test_migrate_task_destination_week_torna_origem_migrated_e_cria_no_weekly_corrente` (regressão) |
+| AC4 | Guardrail de ciclo fechado no destino, sem código novo | `test_post_migrate_destination_week_para_semana_fechada_retorna_409_so_com_detail` |
+| AC4 | Invalidação de `taskDensity` na mutation (gap pré-11.3 corrigido de graça) | `api.test.tsx` |
+
+---
+
+## Checklist de Validação
+
+- [x] Testes de API gerados/confirmados (backend, dedução de semana + guardrail 409)
+- [x] Testes E2E gerados/confirmados (Playwright, 6 cenários mapeados 1:1 com a Task 9.1)
+- [x] Usam APIs padrão do framework já adotado — nenhuma ferramenta nova introduzida
+- [x] Cobrem happy path + casos críticos de erro (409 de ciclo fechado, erro de mutação inline)
+- [x] Todos os testes verificados nesta rodada passam (230 backend + 133 frontend do escopo tocado)
+- [x] Locators semânticos (roles, aria-labels, `getByLabel`)
+- [x] Sem waits/sleeps artificiais
+- [x] Testes independentes entre si
+- [x] Summary salvo em `_bmad-output/implementation-artifacts/tests/test-summary.md`
+
+## Próximos Passos
+
+- Nenhum gap bloqueante identificado — a suíte gerada pelo dev-story já é a cobertura mínima e suficiente para as 4 ACs.
+- Reexecutar `move-task.spec.ts` isolado (`--workers=1`) na próxima passagem por E2E que já tenha a branch Neon `e2e` disponível, só para reconfirmar os 6/6 registrados no Dev Agent Record.

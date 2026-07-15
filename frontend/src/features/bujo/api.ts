@@ -377,6 +377,7 @@ export function useMigrateTaskMutation() {
       queryClient.invalidateQueries({ queryKey: ['bujo', 'weeklyLog'] })
       queryClient.invalidateQueries({ queryKey: ['bujo', 'monthlyLog'] })
       queryClient.invalidateQueries({ queryKey: ['bujo', 'futureLog'] })
+      queryClient.invalidateQueries({ queryKey: ['bujo', 'taskDensity'] })
     },
   })
 }

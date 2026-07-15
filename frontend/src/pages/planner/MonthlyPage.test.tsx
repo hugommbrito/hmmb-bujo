@@ -172,12 +172,20 @@ describe('MonthlyPage (AC2)', () => {
     expect(screen.getByText('Sem dia')).toBeInTheDocument()
   })
 
-  it('TaskRow renderiza somente-leitura (sem botão "Mover tarefa")', () => {
+  it('TaskRow renderiza somente-leitura (sem botão "Reordenar tarefa", ciclo de status desabilitado)', () => {
     mockUseMonthlyLogQuery.mockReturnValue({ isPending: false, data: MONTHLY_LOG, refetch: mockRefetch })
 
     renderMonthlyPage()
 
-    expect(screen.queryByRole('button', { name: 'Mover tarefa' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Reordenar tarefa' })).not.toBeInTheDocument()
+  })
+
+  it('botão "Mover tarefa" (Story 11.6) aparece mesmo sem onReorder', () => {
+    mockUseMonthlyLogQuery.mockReturnValue({ isPending: false, data: MONTHLY_LOG, refetch: mockRefetch })
+
+    renderMonthlyPage()
+
+    expect(screen.getAllByRole('button', { name: 'Mover tarefa' }).length).toBeGreaterThan(0)
   })
 
   it('formulário de adicionar tarefa ao mês chama a mutação com monthFirst do log carregado', () => {

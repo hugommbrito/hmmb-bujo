@@ -8,7 +8,9 @@ import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
 import KeyboardDoubleArrowRightIcon from '@mui/icons-material/KeyboardDoubleArrowRight'
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator'
 import MoreVertIcon from '@mui/icons-material/MoreVert'
+import DriveFileMoveOutlinedIcon from '@mui/icons-material/DriveFileMoveOutlined'
 import { MoveTaskDialog } from './MoveTaskDialog'
+import { TaskDestinationDialog } from './TaskDestinationDialog'
 import type { Task, TaskStatus } from '../types'
 
 // Long-press ≥500ms (EXPERIENCE.md §6.2) — abaixo disso é um toque comum.
@@ -61,13 +63,22 @@ interface TaskRowProps {
   onOpenDetail?: (taskId: string) => void
   siblings?: Task[]
   onReorder?: (taskId: string, targetTaskId: string, position: 'before' | 'after') => void
+  isSubtask?: boolean
 }
 
-export function TaskRow({ task, onTransition, onOpenDetail, siblings, onReorder }: TaskRowProps) {
+export function TaskRow({
+  task,
+  onTransition,
+  onOpenDetail,
+  siblings,
+  onReorder,
+  isSubtask = false,
+}: TaskRowProps) {
   const isMobile = useMediaQuery('(max-width: 767px)')
   const [announcement, setAnnouncement] = useState('')
   const [dragOverPosition, setDragOverPosition] = useState<'before' | 'after' | null>(null)
   const [moveDialogOpen, setMoveDialogOpen] = useState(false)
+  const [destinationDialogOpen, setDestinationDialogOpen] = useState(false)
   const longPressTimer = useRef<number | null>(null)
 
   const status = task.status ?? 'pending'
@@ -256,11 +267,22 @@ export function TaskRow({ task, onTransition, onOpenDetail, siblings, onReorder 
             />
           )}
         </Box>
+        {!isSubtask && (
+          <IconButton
+            size="small"
+            aria-label="Mover tarefa"
+            onClick={() => setDestinationDialogOpen(true)}
+            disabled={status !== 'pending' && status !== 'started'}
+            sx={{ color: 'text.secondary' }}
+          >
+            <DriveFileMoveOutlinedIcon fontSize="small" />
+          </IconButton>
+        )}
         {isReorderable && !isMobile && (
           <Box className="drag-handle" sx={{ display: 'flex', alignItems: 'center', opacity: 0 }}>
             <IconButton
               size="small"
-              aria-label="Mover tarefa"
+              aria-label="Reordenar tarefa"
               onClick={() => setMoveDialogOpen(true)}
               sx={{ color: 'text.secondary' }}
             >
@@ -291,6 +313,13 @@ export function TaskRow({ task, onTransition, onOpenDetail, siblings, onReorder 
           onClose={() => setMoveDialogOpen(false)}
         />
       )}
+      {!isSubtask && (
+        <TaskDestinationDialog
+          task={task}
+          open={destinationDialogOpen}
+          onClose={() => setDestinationDialogOpen(false)}
+        />
+      )}
       {subtasks.length > 0 && (
         <Box sx={{ pl: 3 }}>
           {subtasks.map((subtask) => (
@@ -299,6 +328,7 @@ export function TaskRow({ task, onTransition, onOpenDetail, siblings, onReorder 
               task={subtask}
               onTransition={onTransition}
               onOpenDetail={onOpenDetail}
+              isSubtask
             />
           ))}
         </Box>

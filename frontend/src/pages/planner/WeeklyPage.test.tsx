@@ -158,12 +158,20 @@ describe('WeeklyPage (AC3)', () => {
     expect(screen.queryByText('Sem dia definido', { selector: 'span' })).not.toBeInTheDocument()
   })
 
-  it('TaskRow renderiza somente-leitura (sem botão "Mover tarefa")', () => {
+  it('TaskRow renderiza somente-leitura (sem botão "Reordenar tarefa", ciclo de status desabilitado)', () => {
     mockUseWeeklyLogQuery.mockReturnValue({ isPending: false, data: WEEKLY_LOG })
 
     renderWeeklyPage()
 
-    expect(screen.queryByRole('button', { name: 'Mover tarefa' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Reordenar tarefa' })).not.toBeInTheDocument()
+  })
+
+  it('botão "Mover tarefa" (Story 11.6) aparece mesmo sem onReorder', () => {
+    mockUseWeeklyLogQuery.mockReturnValue({ isPending: false, data: WEEKLY_LOG })
+
+    renderWeeklyPage()
+
+    expect(screen.getAllByRole('button', { name: 'Mover tarefa' }).length).toBeGreaterThan(0)
   })
 
   it('sem violações de acessibilidade (jest-axe) no desktop', async () => {

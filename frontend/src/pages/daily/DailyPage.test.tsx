@@ -357,7 +357,7 @@ describe('DailyPage (AC1, AC3)', () => {
 
     renderDailyPage()
 
-    expect(screen.getAllByRole('button', { name: 'Mover tarefa' })).toHaveLength(2)
+    expect(screen.getAllByRole('button', { name: 'Reordenar tarefa' })).toHaveLength(2)
   })
 
   it('sem violações de acessibilidade (jest-axe)', async () => {
