@@ -9,14 +9,14 @@
 - [ ] Aba de "Histórico", para ver logs, weeks e months passados.
 
 
-BUGs Epico 4:
-- [ ] Testes poluindo o banco de dados. O banco atualmente possui mais de 200 usuários, mas eu sou o único cadastrado na plataforma.
-- [ ] Recorrentes: Remover de dentro de configurações (Criar aba "Recorrentes" dentro de "Planner")
-- [ ] Recorrentes: Filtros e abas (ativo, recorrência, etc.)
-- [ ] Recorrentes: Na aba este mês esta semana, o recorrente deve desaparecer ao ser definido o placemente (Filtro para exibir apenas os recorrentes que não estejam citados como )
-- [ ] Recorrentes: Exibir no modal as informações daquela recorrência ao fazer o placement e mostrar um calendário do mês com indicador de quantas taks já tem previstas para aquele dia
-- [ ] Recorrentes: Na aba Logs Futuros deve conter os Recorrentes anuais que ainda não foram "placed" nesse ano.
-- [ ] Este mês / Esta Semnana: Possibilidade de deletar / editar tasks.
-- [ ] Esta Semana: Devo poder adicionar uma task em um dia desta semana.
-- [ ] Uma task em qualquer lugar (log, esta semana, este mês ou futuro) deve poder ser migrada ou adiada
+BUGs Epico 4 (resolvidos no Épico 11 — ver `_bmad-output/implementation-artifacts/epic-11-retro-*.md`):
+- [x] Testes poluindo o banco de dados. O banco atualmente possui mais de 200 usuários, mas eu sou o único cadastrado na plataforma. — Story 11.1
+- [x] Recorrentes: Remover de dentro de configurações (Criar aba "Recorrentes" dentro de "Planner") — Story 11.2
+- [x] Recorrentes: Filtros e abas (ativo, recorrência, etc.) — Story 11.2
+- [x] Recorrentes: Na aba este mês esta semana, o recorrente deve desaparecer ao ser definido o placemente (Filtro para exibir apenas os recorrentes que não estejam citados como ) — Story 11.3
+- [x] Recorrentes: Exibir no modal as informações daquela recorrência ao fazer o placement e mostrar um calendário do mês com indicador de quantas taks já tem previstas para aquele dia — Story 11.3
+- [x] Recorrentes: Na aba Logs Futuros deve conter os Recorrentes anuais que ainda não foram "placed" nesse ano. — Story 11.4
+- [x] Este mês / Esta Semnana: Possibilidade de deletar / editar tasks. — Story 11.5
+- [x] Esta Semana: Devo poder adicionar uma task em um dia desta semana. — Story 11.5
+- [x] Uma task em qualquer lugar (log, esta semana, este mês ou futuro) deve poder ser migrada ou adiada — Story 11.6
   - Premissa: Se eu quero antecipar para hoje uma tarefa de amanhã (esta semana) ou da próxima semana (este mês), devo ter essa opção e o mesmo acontece ao contrário, caso uma tarefa do log deva ser feita amanhã, na próxima semana ou no próximo mês, devo poder adiá-la.
