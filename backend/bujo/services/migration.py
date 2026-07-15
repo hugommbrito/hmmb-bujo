@@ -14,7 +14,7 @@ from bujo.services.logs import (
     get_or_create_weekly_log,
 )
 from bujo.services.state_machine import transition_task
-from bujo.services.tasks import create_task, update_task
+from bujo.services.tasks import create_task, set_lineage_fields
 from core.calendar import today_for, week_start_of
 
 
@@ -37,8 +37,8 @@ def _migrate_subtree(
         category=source.category,
         **{container_field: container},
     )
-    update_task(user=user, task_id=new_task.id, migration_count=source.migration_count + 1)
-    update_task(user=user, task_id=source.id, migrated_to_task=new_task)
+    set_lineage_fields(task_id=new_task.id, migration_count=source.migration_count + 1)
+    set_lineage_fields(task_id=source.id, migrated_to_task=new_task)
 
     pending_children = source.subtasks.filter(status__in=(Task.Status.PENDING, Task.Status.STARTED))
     for child in list(pending_children):

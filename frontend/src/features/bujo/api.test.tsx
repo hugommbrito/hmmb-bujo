@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 
 vi.mock('../../api/client', () => ({
-  default: { get: vi.fn(), post: vi.fn(), patch: vi.fn() },
+  default: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() },
 }))
 
 import client from '../../api/client'
@@ -20,6 +20,8 @@ import {
   useMonthlyLogQuery,
   useFutureLogQuery,
   useCreateMonthlyTaskMutation,
+  useCreateWeeklyTaskMutation,
+  useDeleteTaskMutation,
   useMigrationQueueQuery,
   useMigrateTaskMutation,
   useWeeklyReviewQueueQuery,
@@ -47,6 +49,7 @@ import type {
 const mockGet = client.get as ReturnType<typeof vi.fn>
 const mockPost = client.post as ReturnType<typeof vi.fn>
 const mockPatch = client.patch as ReturnType<typeof vi.fn>
+const mockDelete = client.delete as ReturnType<typeof vi.fn>
 
 function makeWrapper() {
   const qc = new QueryClient({
@@ -347,6 +350,21 @@ describe('useUpdateTaskMutation (AC2)', () => {
     })
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'monthlyLog'] })
   })
+
+  it('invalida weeklyLog por prefixo no sucesso (edição via TaskDetailPanel em Esta Semana, Story 11.5 AC2)', async () => {
+    const { qc, wrapper } = makeWrapper()
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+    mockPatch.mockResolvedValueOnce({
+      data: { id: 'task-1', title: 'Editada', status: 'pending', subtasks: [] },
+    })
+
+    const { result } = renderHook(() => useUpdateTaskMutation(), { wrapper })
+
+    result.current.mutate({ taskId: 'task-1', title: 'Editada' })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'weeklyLog'] })
+  })
 })
 
 const WEEKLY_LOG: WeeklyLog = {
@@ -472,6 +490,88 @@ describe('useCreateMonthlyTaskMutation (AC2)', () => {
     })
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.bujo.monthlyLog('2026-08-01') })
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.bujo.futureLog() })
+  })
+})
+
+describe('useCreateWeeklyTaskMutation (Story 11.5, AC1)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+  })
+
+  it('envia o payload correto e invalida weeklyLog + taskDensity no sucesso', async () => {
+    const { qc, wrapper } = makeWrapper()
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+    mockPost.mockResolvedValueOnce({
+      data: { id: 'task-1', title: 'Nova tarefa', status: 'pending', subtasks: [] },
+    })
+
+    const { result } = renderHook(() => useCreateWeeklyTaskMutation(), { wrapper })
+
+    result.current.mutate({ weekStart: '2026-07-13', title: 'Nova tarefa', scheduledDate: '2026-07-14' })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(mockPost).toHaveBeenCalledWith('/api/bujo/logs/weekly/', {
+      weekStart: '2026-07-13',
+      title: 'Nova tarefa',
+      scheduledDate: '2026-07-14',
+    })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.bujo.weeklyLog('2026-07-13') })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'taskDensity'] })
+  })
+})
+
+describe('useDeleteTaskMutation (Story 11.5, AC3)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+  })
+
+  it('resposta 204 (hard delete) resolve com null sem quebrar o parse', async () => {
+    const { wrapper } = makeWrapper()
+    mockDelete.mockResolvedValueOnce({ status: 204, data: null })
+
+    const { result } = renderHook(() => useDeleteTaskMutation(), { wrapper })
+
+    result.current.mutate({ taskId: 'task-1' })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(mockDelete).toHaveBeenCalledWith('/api/bujo/tasks/task-1/')
+    expect(result.current.data).toBeNull()
+  })
+
+  it('resposta 200 (cancelado) resolve com o corpo da tarefa', async () => {
+    const { wrapper } = makeWrapper()
+    mockDelete.mockResolvedValueOnce({
+      status: 200,
+      data: { id: 'task-1', title: 'Tarefa', status: 'cancelled', subtasks: [] },
+    })
+
+    const { result } = renderHook(() => useDeleteTaskMutation(), { wrapper })
+
+    result.current.mutate({ taskId: 'task-1' })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data).toEqual({
+      id: 'task-1',
+      title: 'Tarefa',
+      status: 'cancelled',
+      subtasks: [],
+    })
+  })
+
+  it('invalida todayLog, weeklyLog, monthlyLog e taskDensity no sucesso', async () => {
+    const { qc, wrapper } = makeWrapper()
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+    mockDelete.mockResolvedValueOnce({ status: 204, data: null })
+
+    const { result } = renderHook(() => useDeleteTaskMutation(), { wrapper })
+
+    result.current.mutate({ taskId: 'task-1' })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.bujo.todayLog() })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'weeklyLog'] })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'monthlyLog'] })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'taskDensity'] })
   })
 })
 

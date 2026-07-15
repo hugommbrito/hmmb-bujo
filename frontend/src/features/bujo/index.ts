@@ -9,6 +9,8 @@ export {
   useMonthlyLogQuery,
   useFutureLogQuery,
   useCreateMonthlyTaskMutation,
+  useCreateWeeklyTaskMutation,
+  useDeleteTaskMutation,
   useMigrationQueueQuery,
   useMigrateTaskMutation,
   useWeeklyReviewQueueQuery,

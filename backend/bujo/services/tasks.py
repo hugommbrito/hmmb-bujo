@@ -5,7 +5,18 @@ já foi feito pelo serializer na view; o serviço assume dados validados.
 from django.db import models, transaction
 
 from bujo.models import Task
-from core.exceptions import InvalidReorderTarget
+from bujo.services.archive import is_container_closed
+from bujo.services.state_machine import transition_task
+from core.exceptions import ClosedCycleReadOnly, InvalidReorderTarget
+
+
+def _check_container_open(*, weekly_log=None, monthly_log=None) -> None:
+    """Daily (`log`) nunca entra nesse check — só `WeeklyLog`/`MonthlyLog` têm
+    conceito de fechamento (`services/archive.py`, `UNDISPOSED`)."""
+    if weekly_log is not None and is_container_closed(weekly_log):
+        raise ClosedCycleReadOnly("Ciclo fechado — somente leitura.")
+    if monthly_log is not None and is_container_closed(monthly_log):
+        raise ClosedCycleReadOnly("Ciclo fechado — somente leitura.")
 
 
 @transaction.atomic
@@ -28,6 +39,7 @@ def create_task(
     subtarefa nunca compete por posição com a tarefa-pai nem com filhos de
     outro pai (AD-08 item 12). O CHECK `task_exactly_one_log` garante no banco
     que o chamador passou exatamente um container."""
+    _check_container_open(weekly_log=weekly_log, monthly_log=monthly_log)
     siblings = Task.objects.filter(
         log=log, weekly_log=weekly_log, monthly_log=monthly_log, parent_task=parent_task
     )
@@ -52,10 +64,47 @@ def create_task(
 @transaction.atomic
 def update_task(*, user, task_id, **fields) -> Task:
     task = Task.objects.get(id=task_id)  # objects = auto-escopado por tenant
+    _check_container_open(weekly_log=task.weekly_log, monthly_log=task.monthly_log)
+    return _apply_fields(task, **fields)
+
+
+@transaction.atomic
+def set_lineage_fields(*, task_id, **fields) -> Task:
+    """Bookkeeping interno de linhagem (`migration_count`/`migrated_to_task`),
+    usado só por `services/migration.py` logo após uma transição já validada
+    por `transition_task`. Não passa pelo guardrail de ciclo fechado: o
+    container de origem pode ter acabado de fechar como consequência direta
+    da própria migração (disposição da última tarefa pendente/started) — isso
+    não é a mutação-num-ciclo-já-fechado que a AC4 proíbe, é a conclusão
+    normal de uma transição que já era legal antes de a migração começar.
+    Nenhum endpoint aceita esses dois campos diretamente (fora do escopo do
+    `TaskUpdateSerializer`), então esta função nunca é alcançável por um
+    request de edição comum."""
+    task = Task.objects.get(id=task_id)  # objects = auto-escopado por tenant
+    return _apply_fields(task, **fields)
+
+
+def _apply_fields(task, **fields) -> Task:
     for field, value in fields.items():
         setattr(task, field, value)
     task.save(update_fields=[*fields.keys(), "updated_at"])
     return task
+
+
+@transaction.atomic
+def delete_task(*, user, task_id) -> Task | None:
+    """Regra literal da AC3: hard delete só quando `status == pending` e sem
+    linhagem; qualquer outro caso (não-pending OU com linhagem) tenta cancelar
+    via `transition_task` — que já valida a matriz `ALLOWED`. Uma tarefa já
+    `cancelled`/`migrated`/`postponed` (estado terminal) removida gera
+    `InvalidTransition` (409) por composição, sem checagem extra aqui."""
+    task = Task.objects.get(id=task_id)  # objects = auto-escopado por tenant
+    _check_container_open(weekly_log=task.weekly_log, monthly_log=task.monthly_log)
+    has_lineage = task.migration_count > 0 or task.migrated_to_task_id is not None
+    if task.status == Task.Status.PENDING and not has_lineage:
+        task.delete()
+        return None
+    return transition_task(user=user, task_id=task_id, to_status=Task.Status.CANCELLED)
 
 
 @transaction.atomic

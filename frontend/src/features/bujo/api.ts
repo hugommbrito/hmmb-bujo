@@ -145,9 +145,12 @@ export function useUpdateTaskMutation() {
     },
     mutationOptions: {
       onSuccess: () => {
-        // A task de monthly_log (ex.: confirmação de data do Future Log, Task 8)
-        // não aparece no cache do Daily Log — o updater otimista acima é um
-        // no-op seguro nesse caso; invalidar por prefixo garante o refetch.
+        // Uma task de weekly_log/monthly_log (ex.: confirmação de data do
+        // Future Log, Task 8; edição via TaskDetailPanel em Semana/Mês,
+        // Story 11.5 AC2) não aparece no cache do Daily Log — o updater
+        // otimista acima é um no-op seguro nesses casos; invalidar por
+        // prefixo garante o refetch.
+        queryClient.invalidateQueries({ queryKey: ['bujo', 'weeklyLog'] })
         queryClient.invalidateQueries({ queryKey: ['bujo', 'monthlyLog'] })
       },
     },
@@ -190,6 +193,56 @@ export function useWeeklyLogQuery(weekStart?: string) {
   return useQuery({
     queryKey: keys.bujo.weeklyLog(weekStart),
     queryFn: () => fetchWeeklyLog(weekStart),
+  })
+}
+
+interface CreateWeeklyTaskVariables {
+  weekStart: string
+  title: string
+  scheduledDate?: string | null
+  description?: string | null
+  eisenhower?: TaskEisenhower | null
+  category?: TaskCategory | null
+}
+
+async function createWeeklyTask(fields: CreateWeeklyTaskVariables): Promise<Task> {
+  const response = await client.post<Task>('/api/bujo/logs/weekly/', fields)
+  return response.data
+}
+
+export function useCreateWeeklyTaskMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: createWeeklyTask,
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: keys.bujo.weeklyLog(variables.weekStart) })
+      queryClient.invalidateQueries({ queryKey: ['bujo', 'taskDensity'] })
+    },
+  })
+}
+
+interface DeleteTaskVariables {
+  taskId: string
+}
+
+async function deleteTask({ taskId }: DeleteTaskVariables): Promise<Task | null> {
+  const response = await client.delete<Task | null>(`/api/bujo/tasks/${taskId}/`)
+  return response.status === 204 ? null : response.data
+}
+
+export function useDeleteTaskMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: deleteTask,
+    onSuccess: () => {
+      // Container de origem é desconhecido no call-site genérico (Daily,
+      // Weekly ou Monthly) — invalidação por prefixo nas 3 chaves, mesmo
+      // padrão de useUpdateTaskMutation pra 'monthlyLog'.
+      queryClient.invalidateQueries({ queryKey: keys.bujo.todayLog() })
+      queryClient.invalidateQueries({ queryKey: ['bujo', 'weeklyLog'] })
+      queryClient.invalidateQueries({ queryKey: ['bujo', 'monthlyLog'] })
+      queryClient.invalidateQueries({ queryKey: ['bujo', 'taskDensity'] })
+    },
   })
 }
 

@@ -554,6 +554,186 @@ def test_get_weekly_log_closed_e_false_com_tarefa_pending_e_true_apos_disposicao
     assert response.data["closed"] is True
 
 
+@pytest.mark.django_db
+def test_post_weekly_log_sem_scheduled_date_cria_tarefa_sem_dia(auth_client, user):
+    week_start = week_start_of(date(2026, 7, 6))  # segunda-feira
+
+    response = auth_client.post(
+        "/api/bujo/logs/weekly/",
+        {"weekStart": week_start.isoformat(), "title": "Sem dia"},
+        format="json",
+    )
+
+    assert response.status_code == 201
+    assert response.data["scheduled_date"] is None
+
+    with tenant_context(user):
+        weekly_log = get_or_create_weekly_log(user=user, week_start=week_start)
+        assert weekly_log.tasks.filter(title="Sem dia", scheduled_date__isnull=True).exists()
+
+
+@pytest.mark.django_db
+def test_post_weekly_log_com_scheduled_date_cria_tarefa_no_dia_certo(auth_client, user):
+    week_start = week_start_of(date(2026, 7, 6))
+    scheduled_date = week_start + timedelta(days=2)
+
+    response = auth_client.post(
+        "/api/bujo/logs/weekly/",
+        {
+            "weekStart": week_start.isoformat(),
+            "title": "Com dia",
+            "scheduledDate": scheduled_date.isoformat(),
+        },
+        format="json",
+    )
+
+    assert response.status_code == 201
+    assert response.data["scheduled_date"] == scheduled_date.isoformat()
+
+
+@pytest.mark.django_db
+def test_post_weekly_log_scheduled_date_fora_da_semana_retorna_400(auth_client):
+    week_start = week_start_of(date(2026, 7, 6))
+
+    response = auth_client.post(
+        "/api/bujo/logs/weekly/",
+        {
+            "weekStart": week_start.isoformat(),
+            "title": "Data errada",
+            "scheduledDate": (week_start + timedelta(days=10)).isoformat(),
+        },
+        format="json",
+    )
+
+    assert response.status_code == 400
+
+
+@pytest.mark.django_db
+def test_post_weekly_log_week_start_nao_e_segunda_retorna_400(auth_client):
+    response = auth_client.post(
+        "/api/bujo/logs/weekly/",
+        {"weekStart": "2026-07-08", "title": "Semana errada"},  # quarta-feira
+        format="json",
+    )
+
+    assert response.status_code == 400
+
+
+@pytest.mark.django_db
+def test_post_weekly_log_escopado_por_tenant(auth_client, user, other_user):
+    week_start = week_start_of(date(2026, 7, 6))
+
+    response = auth_client.post(
+        "/api/bujo/logs/weekly/",
+        {"weekStart": week_start.isoformat(), "title": "Da tenant certa"},
+        format="json",
+    )
+
+    assert response.status_code == 201
+    with tenant_context(other_user):
+        assert not Task.objects.filter(id=response.data["id"]).exists()
+
+
+@pytest.mark.django_db
+def test_post_weekly_log_ciclo_fechado_retorna_409(auth_client, user):
+    with tenant_context(user):
+        week_start = week_start_of(today_for(user))
+        weekly_log = get_or_create_weekly_log(user=user, week_start=week_start)
+        TaskFactory(user=user, weekly_log=weekly_log, status=Task.Status.COMPLETED)
+
+    response = auth_client.post(
+        "/api/bujo/logs/weekly/",
+        {"weekStart": week_start.isoformat(), "title": "Ciclo fechado"},
+        format="json",
+    )
+
+    assert response.status_code == 409
+    assert "fields" not in response.data
+
+
+# --- TaskDetailView.delete ----------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_delete_task_pending_sem_linhagem_retorna_204_e_apaga(auth_client, user):
+    with tenant_context(user):
+        task = TaskFactory(user=user, status=Task.Status.PENDING)
+
+    response = auth_client.delete(f"/api/bujo/tasks/{task.id}/")
+
+    assert response.status_code == 204
+    assert not response.data
+    with tenant_context(user):
+        assert not Task.objects.filter(id=task.id).exists()
+
+
+@pytest.mark.django_db
+def test_delete_task_com_linhagem_retorna_200_e_cancela(auth_client, user):
+    with tenant_context(user):
+        task = TaskFactory(user=user, status=Task.Status.PENDING, migration_count=1)
+
+    response = auth_client.delete(f"/api/bujo/tasks/{task.id}/")
+
+    assert response.status_code == 200
+    assert response.data["status"] == "cancelled"
+    with tenant_context(user):
+        assert Task.objects.filter(id=task.id).exists()
+
+
+@pytest.mark.django_db
+def test_delete_task_de_outro_tenant_retorna_404(auth_client, other_user):
+    with tenant_context(other_user):
+        task = TaskFactory(user=other_user, status=Task.Status.PENDING)
+
+    response = auth_client.delete(f"/api/bujo/tasks/{task.id}/")
+
+    assert response.status_code == 404
+
+
+@pytest.mark.django_db
+def test_delete_task_ciclo_fechado_retorna_409_so_com_detail(auth_client, user):
+    with tenant_context(user):
+        monthly_log = MonthlyLogFactory(user=user)
+        task = TaskFactory(user=user, monthly_log=monthly_log, status=Task.Status.COMPLETED)
+
+    response = auth_client.delete(f"/api/bujo/tasks/{task.id}/")
+
+    assert response.status_code == 409
+    assert "fields" not in response.data
+
+
+# --- Guardrail de ciclo fechado em endpoints já existentes --------------------
+
+
+@pytest.mark.django_db
+def test_post_subtask_create_em_ciclo_fechado_retorna_409(auth_client, user):
+    with tenant_context(user):
+        weekly_log = WeeklyLogFactory(user=user)
+        parent = TaskFactory(user=user, weekly_log=weekly_log, status=Task.Status.COMPLETED)
+
+    response = auth_client.post(
+        f"/api/bujo/tasks/{parent.id}/subtasks/", {"title": "Filha"}, format="json"
+    )
+
+    assert response.status_code == 409
+
+
+@pytest.mark.django_db
+def test_post_monthly_log_em_ciclo_fechado_retorna_409(auth_client, user):
+    with tenant_context(user):
+        month_first = today_for(user).replace(day=1)
+        monthly_log = get_or_create_monthly_log(user=user, month_first=month_first)
+        TaskFactory(user=user, monthly_log=monthly_log, status=Task.Status.CANCELLED)
+
+    response = auth_client.post(
+        "/api/bujo/logs/monthly/",
+        {"monthFirst": month_first.isoformat(), "title": "Ciclo fechado"},
+        format="json",
+    )
+
+    assert response.status_code == 409
+
+
 # --- MonthlyLogView ----------------------------------------------------------
 
 

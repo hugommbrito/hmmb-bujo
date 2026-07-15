@@ -26,7 +26,7 @@ vi.mock('../../features/bujo', async (importOriginal) => {
 })
 
 vi.mock('../../api/client', () => ({
-  default: { get: vi.fn(), post: vi.fn(), patch: vi.fn() },
+  default: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() },
 }))
 
 import { useMonthlyLogQuery } from '../../features/bujo'
@@ -495,5 +495,67 @@ describe('Indicador "Fechado" e modo Arquivo (AC1/AC2)', () => {
     expect(screen.getByLabelText('Arquivo — Mês de 2026-06-01')).toBeInTheDocument()
     expect(screen.queryByLabelText('Adicionar tarefa ao mês')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Definir placement' })).not.toBeInTheDocument()
+  })
+
+  it('closed: true também esconde o form de criação no período corrente (não só no Arquivo)', () => {
+    mockUseMonthlyLogQuery.mockReturnValue({
+      isPending: false,
+      data: { ...MONTHLY_LOG, closed: true },
+      refetch: mockRefetch,
+    })
+
+    renderMonthlyPage()
+
+    expect(screen.queryByLabelText('Adicionar tarefa ao mês')).not.toBeInTheDocument()
+  })
+})
+
+describe('onOpenDetail (Story 11.5, AC2/AC4)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+    vi.setSystemTime(FIXED_TODAY)
+    mockGet.mockResolvedValue({ data: [] })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('clicar no título de uma TaskRow abre o TaskDetailPanel', () => {
+    mockUseMonthlyLogQuery.mockReturnValue({ isPending: false, data: MONTHLY_LOG, refetch: mockRefetch })
+
+    renderMonthlyPage()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ver detalhes de Com dia' }))
+
+    // O painel é o último "Título" no DOM — o form de criação da própria
+    // página já tem um campo com o mesmo rótulo.
+    const titleInputs = screen.getAllByLabelText('Título')
+    expect(titleInputs[titleInputs.length - 1]).toHaveValue('Com dia')
+  })
+
+  it('painel não abre (TaskRow somente-leitura) quando isArchiveView', () => {
+    mockUseMonthlyLogQuery.mockReturnValue({
+      isPending: false,
+      data: { ...MONTHLY_LOG, closed: true },
+      refetch: mockRefetch,
+    })
+
+    renderMonthlyPageAtArchiveRoute('2026-06-01')
+
+    expect(screen.queryByRole('button', { name: 'Ver detalhes de Com dia' })).not.toBeInTheDocument()
+  })
+
+  it('painel não abre (TaskRow somente-leitura) quando closed: true no período corrente', () => {
+    mockUseMonthlyLogQuery.mockReturnValue({
+      isPending: false,
+      data: { ...MONTHLY_LOG, closed: true },
+      refetch: mockRefetch,
+    })
+
+    renderMonthlyPage()
+
+    expect(screen.queryByRole('button', { name: 'Ver detalhes de Com dia' })).not.toBeInTheDocument()
   })
 })

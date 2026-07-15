@@ -149,7 +149,7 @@ export interface paths {
         };
         get: operations["bujo_logs_weekly_retrieve"];
         put?: never;
-        post?: never;
+        post: operations["bujo_logs_weekly_create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -293,7 +293,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        delete?: never;
+        delete: operations["bujo_tasks_destroy"];
         options?: never;
         head?: never;
         patch: operations["bujo_tasks_partial_update"];
@@ -619,6 +619,16 @@ export interface components {
             weekStart: string;
             tasks: components["schemas"]["Task"][];
         };
+        WeeklyTaskCreate: {
+            /** Format: date */
+            weekStart: string;
+            title: string;
+            /** Format: date */
+            scheduledDate?: string | null;
+            description?: string | null;
+            eisenhower?: (components["schemas"]["EisenhowerEnum"] | components["schemas"]["NullEnum"]) | null;
+            category?: (components["schemas"]["CategoryEnum"] | components["schemas"]["NullEnum"]) | null;
+        };
     };
     responses: never;
     parameters: never;
@@ -829,6 +839,29 @@ export interface operations {
             };
         };
     };
+    bujo_logs_weekly_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WeeklyTaskCreate"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+        };
+    };
     bujo_migration_queue_retrieve: {
         parameters: {
             query?: never;
@@ -1000,6 +1033,34 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Task"];
                 };
+            };
+        };
+    };
+    bujo_tasks_destroy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            /** @description No response body */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

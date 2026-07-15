@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import {
   Box,
+  Button,
   Drawer,
   IconButton,
   MenuItem,
@@ -10,7 +11,7 @@ import {
   useMediaQuery,
 } from '@mui/material'
 import CloseIcon from '@mui/icons-material/Close'
-import { useCreateSubtaskMutation, useUpdateTaskMutation } from '../api'
+import { useCreateSubtaskMutation, useDeleteTaskMutation, useUpdateTaskMutation } from '../api'
 import { AddTaskRow } from './AddTaskRow'
 import type { Task, TaskCategory, TaskEisenhower } from '../types'
 
@@ -40,11 +41,15 @@ export function TaskDetailPanel({ task, isSubtask, onClose }: TaskDetailPanelPro
   const isMobile = useMediaQuery('(max-width: 767px)')
   const updateTask = useUpdateTaskMutation()
   const createSubtask = useCreateSubtaskMutation()
+  const deleteTask = useDeleteTaskMutation()
 
   const [title, setTitle] = useState(task?.title ?? '')
   const [description, setDescription] = useState(task?.description ?? '')
 
   if (!task) return null
+
+  const hasLineage = (task.migrationCount ?? 0) > 0 || Boolean(task.migratedToTask)
+  const willHardDelete = task.status === 'pending' && !hasLineage
 
   return (
     <Drawer
@@ -166,6 +171,15 @@ export function TaskDetailPanel({ task, isSubtask, onClose }: TaskDetailPanelPro
             />
           )}
         </Box>
+
+        {!isSubtask && (
+          <Button
+            color="error"
+            onClick={() => deleteTask.mutate({ taskId: task.id }, { onSuccess: onClose })}
+          >
+            {willHardDelete ? 'Excluir tarefa' : 'Cancelar tarefa'}
+          </Button>
+        )}
       </Box>
     </Drawer>
   )

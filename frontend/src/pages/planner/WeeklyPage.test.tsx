@@ -20,7 +20,7 @@ vi.mock('../../features/bujo', async (importOriginal) => {
 })
 
 vi.mock('../../api/client', () => ({
-  default: { get: vi.fn(), post: vi.fn(), patch: vi.fn() },
+  default: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() },
 }))
 
 import { useWeeklyLogQuery } from '../../features/bujo'
@@ -140,7 +140,10 @@ describe('WeeklyPage (AC3)', () => {
 
     renderWeeklyPage()
 
-    expect(screen.getByText('Sem dia definido')).toBeInTheDocument()
+    // `{ selector: 'span' }` desambigua do texto idêntico exibido pelo Select
+    // "Dia (opcional)" do form de criação (Task 7.2) — o valor fechado do
+    // MUI Select é um `<div role="combobox">`, não um `<span>`.
+    expect(screen.getByText('Sem dia definido', { selector: 'span' })).toBeInTheDocument()
     expect(screen.getByText('Tarefa sem dia')).toBeInTheDocument()
   })
 
@@ -152,7 +155,7 @@ describe('WeeklyPage (AC3)', () => {
 
     renderWeeklyPage()
 
-    expect(screen.queryByText('Sem dia definido')).not.toBeInTheDocument()
+    expect(screen.queryByText('Sem dia definido', { selector: 'span' })).not.toBeInTheDocument()
   })
 
   it('TaskRow renderiza somente-leitura (sem botão "Mover tarefa")', () => {
@@ -338,5 +341,122 @@ describe('Indicador "Fechada" e modo Arquivo (AC1/AC2)', () => {
     expect(screen.getByLabelText('Arquivo — Semana de 2026-07-13')).toBeInTheDocument()
     expect(mockGet).not.toHaveBeenCalledWith('/api/bujo/recurring-templates/')
     expect(screen.queryByRole('button', { name: 'Definir placement' })).not.toBeInTheDocument()
+  })
+})
+
+describe('Formulário de criação de tarefa (Story 11.5, AC1/AC4)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockMatchMedia(false)
+    mockGet.mockResolvedValue({ data: [] })
+    // `refetch` mockado: o handleSubmit da página chama `weeklyLog.refetch()`
+    // no onSuccess (mesmo descompasso de sentinel 'current' vs weekStart
+    // explícito já corrigido em MonthlyPage — ver WeeklyPage.tsx).
+    mockUseWeeklyLogQuery.mockReturnValue({ isPending: false, data: WEEKLY_LOG, refetch: vi.fn() })
+  })
+
+  it('submit com dia selecionado chama client.post com weekStart/title/scheduledDate', async () => {
+    mockPost.mockResolvedValueOnce({
+      data: { id: 'new-1', title: 'Nova tarefa', status: 'pending', subtasks: [] },
+    })
+
+    renderWeeklyPage()
+
+    fireEvent.change(screen.getByLabelText('Título'), { target: { value: 'Nova tarefa' } })
+    fireEvent.mouseDown(screen.getByLabelText('Dia (opcional)'))
+    fireEvent.click(screen.getByRole('option', { name: 'SEG 13' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Adicionar' }))
+
+    await waitFor(() =>
+      expect(mockPost).toHaveBeenCalledWith('/api/bujo/logs/weekly/', {
+        weekStart: '2026-07-13',
+        title: 'Nova tarefa',
+        scheduledDate: '2026-07-13',
+      }),
+    )
+  })
+
+  it('submit sem dia chama client.post com scheduledDate undefined', async () => {
+    mockPost.mockResolvedValueOnce({
+      data: { id: 'new-1', title: 'Sem dia', status: 'pending', subtasks: [] },
+    })
+
+    renderWeeklyPage()
+
+    fireEvent.change(screen.getByLabelText('Título'), { target: { value: 'Sem dia' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Adicionar' }))
+
+    await waitFor(() =>
+      expect(mockPost).toHaveBeenCalledWith('/api/bujo/logs/weekly/', {
+        weekStart: '2026-07-13',
+        title: 'Sem dia',
+        scheduledDate: undefined,
+      }),
+    )
+  })
+
+  it('título vazio não submete', () => {
+    renderWeeklyPage()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Adicionar' }))
+
+    expect(mockPost).not.toHaveBeenCalledWith('/api/bujo/logs/weekly/', expect.anything())
+  })
+
+  it('form não aparece quando closed: true', () => {
+    mockUseWeeklyLogQuery.mockReturnValue({ isPending: false, data: { ...WEEKLY_LOG, closed: true } })
+
+    renderWeeklyPage()
+
+    expect(screen.queryByLabelText('Adicionar tarefa à semana')).not.toBeInTheDocument()
+  })
+
+  it('form não aparece em isArchiveView', () => {
+    mockUseWeeklyLogQuery.mockReturnValue({ isPending: false, data: WEEKLY_LOG })
+
+    renderWeeklyPageAtArchiveRoute('2026-07-13')
+
+    expect(screen.queryByLabelText('Adicionar tarefa à semana')).not.toBeInTheDocument()
+  })
+})
+
+describe('onOpenDetail (Story 11.5, AC2/AC4)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockMatchMedia(false)
+    mockGet.mockResolvedValue({ data: [] })
+  })
+
+  it('clicar no título de uma TaskRow abre o TaskDetailPanel', () => {
+    mockUseWeeklyLogQuery.mockReturnValue({ isPending: false, data: WEEKLY_LOG })
+
+    renderWeeklyPage()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ver detalhes de Tarefa segunda' }))
+
+    // O painel é o último "Título" no DOM — o form de criação da própria
+    // página (Task 7.1) já tem um campo com o mesmo rótulo.
+    const titleInputs = screen.getAllByLabelText('Título')
+    expect(titleInputs[titleInputs.length - 1]).toHaveValue('Tarefa segunda')
+  })
+
+  it('painel não abre (TaskRow somente-leitura) quando isArchiveView', () => {
+    mockUseWeeklyLogQuery.mockReturnValue({ isPending: false, data: { ...WEEKLY_LOG, closed: true } })
+
+    renderWeeklyPageAtArchiveRoute('2026-07-13')
+
+    expect(
+      screen.queryByRole('button', { name: 'Ver detalhes de Tarefa segunda' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('painel não abre (TaskRow somente-leitura) quando closed: true no período corrente', () => {
+    mockUseWeeklyLogQuery.mockReturnValue({ isPending: false, data: { ...WEEKLY_LOG, closed: true } })
+
+    renderWeeklyPage()
+
+    expect(
+      screen.queryByRole('button', { name: 'Ver detalhes de Tarefa segunda' }),
+    ).not.toBeInTheDocument()
   })
 })

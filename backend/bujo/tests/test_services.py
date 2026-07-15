@@ -15,7 +15,7 @@ from bujo.services.logs import (
 from bujo.services.migration import migrate_task
 from bujo.services.recurring import create_template, place_template, update_template
 from bujo.services.state_machine import ALLOWED, transition_task
-from bujo.services.tasks import create_task, reorder_task, update_task
+from bujo.services.tasks import create_task, delete_task, reorder_task, update_task
 from bujo.tests.factories import (
     LogFactory,
     MonthlyLogFactory,
@@ -24,7 +24,12 @@ from bujo.tests.factories import (
     WeeklyLogFactory,
 )
 from core.calendar import today_for, week_start_of
-from core.exceptions import InvalidReorderTarget, InvalidTransition, WrongPlacementContainer
+from core.exceptions import (
+    ClosedCycleReadOnly,
+    InvalidReorderTarget,
+    InvalidTransition,
+    WrongPlacementContainer,
+)
 from core.tenant import tenant_context
 
 ALL_STATUSES = list(Task.Status.values)
@@ -149,6 +154,124 @@ def test_update_task_escopado_por_tenant(user, other_user):
     with tenant_context(other_user):
         with pytest.raises(Task.DoesNotExist):
             update_task(user=other_user, task_id=task.id, title="Invadida")
+
+
+@pytest.mark.django_db
+def test_delete_task_pending_sem_linhagem_faz_hard_delete(user):
+    with tenant_context(user):
+        task = TaskFactory(user=user, status=Task.Status.PENDING)
+
+        result = delete_task(user=user, task_id=task.id)
+
+        assert result is None
+        assert not Task.objects.filter(id=task.id).exists()
+
+
+@pytest.mark.django_db
+def test_delete_task_pending_com_linhagem_cancela_em_vez_de_apagar(user):
+    with tenant_context(user):
+        task = TaskFactory(user=user, status=Task.Status.PENDING, migration_count=1)
+
+        result = delete_task(user=user, task_id=task.id)
+
+        assert result.status == Task.Status.CANCELLED
+        assert Task.objects.filter(id=task.id).exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("status", [Task.Status.STARTED, Task.Status.COMPLETED])
+def test_delete_task_nao_pending_sem_linhagem_ainda_assim_cancela(user, status):
+    """Regra literal da AC3: "pending" é condição necessária pro hard delete,
+    mesmo sem nenhuma linhagem."""
+    with tenant_context(user):
+        task = TaskFactory(user=user, status=status)
+
+        result = delete_task(user=user, task_id=task.id)
+
+        assert result.status == Task.Status.CANCELLED
+        assert Task.objects.filter(id=task.id).exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "status", [Task.Status.CANCELLED, Task.Status.MIGRATED, Task.Status.POSTPONED]
+)
+def test_delete_task_estado_terminal_levanta_invalid_transition(user, status):
+    with tenant_context(user):
+        task = TaskFactory(user=user, status=status)
+
+        with pytest.raises(InvalidTransition):
+            delete_task(user=user, task_id=task.id)
+
+
+@pytest.mark.django_db
+def test_delete_task_weekly_log_fechado_levanta_closed_cycle_read_only(user):
+    with tenant_context(user):
+        weekly_log = WeeklyLogFactory(user=user)
+        task = TaskFactory(user=user, weekly_log=weekly_log, status=Task.Status.COMPLETED)
+
+        with pytest.raises(ClosedCycleReadOnly):
+            delete_task(user=user, task_id=task.id)
+
+
+@pytest.mark.django_db
+def test_delete_task_monthly_log_fechado_levanta_closed_cycle_read_only(user):
+    with tenant_context(user):
+        monthly_log = MonthlyLogFactory(user=user)
+        task = TaskFactory(user=user, monthly_log=monthly_log, status=Task.Status.COMPLETED)
+
+        with pytest.raises(ClosedCycleReadOnly):
+            delete_task(user=user, task_id=task.id)
+
+
+@pytest.mark.django_db
+def test_delete_task_escopado_por_tenant(user, other_user):
+    with tenant_context(user):
+        task = TaskFactory(user=user, status=Task.Status.PENDING)
+
+    with tenant_context(other_user):
+        with pytest.raises(Task.DoesNotExist):
+            delete_task(user=other_user, task_id=task.id)
+
+
+@pytest.mark.django_db
+def test_create_task_weekly_log_fechado_levanta_closed_cycle_read_only(user):
+    with tenant_context(user):
+        weekly_log = WeeklyLogFactory(user=user)
+        TaskFactory(user=user, weekly_log=weekly_log, status=Task.Status.COMPLETED)
+
+        with pytest.raises(ClosedCycleReadOnly):
+            create_task(user=user, weekly_log=weekly_log, title="Nova tarefa")
+
+
+@pytest.mark.django_db
+def test_create_task_monthly_log_fechado_levanta_closed_cycle_read_only(user):
+    with tenant_context(user):
+        monthly_log = MonthlyLogFactory(user=user)
+        TaskFactory(user=user, monthly_log=monthly_log, status=Task.Status.CANCELLED)
+
+        with pytest.raises(ClosedCycleReadOnly):
+            create_task(user=user, monthly_log=monthly_log, title="Nova tarefa")
+
+
+@pytest.mark.django_db
+def test_update_task_weekly_log_fechado_levanta_closed_cycle_read_only(user):
+    with tenant_context(user):
+        weekly_log = WeeklyLogFactory(user=user)
+        task = TaskFactory(user=user, weekly_log=weekly_log, status=Task.Status.COMPLETED)
+
+        with pytest.raises(ClosedCycleReadOnly):
+            update_task(user=user, task_id=task.id, title="Atualizada")
+
+
+@pytest.mark.django_db
+def test_update_task_monthly_log_fechado_levanta_closed_cycle_read_only(user):
+    with tenant_context(user):
+        monthly_log = MonthlyLogFactory(user=user)
+        task = TaskFactory(user=user, monthly_log=monthly_log, status=Task.Status.MIGRATED)
+
+        with pytest.raises(ClosedCycleReadOnly):
+            update_task(user=user, task_id=task.id, title="Atualizada")
 
 
 @pytest.mark.django_db

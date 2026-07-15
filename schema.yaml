@@ -164,6 +164,25 @@ paths:
               schema:
                 $ref: '#/components/schemas/WeeklyLog'
           description: ''
+    post:
+      operationId: bujo_logs_weekly_create
+      tags:
+      - bujo
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WeeklyTaskCreate'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+          description: ''
   /api/bujo/migration/queue/:
     get:
       operationId: bujo_migration_queue_retrieve
@@ -354,6 +373,28 @@ paths:
       security:
       - jwtAuth: []
       responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+          description: ''
+    delete:
+      operationId: bujo_tasks_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - bujo
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
         '200':
           content:
             application/json:
@@ -1042,6 +1083,35 @@ components:
             $ref: '#/components/schemas/Task'
       required:
       - tasks
+      - weekStart
+    WeeklyTaskCreate:
+      type: object
+      properties:
+        weekStart:
+          type: string
+          format: date
+        title:
+          type: string
+          maxLength: 500
+        scheduledDate:
+          type: string
+          format: date
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        eisenhower:
+          nullable: true
+          oneOf:
+          - $ref: '#/components/schemas/EisenhowerEnum'
+          - $ref: '#/components/schemas/NullEnum'
+        category:
+          nullable: true
+          oneOf:
+          - $ref: '#/components/schemas/CategoryEnum'
+          - $ref: '#/components/schemas/NullEnum'
+      required:
+      - title
       - weekStart
   securitySchemes:
     jwtAuth:

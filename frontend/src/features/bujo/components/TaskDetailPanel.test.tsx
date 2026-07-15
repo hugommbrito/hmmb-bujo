@@ -8,10 +8,12 @@ import type { Task } from '../types'
 
 const mockUpdateMutate = vi.fn()
 const mockCreateSubtaskMutate = vi.fn()
+const mockDeleteMutate = vi.fn()
 
 vi.mock('../api', () => ({
   useUpdateTaskMutation: () => ({ mutate: mockUpdateMutate }),
   useCreateSubtaskMutation: () => ({ mutate: mockCreateSubtaskMutate }),
+  useDeleteTaskMutation: () => ({ mutate: mockDeleteMutate }),
 }))
 
 function baseTask(overrides: Partial<Task> = {}): Task {
@@ -132,6 +134,50 @@ describe('TaskDetailPanel (AC2, AC3)', () => {
     )
 
     expect(screen.getByText('Subtarefa 1')).toBeInTheDocument()
+  })
+
+  it('botão mostra "Excluir tarefa" pra task pending sem linhagem', () => {
+    renderPanel(baseTask({ status: 'pending' }))
+
+    expect(screen.getByRole('button', { name: 'Excluir tarefa' })).toBeInTheDocument()
+  })
+
+  it('botão mostra "Cancelar tarefa" pra task pending com migrationCount > 0', () => {
+    renderPanel(baseTask({ status: 'pending', migrationCount: 1 }))
+
+    expect(screen.getByRole('button', { name: 'Cancelar tarefa' })).toBeInTheDocument()
+  })
+
+  it('botão mostra "Cancelar tarefa" pra task pending com migratedToTask preenchido', () => {
+    renderPanel(baseTask({ status: 'pending', migratedToTask: 'task-2' }))
+
+    expect(screen.getByRole('button', { name: 'Cancelar tarefa' })).toBeInTheDocument()
+  })
+
+  it('botão mostra "Cancelar tarefa" pra task não-pending sem linhagem', () => {
+    renderPanel(baseTask({ status: 'completed' }))
+
+    expect(screen.getByRole('button', { name: 'Cancelar tarefa' })).toBeInTheDocument()
+  })
+
+  it('clicar no botão chama useDeleteTaskMutation().mutate e, no sucesso, onClose', () => {
+    const { onClose } = renderPanel(baseTask({ status: 'pending' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Excluir tarefa' }))
+
+    expect(mockDeleteMutate).toHaveBeenCalledWith(
+      { taskId: 'task-1' },
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    )
+    mockDeleteMutate.mock.calls[0][1].onSuccess()
+    expect(onClose).toHaveBeenCalled()
+  })
+
+  it('botão de excluir/cancelar ausente quando isSubtask', () => {
+    renderPanel(baseTask({ status: 'pending' }), true)
+
+    expect(screen.queryByRole('button', { name: 'Excluir tarefa' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Cancelar tarefa' })).not.toBeInTheDocument()
   })
 
   it('Esc fecha o painel', () => {

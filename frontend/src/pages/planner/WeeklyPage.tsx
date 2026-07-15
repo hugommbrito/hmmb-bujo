@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useState, type FormEvent } from 'react'
 import { useParams } from 'react-router-dom'
-import { Box, Typography, useMediaQuery } from '@mui/material'
+import { Box, Button, MenuItem, Select, TextField, Typography, useMediaQuery } from '@mui/material'
+import AddIcon from '@mui/icons-material/Add'
 import {
   RecurringPlacementSection,
+  useCreateWeeklyTaskMutation,
   usePlaceRecurringTemplateMutation,
   useWeeklyLogQuery,
 } from '../../features/bujo'
@@ -10,17 +12,38 @@ import type { RecurringTaskTemplate } from '../../features/bujo'
 import { DayHeader } from '../../features/bujo/components/DayHeader'
 import { PlannerSkeleton } from '../../features/bujo/components/PlannerSkeleton'
 import { RecurringPlacementDialog } from '../../features/bujo/components/RecurringPlacementDialog'
+import { TaskDetailPanel } from '../../features/bujo/components/TaskDetailPanel'
 import { TaskRow } from '../../features/bujo/components/TaskRow'
 import { WeekDaySelector } from '../../features/bujo/components/WeekDaySelector'
+import { findTaskById } from '../../features/bujo/taskTree'
+
+/**
+ * `date` é uma data ISO ("YYYY-MM-DD") — mesma técnica local de
+ * `WeekDaySelector.formatDayChipLabel`/`DayHeader.formatDayHeaderDate` (não
+ * extraída pra util compartilhado ainda, mesma decisão da Story 11.4).
+ */
+function formatDaySelectLabel(date: string): string {
+  const [year, month, day] = date.split('-').map(Number)
+  const parsed = new Date(year, month - 1, day)
+  const parts = new Intl.DateTimeFormat('pt-BR', { weekday: 'short', day: '2-digit' }).formatToParts(
+    parsed,
+  )
+  const part = (type: string) => parts.find((p) => p.type === type)?.value.replace('.', '') ?? ''
+  return `${part('weekday')} ${part('day')}`.toUpperCase()
+}
 
 export function WeeklyPage() {
   const { weekStart: routeWeekStart } = useParams<{ weekStart: string }>()
   const isArchiveView = Boolean(routeWeekStart)
   const weeklyLog = useWeeklyLogQuery(routeWeekStart)
   const placeTemplate = usePlaceRecurringTemplateMutation()
+  const createWeeklyTask = useCreateWeeklyTaskMutation()
   const isMobile = useMediaQuery('(max-width: 767px)')
   const [selectedDayIndex, setSelectedDayIndex] = useState(0)
   const [placingTemplate, setPlacingTemplate] = useState<RecurringTaskTemplate | null>(null)
+  const [title, setTitle] = useState('')
+  const [formSelectedDay, setFormSelectedDay] = useState('')
+  const [openTaskId, setOpenTaskId] = useState<string | null>(null)
 
   if (weeklyLog.isPending) {
     return (
@@ -46,6 +69,35 @@ export function WeeklyPage() {
   // semana. Semana de virada (AD-05) mostra o mês da segunda — densidade é
   // apenas informativa, então a escolha é aceitável (Dev Notes / Task 8.2).
   const monthFirst = `${weekStart.slice(0, 7)}-01`
+
+  const allTasks = [...days.flatMap((day) => day.tasks), ...unscheduled]
+  const openTask = openTaskId ? findTaskById(allTasks, openTaskId) : undefined
+  const isOpenTaskSubtask = openTaskId ? !allTasks.some((task) => task.id === openTaskId) : false
+  const onOpenDetail = !isArchiveView && !closed ? setOpenTaskId : undefined
+
+  function handleSubmit(event: FormEvent) {
+    event.preventDefault()
+    const trimmedTitle = title.trim()
+    if (!trimmedTitle) return
+
+    createWeeklyTask.mutate(
+      {
+        weekStart,
+        title: trimmedTitle,
+        scheduledDate: formSelectedDay || undefined,
+      },
+      // O query key ativo desta página é o sentinel 'current' (routeWeekStart
+      // é undefined quando !isArchiveView) — a invalidação da mutação usa
+      // `weekStart` explícito (keys.ts:15), então não alcança este key.
+      // Mesmo descompasso 'current' vs explícito já corrigido em MonthlyPage
+      // (Task 7.3 original assumiu, incorretamente, que não se aplicava aqui
+      // — achado desta verificação manual). Refetch direto garante a semana
+      // corrente atualizada.
+      { onSuccess: () => weeklyLog.refetch() },
+    )
+    setTitle('')
+    setFormSelectedDay('')
+  }
 
   return (
     <Box
@@ -74,7 +126,9 @@ export function WeeklyPage() {
                 Nenhuma tarefa neste dia.
               </Typography>
             ) : (
-              selectedDay.tasks.map((task) => <TaskRow key={task.id} task={task} />)
+              selectedDay.tasks.map((task) => (
+                <TaskRow key={task.id} task={task} onOpenDetail={onOpenDetail} />
+              ))
             )}
           </DayHeader>
         </>
@@ -94,7 +148,9 @@ export function WeeklyPage() {
                     —
                   </Typography>
                 ) : (
-                  day.tasks.map((task) => <TaskRow key={task.id} task={task} />)
+                  day.tasks.map((task) => (
+                    <TaskRow key={task.id} task={task} onOpenDetail={onOpenDetail} />
+                  ))
                 )}
               </DayHeader>
             </Box>
@@ -107,12 +163,51 @@ export function WeeklyPage() {
             Sem dia definido
           </Typography>
           {unscheduled.map((task) => (
-            <TaskRow key={task.id} task={task} />
+            <TaskRow key={task.id} task={task} onOpenDetail={onOpenDetail} />
           ))}
         </Box>
       )}
-      {!isArchiveView && (
+      {!isArchiveView && !closed && (
         <>
+          <Box
+            component="form"
+            onSubmit={handleSubmit}
+            aria-label="Adicionar tarefa à semana"
+            sx={{
+              display: 'flex',
+              gap: 1,
+              alignItems: 'flex-end',
+              flexWrap: 'wrap',
+              px: 1,
+              py: 1,
+              mt: 3,
+            }}
+          >
+            <TextField
+              label="Título"
+              size="small"
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+            />
+            <Select
+              displayEmpty
+              size="small"
+              value={formSelectedDay}
+              onChange={(event) => setFormSelectedDay(event.target.value)}
+              inputProps={{ 'aria-label': 'Dia (opcional)' }}
+              sx={{ minWidth: 160 }}
+            >
+              <MenuItem value="">Sem dia definido</MenuItem>
+              {days.map((day) => (
+                <MenuItem key={day.date} value={day.date}>
+                  {formatDaySelectLabel(day.date)}
+                </MenuItem>
+              ))}
+            </Select>
+            <Button type="submit" startIcon={<AddIcon />}>
+              Adicionar
+            </Button>
+          </Box>
           <RecurringPlacementSection
             recurrenceGroups={['weekly']}
             onPlace={setPlacingTemplate}
@@ -136,6 +231,12 @@ export function WeeklyPage() {
           />
         </>
       )}
+      <TaskDetailPanel
+        key={openTaskId ?? 'none'}
+        task={openTask}
+        isSubtask={isOpenTaskSubtask}
+        onClose={() => setOpenTaskId(null)}
+      />
     </Box>
   )
 }

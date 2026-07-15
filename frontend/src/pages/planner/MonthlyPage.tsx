@@ -13,8 +13,10 @@ import type { RecurrenceGroup, RecurringTaskTemplate, Task } from '../../feature
 import { DayHeader } from '../../features/bujo/components/DayHeader'
 import { PlannerSkeleton } from '../../features/bujo/components/PlannerSkeleton'
 import { RecurringPlacementDialog } from '../../features/bujo/components/RecurringPlacementDialog'
+import { TaskDetailPanel } from '../../features/bujo/components/TaskDetailPanel'
 import { TaskRow } from '../../features/bujo/components/TaskRow'
 import { capitalize, MONTH_NAMES_PT } from '../../features/bujo/monthNames'
+import { findTaskById } from '../../features/bujo/taskTree'
 
 // Mês corrente calculado no frontend a partir de `new Date()` local — cálculo
 // de UI (mesma técnica de MigrationCard), só usado para decidir a ordem/rótulo
@@ -58,6 +60,7 @@ export function MonthlyPage() {
   const [title, setTitle] = useState('')
   const [day, setDay] = useState('')
   const [placingTemplate, setPlacingTemplate] = useState<RecurringTaskTemplate | null>(null)
+  const [openTaskId, setOpenTaskId] = useState<string | null>(null)
 
   if (monthlyLog.isPending) {
     return (
@@ -86,6 +89,10 @@ export function MonthlyPage() {
     ? `Itens do Future Log para ${capitalize(MONTH_NAMES_PT[Number(monthFirst.slice(5, 7)) - 1])}`
     : 'Sem dia definido'
 
+  const openTask = openTaskId ? findTaskById(tasks, openTaskId) : undefined
+  const isOpenTaskSubtask = openTaskId ? !tasks.some((task) => task.id === openTaskId) : false
+  const onOpenDetail = !isArchiveView && !closed ? setOpenTaskId : undefined
+
   function handleConfirmScheduledDate(taskId: string, value: string) {
     if (!value) return
     updateTask.mutate({ taskId, scheduledDate: value })
@@ -100,7 +107,7 @@ export function MonthlyPage() {
         isCurrentMonth ? (
           <Box key={task.id} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Box sx={{ flex: 1 }}>
-              <TaskRow task={task} />
+              <TaskRow task={task} onOpenDetail={onOpenDetail} />
             </Box>
             <TextField
               label="Confirmar data"
@@ -111,7 +118,7 @@ export function MonthlyPage() {
             />
           </Box>
         ) : (
-          <TaskRow key={task.id} task={task} />
+          <TaskRow key={task.id} task={task} onOpenDetail={onOpenDetail} />
         ),
       )}
     </Box>
@@ -159,7 +166,7 @@ export function MonthlyPage() {
               pendingCount={dayTasks.filter((task) => task.status === 'pending').length}
             >
               {dayTasks.map((task) => (
-                <TaskRow key={task.id} task={task} />
+                <TaskRow key={task.id} task={task} onOpenDetail={onOpenDetail} />
               ))}
             </DayHeader>
           ))}
@@ -173,14 +180,14 @@ export function MonthlyPage() {
               pendingCount={dayTasks.filter((task) => task.status === 'pending').length}
             >
               {dayTasks.map((task) => (
-                <TaskRow key={task.id} task={task} />
+                <TaskRow key={task.id} task={task} onOpenDetail={onOpenDetail} />
               ))}
             </DayHeader>
           ))}
           {withoutDateSection}
         </>
       )}
-      {!isArchiveView && (
+      {!isArchiveView && !closed && (
         <>
           <Box
             component="form"
@@ -237,6 +244,12 @@ export function MonthlyPage() {
           />
         </>
       )}
+      <TaskDetailPanel
+        key={openTaskId ?? 'none'}
+        task={openTask}
+        isSubtask={isOpenTaskSubtask}
+        onClose={() => setOpenTaskId(null)}
+      />
     </Box>
   )
 }

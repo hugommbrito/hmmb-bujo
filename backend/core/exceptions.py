@@ -60,6 +60,10 @@ class WrongPlacementContainer(DomainError):
     """Placement de um template weekly sem week_start, ou monthly/annual sem month_first."""
 
 
+class ClosedCycleReadOnly(DomainError):
+    """Tentativa de mutar um weekly_log/monthly_log já fechado (is_container_closed)."""
+
+
 class TenantScopeViolation(DomainError):
     """A tenant-scoped query/write ran without a tenant context set (AD-12).
 

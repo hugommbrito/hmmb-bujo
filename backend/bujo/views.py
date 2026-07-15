@@ -36,6 +36,7 @@ from bujo.serializers import (
     TaskUpdateSerializer,
     WeeklyLogSerializer,
     WeeklyReviewQueueSerializer,
+    WeeklyTaskCreateSerializer,
 )
 from bujo.services.archive import is_container_closed, list_closed_cycles
 from bujo.services.logs import (
@@ -46,7 +47,7 @@ from bujo.services.logs import (
 from bujo.services.migration import migrate_task
 from bujo.services.recurring import create_template, place_template, update_template
 from bujo.services.state_machine import transition_task
-from bujo.services.tasks import create_task, reorder_task, update_task
+from bujo.services.tasks import create_task, delete_task, reorder_task, update_task
 from core.calendar import today_for, week_start_of
 
 
@@ -96,6 +97,16 @@ class TaskDetailView(APIView):
 
         task = update_task(user=request.user, task_id=pk, **validated)
         return Response(TaskSerializer(task).data)
+
+    @extend_schema(responses={204: None, 200: TaskSerializer})
+    def delete(self, request, pk):
+        try:
+            result = delete_task(user=request.user, task_id=pk)
+        except Task.DoesNotExist:
+            raise NotFound() from None
+        if result is None:
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        return Response(TaskSerializer(result).data, status=status.HTTP_200_OK)
 
 
 class SubtaskCreateView(APIView):
@@ -254,6 +265,23 @@ class WeeklyLogView(APIView):
             "closed": is_container_closed(weekly_log),
         }
         return Response(WeeklyLogSerializer(data).data)
+
+    @extend_schema(request=WeeklyTaskCreateSerializer, responses=TaskSerializer)
+    def post(self, request):
+        body = WeeklyTaskCreateSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        validated = body.validated_data
+        weekly_log = get_or_create_weekly_log(user=request.user, week_start=validated["week_start"])
+        task = create_task(
+            user=request.user,
+            weekly_log=weekly_log,
+            scheduled_date=validated.get("scheduled_date"),
+            title=validated["title"],
+            description=validated.get("description"),
+            eisenhower=validated.get("eisenhower"),
+            category=validated.get("category"),
+        )
+        return Response(TaskSerializer(task).data, status=status.HTTP_201_CREATED)
 
 
 class MonthlyLogView(APIView):

@@ -3,6 +3,8 @@ regra de negócio — só expõem/validam os campos já validados/persistidos pe
 serviços.
 """
 
+from datetime import timedelta
+
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
@@ -192,6 +194,34 @@ class MonthlyTaskCreateSerializer(serializers.Serializer):
         ) != (month_first.year, month_first.month):
             raise serializers.ValidationError(
                 {"scheduled_date": "A data deve pertencer ao mês/ano de month_first."}
+            )
+        return attrs
+
+
+class WeeklyTaskCreateSerializer(serializers.Serializer):
+    week_start = serializers.DateField()
+    title = serializers.CharField(max_length=500)
+    scheduled_date = serializers.DateField(required=False, allow_null=True)
+    description = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    eisenhower = serializers.ChoiceField(
+        choices=Task.Eisenhower.choices, required=False, allow_null=True
+    )
+    category = serializers.ChoiceField(
+        choices=Task.Category.choices, required=False, allow_null=True
+    )
+
+    def validate(self, attrs):
+        week_start = attrs["week_start"]
+        if week_start.isoweekday() != 1:
+            raise serializers.ValidationError(
+                {"week_start": "Deve ser uma segunda-feira."}
+            )
+        scheduled_date = attrs.get("scheduled_date")
+        if scheduled_date is not None and not (
+            week_start <= scheduled_date <= week_start + timedelta(days=6)
+        ):
+            raise serializers.ValidationError(
+                {"scheduled_date": "A data deve pertencer à semana de week_start."}
             )
         return attrs
 

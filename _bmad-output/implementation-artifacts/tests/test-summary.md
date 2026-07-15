@@ -1470,3 +1470,99 @@ código de produção foi feita, só o novo spec E2E. O gap fechado era especifi
 - Nenhum débito novo identificado por este workflow. AR-22 (observabilidade) segue pendente, sem
   dono, conforme já registrado pela própria story (Dev Notes) e pela memória do projeto — não é um
   achado deste workflow QA, só reforça o que já está escalado.
+
+---
+
+# Resumo de Automação de Testes — Story 11.5: CRUD de tarefas em Esta Semana / Este Mês
+
+**Data:** 2026-07-15
+**Framework:** pytest-django (backend) · Vitest 4.1 + @testing-library/react + jest-axe (unit/componente) · Playwright (E2E)
+
+## Escopo
+
+Diferente da 11.3/11.4, esta story já chegou em `review` com um spec E2E completo produzido pela
+própria dev-story (`weekly-monthly-task-crud.spec.ts`, 6 testes, Task 12) cobrindo as 4 ACs:
+criação em Esta Semana com/sem dia (AC1), edição via `TaskDetailPanel` compartilhado (AC2), hard
+delete vs cancelar (AC3) e o guardrail de ciclo fechado no front e no back (AC4). Este workflow não
+partiu de uma lacuna de "nenhum spec existe" (como nas stories anteriores) — o trabalho foi validar
+o spec já existente contra o backend real e auditar sua consistência interna.
+
+## Lacunas descobertas e auto-aplicadas
+
+- [x] **Asserção de "zero erros de console" aplicada em só 2 dos 6 testes** — o Dev Agent Record da
+  própria story declara a Task 12.2 ("Zero erros de console em todos os passos, mesma asserção
+  final já convencional nos specs anteriores") como concluída, mas na prática só os testes de hard
+  delete e de ciclo fechado registravam `console`/`pageerror` e afirmavam lista vazia; os outros 4
+  (criação com/sem dia, criação no mês, edição via painel em Semana/Mês, cancelamento por linhagem)
+  não tinham a asserção. Confirmado contra o padrão real do restante da suíte (`archive.spec.ts`,
+  `weekly-monthly-review.spec.ts`, `recurring-templates.spec.ts`, `catch-up.spec.ts`): todo teste
+  que exercita um fluxo de usuário completo (não um smoke trivial) rastreia console/pageerror.
+  **Corrigido:** tracking + asserção final adicionados aos 4 testes que não tinham, mesmo padrão
+  já usado nos outros dois do próprio arquivo.
+
+Nenhuma outra lacuna de cobertura de teste foi encontrada nas 4 ACs — edição de `descrição`/
+`categoria` via `TaskDetailPanel` (também citadas na AC2) já tem prova E2E permanente em
+`daily-tasks.spec.ts` contra o mesmo componente compartilhado, então repeti-la aqui duplicaria
+cobertura sem adicionar sinal novo (o componente é idêntico, só o call site muda, e o call site já
+está coberto pelos testes de título/eisenhower).
+
+## Achado fora de escopo deste workflow (não corrigido)
+
+`TaskDetailPanel.tsx` renderiza o botão "Cancelar tarefa"/"Excluir tarefa" incondicionalmente para
+qualquer tarefa não-subtarefa, inclusive em estados terminais (`cancelled`/`migrated`/`postponed`).
+Clicar nesse caso gera 409 (`InvalidTransition`) no backend (correto, defesa em profundidade) sem
+nenhum tratamento de erro na UI (`deleteTask.mutate` não tem `onError`) — o painel simplesmente não
+fecha e nada é sinalizado ao usuário. Os Dev Notes desta story citam "a UI não deve oferecer o botão
+nesses estados (Task 6.3)" mas a Task 6.3 real (`index.ts`, exports de hooks) não tem relação — o
+código implementado não tem esse gate. Este workflow gera/valida testes, não revisa ou corrige
+código de produção (ver preâmbulo do skill); registrado aqui para uma futura revisão de código ou
+story, não convertido em teste porque adicionar um caso E2E só para provar um comportamento já
+sabidamente incompleto não fecha lacuna de cobertura — fecharia a lacuna de UX primeiro.
+
+## Cobertura por AC
+
+| AC | Critério | Coberto por |
+| --- | --- | --- |
+| AC1 | Criar tarefa em Esta Semana (com dia opcional) e Este Mês | `test_views.py` (unit, `POST /api/bujo/logs/weekly/`) + `WeeklyPage.test.tsx` (unit) + `weekly-monthly-task-crud.spec.ts` (E2E, com/sem dia + guard de título vazio) |
+| AC2 | Editar campos via `TaskDetailPanel`, igual ao Daily Log | `TaskDetailPanel.test.tsx` (unit, todos os campos) + `weekly-monthly-task-crud.spec.ts` (E2E, título+eisenhower em Semana e Mês) + `daily-tasks.spec.ts` (E2E, descrição+categoria no mesmo componente compartilhado) |
+| AC3 | Hard delete (pending sem linhagem) vs cancelar (com linhagem ou não-pending) | `test_services.py`/`test_views.py` (unit, todos os casos incl. 409 em estado terminal) + `TaskDetailPanel.test.tsx` (unit) + `weekly-monthly-task-crud.spec.ts` (E2E, 204 e 200 confirmados via `waitForResponse`) |
+| AC4 | Ciclos fechados somente-leitura no backend e no frontend (rota corrente, não só Arquivo) | `test_services.py`/`test_views.py` (unit, 409 em create/update/delete) + `WeeklyPage.test.tsx`/`MonthlyPage.test.tsx` (unit) + `weekly-monthly-task-crud.spec.ts` (E2E, formulário e clique-pra-editar ausentes na rota corrente fechada) |
+
+## Resultado da execução
+
+```
+nvm use 22
+npx playwright test e2e/weekly-monthly-task-crud.spec.ts --workers=1 --reporter=list
+  6 passed (2.1m)   ← antes da correção do gap de console-error
+  6 passed (1.9m)   ← depois da correção, mesmo resultado, nenhuma regressão
+
+npx tsc -b --noEmit                                        → 0 erros
+npx eslint e2e/weekly-monthly-task-crud.spec.ts            → 0 erros/avisos
+```
+
+Rodado contra o stack real (`npm run dev` + `manage.py runserver` sob `config.settings.e2e`, branch
+Neon `e2e` dedicada — Story 11.1). Suítes unitárias (pytest 330, vitest 446/44) não re-executadas
+nesta rodada — nenhuma mudança de código de produção foi feita, só a consolidação do padrão de
+asserção já usado no próprio spec E2E.
+
+## Checklist de validação
+
+- [x] Testes E2E gerados/validados (UI existe) — 6 testes pré-existentes auditados e corrigidos, nenhum novo `.spec.ts` necessário
+- [x] Testes usam APIs padrão do framework (Playwright, fixture `test`/`expect`/`email` já estabelecida)
+- [x] Cobrem happy path (criar com/sem dia, criar no mês, editar via painel, hard delete)
+- [x] Cobrem casos críticos (cancelar em vez de excluir por linhagem, guardrail de ciclo fechado)
+- [x] Todos os testes rodam com sucesso (6/6, antes e depois da correção)
+- [x] Locators semânticos/acessíveis (`getByRole`, `getByLabel`, `getByTestId('task-row')`)
+- [x] Descrições claras em pt-BR, seguindo a convenção do arquivo
+- [x] Sem waits/sleeps artificiais (`waitForResponse` nos round-trips reais)
+- [x] Testes independentes (fixture cria usuário novo via signup real por teste)
+- [x] Summary salvo em `_bmad-output/implementation-artifacts/tests/test-summary.md`
+
+## Próximos Passos
+
+- Nenhum débito de teste novo identificado por este workflow.
+- Achado de UX fora de escopo (ver seção acima): considerar tratamento de erro/gate de estado
+  terminal no botão excluir/cancelar de `TaskDetailPanel` — sinalizar para `bmad-code-review` ou
+  uma story futura, não é bloqueio desta story.
+- AR-22 (observabilidade) segue pendente, sem dono, conforme já registrado pela memória do projeto
+  — não é um achado deste workflow, só reforça o que já está escalado.
