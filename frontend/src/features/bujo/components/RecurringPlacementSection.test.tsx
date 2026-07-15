@@ -34,12 +34,20 @@ const MONTHLY_TEMPLATE: RecurringTaskTemplate = {
   active: true,
 }
 
-function renderSection(recurrenceGroups: RecurringTaskTemplate['recurrenceGroup'][], onPlace = vi.fn()) {
+function renderSection(
+  recurrenceGroups: RecurringTaskTemplate['recurrenceGroup'][],
+  onPlace = vi.fn(),
+  placedTemplateIds?: Set<string>,
+) {
   return {
     onPlace,
     ...render(
       <ThemeProvider theme={createBujoTheme('light')}>
-        <RecurringPlacementSection recurrenceGroups={recurrenceGroups} onPlace={onPlace} />
+        <RecurringPlacementSection
+          recurrenceGroups={recurrenceGroups}
+          onPlace={onPlace}
+          placedTemplateIds={placedTemplateIds}
+        />
       </ThemeProvider>,
     ),
   }
@@ -92,14 +100,44 @@ describe('RecurringPlacementSection (AC2)', () => {
     expect(screen.getByText(/Revisão mensal — Anual/)).toBeInTheDocument()
   })
 
-  it('clicar "Definir placement" chama onPlace com o templateId certo', () => {
+  it('clicar "Definir placement" chama onPlace com o template certo', () => {
     mockUseRecurringTemplatesQuery.mockReturnValue({ isPending: false, data: [WEEKLY_TEMPLATE] })
 
     const { onPlace } = renderSection(['weekly'])
 
     fireEvent.click(screen.getByRole('button', { name: 'Definir placement' }))
 
-    expect(onPlace).toHaveBeenCalledWith('tpl-1')
+    expect(onPlace).toHaveBeenCalledWith(WEEKLY_TEMPLATE)
+  })
+
+  it('dedup: template já colocado não aparece por padrão (AC1)', () => {
+    mockUseRecurringTemplatesQuery.mockReturnValue({ isPending: false, data: [WEEKLY_TEMPLATE] })
+
+    renderSection(['weekly'], vi.fn(), new Set(['tpl-1']))
+
+    expect(screen.queryByText(/Revisão semanal/)).not.toBeInTheDocument()
+  })
+
+  it('ligar "Mostrar já colocados" revela o item com sufixo "(já colocado)" e permite recolocar', () => {
+    mockUseRecurringTemplatesQuery.mockReturnValue({ isPending: false, data: [WEEKLY_TEMPLATE] })
+
+    const { onPlace } = renderSection(['weekly'], vi.fn(), new Set(['tpl-1']))
+
+    expect(screen.queryByText(/Revisão semanal/)).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Mostrar já colocados' }))
+
+    expect(screen.getByText(/Revisão semanal — Semanal \(já colocado\)/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Definir placement' }))
+    expect(onPlace).toHaveBeenCalledWith(WEEKLY_TEMPLATE)
+  })
+
+  it('sem placedTemplateIds, todos os templates aparecem (compat)', () => {
+    mockUseRecurringTemplatesQuery.mockReturnValue({ isPending: false, data: [WEEKLY_TEMPLATE] })
+
+    renderSection(['weekly'])
+
+    expect(screen.getByText(/Revisão semanal/)).toBeInTheDocument()
   })
 
   it('sem violações de acessibilidade (jest-axe)', async () => {

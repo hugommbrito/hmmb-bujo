@@ -12,6 +12,7 @@ from bujo.views import (
     RecurringTaskTemplatePlaceView,
     SubtaskCreateView,
     TaskCreateView,
+    TaskDensityView,
     TaskDetailView,
     TaskMigrateView,
     TaskReorderView,
@@ -41,6 +42,7 @@ urlpatterns = [
     path("tasks/<uuid:pk>/reorder/", TaskReorderView.as_view(), name="bujo-task-reorder"),
     path("tasks/<uuid:pk>/migrate/", TaskMigrateView.as_view(), name="bujo-task-migrate"),
     path("catch-up/queue/", CatchUpQueueView.as_view(), name="bujo-catch-up-queue"),
+    path("task-density/", TaskDensityView.as_view(), name="bujo-task-density"),
     path(
         "recurring-templates/",
         RecurringTaskTemplateListView.as_view(),

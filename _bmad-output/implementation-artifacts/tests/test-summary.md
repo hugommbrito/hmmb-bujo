@@ -1253,3 +1253,108 @@ componente, evitando alongar um teste de backend real por valor marginal.
 - [x] Sem waits/sleeps artificiais
 - [x] Testes independentes (sem dependência de ordem)
 - [x] Summary salvo em `_bmad-output/implementation-artifacts/tests/test-summary.md`
+
+---
+
+# Resumo de Automação de Testes — Story 11.3: Placement de recorrentes — dedup + modal com calendário de densidade
+
+**Data:** 2026-07-14
+**Framework:** pytest-django (backend) · Vitest 4.1 + @testing-library/react + jest-axe (unit/componente) · Playwright (E2E)
+
+## Escopo
+
+Story backend+frontend (diferente da 11.2): expõe `sourceTemplate` no `TaskSerializer` (dedup),
+adiciona o endpoint `GET /api/bujo/task-density/` (agregação de 3 fontes) e o componente
+`MonthDensityCalendar`. A dev-story já entregou cobertura extensa (backend 323 passed, frontend
+415 passed/44 files, E2E 2/2). Este workflow QA focou em **lacunas de prova end-to-end via
+browser real** — o nível que unit/pytest não alcança: a suíte existente provava a computação da
+densidade isoladamente (backend) e a renderização do calendário isoladamente (componente
+mockado), mas nenhum teste provava, contra o app e o backend reais juntos, que uma tarefa criada
+por uma via (Daily Log) aparece corretamente na densidade exibida no modal de outra via (Monthly
+placement) — a própria razão de ser do endpoint (Dev Notes: "densidade honesta... precisa das 3
+fontes").
+
+## Lacunas descobertas e auto-aplicadas
+
+O E2E `recurring-templates.spec.ts` (2 testes da dev-story) cobria dedup (AC1) e a presença
+textual de título/recorrência + cabeçalho do calendário no dialog **semanal**, mas não:
+
+- [x] **Densidade real refletindo uma fonte diferente do próprio placement** — nenhum teste
+  criava uma tarefa avulsa (Daily Log) e verificava sua contagem aparecendo no calendário do
+  modal de placement mensal. Sem isso, um bug de agregação (ex.: só somar a fonte monthly, não
+  daily/weekly) passaria despercebido apesar de toda a suíte pytest/vitest verde, porque essas
+  suítes testam cada fonte com dados sintéticos já no formato esperado, nunca via fluxo real do
+  usuário criando em uma superfície e lendo em outra.
+- [x] **Modal do Monthly nunca teve suas infos/calendário verificados** — só o modal do Weekly
+  era checado (título + `Recorrência:` + cabeçalho "Seg"); o Monthly só verificava o campo "Dia
+  (opcional)".
+- [x] **Campo `description` do template nunca exercitado em E2E** — os templates criados nos
+  specs existentes nascem sem descrição; o ramo condicional `{template.description && (...)}` do
+  `RecurringPlacementDialog` ficava sem prova em browser real.
+- [x] **AC3 (calendário apenas informativo) sem prova negativa** — nenhum teste confirmava,
+  contra o componente real renderizado dentro do dialog de produção (não um teste isolado do
+  `MonthDensityCalendar`), que nenhuma célula é interativa nesta story (contagem de `role=button`
+  dentro do calendário = 0), provando que `onSelectDay` de fato não é passado no call site real.
+
+## Teste gerado
+
+`frontend/e2e/recurring-templates.spec.ts` — 1 novo teste (3º do arquivo):
+
+- [x] `AC2/AC3 — modal do Monthly mostra título/descrição/recorrência + calendário com densidade
+  real (3 fontes), e o calendário é só informativo`: cria uma tarefa avulsa no Daily Log de hoje
+  (fonte "daily"), cria um template mensal com `description` preenchida, abre o modal de
+  placement em "Este Mês" e verifica: título + descrição + `Recorrência:` visíveis; aguarda a
+  resposta real de `GET /api/bujo/task-density/`; confirma que a célula do dia de hoje no
+  calendário mostra o `aria-label`/texto `"<dia> de <mês>, 1 tarefa"` — provando a agregação
+  cross-source (Daily → density do Monthly) ponta-a-ponta contra o backend real; confirma
+  `calendar.getByRole('button')` com 0 elementos (AC3: sem seleção nesta story); fecha via
+  "Cancelar" e confirma que nenhuma instância nova foi criada.
+
+## Cobertura por AC
+
+| AC | Critério | Coberto por |
+| --- | --- | --- |
+| AC1 | Dedup por período + recolocação via switch "Mostrar já colocados" | `recurring-templates.spec.ts` (testes 1–2, dev-story) |
+| AC2 | Modal mostra título/descrição/`recurrenceText` + calendário do mês | `RecurringPlacementDialog.test.tsx` (unit, densidade mockada) + `recurring-templates.spec.ts` teste 3 ← **novo, densidade real cross-source, Weekly e Monthly** |
+| AC2 | Densidade agrega as 3 fontes (daily/weekly/monthly) corretamente | `test_views.py::TaskDensityView` (unit, 10 casos) + `recurring-templates.spec.ts` teste 3 ← **novo, prova end-to-end (Daily→Monthly) que faltava** |
+| AC3 | Componente reutilizável, seleção desligada nesta story | `MonthDensityCalendar.test.tsx` (unit, componente isolado) + `recurring-templates.spec.ts` teste 3 ← **novo, prova negativa (0 `role=button`) contra o call site real de produção** |
+
+## Resultado da execução
+
+```
+npx tsc --noEmit -p .                                    → 0 erros
+npx eslint e2e/recurring-templates.spec.ts                → 0 erros/avisos
+nvm use 22 && npx playwright test recurring-templates.spec.ts --reporter=line
+  3 passed (42.9s)
+```
+
+Rodado contra o stack real (`npm run dev` + `manage.py runserver` sob `config.settings.e2e`,
+branch Neon `e2e` dedicada — Story 11.1). Os 2 testes pré-existentes da dev-story continuam
+passando (regressão zero); o novo é o 3º.
+
+Suítes unitárias (pytest 323, vitest 415/44) não re-executadas nesta rodada — nenhuma mudança de
+código de produção foi feita, só o novo spec E2E. O gap fechado era especificamente de camada
+E2E (prova cross-source contra o backend real), que é o que este workflow existe para cobrir.
+
+## Checklist de validação
+
+- [x] Testes E2E gerados (UI existe) — 1 novo spec, 2 pré-existentes mantidos intactos
+- [x] Testes usam APIs padrão do framework (Playwright, fixture `test`/`expect` já estabelecida)
+- [x] Cobrem happy path (fluxo completo daily→density→modal→cancelar)
+- [x] Cobrem caso crítico (agregação cross-source + prova negativa de não-interatividade)
+- [x] Todos os testes rodam com sucesso (3/3, 42.9s)
+- [x] Locators semânticos/acessíveis (`getByRole('table'|'cell'|'button'|'dialog')`, `getByLabel`, `getByText`)
+- [x] Descrições claras em pt-BR, seguindo a convenção do arquivo
+- [x] Sem waits/sleeps artificiais (`waitForResponse` no round-trip real do endpoint novo)
+- [x] Testes independentes (fixture cria usuário novo via signup real por teste)
+- [x] Summary salvo em `_bmad-output/implementation-artifacts/tests/test-summary.md`
+
+## Próximos Passos
+
+- Story 11.6 (mover/migrar tarefa) vai ligar `onSelectDay`/`selectedDate` no
+  `MonthDensityCalendar` — quando isso acontecer, a prova negativa "0 `role=button`" desta story
+  deixa de ser válida para o call site novo (mas continua válida para o `RecurringPlacementDialog`,
+  que segue informativo). Não é uma dívida — é o comportamento esperado da mudança futura.
+- `lint-imports` segue quebrado desde a 11.1 (`core` importa `bujo` via `purge_e2e_users`),
+  registrado nas Completion Notes da própria story como fora de escopo — reforçando a
+  recomendação já existente de escalar na retro do Épico 11.

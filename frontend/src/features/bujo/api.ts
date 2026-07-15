@@ -15,6 +15,8 @@ import type {
   RecurringTaskTemplate,
   Task,
   TaskCategory,
+  TaskDensityEntry,
+  TaskDensityResponse,
   TaskEisenhower,
   TaskStatus,
   WeeklyLog,
@@ -238,6 +240,9 @@ export function useCreateMonthlyTaskMutation() {
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: keys.bujo.monthlyLog(variables.monthFirst) })
       queryClient.invalidateQueries({ queryKey: keys.bujo.futureLog() })
+      // A densidade reflete tarefas recém-criadas — invalidação por prefixo
+      // alcança o sentinel 'current' e qualquer mês (Story 11.3, Task 4.4).
+      queryClient.invalidateQueries({ queryKey: ['bujo', 'taskDensity'] })
     },
   })
 }
@@ -429,7 +434,31 @@ export function usePlaceRecurringTemplateMutation() {
       queryClient.invalidateQueries({ queryKey: keys.bujo.recurringTemplates() })
       queryClient.invalidateQueries({ queryKey: ['bujo', 'weeklyLog'] })
       queryClient.invalidateQueries({ queryKey: ['bujo', 'monthlyLog'] })
+      // Colocar um recorrente cria uma Task no período → a densidade muda.
+      // Prefixo alcança o sentinel 'current' e qualquer mês (Story 11.3).
+      queryClient.invalidateQueries({ queryKey: ['bujo', 'taskDensity'] })
     },
+  })
+}
+
+async function fetchTaskDensity(monthFirst?: string): Promise<TaskDensityEntry[]> {
+  const response = await client.get<TaskDensityResponse>('/api/bujo/task-density/', {
+    // snake_case no fio, igual a fetchMonthlyLog/fetchWeeklyLog.
+    params: monthFirst ? { month_first: monthFirst } : undefined,
+  })
+  return response.data.density
+}
+
+// Densidade de tarefas por dia do mês (Story 11.3). Molde de useMonthlyLogQuery,
+// mas com `enabled` repassado: o modal de placement só busca quando aberto (o
+// MUI Dialog desmonta os filhos com open=false, mas passamos enabled:open para
+// não disparar fetch prematuro na montagem). `month_first` é obrigatório no
+// backend, então sempre passamos o mês em questão.
+export function useTaskDensityQuery(monthFirst?: string, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: keys.bujo.taskDensity(monthFirst),
+    queryFn: () => fetchTaskDensity(monthFirst),
+    enabled: options?.enabled ?? true,
   })
 }
 

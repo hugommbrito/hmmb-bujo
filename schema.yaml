@@ -279,6 +279,41 @@ paths:
               schema:
                 $ref: '#/components/schemas/Task'
           description: ''
+  /api/bujo/task-density/:
+    get:
+      operationId: bujo_task_density_retrieve
+      description: |-
+        Densidade de tarefas por dia do mês (Story 11.3, AC2) — apenas leitura
+        agregada, informativa. Conta APENAS tarefas raiz (`parent_task__isnull=True`,
+        mesma convenção de WeeklyLogView/LogSerializer/FutureLogView) somando as três
+        fontes de "tarefa num dia D":
+
+        - daily  → dia = `log.log_date`;
+        - weekly → dia = `scheduled_date` (NULL não conta — sem dia);
+        - monthly/annual → dia = `scheduled_date` (idem).
+
+        As três fontes são disjuntas por tarefa (CHECK `task_exactly_one_log`), mas
+        uma mesma data pode receber contagens de fontes diferentes — por isso as
+        contagens são somadas por data. `Task.objects` (tenant-scoped, fail-closed)
+        garante o isolamento por `user_id`; NUNCA `all_objects` (AD-12).
+      parameters:
+      - in: query
+        name: month_first
+        schema:
+          type: string
+          format: date
+        required: true
+      tags:
+      - bujo
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskDensityResponse'
+          description: ''
   /api/bujo/tasks/:
     post:
       operationId: bujo_tasks_create
@@ -825,6 +860,10 @@ components:
           type: string
           format: uuid
           nullable: true
+        sourceTemplate:
+          type: string
+          format: uuid
+          nullable: true
       required:
       - id
       - subtasks
@@ -850,6 +889,26 @@ components:
           - $ref: '#/components/schemas/NullEnum'
       required:
       - title
+    TaskDensityEntry:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        count:
+          type: integer
+      required:
+      - count
+      - date
+    TaskDensityResponse:
+      type: object
+      properties:
+        density:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaskDensityEntry'
+      required:
+      - density
     TaskMigrate:
       type: object
       properties:

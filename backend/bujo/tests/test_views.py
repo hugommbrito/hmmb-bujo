@@ -1521,3 +1521,136 @@ def test_post_place_template_inexistente_retorna_404(auth_client):
     )
 
     assert response.status_code == 404
+
+
+# ─── TaskDensityView (Story 11.3, AC2) ───────────────────────────────────────
+
+
+@pytest.mark.django_db
+def test_task_density_agrega_as_tres_fontes_e_soma_datas_coincidentes(auth_client, user):
+    """(a) daily por log_date, weekly/monthly por scheduled_date; datas
+    coincidentes entre fontes somam as contagens."""
+    with tenant_context(user):
+        daily_log = LogFactory(user=user, log_date=date(2026, 7, 10))
+        TaskFactory(user=user, log=daily_log)
+        weekly_log = WeeklyLogFactory(user=user, week_start=week_start_of(date(2026, 7, 10)))
+        TaskFactory(user=user, weekly_log=weekly_log, scheduled_date=date(2026, 7, 10))
+        monthly_log = MonthlyLogFactory(user=user, month_first=date(2026, 7, 1))
+        TaskFactory(user=user, monthly_log=monthly_log, scheduled_date=date(2026, 7, 15))
+
+    response = auth_client.get("/api/bujo/task-density/?month_first=2026-07-01")
+
+    assert response.status_code == 200
+    by_date = {str(entry["date"]): entry["count"] for entry in response.data["density"]}
+    assert by_date == {"2026-07-10": 2, "2026-07-15": 1}
+
+
+@pytest.mark.django_db
+def test_task_density_ordena_por_data_asc_e_so_dias_com_contagem(auth_client, user):
+    """(f) resposta só inclui dias com count > 0, ordenados ascendentemente."""
+    with tenant_context(user):
+        monthly_log = MonthlyLogFactory(user=user, month_first=date(2026, 7, 1))
+        TaskFactory(user=user, monthly_log=monthly_log, scheduled_date=date(2026, 7, 20))
+        TaskFactory(user=user, monthly_log=monthly_log, scheduled_date=date(2026, 7, 5))
+
+    response = auth_client.get("/api/bujo/task-density/?month_first=2026-07-01")
+
+    assert response.status_code == 200
+    dates = [str(entry["date"]) for entry in response.data["density"]]
+    assert dates == ["2026-07-05", "2026-07-20"]  # ordenado, sem dias vazios
+
+
+@pytest.mark.django_db
+def test_task_density_scheduled_date_null_nao_conta(auth_client, user):
+    """(b) tarefa weekly/monthly sem scheduled_date não tem dia — não conta."""
+    with tenant_context(user):
+        weekly_log = WeeklyLogFactory(user=user, week_start=week_start_of(date(2026, 7, 6)))
+        TaskFactory(user=user, weekly_log=weekly_log, scheduled_date=None)
+        monthly_log = MonthlyLogFactory(user=user, month_first=date(2026, 7, 1))
+        TaskFactory(user=user, monthly_log=monthly_log, scheduled_date=None)
+
+    response = auth_client.get("/api/bujo/task-density/?month_first=2026-07-01")
+
+    assert response.status_code == 200
+    assert response.data["density"] == []
+
+
+@pytest.mark.django_db
+def test_task_density_so_conta_raizes(auth_client, user):
+    """(c) subtarefa não infla a contagem do dia — só raízes contam."""
+    with tenant_context(user):
+        daily_log = LogFactory(user=user, log_date=date(2026, 7, 12))
+        parent = TaskFactory(user=user, log=daily_log)
+        TaskFactory(user=user, log=daily_log, parent_task=parent)
+
+    response = auth_client.get("/api/bujo/task-density/?month_first=2026-07-01")
+
+    assert response.status_code == 200
+    by_date = {str(entry["date"]): entry["count"] for entry in response.data["density"]}
+    assert by_date == {"2026-07-12": 1}  # o filho não conta
+
+
+@pytest.mark.django_db
+def test_task_density_so_o_mes_pedido(auth_client, user):
+    """(d) tarefas de outros meses não entram na contagem do mês pedido."""
+    with tenant_context(user):
+        july = MonthlyLogFactory(user=user, month_first=date(2026, 7, 1))
+        TaskFactory(user=user, monthly_log=july, scheduled_date=date(2026, 7, 3))
+        august = MonthlyLogFactory(user=user, month_first=date(2026, 8, 1))
+        TaskFactory(user=user, monthly_log=august, scheduled_date=date(2026, 8, 3))
+
+    response = auth_client.get("/api/bujo/task-density/?month_first=2026-07-01")
+
+    assert response.status_code == 200
+    by_date = {str(entry["date"]): entry["count"] for entry in response.data["density"]}
+    assert by_date == {"2026-07-03": 1}
+
+
+@pytest.mark.django_db
+def test_task_density_month_first_ausente_retorna_400(auth_client):
+    """(e) month_first é obrigatório."""
+    response = auth_client.get("/api/bujo/task-density/")
+
+    assert response.status_code == 400
+    assert "month_first" in response.data["fields"]
+
+
+@pytest.mark.django_db
+def test_task_density_month_first_invalido_retorna_400(auth_client):
+    """(e) data mal formada → 400."""
+    response = auth_client.get("/api/bujo/task-density/?month_first=nao-e-data")
+
+    assert response.status_code == 400
+
+
+@pytest.mark.django_db
+def test_task_density_month_first_nao_dia_1_retorna_400(auth_client):
+    """(e) deve ser o 1º dia do mês (mesma semântica de MonthlyTaskCreate)."""
+    response = auth_client.get("/api/bujo/task-density/?month_first=2026-07-15")
+
+    assert response.status_code == 400
+    assert "month_first" in response.data["fields"]
+
+
+@pytest.mark.django_db
+def test_task_density_isolamento_entre_tenants(auth_client, user, other_user):
+    """Isolamento (AD-12): tarefas de outro tenant não aparecem na densidade.
+    Nova superfície de leitura → exige cobertura de isolamento."""
+    with tenant_context(other_user):
+        other_monthly = MonthlyLogFactory(user=other_user, month_first=date(2026, 7, 1))
+        TaskFactory(user=other_user, monthly_log=other_monthly, scheduled_date=date(2026, 7, 8))
+
+    # auth_client está autenticado como `user`; não deve ver a tarefa de other_user.
+    response = auth_client.get("/api/bujo/task-density/?month_first=2026-07-01")
+
+    assert response.status_code == 200
+    assert response.data["density"] == []
+
+
+@pytest.mark.django_db
+def test_task_density_sem_autenticacao_retorna_401():
+    client = APIClient()
+
+    response = client.get("/api/bujo/task-density/?month_first=2026-07-01")
+
+    assert response.status_code == 401

@@ -1,5 +1,7 @@
 """Testes de `LogSerializer`/`TaskSerializer` (AC #1, #2)."""
 
+from datetime import date
+
 import pytest
 
 from bujo.models import RecurringTaskTemplate, Task
@@ -10,7 +12,13 @@ from bujo.serializers import (
     TaskSerializer,
 )
 from bujo.services.migration import migrate_task
-from bujo.tests.factories import LogFactory, TaskFactory
+from bujo.services.recurring import place_template
+from bujo.tests.factories import (
+    LogFactory,
+    MonthlyLogFactory,
+    RecurringTaskTemplateFactory,
+    TaskFactory,
+)
 from core.tenant import tenant_context
 
 
@@ -43,7 +51,37 @@ def test_task_serializer_expoe_exatamente_os_campos_esperados():
         "subtasks",
         "migration_count",
         "migrated_to_task",
+        "source_template",
     }
+
+
+@pytest.mark.django_db
+def test_task_serializer_source_template_e_null_para_tarefa_comum(user):
+    with tenant_context(user):
+        task = TaskFactory(user=user)
+
+        data = TaskSerializer(task).data
+
+        assert "source_template" in data
+        assert data["source_template"] is None
+
+
+@pytest.mark.django_db
+def test_task_serializer_source_template_e_o_id_do_template_apos_placement(user):
+    """AC1: uma tarefa colocada via `place_template` serializa `source_template`
+    com o id do template — é o que habilita o dedup client-side."""
+    with tenant_context(user):
+        MonthlyLogFactory(user=user, month_first=date(2026, 7, 1))
+        template = RecurringTaskTemplateFactory(
+            user=user, recurrence_group=RecurringTaskTemplate.RecurrenceGroup.MONTHLY
+        )
+
+        task = place_template(
+            user=user, template_id=template.id, month_first=date(2026, 7, 1)
+        )
+        data = TaskSerializer(task).data
+
+        assert data["source_template"] == template.id
 
 
 @pytest.mark.django_db

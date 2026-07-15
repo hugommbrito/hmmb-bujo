@@ -6,6 +6,7 @@ import {
   usePlaceRecurringTemplateMutation,
   useWeeklyLogQuery,
 } from '../../features/bujo'
+import type { RecurringTaskTemplate } from '../../features/bujo'
 import { DayHeader } from '../../features/bujo/components/DayHeader'
 import { PlannerSkeleton } from '../../features/bujo/components/PlannerSkeleton'
 import { RecurringPlacementDialog } from '../../features/bujo/components/RecurringPlacementDialog'
@@ -19,7 +20,7 @@ export function WeeklyPage() {
   const placeTemplate = usePlaceRecurringTemplateMutation()
   const isMobile = useMediaQuery('(max-width: 767px)')
   const [selectedDayIndex, setSelectedDayIndex] = useState(0)
-  const [placingTemplateId, setPlacingTemplateId] = useState<string | null>(null)
+  const [placingTemplate, setPlacingTemplate] = useState<RecurringTaskTemplate | null>(null)
 
   if (weeklyLog.isPending) {
     return (
@@ -33,6 +34,18 @@ export function WeeklyPage() {
 
   const { days, unscheduled, weekStart, closed } = weeklyLog.data
   const selectedDay = days[selectedDayIndex]
+
+  // Dedup (AC1): templates já colocados nesta semana, via `sourceTemplate` das
+  // tarefas de todos os dias + as sem dia.
+  const placedTemplateIds = new Set(
+    [...days.flatMap((day) => day.tasks), ...unscheduled]
+      .map((task) => task.sourceTemplate)
+      .filter((id): id is string => Boolean(id)),
+  )
+  // monthFirst do calendário = 1º dia do mês que contém a segunda-feira da
+  // semana. Semana de virada (AD-05) mostra o mês da segunda — densidade é
+  // apenas informativa, então a escolha é aceitável (Dev Notes / Task 8.2).
+  const monthFirst = `${weekStart.slice(0, 7)}-01`
 
   return (
     <Box
@@ -102,20 +115,23 @@ export function WeeklyPage() {
         <>
           <RecurringPlacementSection
             recurrenceGroups={['weekly']}
-            onPlace={setPlacingTemplateId}
+            onPlace={setPlacingTemplate}
+            placedTemplateIds={placedTemplateIds}
           />
           <RecurringPlacementDialog
-            open={placingTemplateId !== null}
+            open={placingTemplate !== null}
             dateFieldType="date"
-            onClose={() => setPlacingTemplateId(null)}
+            template={placingTemplate}
+            monthFirst={monthFirst}
+            onClose={() => setPlacingTemplate(null)}
             onConfirm={(scheduledDate) => {
-              if (!placingTemplateId) return
+              if (!placingTemplate) return
               placeTemplate.mutate({
-                templateId: placingTemplateId,
+                templateId: placingTemplate.id,
                 weekStart,
                 scheduledDate: scheduledDate || undefined,
               })
-              setPlacingTemplateId(null)
+              setPlacingTemplate(null)
             }}
           />
         </>

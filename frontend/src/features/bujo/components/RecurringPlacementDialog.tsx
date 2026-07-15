@@ -1,9 +1,14 @@
 import { useState } from 'react'
-import { Box, Button, Dialog, DialogActions, DialogTitle, TextField } from '@mui/material'
+import { Box, Button, Dialog, DialogActions, DialogTitle, TextField, Typography } from '@mui/material'
+import { useTaskDensityQuery } from '../api'
+import type { RecurringTaskTemplate } from '../types'
+import { MonthDensityCalendar } from './MonthDensityCalendar'
 
 interface RecurringPlacementDialogProps {
   open: boolean
   dateFieldType: 'date' | 'day'
+  template: RecurringTaskTemplate | null // info da recorrência a exibir (Story 11.3)
+  monthFirst: string // mês p/ o calendário de densidade (Story 11.3)
   onConfirm: (value: string) => void
   onClose: () => void
 }
@@ -12,13 +17,21 @@ interface RecurringPlacementDialogProps {
 // ver Dev Notes) e MonthlyPage (`dateFieldType="day"`, mesmo padrão de
 // MigrationCard "Adiar no Futuro"). A conversão do valor bruto em
 // `scheduledDate` fica com quem chama `onConfirm` — este componente só coleta.
+// Story 11.3: além de coletar, exibe as infos da recorrência e um calendário
+// do mês com a densidade de tarefas (informativo, sem seleção).
 export function RecurringPlacementDialog({
   open,
   dateFieldType,
+  template,
+  monthFirst,
   onConfirm,
   onClose,
 }: RecurringPlacementDialogProps) {
   const [value, setValue] = useState('')
+  // enabled: open evita fetch prematuro (o Dialog do MUI desmonta os filhos
+  // com open=false, mas o guard mantém o hook honesto de qualquer forma).
+  const density = useTaskDensityQuery(monthFirst, { enabled: open })
+  const densityByDate = new Map((density.data ?? []).map((entry) => [entry.date, entry.count]))
 
   function handleConfirm() {
     onConfirm(value)
@@ -31,9 +44,25 @@ export function RecurringPlacementDialog({
   }
 
   return (
-    <Dialog open={open} onClose={handleClose}>
+    <Dialog open={open} onClose={handleClose} fullWidth maxWidth="xs">
       <DialogTitle>Definir placement</DialogTitle>
-      <Box sx={{ px: 3, pb: 2 }}>
+      <Box sx={{ px: 3, pb: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+        {template && (
+          <Box>
+            <Typography variant="heading" component="div">
+              {template.title}
+            </Typography>
+            {template.description && (
+              <Typography variant="body-sm" color="text.secondary" component="div" sx={{ mt: 0.5 }}>
+                {template.description}
+              </Typography>
+            )}
+            <Typography variant="body-sm" color="text.secondary" component="div" sx={{ mt: 0.5 }}>
+              Recorrência: {template.recurrenceText}
+            </Typography>
+          </Box>
+        )}
+
         {dateFieldType === 'date' ? (
           <TextField
             label="Data (opcional)"
@@ -53,6 +82,8 @@ export function RecurringPlacementDialog({
             onChange={(event) => setValue(event.target.value)}
           />
         )}
+
+        <MonthDensityCalendar monthFirst={monthFirst} densityByDate={densityByDate} />
       </Box>
       <DialogActions>
         <Button onClick={handleClose}>Cancelar</Button>

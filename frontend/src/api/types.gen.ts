@@ -236,6 +236,37 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/bujo/task-density/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description Densidade de tarefas por dia do mês (Story 11.3, AC2) — apenas leitura
+         *     agregada, informativa. Conta APENAS tarefas raiz (`parent_task__isnull=True`,
+         *     mesma convenção de WeeklyLogView/LogSerializer/FutureLogView) somando as três
+         *     fontes de "tarefa num dia D":
+         *
+         *     - daily  → dia = `log.log_date`;
+         *     - weekly → dia = `scheduled_date` (NULL não conta — sem dia);
+         *     - monthly/annual → dia = `scheduled_date` (idem).
+         *
+         *     As três fontes são disjuntas por tarefa (CHECK `task_exactly_one_log`), mas
+         *     uma mesma data pode receber contagens de fontes diferentes — por isso as
+         *     contagens são somadas por data. `Task.objects` (tenant-scoped, fail-closed)
+         *     garante o isolamento por `user_id`; NUNCA `all_objects` (AD-12).
+         */
+        get: operations["bujo_task_density_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/bujo/tasks/": {
         parameters: {
             query?: never;
@@ -513,12 +544,22 @@ export interface components {
             migrationCount?: number;
             /** Format: uuid */
             migratedToTask?: string | null;
+            /** Format: uuid */
+            sourceTemplate?: string | null;
         };
         TaskCreate: {
             title: string;
             description?: string | null;
             eisenhower?: (components["schemas"]["EisenhowerEnum"] | components["schemas"]["NullEnum"]) | null;
             category?: (components["schemas"]["CategoryEnum"] | components["schemas"]["NullEnum"]) | null;
+        };
+        TaskDensityEntry: {
+            /** Format: date */
+            date: string;
+            count: number;
+        };
+        TaskDensityResponse: {
+            density: components["schemas"]["TaskDensityEntry"][];
         };
         TaskMigrate: {
             destination: components["schemas"]["DestinationEnum"];
@@ -914,6 +955,27 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Task"];
+                };
+            };
+        };
+    };
+    bujo_task_density_retrieve: {
+        parameters: {
+            query: {
+                month_first: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskDensityResponse"];
                 };
             };
         };

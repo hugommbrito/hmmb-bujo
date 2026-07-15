@@ -248,6 +248,64 @@ describe('RecurringPlacementSection integration (AC2)', () => {
   })
 })
 
+describe('Dedup + densidade (Story 11.3)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockMatchMedia(false)
+  })
+
+  it('dedup: template com instância na semana (sourceTemplate) não aparece na lista', async () => {
+    routeRecurringTemplatesGet([WEEKLY_TEMPLATE])
+    mockUseWeeklyLogQuery.mockReturnValue({
+      isPending: false,
+      data: {
+        ...WEEKLY_LOG,
+        days: [
+          {
+            date: '2026-07-13',
+            tasks: [
+              {
+                id: 't1',
+                title: 'Instância colocada',
+                status: 'pending',
+                eisenhower: null,
+                category: null,
+                subtasks: [],
+                sourceTemplate: 'tpl-1',
+              },
+            ],
+          },
+          ...DAYS.slice(1),
+        ],
+        unscheduled: [],
+      },
+    })
+
+    renderWeeklyPage()
+
+    // A seção aparece (há template no grupo), mas a linha do tpl-1 já colocado
+    // some (dedup). Esperamos o cabeçalho e então checamos a ausência da linha.
+    await screen.findByText('Recorrentes')
+    expect(screen.queryByText(/Revisão semanal/)).not.toBeInTheDocument()
+  })
+
+  it('abrir o dialog busca a densidade com monthFirst = mês do weekStart', async () => {
+    routeRecurringTemplatesGet([WEEKLY_TEMPLATE])
+    mockUseWeeklyLogQuery.mockReturnValue({ isPending: false, data: WEEKLY_LOG })
+
+    renderWeeklyPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Definir placement' }))
+
+    // weekStart 2026-07-13 → mês 2026-07-01.
+    await waitFor(() =>
+      expect(mockGet).toHaveBeenCalledWith('/api/bujo/task-density/', {
+        params: { month_first: '2026-07-01' },
+      }),
+    )
+  })
+})
+
 describe('Indicador "Fechada" e modo Arquivo (AC1/AC2)', () => {
   beforeEach(() => {
     vi.clearAllMocks()

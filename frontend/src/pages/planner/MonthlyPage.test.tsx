@@ -383,6 +383,69 @@ describe('RecurringPlacementSection integration (AC2)', () => {
   })
 })
 
+describe('Dedup + densidade (Story 11.3)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+    vi.setSystemTime(FIXED_TODAY)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('dedup: template já colocado no mês (sourceTemplate) não aparece na lista', async () => {
+    routeRecurringTemplatesGet([MONTHLY_TEMPLATE])
+    mockUseMonthlyLogQuery.mockReturnValue({
+      isPending: false,
+      data: {
+        ...MONTHLY_LOG_CURRENT,
+        tasks: [
+          {
+            id: 't5',
+            title: 'Instância do template',
+            status: 'pending',
+            eisenhower: null,
+            category: null,
+            scheduledDate: '2026-07-10',
+            subtasks: [],
+            sourceTemplate: 'tpl-1',
+          },
+        ],
+      },
+      refetch: mockRefetch,
+    })
+
+    renderMonthlyPage()
+    vi.useRealTimers()
+
+    // A seção aparece (há template no grupo), mas a linha do tpl-1 já colocado
+    // some (dedup). Esperamos o cabeçalho e então checamos a ausência da linha.
+    await screen.findByText('Recorrentes')
+    expect(screen.queryByText(/Revisão mensal/)).not.toBeInTheDocument()
+  })
+
+  it('abrir o dialog busca a densidade com o monthFirst do mês exibido', async () => {
+    routeRecurringTemplatesGet([MONTHLY_TEMPLATE])
+    mockUseMonthlyLogQuery.mockReturnValue({
+      isPending: false,
+      data: MONTHLY_LOG_CURRENT,
+      refetch: mockRefetch,
+    })
+
+    renderMonthlyPage()
+    vi.useRealTimers()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Definir placement' }))
+
+    await waitFor(() =>
+      expect(mockGet).toHaveBeenCalledWith('/api/bujo/task-density/', {
+        params: { month_first: '2026-07-01' },
+      }),
+    )
+  })
+})
+
 describe('Indicador "Fechado" e modo Arquivo (AC1/AC2)', () => {
   beforeEach(() => {
     vi.clearAllMocks()

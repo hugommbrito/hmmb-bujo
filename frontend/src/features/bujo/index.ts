@@ -18,6 +18,7 @@ export {
   useCreateRecurringTemplateMutation,
   useUpdateRecurringTemplateMutation,
   usePlaceRecurringTemplateMutation,
+  useTaskDensityQuery,
   useArchiveQuery,
 } from './api'
 export { MigrationBanner } from './components/MigrationBanner'
@@ -26,6 +27,7 @@ export { MonthlyReviewBanner } from './components/MonthlyReviewBanner'
 export { CatchUpBanner } from './components/CatchUpBanner'
 export { RecurringTemplateManager } from './components/RecurringTemplateManager'
 export { RecurringPlacementSection } from './components/RecurringPlacementSection'
+export { MonthDensityCalendar } from './components/MonthDensityCalendar'
 export type { MigrationDestination } from './api'
 export type {
   Log,
@@ -43,5 +45,7 @@ export type {
   CatchUpQueue,
   RecurringTaskTemplate,
   RecurrenceGroup,
+  TaskDensityEntry,
+  TaskDensityResponse,
   ArchiveEntry,
 } from './types'

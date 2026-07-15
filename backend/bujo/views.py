@@ -3,6 +3,7 @@
 aqui.
 """
 
+from collections import defaultdict
 from datetime import date, timedelta
 
 from django.db.models import Count, Q
@@ -27,6 +28,8 @@ from bujo.serializers import (
     RecurringTaskTemplateSerializer,
     RecurringTaskTemplateUpdateSerializer,
     TaskCreateSerializer,
+    TaskDensityQuerySerializer,
+    TaskDensityResponseSerializer,
     TaskMigrateSerializer,
     TaskReorderSerializer,
     TaskSerializer,
@@ -308,6 +311,66 @@ class FutureLogView(APIView):
             for monthly_log in monthly_logs
         ]
         return Response(FutureLogMonthGroupSerializer(groups, many=True).data)
+
+
+class TaskDensityView(APIView):
+    """Densidade de tarefas por dia do mês (Story 11.3, AC2) — apenas leitura
+    agregada, informativa. Conta APENAS tarefas raiz (`parent_task__isnull=True`,
+    mesma convenção de WeeklyLogView/LogSerializer/FutureLogView) somando as três
+    fontes de "tarefa num dia D":
+
+    - daily  → dia = `log.log_date`;
+    - weekly → dia = `scheduled_date` (NULL não conta — sem dia);
+    - monthly/annual → dia = `scheduled_date` (idem).
+
+    As três fontes são disjuntas por tarefa (CHECK `task_exactly_one_log`), mas
+    uma mesma data pode receber contagens de fontes diferentes — por isso as
+    contagens são somadas por data. `Task.objects` (tenant-scoped, fail-closed)
+    garante o isolamento por `user_id`; NUNCA `all_objects` (AD-12).
+    """
+
+    @extend_schema(
+        parameters=[TaskDensityQuerySerializer], responses=TaskDensityResponseSerializer
+    )
+    def get(self, request):
+        query = TaskDensityQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
+        month_first = query.validated_data["month_first"]
+        year, month = month_first.year, month_first.month
+
+        counts: dict[date, int] = defaultdict(int)
+
+        daily = (
+            Task.objects.filter(
+                log__log_date__year=year,
+                log__log_date__month=month,
+                parent_task__isnull=True,
+            )
+            .values("log__log_date")
+            .annotate(count=Count("id"))
+        )
+        for row in daily:
+            counts[row["log__log_date"]] += row["count"]
+
+        for source_filter in (
+            {"weekly_log__isnull": False},
+            {"monthly_log__isnull": False},
+        ):
+            rows = (
+                Task.objects.filter(
+                    scheduled_date__year=year,
+                    scheduled_date__month=month,
+                    parent_task__isnull=True,
+                    **source_filter,
+                )
+                .values("scheduled_date")
+                .annotate(count=Count("id"))
+            )
+            for row in rows:
+                counts[row["scheduled_date"]] += row["count"]
+
+        density = [{"date": day, "count": counts[day]} for day in sorted(counts)]
+        return Response(TaskDensityResponseSerializer({"density": density}).data)
 
 
 class MigrationQueueView(APIView):

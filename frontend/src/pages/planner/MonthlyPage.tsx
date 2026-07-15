@@ -9,7 +9,7 @@ import {
   usePlaceRecurringTemplateMutation,
   useUpdateTaskMutation,
 } from '../../features/bujo'
-import type { RecurrenceGroup, Task } from '../../features/bujo'
+import type { RecurrenceGroup, RecurringTaskTemplate, Task } from '../../features/bujo'
 import { DayHeader } from '../../features/bujo/components/DayHeader'
 import { PlannerSkeleton } from '../../features/bujo/components/PlannerSkeleton'
 import { RecurringPlacementDialog } from '../../features/bujo/components/RecurringPlacementDialog'
@@ -57,7 +57,7 @@ export function MonthlyPage() {
   const placeTemplate = usePlaceRecurringTemplateMutation()
   const [title, setTitle] = useState('')
   const [day, setDay] = useState('')
-  const [placingTemplateId, setPlacingTemplateId] = useState<string | null>(null)
+  const [placingTemplate, setPlacingTemplate] = useState<RecurringTaskTemplate | null>(null)
 
   if (monthlyLog.isPending) {
     return (
@@ -85,6 +85,10 @@ export function MonthlyPage() {
       ? ['monthly', 'annual']
       : ['monthly']
     : []
+  // Dedup (AC1): templates que já têm instância neste mês (via `sourceTemplate`).
+  const placedTemplateIds = new Set(
+    tasks.map((task) => task.sourceTemplate).filter((id): id is string => Boolean(id)),
+  )
   const withoutDateTitle = isCurrentMonth
     ? `Itens do Future Log para ${capitalize(MONTH_NAMES_PT[Number(monthFirst.slice(5, 7)) - 1])}`
     : 'Sem dia definido'
@@ -220,19 +224,22 @@ export function MonthlyPage() {
           </Box>
           <RecurringPlacementSection
             recurrenceGroups={recurrenceGroups}
-            onPlace={setPlacingTemplateId}
+            onPlace={setPlacingTemplate}
+            placedTemplateIds={placedTemplateIds}
           />
           <RecurringPlacementDialog
-            open={placingTemplateId !== null}
+            open={placingTemplate !== null}
             dateFieldType="day"
-            onClose={() => setPlacingTemplateId(null)}
+            template={placingTemplate}
+            monthFirst={monthFirst}
+            onClose={() => setPlacingTemplate(null)}
             onConfirm={(dayValue) => {
-              if (!placingTemplateId) return
+              if (!placingTemplate) return
               const scheduledDate = dayValue
                 ? `${monthFirst.slice(0, 7)}-${dayValue.padStart(2, '0')}`
                 : undefined
-              placeTemplate.mutate({ templateId: placingTemplateId, monthFirst, scheduledDate })
-              setPlacingTemplateId(null)
+              placeTemplate.mutate({ templateId: placingTemplate.id, monthFirst, scheduledDate })
+              setPlacingTemplate(null)
             }}
           />
         </>

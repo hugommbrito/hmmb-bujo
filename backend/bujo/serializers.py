@@ -25,6 +25,13 @@ class TaskSerializer(serializers.ModelSerializer):
             "subtasks",
             "migration_count",
             "migrated_to_task",
+            # Story 11.3 (AC1): habilita o dedup client-side. Revoga a decisão
+            # YAGNI da Story 4.5 (Task 9.4) de NÃO expor a linhagem — a AC1
+            # exige que o cliente saiba quais templates já foram colocados no
+            # período. Read-only por natureza (FK gravada só no placement
+            # service; nenhum write path de tarefa a aceita). Subtarefas
+            # carregam `null` (nascem sem template, AD-08 item 8).
+            "source_template",
         ]
 
     def get_subtasks(self, obj):
@@ -187,6 +194,30 @@ class MonthlyTaskCreateSerializer(serializers.Serializer):
                 {"scheduled_date": "A data deve pertencer ao mês/ano de month_first."}
             )
         return attrs
+
+
+class TaskDensityQuerySerializer(serializers.Serializer):
+    """Valida o query param do endpoint de densidade (Story 11.3, AC2).
+
+    `month_first` é obrigatório e deve ser o 1º dia do mês — mesma semântica de
+    `MonthlyTaskCreateSerializer`.
+    """
+
+    month_first = serializers.DateField()
+
+    def validate_month_first(self, value):
+        if value.day != 1:
+            raise serializers.ValidationError("Deve ser o primeiro dia do mês.")
+        return value
+
+
+class TaskDensityEntrySerializer(serializers.Serializer):
+    date = serializers.DateField()
+    count = serializers.IntegerField()
+
+
+class TaskDensityResponseSerializer(serializers.Serializer):
+    density = TaskDensityEntrySerializer(many=True)
 
 
 class RecurringTaskTemplateSerializer(serializers.ModelSerializer):
