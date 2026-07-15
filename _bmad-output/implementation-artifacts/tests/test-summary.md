@@ -1358,3 +1358,7 @@ E2E (prova cross-source contra o backend real), que é o que este workflow exist
 - `lint-imports` segue quebrado desde a 11.1 (`core` importa `bujo` via `purge_e2e_users`),
   registrado nas Completion Notes da própria story como fora de escopo — reforçando a
   recomendação já existente de escalar na retro do Épico 11.
+  **Resolvido** (fix pós-11.3): `purge_e2e_users.py` e seu teste foram movidos de
+  `backend/core/` para `backend/bujo/management/commands/purge_e2e_users.py` e
+  `backend/bujo/tests/test_purge_e2e_users.py` — `core` não depende mais de `bujo`;
+  `lint-imports` reporta `KEPT`.

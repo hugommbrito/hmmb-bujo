@@ -1,7 +1,7 @@
 # Runbook — Branch Neon `e2e` (criação e reset)
 
 > **Referenciável por**: Épico 11 (Refinamento do Planner) — Story 11.1 (isolamento de teste).
-> **Autoridade de código**: `backend/config/settings/e2e.py`, `backend/core/management/commands/purge_e2e_users.py`.
+> **Autoridade de código**: `backend/config/settings/e2e.py`, `backend/bujo/management/commands/purge_e2e_users.py`.
 > **Decisões de arquitetura**: §7.1/§7.4 (config por env, branch por ambiente), AD-12 (`user_id` sem FK).
 
 ---
@@ -138,7 +138,7 @@ Após a Story 11.1, novas execuções de E2E não escrevem mais na branch de dev
 | ------------------------------------------------- | ------------------------------------------------- |
 | `backend/config/settings/e2e.py`                  | Settings module da suíte E2E (lê `.env.e2e`)      |
 | `backend/.env.example`                            | Template versionado das três opções de settings  |
-| `backend/core/management/commands/purge_e2e_users.py` | Comando de limpeza reutilizável (dev e e2e)   |
+| `backend/bujo/management/commands/purge_e2e_users.py` | Comando de limpeza reutilizável (dev e e2e)   |
 | `frontend/e2e/backendEnv.ts`                      | Ponto único do `DJANGO_SETTINGS_MODULE` dos E2E   |
 | `frontend/playwright.config.ts`                   | webServer do backend sob `config.settings.e2e`    |
 | `README.md`                                       | Mapeamento de branches Neon dev/prod/e2e          |
