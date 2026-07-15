@@ -719,6 +719,21 @@ describe('useRecurringTemplatesQuery (AC1, AC2)', () => {
       params: { active: true, recurrence_group: 'weekly' },
     })
   })
+
+  it('busca com filtro unplacedYear como query param snake_case (Story 11.4)', async () => {
+    mockGet.mockResolvedValueOnce({ data: RECURRING_TEMPLATES })
+    const { wrapper } = makeWrapper()
+
+    const { result } = renderHook(
+      () => useRecurringTemplatesQuery({ active: true, recurrenceGroup: 'annual', unplacedYear: 2026 }),
+      { wrapper },
+    )
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(mockGet).toHaveBeenCalledWith('/api/bujo/recurring-templates/', {
+      params: { active: true, recurrence_group: 'annual', unplaced_year: 2026 },
+    })
+  })
 })
 
 describe('useCreateRecurringTemplateMutation (AC1)', () => {
@@ -776,7 +791,7 @@ describe('usePlaceRecurringTemplateMutation (AC2)', () => {
     vi.resetAllMocks()
   })
 
-  it('coloca o template e invalida templates + weeklyLog + monthlyLog', async () => {
+  it('coloca o template e invalida templates + weeklyLog + monthlyLog + futureLog', async () => {
     const { qc, wrapper } = makeWrapper()
     const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
     mockPost.mockResolvedValueOnce({
@@ -794,6 +809,29 @@ describe('usePlaceRecurringTemplateMutation (AC2)', () => {
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.bujo.recurringTemplates() })
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'weeklyLog'] })
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'monthlyLog'] })
+    // Story 11.4: colocar um anual do Future Log pode cair num mês futuro —
+    // sem invalidar futureLog, o grupo novo não aparece sem refresh manual.
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.bujo.futureLog() })
+  })
+
+  it('a invalidação por prefixo alcança a query com unplacedYear no cache (Story 11.4, Task 3.4)', async () => {
+    const { qc, wrapper } = makeWrapper()
+    const unplacedYearKey = keys.bujo.recurringTemplates({
+      active: true,
+      recurrenceGroup: 'annual',
+      unplacedYear: 2026,
+    })
+    qc.setQueryData(unplacedYearKey, [])
+    mockPost.mockResolvedValueOnce({
+      data: { id: 'task-1', title: 'Revisão anual', status: 'pending', subtasks: [] },
+    })
+
+    const { result } = renderHook(() => usePlaceRecurringTemplateMutation(), { wrapper })
+
+    result.current.mutate({ templateId: 'tpl-annual-1', monthFirst: '2026-03-01' })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(qc.getQueryState(unplacedYearKey)?.isInvalidated).toBe(true)
   })
 })
 

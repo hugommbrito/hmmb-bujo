@@ -325,7 +325,7 @@ describe('RecurringPlacementSection integration (AC2)', () => {
     expect(screen.queryByText(/Revisão anual/)).not.toBeInTheDocument()
   })
 
-  it('mês corrente = janeiro: seção mostra templates monthly e annual', async () => {
+  it('mês corrente = janeiro: seção mostra só templates monthly (annual revogado — Story 11.4)', async () => {
     routeRecurringTemplatesGet([MONTHLY_TEMPLATE, ANNUAL_TEMPLATE])
     mockUseMonthlyLogQuery.mockReturnValue({
       isPending: false,
@@ -338,7 +338,7 @@ describe('RecurringPlacementSection integration (AC2)', () => {
     vi.useRealTimers()
 
     expect(await screen.findByText(/Revisão mensal/)).toBeInTheDocument()
-    expect(await screen.findByText(/Revisão anual/)).toBeInTheDocument()
+    expect(screen.queryByText(/Revisão anual/)).not.toBeInTheDocument()
   })
 
   it('mês NÃO-corrente: seção não aparece mesmo com templates ativos', async () => {

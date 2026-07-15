@@ -77,14 +77,7 @@ export function MonthlyPage() {
   // futuro, AD-03) aguardando confirmação de data. Qualquer outro mês mantém
   // o comportamento pré-4.3 (withDate primeiro, "Sem dia definido" depois).
   const isCurrentMonth = monthFirst === currentMonthFirst()
-  // Task 12.3: a seção só aparece no mês corrente (mesmo `isCurrentMonth` de
-  // 4.3 acima); `annual` só se soma quando o mês exibido é janeiro — AD-08
-  // item 5, "abertura do ano" análoga à primeira abertura de mês (Dev Notes).
-  const recurrenceGroups: RecurrenceGroup[] = isCurrentMonth
-    ? Number(monthFirst.slice(5, 7)) === 1
-      ? ['monthly', 'annual']
-      : ['monthly']
-    : []
+  const recurrenceGroups: RecurrenceGroup[] = isCurrentMonth ? ['monthly'] : []
   // Dedup (AC1): templates que já têm instância neste mês (via `sourceTemplate`).
   const placedTemplateIds = new Set(
     tasks.map((task) => task.sourceTemplate).filter((id): id is string => Boolean(id)),

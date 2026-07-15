@@ -163,6 +163,15 @@ class RecurringTaskTemplateListView(APIView):
         recurrence_group_param = request.query_params.get("recurrence_group")
         if recurrence_group_param:
             templates = templates.filter(recurrence_group=recurrence_group_param)
+        unplaced_year_param = request.query_params.get("unplaced_year")
+        if unplaced_year_param:
+            try:
+                unplaced_year = int(unplaced_year_param)
+            except ValueError:
+                raise serializers.ValidationError(
+                    {"unplaced_year": "Deve ser um ano válido (inteiro)."}
+                ) from None
+            templates = templates.exclude(instances__monthly_log__month_first__year=unplaced_year)
         return Response(RecurringTaskTemplateSerializer(templates, many=True).data)
 
     @extend_schema(

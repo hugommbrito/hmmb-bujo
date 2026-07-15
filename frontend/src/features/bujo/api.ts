@@ -331,6 +331,7 @@ export function useMigrateTaskMutation() {
 interface RecurringTemplatesParams {
   active?: boolean
   recurrenceGroup?: RecurrenceGroup
+  unplacedYear?: number
 }
 
 async function fetchRecurringTemplates(
@@ -340,7 +341,11 @@ async function fetchRecurringTemplates(
     // snake_case: espelha o backend real (Task 7.1), não a convenção
     // camelCase aspiracional do §6.3 que WeeklyLogView/MonthlyLogView já não seguem.
     params: params
-      ? { active: params.active, recurrence_group: params.recurrenceGroup }
+      ? {
+          active: params.active,
+          recurrence_group: params.recurrenceGroup,
+          unplaced_year: params.unplacedYear,
+        }
       : undefined,
   })
   return response.data
@@ -434,6 +439,11 @@ export function usePlaceRecurringTemplateMutation() {
       queryClient.invalidateQueries({ queryKey: keys.bujo.recurringTemplates() })
       queryClient.invalidateQueries({ queryKey: ['bujo', 'weeklyLog'] })
       queryClient.invalidateQueries({ queryKey: ['bujo', 'monthlyLog'] })
+      // Story 11.4: colocar um anual do Future Log pode cair num mês futuro
+      // (diferente de Weekly/MonthlyPage, que só colocam no período corrente
+      // já visível) — sem isso, o grupo novo não aparece no Future Log sem
+      // refresh manual da página.
+      queryClient.invalidateQueries({ queryKey: keys.bujo.futureLog() })
       // Colocar um recorrente cria uma Task no período → a densidade muda.
       // Prefixo alcança o sentinel 'current' e qualquer mês (Story 11.3).
       queryClient.invalidateQueries({ queryKey: ['bujo', 'taskDensity'] })

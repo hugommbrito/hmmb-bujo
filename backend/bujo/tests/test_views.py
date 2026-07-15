@@ -12,6 +12,7 @@ from bujo.services.logs import (
     get_or_create_monthly_log,
     get_or_create_weekly_log,
 )
+from bujo.services.recurring import place_template
 from bujo.services.state_machine import transition_task
 from bujo.tests.factories import (
     LogFactory,
@@ -1430,6 +1431,193 @@ def test_get_recurring_templates_filtra_por_recurrence_group(auth_client, user):
 
     assert response.status_code == 200
     assert [t["title"] for t in response.data] == ["Mensal"]
+
+
+@pytest.mark.django_db
+def test_get_recurring_templates_unplaced_year_exclui_template_colocado_no_ano(
+    auth_client, user
+):
+    with tenant_context(user):
+        template = RecurringTaskTemplateFactory(
+            user=user,
+            title="Revisão anual",
+            recurrence_group=RecurringTaskTemplate.RecurrenceGroup.ANNUAL,
+        )
+
+    place_response = auth_client.post(
+        f"/api/bujo/recurring-templates/{template.id}/place/",
+        {"monthFirst": "2026-03-01"},
+        format="json",
+    )
+    assert place_response.status_code == 201
+
+    response = auth_client.get(
+        "/api/bujo/recurring-templates/?recurrence_group=annual&unplaced_year=2026"
+    )
+
+    assert response.status_code == 200
+    assert response.data == []
+
+
+@pytest.mark.django_db
+def test_get_recurring_templates_unplaced_year_inclui_template_sem_nenhuma_instancia(
+    auth_client, user
+):
+    with tenant_context(user):
+        RecurringTaskTemplateFactory(
+            user=user,
+            title="Revisão anual",
+            recurrence_group=RecurringTaskTemplate.RecurrenceGroup.ANNUAL,
+        )
+
+    response = auth_client.get(
+        "/api/bujo/recurring-templates/?recurrence_group=annual&unplaced_year=2026"
+    )
+
+    assert response.status_code == 200
+    assert [t["title"] for t in response.data] == ["Revisão anual"]
+
+
+@pytest.mark.django_db
+def test_get_recurring_templates_unplaced_year_inclui_template_colocado_em_outro_ano(
+    auth_client, user
+):
+    with tenant_context(user):
+        template = RecurringTaskTemplateFactory(
+            user=user,
+            title="Revisão anual",
+            recurrence_group=RecurringTaskTemplate.RecurrenceGroup.ANNUAL,
+        )
+
+    place_response = auth_client.post(
+        f"/api/bujo/recurring-templates/{template.id}/place/",
+        {"monthFirst": "2025-03-01"},
+        format="json",
+    )
+    assert place_response.status_code == 201
+
+    response = auth_client.get(
+        "/api/bujo/recurring-templates/?recurrence_group=annual&unplaced_year=2026"
+    )
+
+    assert response.status_code == 200
+    assert [t["title"] for t in response.data] == ["Revisão anual"]
+
+
+@pytest.mark.django_db
+def test_get_recurring_templates_unplaced_year_presenca_inclui_cancelada(auth_client, user):
+    with tenant_context(user):
+        template = RecurringTaskTemplateFactory(
+            user=user,
+            title="Revisão anual",
+            recurrence_group=RecurringTaskTemplate.RecurrenceGroup.ANNUAL,
+        )
+
+    place_response = auth_client.post(
+        f"/api/bujo/recurring-templates/{template.id}/place/",
+        {"monthFirst": "2026-03-01"},
+        format="json",
+    )
+    assert place_response.status_code == 201
+
+    with tenant_context(user):
+        transition_task(
+            user=user, task_id=place_response.data["id"], to_status=Task.Status.CANCELLED
+        )
+
+    response = auth_client.get(
+        "/api/bujo/recurring-templates/?recurrence_group=annual&unplaced_year=2026"
+    )
+
+    assert response.status_code == 200
+    assert response.data == []
+
+
+@pytest.mark.django_db
+def test_get_recurring_templates_unplaced_year_invalido_retorna_400(auth_client, user):
+    response = auth_client.get("/api/bujo/recurring-templates/?unplaced_year=abc")
+
+    assert response.status_code == 400
+    assert "unplaced_year" in response.data["fields"]
+
+
+@pytest.mark.django_db
+def test_get_recurring_templates_unplaced_year_isola_por_tenant(
+    auth_client, user, other_user
+):
+    with tenant_context(user):
+        RecurringTaskTemplateFactory(
+            user=user,
+            title="Revisão anual",
+            recurrence_group=RecurringTaskTemplate.RecurrenceGroup.ANNUAL,
+        )
+    with tenant_context(other_user):
+        other_template = RecurringTaskTemplateFactory(
+            user=other_user,
+            title="Revisão anual",
+            recurrence_group=RecurringTaskTemplate.RecurrenceGroup.ANNUAL,
+        )
+        place_template(
+            user=other_user, template_id=other_template.id, month_first=date(2026, 3, 1)
+        )
+
+    response = auth_client.get(
+        "/api/bujo/recurring-templates/?recurrence_group=annual&unplaced_year=2026"
+    )
+
+    assert response.status_code == 200
+    assert [t["title"] for t in response.data] == ["Revisão anual"]
+
+
+@pytest.mark.django_db
+def test_get_recurring_templates_unplaced_year_combinado_com_active_e_recurrence_group(
+    auth_client, user
+):
+    with tenant_context(user):
+        pending_annual = RecurringTaskTemplateFactory(
+            user=user,
+            title="Anual pendente",
+            recurrence_group=RecurringTaskTemplate.RecurrenceGroup.ANNUAL,
+            active=True,
+        )
+        placed_annual = RecurringTaskTemplateFactory(
+            user=user,
+            title="Anual colocado",
+            recurrence_group=RecurringTaskTemplate.RecurrenceGroup.ANNUAL,
+            active=True,
+        )
+        RecurringTaskTemplateFactory(
+            user=user,
+            title="Anual inativo",
+            recurrence_group=RecurringTaskTemplate.RecurrenceGroup.ANNUAL,
+            active=False,
+        )
+        RecurringTaskTemplateFactory(
+            user=user,
+            title="Mensal pendente",
+            recurrence_group=RecurringTaskTemplate.RecurrenceGroup.MONTHLY,
+            active=True,
+        )
+        RecurringTaskTemplateFactory(
+            user=user,
+            title="Semanal pendente",
+            recurrence_group=RecurringTaskTemplate.RecurrenceGroup.WEEKLY,
+            active=True,
+        )
+
+    place_response = auth_client.post(
+        f"/api/bujo/recurring-templates/{placed_annual.id}/place/",
+        {"monthFirst": "2026-03-01"},
+        format="json",
+    )
+    assert place_response.status_code == 201
+
+    response = auth_client.get(
+        "/api/bujo/recurring-templates/?active=true&recurrence_group=annual&unplaced_year=2026"
+    )
+
+    assert response.status_code == 200
+    assert [t["title"] for t in response.data] == [pending_annual.title]
 
 
 @pytest.mark.django_db

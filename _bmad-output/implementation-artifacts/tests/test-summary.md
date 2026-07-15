@@ -1362,3 +1362,111 @@ E2E (prova cross-source contra o backend real), que é o que este workflow exist
   `backend/core/` para `backend/bujo/management/commands/purge_e2e_users.py` e
   `backend/bujo/tests/test_purge_e2e_users.py` — `core` não depende mais de `bujo`;
   `lint-imports` reporta `KEPT`.
+
+---
+
+# Resumo de Automação de Testes — Story 11.4: Anuais pendentes consultáveis e colocáveis no Future Log
+
+**Data:** 2026-07-15
+**Framework:** pytest-django (backend) · Vitest 4.1 + @testing-library/react + jest-axe (unit/componente) · Playwright (E2E)
+
+## Escopo
+
+Story backend+frontend de toque mínimo em backend (um filtro aditivo `unplaced_year` em
+`RecurringTaskTemplateListView`, sem novo endpoint, sem diff de contrato) e o grosso em frontend
+(seção nova "Anuais pendentes de [ano]" no `FuturePage`, reusando 100% o fluxo de placement da
+Story 11.3, + revogação da lógica "annual só em janeiro" no `MonthlyPage`). A dev-story já entregou
+cobertura extensa (backend 330 passed, frontend 423 passed/44 files) e fez uma **verificação
+manual via Playwright real** (Task 7.4) contra o backend/frontend reais — inclusive achou e
+corrigiu um bug real de invalidação (`usePlaceRecurringTemplateMutation` não invalidava
+`futureLog`). Esse script, no entanto, foi temporário: criado, executado e **removido** na mesma
+sessão (Debug Log: "não faz parte do File List final"). Isso deixa exatamente a mesma lacuna já
+identificada no workflow QA da 11.3: a prova end-to-end contra o app e o backend reais juntos
+existiu uma vez, mas não ficou como regressão automatizada.
+
+## Lacunas descobertas e auto-aplicadas
+
+Nenhum `.spec.ts` do diretório `e2e/` cobria o fluxo desta story antes deste workflow — `grep` por
+`annual`/`anual` nos specs pré-existentes não retornava nenhuma ocorrência fora de comentários não
+relacionados. Gaps fechados:
+
+- [x] **AC1 (seção aparece/não aparece) sem prova E2E permanente** — nenhum spec permanente
+  verificava, contra o backend real, que templates `annual` sem instância no ano aparecem em
+  "Anuais pendentes de [ano]" no Future Log, nem que a seção fica ausente (sem heading, sem DOM)
+  quando não há nenhum anual pendente — exatamente o que a Task 7.4(e) verificou manualmente e
+  descartou.
+- [x] **AC2 (reaproveitamento do fluxo de placement) sem prova E2E permanente no call site do
+  Future Log** — `recurring-templates.spec.ts` prova o dialog/calendário a partir de
+  `WeeklyPage`/`MonthlyPage`, nunca a partir do `FuturePage`; a diferença de comportamento desta
+  story (`dateFieldType="date"`, `monthFirst` calculado em `onConfirm` a partir da data escolhida
+  ou do mês corrente) nunca foi exercitada em browser real de forma permanente.
+- [x] **Achado real da própria dev-story (invalidação de `futureLog`) sem regressão automatizada**
+  — o bug que a Task 7.4(d) encontrou e corrigiu (grupo do mês futuro não aparecia sem refresh
+  manual) só tem cobertura em `api.test.tsx` (unit, mock de `queryClient.invalidateQueries`); não
+  havia nenhuma prova contra o backend real de que colocar um anual num mês futuro efetivamente
+  popula o grupo certo no Future Log — o cenário exato que expôs o bug.
+- [x] **Placement sem data (cai no mês corrente, fora do Future Log) sem prova E2E** — a Task
+  7.4(c) verificou manualmente que a instância aparece em "Este Mês" quando a data fica em branco;
+  sem teste permanente, uma regressão nesse cálculo (`handleConfirmAnnualPlacement`,
+  `FuturePage.tsx`) não seria pega por nenhuma suíte automatizada rodando contra o app real.
+
+## Teste gerado
+
+`frontend/e2e/future-log-annual.spec.ts` — 1 novo spec, 1 teste:
+
+- [x] `Future Log lista anuais pendentes do ano, placement reusa o fluxo da 11.3 e some sem deixar
+  estado vazio (AC1, AC2, AC3)`: usuário novo (sem templates) confirma que a seção está ausente
+  desde o início; cria dois templates `annual` via Recorrentes (aba "Anual"); confirma que ambos
+  aparecem em "Anuais pendentes de [ano]" no Future Log; coloca o primeiro com uma data ~2 meses no
+  futuro (aguardando `GET /task-density/` e `POST /place/` reais) e confirma que ele some da seção
+  e que a instância aparece no grupo do mês futuro correto do Future Log (prova direta da correção
+  de invalidação de `futureLog` da Task 7.4(d)); coloca o segundo sem preencher data e confirma que
+  a seção inteira desaparece (AC3 — nem o heading fica) e que a instância aparece em "Este Mês"
+  (não no Future Log, já que cai no mês corrente).
+
+## Cobertura por AC
+
+| AC | Critério | Coberto por |
+| --- | --- | --- |
+| AC1 | Seção "Anuais pendentes de [ano]" lista templates `annual` não colocados no ano | `test_views.py` (unit, filtro `unplaced_year`, 7 casos) + `FuturePage.test.tsx` (unit, mock) + `future-log-annual.spec.ts` ← **novo, prova E2E contra o backend real** |
+| AC2 | Placement reusa `RecurringPlacementDialog`/`MonthDensityCalendar`/`usePlaceRecurringTemplateMutation`; item some da seção ao ser colocado | `FuturePage.test.tsx` (unit) + `future-log-annual.spec.ts` ← **novo, prova E2E do call site do Future Log (inédito), inclusive a correção de invalidação de `futureLog`** |
+| AC3 | Sem estado vazio ruidoso (seção ausente quando não há anuais pendentes) | `FuturePage.test.tsx` (unit) + `future-log-annual.spec.ts` ← **novo, prova negativa em dois momentos: antes de criar templates e depois de colocar todos** |
+
+## Resultado da execução
+
+```
+nvm use 22
+npx tsc --noEmit -p .                                          → 0 erros
+npx eslint e2e/future-log-annual.spec.ts                       → 0 erros/avisos
+npx playwright test recurring-templates.spec.ts future-log-annual.spec.ts --reporter=line
+  4 passed (44.0s)
+```
+
+Rodado contra o stack real (`npm run dev` + `manage.py runserver` sob `config.settings.e2e`,
+branch Neon `e2e` dedicada — Story 11.1). Os 3 testes pré-existentes de `recurring-templates.spec.ts`
+continuam passando (regressão zero, inclusive após a revogação da lógica "annual só em janeiro" no
+`MonthlyPage` — nenhum spec pré-existente exercitava esse caminho, confirmado via `grep`).
+
+Suítes unitárias (pytest 330, vitest 423/44) não re-executadas nesta rodada — nenhuma mudança de
+código de produção foi feita, só o novo spec E2E. O gap fechado era especificamente de camada E2E
+(prova permanente contra o backend real, substituindo o script manual descartado da Task 7.4), que
+é o que este workflow existe para cobrir.
+
+## Checklist de validação
+
+- [x] Testes E2E gerados (UI existe) — 1 novo spec, 3 pré-existentes de `recurring-templates.spec.ts` mantidos intactos
+- [x] Testes usam APIs padrão do framework (Playwright, fixture `test`/`expect` já estabelecida)
+- [x] Cobrem happy path (cria → lista → coloca com data futura → some + aparece no grupo certo)
+- [x] Cobrem caso crítico (placement sem data cai no mês corrente, fora do Future Log; AC3 com seção totalmente ausente em dois momentos)
+- [x] Todos os testes rodam com sucesso (4/4, 44.0s)
+- [x] Locators semânticos/acessíveis (`getByRole('tab'|'button'|'dialog')`, `getByLabel`, `getByText`, `getByTestId('task-row')`)
+- [x] Descrições claras em pt-BR, seguindo a convenção do arquivo
+- [x] Sem waits/sleeps artificiais (`waitForResponse` nos round-trips reais de `/task-density/` e `/place/`)
+- [x] Testes independentes (fixture cria usuário novo via signup real por teste)
+- [x] Summary salvo em `_bmad-output/implementation-artifacts/tests/test-summary.md`
+
+## Próximos Passos
+
+- Nenhum débito novo identificado por este workflow. AR-22 (observabilidade) segue pendente, sem
+  dono, conforme já registrado pela própria story (Dev Notes) e pela memória do projeto — não é um
+  achado deste workflow QA, só reforça o que já está escalado.
