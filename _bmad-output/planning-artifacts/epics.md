@@ -136,10 +136,10 @@ _Requisitos técnicos e transversais da Arquitetura (15 ADs + §6 Padrões + §7
 - **AR-19 (Catch-Up / log órfão — AD-09)** — fluxo de migração generalizado; detecção por query (sem cron, sem estado acumulado); gatilhos por condição; ordem mês → semana → dia; dias pulados = lacunas honestas (não 0%); catch-up só de tarefas; reusa método de semeadura idempotente.
 - **AR-20 (Brain Dump técnico — AD-13)** — badge = server state derivado (não store de cliente); endpoint leve `GET /brain-dump/count` com chave `['brainDump','count',userId]`; mutações invalidam a chave; otimismo na captura.
 
-**Lacunas não-bloqueantes (endereçar antes de produção, não bloqueiam o início — §8.4):**
+**Lacunas não-bloqueantes (não bloqueiam o MVP solo — §8.4):**
 
-- **AR-21 (Deploy & Observabilidade — I-1, NFR-6)** — alvo de deploy a definir (Railway/Fly/Render); estratégia de uptime/monitoramento + **canal de alerta** (o §6.4 prevê "500 + alerta" para contexto de tenant ausente).
-- **AR-22 (Logging — I-2)** — stack/formato/níveis de logging estruturado a fixar (junto com AR-21).
+- **AR-21 (Deploy & Observabilidade — I-1, NFR-6)** — alvo de deploy resolvido em Railway; estratégia de uptime/monitoramento + **canal de alerta** fica deferida para o gate multiusuário do Épico 10.0 (o §6.4 prevê "500 + alerta" para contexto de tenant ausente).
+- **AR-22 (Logging — I-2)** — stack/formato/níveis de logging estruturado a fixar. **Não bloqueia o MVP de uso solo**; vira pré-requisito explícito do Épico 10 antes de convidar usuários externos.
 
 ### UX Design Requirements
 
@@ -216,7 +216,7 @@ _Requisitos acionáveis extraídos do EXPERIENCE.md (comportamento, fluxos, comp
 - **NFR-3 (isolamento)** → Épico 1 (fail-closed, gate `test_isolation` verde antes de modelos de domínio) + verificado por épico
 - **NFR-4 (imutabilidade sistêmica)** → Épicos 4 (linhagem), 6 (snapshot hábitos), 8 (snapshot medicamentos)
 - **NFR-5 (dev/prod)** → Épico 1 (branches do Neon, settings split)
-- **NFR-6 (uptime)** → Épico 1 / pré-produção (AR-21, não-bloqueante)
+- **NFR-6 (uptime)** → MVP solo em regime best-effort; Épico 10.0 antes de multiusuário (AR-21/AR-22)
 
 **Requisitos de Arquitetura (ARs):**
 
@@ -233,7 +233,7 @@ _Requisitos acionáveis extraídos do EXPERIENCE.md (comportamento, fluxos, comp
 - **AR-18** (modelo de medicamentos) → Épico 8
 - **AR-19** (catch-up) → Épico 4
 - **AR-20** (Brain Dump técnico) → Épico 5
-- **AR-21, AR-22** (deploy/observabilidade/logging) → pré-produção (não-bloqueantes; nota em Épico 1)
+- **AR-21, AR-22** (deploy/observabilidade/logging) → Épico 10.0 antes de multiusuário (não-bloqueantes para o MVP solo)
 
 **Requisitos de UX Design (UX-DRs):**
 
@@ -306,9 +306,9 @@ Hugo registra entradas de texto livre (múltiplas por dia, sem estrutura) e nave
 **Depende de:** Épicos 1, 3. **Standalone:** diário de gratidão completo. *(FR-4.3 resumo por IA fica no backlog.)*
 
 ### Epic 10: Gestão de Usuários *(pós-MVP — `[não-estimado]`)*
-Convite de novos usuários por email e onboarding de amigos, cada um com espaço de dados isolado. A pré-condição (schema multi-tenant + isolamento fail-closed) já é entregue no Épico 1 — **este épico é mantido no documento como âncora de justificativa do AD-12**, fora da contagem de sprint do MVP. Adiciona apenas a UI de convite/gestão.
+Convite de novos usuários por email e onboarding de amigos, cada um com espaço de dados isolado. A pré-condição (schema multi-tenant + isolamento fail-closed) já é entregue no Épico 1 — **este épico é mantido no documento como âncora de justificativa do AD-12**, fora da contagem de sprint do MVP. Antes de abrir o uso para convidados, fecha a observabilidade mínima que foi deliberadamente deferida do MVP solo (AR-21/AR-22).
 **FRs covered:** FR-6.1, FR-6.2, FR-6.3
-**Depende de:** Épico 1. **Standalone:** fluxo de convite/onboarding. *(FR-6.4 competição fica no backlog.)*
+**Depende de:** Épico 1. **Standalone:** observabilidade mínima + fluxo de convite/onboarding. *(FR-6.4 competição fica no backlog.)*
 
 ---
 
@@ -1251,7 +1251,53 @@ So that eu releia entradas passadas (FR-4.2).
 
 ## Epic 10: Gestão de Usuários *(pós-MVP — `[não-estimado]`)*
 
-> ⚠️ **Fora do escopo do MVP.** Mantido como âncora de justificativa do AD-12 (o isolamento multi-tenant fail-closed do Épico 1 foi construído para este horizonte). **Não entra na contagem de sprint** e não deve ser quebrado em sprint-stories até o MVP fechar.
+> ⚠️ **Fora do escopo do MVP.** Mantido como âncora de justificativa do AD-12 (o isolamento multi-tenant fail-closed do Épico 1 foi construído para este horizonte). **Não entra na contagem de sprint** e não deve ser quebrado em sprint-stories até o MVP fechar. AR-22 não bloqueia o MVP solo, mas a Story 10.0 é pré-requisito para convidar usuários externos.
+
+### Story 10.0: Observabilidade mínima antes de usuários convidados
+
+As a Hugo (operador),
+I want observabilidade mínima antes de convidar novos usuários,
+So that eu consiga detectar indisponibilidade, erros críticos e falhas de onboarding sem depender apenas de relatos manuais (AR-21, AR-22, NFR-6).
+
+**Acceptance Criteria:**
+
+**Given** o backend em produção,
+**When** requisições são processadas,
+**Then** logs estruturados em JSON são emitidos para stdout/Railway,
+**And** incluem `timestamp`, `level`, `event`, `logger`, `request_id`, `method`, `path`, `status_code`, `duration_ms` e `user_id` quando aplicável,
+**And** `user_id` é apenas o UUID interno opaco, nunca email, nome ou conteúdo de payload.
+
+**Given** o sistema de logging,
+**When** qualquer evento ou erro é registrado,
+**Then** tokens, cookies, senhas, headers sensíveis e conteúdo privado do journal nunca aparecem nos logs ou eventos externos,
+**And** existe teste ou checklist explícito validando essa política de dados proibidos.
+
+**Given** uma falha não tratada no backend,
+**When** a exceção ocorre,
+**Then** ela é enviada ao Sentry com contexto seguro,
+**And** ambiente e release/versão são incluídos quando disponíveis.
+
+**Given** os fluxos de convite e onboarding do Épico 10,
+**When** uma falha técnica ocorre nesses fluxos,
+**Then** o erro gera log/evento seguro com `request_id` e contexto operacional suficiente para investigação,
+**And** nenhum dado sensível do convite ou do usuário convidado é registrado.
+
+**Given** o app em produção,
+**When** o endpoint público `/health/` fica indisponível ou retorna status não-2xx,
+**Then** Better Stack gera alerta conforme I-1/NFR-6,
+**And** o canal mínimo de alerta é email para Hugo, salvo substituição explícita por outro canal monitorado,
+**And** Railway permanece a fonte primária de logs de runtime.
+
+**Given** o endpoint `/health/`,
+**When** app e dependências essenciais respondem dentro do timeout configurado,
+**Then** ele retorna `200` com corpo mínimo,
+**And** não exige autenticação nem expõe detalhes sensíveis de infraestrutura.
+
+**Given** a operação do sistema,
+**When** alguém precisar investigar incidente,
+**Then** existe documentação operacional descrevendo stack, formato de logs, níveis (`INFO`, `WARNING`, `ERROR`), dados proibidos e onde consultar Railway/Sentry/Better Stack.
+
+**Out of scope:** dashboards avançados, tracing distribuído, métricas Prometheus/Grafana, alertas complexos por regra de negócio, auditoria de ações de usuário e Sentry frontend (`@sentry/react`) salvo se uma story futura explicitar erros de UI como escopo.
 
 ### Story 10.1: Convite de novos usuários por email
 

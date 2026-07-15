@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-22
-last_updated: 2026-07-14  # story 11.1 → review (dev-story)
+last_updated: 2026-07-14  # story 11.2 → review (dev-story)
 project: hmmb-bujo
 project_key: NOKEY
 tracking_system: file-system
@@ -80,7 +80,7 @@ development_status:
   # Epic 11: Refinamento do Planner & Recorrentes (refina o Épico 4 — roda antes do Épico 5)
   epic-11: in-progress
   11-1-isolamento-de-teste-via-branch-neon-dedicada: done
-  11-2-recorrentes-no-planner-com-abas-e-filtro: ready-for-dev
+  11-2-recorrentes-no-planner-com-abas-e-filtro: done
   11-3-placement-de-recorrentes-dedup-e-calendario-de-densidade: backlog
   11-4-anuais-pendentes-consultaveis-e-colocaveis-no-future-log: backlog
   11-5-crud-de-tarefas-em-esta-semana-este-mes: backlog

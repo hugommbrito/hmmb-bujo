@@ -10,7 +10,7 @@ import { DailyPage } from '../pages/daily/DailyPage'
 import { WeeklyPage } from '../pages/planner/WeeklyPage'
 import { MonthlyPage } from '../pages/planner/MonthlyPage'
 import { FuturePage } from '../pages/planner/FuturePage'
-import { SettingsPage } from '../pages/settings/SettingsPage'
+import { RecurringPage } from '../pages/planner/RecurringPage'
 import { ArchivePage } from '../pages/archive/ArchivePage'
 
 function LoginPageRoute() {
@@ -75,6 +75,11 @@ export const routeDefinitions: RouteObject[] = [
         element: <FuturePage />,
         handle: { title: 'Futuro' },
       },
+      {
+        path: 'planner/recurring',
+        element: <RecurringPage />,
+        handle: { title: 'Recorrentes' },
+      },
       { path: 'habits', element: <PlaceholderPage title="Hábitos" />, handle: { title: 'Hábitos' } },
       {
         path: 'health/metrics',
@@ -109,7 +114,7 @@ export const routeDefinitions: RouteObject[] = [
       },
       {
         path: 'settings',
-        element: <SettingsPage />,
+        element: <PlaceholderPage title="Configurações" />,
         handle: { title: 'Configurações' },
       },
       { path: '*', element: <Navigate to="/today" replace /> },

@@ -18,6 +18,7 @@ import EventNoteIcon from '@mui/icons-material/EventNote'
 import DateRangeIcon from '@mui/icons-material/DateRange'
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth'
 import ScheduleIcon from '@mui/icons-material/Schedule'
+import EventRepeatIcon from '@mui/icons-material/EventRepeat'
 import RepeatIcon from '@mui/icons-material/Repeat'
 import FavoriteOutlineIcon from '@mui/icons-material/FavoriteBorder'
 import ShowChartIcon from '@mui/icons-material/ShowChart'
@@ -53,6 +54,7 @@ const plannerItems: NavItem[] = [
   { label: 'Esta Semana', path: '/planner/week', icon: <DateRangeIcon /> },
   { label: 'Este Mês', path: '/planner/month', icon: <CalendarMonthIcon /> },
   { label: 'Futuro', path: '/planner/future', icon: <ScheduleIcon /> },
+  { label: 'Recorrentes', path: '/planner/recurring', icon: <EventRepeatIcon /> },
 ]
 
 const healthItems: NavItem[] = [

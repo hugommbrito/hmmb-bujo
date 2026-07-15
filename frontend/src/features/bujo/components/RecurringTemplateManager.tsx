@@ -6,6 +6,9 @@ import {
   FormControlLabel,
   MenuItem,
   Select,
+  Switch,
+  Tab,
+  Tabs,
   TextField,
   Typography,
 } from '@mui/material'
@@ -108,16 +111,27 @@ function TemplateRow({ template }: TemplateRowProps) {
   )
 }
 
-// Único componente que `pages/settings` precisa importar (Task 11.2).
+// Gestão de templates recorrentes — agora vive dentro do Planner (Story 11.2).
+// Templates são segmentados em abas por grupo (Semanal/Mensal/Anual) e um
+// filtro "mostrar inativos" inclui/exclui `active=false` (padrão: só ativos).
 export function RecurringTemplateManager() {
   const templates = useRecurringTemplatesQuery()
   const createTemplate = useCreateRecurringTemplateMutation()
+  const [group, setGroup] = useState<RecurrenceGroup>('weekly')
+  const [showInactive, setShowInactive] = useState(false)
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [eisenhower, setEisenhower] = useState<TaskEisenhower | ''>('')
-  const [recurrenceGroup, setRecurrenceGroup] = useState<RecurrenceGroup>('weekly')
   const [recurrenceText, setRecurrenceText] = useState('')
   const [active, setActive] = useState(true)
+
+  // Filtragem client-side (não por query param): um único fetch de tudo +
+  // `.filter()` por grupo/`showInactive`. Espelha a decisão da Story 4.5
+  // (RecurringPlacementSection) e mantém troca de aba instantânea, sem novo
+  // estado de loading; a query key sem params é a que as mutations invalidam.
+  const visibleTemplates = (templates.data ?? []).filter(
+    (template) => template.recurrenceGroup === group && (showInactive || template.active),
+  )
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault()
@@ -129,7 +143,7 @@ export function RecurringTemplateManager() {
       title: trimmedTitle,
       description: description.trim() || null,
       eisenhower: eisenhower || null,
-      recurrenceGroup,
+      recurrenceGroup: group,
       recurrenceText: trimmedText,
       active,
     })
@@ -142,85 +156,93 @@ export function RecurringTemplateManager() {
 
   return (
     <Box>
-      <Typography variant="heading" sx={{ px: 1, mb: 1 }}>
-        Recorrentes
-      </Typography>
-
-      {templates.data?.length === 0 || !templates.data ? (
-        templates.isPending ? null : (
-          <Typography variant="body2" color="text.secondary" sx={{ px: 1, mb: 2 }}>
-            Nenhum template cadastrado.
-          </Typography>
-        )
-      ) : (
-        <Box sx={{ mb: 2 }}>
-          {templates.data.map((template) => (
-            <TemplateRow key={template.id} template={template} />
-          ))}
-        </Box>
-      )}
-
-      <Box
-        component="form"
-        onSubmit={handleSubmit}
-        aria-label="Novo template recorrente"
-        sx={{ display: 'flex', gap: 1, alignItems: 'flex-end', flexWrap: 'wrap', px: 1, py: 1 }}
+      <Tabs
+        value={group}
+        onChange={(_, value) => setGroup(value as RecurrenceGroup)}
+        aria-label="Grupo de recorrência"
+        sx={{ mb: 1 }}
       >
-        <TextField
-          label="Título"
-          size="small"
-          value={title}
-          onChange={(event) => setTitle(event.target.value)}
-        />
-        <TextField
-          label="Descrição"
-          size="small"
-          value={description}
-          onChange={(event) => setDescription(event.target.value)}
-        />
-        <Select
-          size="small"
-          displayEmpty
-          value={eisenhower}
-          onChange={(event) => setEisenhower(event.target.value as TaskEisenhower | '')}
-          inputProps={{ 'aria-label': 'Eisenhower' }}
-        >
-          <MenuItem value="">Nenhum</MenuItem>
-          {(Object.keys(EISENHOWER_LABEL) as TaskEisenhower[])
-            .filter((value) => value !== 'none')
-            .map((value) => (
-              <MenuItem key={value} value={value}>
-                {EISENHOWER_LABEL[value]}
-              </MenuItem>
-            ))}
-        </Select>
-        <Select
-          size="small"
-          value={recurrenceGroup}
-          onChange={(event) => setRecurrenceGroup(event.target.value as RecurrenceGroup)}
-          inputProps={{ 'aria-label': 'Grupo de recorrência' }}
-        >
-          {(Object.keys(RECURRENCE_GROUP_LABEL) as RecurrenceGroup[]).map((group) => (
-            <MenuItem key={group} value={group}>
-              {RECURRENCE_GROUP_LABEL[group]}
-            </MenuItem>
-          ))}
-        </Select>
-        <TextField
-          label="Recorrência (texto livre)"
-          size="small"
-          value={recurrenceText}
-          onChange={(event) => setRecurrenceText(event.target.value)}
-        />
+        {(Object.keys(RECURRENCE_GROUP_LABEL) as RecurrenceGroup[]).map((value) => (
+          <Tab key={value} value={value} label={RECURRENCE_GROUP_LABEL[value]} />
+        ))}
+      </Tabs>
+
+      <Box role="tabpanel" aria-label={RECURRENCE_GROUP_LABEL[group]}>
         <FormControlLabel
+          sx={{ px: 1 }}
           control={
-            <Checkbox checked={active} onChange={(event) => setActive(event.target.checked)} />
+            <Switch
+              checked={showInactive}
+              onChange={(event) => setShowInactive(event.target.checked)}
+            />
           }
-          label="Ativo"
+          label="Mostrar inativos"
         />
-        <Button type="submit" startIcon={<AddIcon />}>
-          Criar
-        </Button>
+
+        {visibleTemplates.length === 0 ? (
+          templates.isPending ? null : (
+            <Typography variant="body2" color="text.secondary" sx={{ px: 1, mb: 2 }}>
+              Nenhum template neste grupo.
+            </Typography>
+          )
+        ) : (
+          <Box sx={{ mb: 2 }}>
+            {visibleTemplates.map((template) => (
+              <TemplateRow key={template.id} template={template} />
+            ))}
+          </Box>
+        )}
+
+        <Box
+          component="form"
+          onSubmit={handleSubmit}
+          aria-label="Novo template recorrente"
+          sx={{ display: 'flex', gap: 1, alignItems: 'flex-end', flexWrap: 'wrap', px: 1, py: 1 }}
+        >
+          <TextField
+            label="Título"
+            size="small"
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+          />
+          <TextField
+            label="Descrição"
+            size="small"
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+          />
+          <Select
+            size="small"
+            displayEmpty
+            value={eisenhower}
+            onChange={(event) => setEisenhower(event.target.value as TaskEisenhower | '')}
+            inputProps={{ 'aria-label': 'Eisenhower' }}
+          >
+            <MenuItem value="">Nenhum</MenuItem>
+            {(Object.keys(EISENHOWER_LABEL) as TaskEisenhower[])
+              .filter((value) => value !== 'none')
+              .map((value) => (
+                <MenuItem key={value} value={value}>
+                  {EISENHOWER_LABEL[value]}
+                </MenuItem>
+              ))}
+          </Select>
+          <TextField
+            label="Recorrência (texto livre)"
+            size="small"
+            value={recurrenceText}
+            onChange={(event) => setRecurrenceText(event.target.value)}
+          />
+          <FormControlLabel
+            control={
+              <Checkbox checked={active} onChange={(event) => setActive(event.target.checked)} />
+            }
+            label="Ativo"
+          />
+          <Button type="submit" startIcon={<AddIcon />}>
+            Criar
+          </Button>
+        </Box>
       </Box>
     </Box>
   )

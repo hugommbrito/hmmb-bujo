@@ -56,6 +56,17 @@ describe('Sidebar', () => {
     expect(screen.getByText('Esta Semana')).toBeInTheDocument()
   })
 
+  it('test_item_recorrentes_sob_grupo_planner', () => {
+    renderSidebar({ initialPath: '/today' })
+
+    // Planner inicia expandido — o item "Recorrentes" (Story 11.2) fica junto
+    // dos demais subitens do grupo Planner.
+    expect(screen.getByText('Esta Semana')).toBeInTheDocument()
+    expect(screen.getByText('Este Mês')).toBeInTheDocument()
+    expect(screen.getByText('Futuro')).toBeInTheDocument()
+    expect(screen.getByText('Recorrentes')).toBeInTheDocument()
+  })
+
   it('test_collapsed_oculta_textos_de_labels', () => {
     renderSidebar({ collapsed: true })
     // Quando collapsed, os ListItemText não são renderizados

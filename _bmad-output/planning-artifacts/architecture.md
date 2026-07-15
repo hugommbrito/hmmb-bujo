@@ -82,7 +82,7 @@ O sistema cobre 35 requisitos funcionais em 7 categorias:
 | Auth | djangorestframework-simplejwt (email/senha + JWT com refresh token) |
 | Frontend | React SPA + Material UI |
 | Isolamento multi-tenant | Camada de aplicação: manager auto-escopado por `user_id` (autoritativo). RLS **não usado** no MVP — ver AD-12 |
-| Deploy | Railway, Fly.io ou Render (a definir) |
+| Deploy | Railway |
 
 ---
 
@@ -820,7 +820,7 @@ Não há tópicos arquiteturais em aberto. As pendências de **reconciliação c
 
 **Estrutura do Projeto:** ✅ concluído (step-06, ver Seção 7) — árvore monorepo (`backend/` + `frontend/`), dev/prod via branches do Neon, refinada em party-mode (Amelia, Winston, Sally). Decisões-chave: autoridade do "dia" em `core/calendar.py` (grafo acíclico), regra de porta do `core` via import-linter, catch-up tasks-only em `bujo/services/` (AD-09), camada `app/`+`pages/` no frontend com ESLint boundary, prefetch paralelo no Daily Log (NFR-2) com `/daily/:date` agregado reservado (AD-14).
 
-**Validação:** ✅ concluída (step-07, ver Seção 8) — **READY FOR IMPLEMENTATION** (16/16 no checklist, confiança alta, sem lacunas críticas). Lacunas importantes não-bloqueantes: deploy/observabilidade (I-1) e logging (I-2).
+**Validação:** ✅ concluída (step-07, ver Seção 8) — **READY FOR IMPLEMENTATION** (16/16 no checklist, confiança alta, sem lacunas críticas). Lacunas importantes não-bloqueantes para o MVP solo: observabilidade/uptime (I-1) e logging (I-2), deferidos como gate antes de multiusuário no Épico 10.
 
 **Próximos passos sugeridos:**
 
@@ -1139,7 +1139,7 @@ hmmb-bujo/
 - **Leitura:** componente → `useQuery` (chave da factory) → Axios → `/api/...` → view → `TenantManager` (escopo) → DB (Neon).
 - **Escrita:** componente → `useMutation`/`useOptimisticMutation` → Axios → view → serializer → service (`@transaction.atomic`) → DB; resposta invalida a chave por prefixo.
 - **Daily Log (tela crítica, NFR-2):** `pages/daily/useDailyData.ts` dispara **prefetch paralelo** das query keys de `bujo`/`habits`/`medications`/`gratitude` no load da rota (sem prop-drilling; cada widget lê seu dado do cache). Se o <2s não se sustentar, endpoint agregado `/api/daily/{date}/` que hidrata o cache de várias features de uma vez — **reservado, não no MVP** (coerente com AD-14).
-- **Externos:** Neon (Postgres gerenciado, branch por ambiente). Deploy a definir. Sem outras integrações no MVP.
+- **Externos:** Neon (Postgres gerenciado, branch por ambiente) e Railway (deploy). Sem outras integrações no MVP solo; Sentry/Better Stack entram no gate multiusuário do Épico 10.
 
 ### 7.4 Configuração, Build, Testes & Deploy
 
@@ -1147,7 +1147,7 @@ hmmb-bujo/
 - **Build:** backend sem build; frontend `vite build` → estáticos. Geração de `types.gen.ts` é passo de CI.
 - **Testes:** `core/tests/test_isolation.py` testa o `TenantManager` genérico (incl. fail-closed); o isolamento por-app é validado por uma **fixture parametrizada compartilhada** no `conftest.py` (não copy-paste de `test_isolation.py` por app). `factory_boy` por app; toda factory tenant declara `user = SubFactory(UserFactory)`.
 - **CI (`.github/workflows/ci.yml`):** `ruff` + `pytest` (backend) + **import-linter** (regra de porta do `core`) + guardrail de tenant (AD-12) + diff de `types.gen.ts`; `tsc` + ESLint (incl. regra de boundary de features) + `vite build` (frontend). **Decisão de escopo (Story 1.1, revisitada e mantida na Story 2.4):** Vitest **não** roda no CI — os testes de frontend (incl. regressão de acessibilidade via `jest-axe`) são a rede de segurança do desenvolvedor local e do code-review, não um gate de pipeline.
-- **Deploy:** alvo a definir; estrutura deploy-agnóstica via 12-factor/env (disciplina, não ausência de decisão). Migrations no release; frontend como estáticos/CDN. Branch Neon por ambiente; nada assume estado de banco no boot.
+- **Deploy:** Railway como alvo definido; estrutura preserva disciplina 12-factor/env. Migrations no release; frontend como estáticos/CDN. Branch Neon por ambiente; nada assume estado de banco no boot.
 
 ---
 
@@ -1184,7 +1184,7 @@ _Verificação de coerência, cobertura de requisitos e prontidão para implemen
 | NFR-3 isolamento total | ✅ (mais forte) | AD-12, §6.7 fail-closed, `test_isolation`, import-linter + guardrail |
 | NFR-4 imutabilidade sistêmica | ✅ | AD-06/07 (config prospectiva, sem retroação), §6.8 |
 | NFR-5 dev/prod separados | ✅ | §7.4 (branch Neon por ambiente, settings split) |
-| NFR-6 uptime 99% (6h–23h) | ⚠️ parcial | Depende do alvo de deploy (a definir) + SLA do Neon — ver Gap I-1 |
+| NFR-6 uptime 99% (6h–23h) | ⚠️ parcial | Deploy em Railway já definido; depende de monitoramento externo/canal de alerta + SLA do Neon — ver Gap I-1 |
 
 ### 8.3 Prontidão para Implementação ✅
 
@@ -1196,9 +1196,20 @@ _Verificação de coerência, cobertura de requisitos e prontidão para implemen
 
 **Críticas (bloqueiam implementação):** nenhuma.
 
-**Importantes (não bloqueiam o início; endereçar antes de produção):**
-- **I-1 — Deploy & Observabilidade (NFR-6):** alvo de deploy indefinido (Railway/Fly/Render) e, com ele, estratégia de uptime, monitoramento e **alerta** (o §6.4 prevê "500 + alerta" para contexto de tenant ausente, mas o canal de alerta não está definido). Não bloqueia o build do MVP; é pré-requisito de produção.
-- **I-2 — Estratégia de logging:** §6.4 define que erro técnico vai para log, mas não fixa stack/formato/níveis de logging estruturado. Recomendado fechar junto com I-1.
+**Importantes (não bloqueiam o MVP solo; endereçar antes de multiusuário):**
+- **I-1 — Deploy & Observabilidade (NFR-6):** alvo de deploy já resolvido em Railway no curso da implementação; estratégia de uptime, monitoramento e **canal de alerta** ainda precisa ser fechada antes de convidar usuários externos. Para o MVP solo, disponibilidade é best-effort; o NFR-6 formal só é verificável após monitoramento externo.
+- **I-2 — Estratégia de logging:** §6.4 define que erro técnico vai para log, mas não fixava stack/formato/níveis de logging estruturado. Decisão deferida para a primeira story do Épico 10, antes de multiusuário: logs estruturados JSON no backend, Railway como fonte primária de runtime logs, Sentry para error tracking e Better Stack para uptime/alertas.
+
+**Decisão deferida — Observabilidade mínima para multiusuário (AR-21/AR-22):**
+- **Gatilho:** não bloqueia o MVP de uso solo; bloqueia convites/onboarding de usuários externos no Épico 10.
+- **Backend logging:** JSON logs em stdout via `python-json-logger` ou `structlog`; escolher `python-json-logger` se a implementação precisar apenas de formatter JSON simples, ou `structlog` se a story justificar eventos estruturados mais ricos.
+- **Campos mínimos:** `timestamp`, `level`, `event`, `logger`, `request_id`, `method`, `path`, `status_code`, `duration_ms` e `user_id` quando aplicável. `user_id` deve ser apenas o UUID interno opaco, nunca email, nome ou conteúdo de payload.
+- **Error tracking:** `sentry-sdk[django]` para exceções não tratadas e erros críticos do backend, com ambiente e release/versão quando disponíveis.
+- **Runtime logs:** Railway permanece o sink primário dos logs de execução.
+- **Healthcheck:** endpoint público sem autenticação em `/health/`, retornando `200` e corpo mínimo quando app e dependências essenciais responderem dentro do timeout configurado; falha retorna status não-2xx para o monitor.
+- **Uptime/alertas:** Better Stack monitora `/health/` e dispara alerta para indisponibilidade conforme I-1/NFR-6. O canal mínimo é email para Hugo; outro canal (Telegram/Slack/Discord) pode substituir se for o canal realmente monitorado.
+- **Dados proibidos:** tokens, cookies, senhas, headers sensíveis e conteúdo privado do journal nunca devem ser registrados em logs ou eventos externos.
+- **Fora do escopo inicial:** dashboards avançados, tracing distribuído, Prometheus/Grafana, alertas complexos por regra de negócio, auditoria de ações de usuário e Sentry frontend (`@sentry/react`), salvo story futura específica para erros de UI.
 
 **Menores (refinamentos):**
 - **M-1 — Pinagem de versões:** a Seção 2 lista tecnologias sem major versions; recomenda-se cravar (Django 5.x, React 18/19, MUI 6, Node LTS, Python 3.12+) na Stack ou nos lockfiles do scaffold.
@@ -1244,7 +1255,7 @@ _Verificação de coerência, cobertura de requisitos e prontidão para implemen
 - Fidelidade à semântica do método BuJo (linhagem, migração, fricção intencional).
 
 **Áreas para Evolução Futura:**
-- Deploy + observabilidade/uptime + canal de alerta (I-1) e logging (I-2).
+- Observabilidade mínima antes de multiusuário (Épico 10.0): uptime + canal de alerta (I-1) e logging/error tracking estruturado (I-2).
 - Endpoint agregado `/daily/:date` se o NFR-2 não se sustentar com prefetch paralelo (AD-14).
 - View materializada se queries analíticas ficarem perceptíveis (AD-01).
 - Pinagem de versões major (M-1).

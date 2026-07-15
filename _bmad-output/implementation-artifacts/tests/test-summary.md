@@ -1180,3 +1180,76 @@ não relacionado aos testes novos.
 
 - O command test entra no gate `pytest` do backend — nenhuma ação de CI adicional necessária.
 - Nenhuma dívida de edge case adicional identificada para esta story (a flakiness ambiental do E2E segue owned pelas ações #4/#5 da retro do Épico 4, fora do escopo desta story).
+
+---
+
+# Resumo de Automação de Testes — Story 11.2: Recorrentes no Planner com abas e filtro
+
+**Data:** 2026-07-14
+**Framework:** Vitest 4.1 + @testing-library/react + jest-axe (unit/componente) · Playwright (E2E)
+
+## Escopo
+
+Story de **movimentação + apresentação** (frontend-only): o CRUD de recorrentes migrou de
+Configurações para o Planner (`/planner/recurring`), com templates em abas por grupo
+(Semanal/Mensal/Anual) e filtro "mostrar inativos". A suíte entregue pela dev-story já era
+sólida; este workflow QA fez **análise de lacunas** e auto-aplicou os casos faltantes na camada
+de componente (a mais rápida e sem dependência de backend).
+
+## Lacunas descobertas e preenchidas (auto-aplicadas)
+
+Em `frontend/src/features/bujo/components/RecurringTemplateManager.test.tsx` (10 → **17 casos**, +7):
+
+- [x] **Aba "Anual" filtra o grupo `annual`** — antes só se verificava que a aba renderiza, nunca a filtragem.
+- [x] **Criar na aba Anual → `recurrenceGroup: 'annual'`** — completa a cobertura dos 3 grupos.
+- [x] **Payload com `description` + `eisenhower`** — antes só `null/null`; agora com valores reais (Select via combobox/opção).
+- [x] **Guarda de validação do form (erro crítico)** — submit vazio / só com título **não** dispara a `create` mutation.
+- [x] **Reset do form após criar** — campos "Título"/"Recorrência" voltam a vazio após submit bem-sucedido.
+- [x] **Estado de loading (`isPending`)** — a mensagem "Nenhum template neste grupo." não aparece enquanto a query está pendente.
+- [x] **Guarda de save vazio na `TemplateRow` (erro crítico)** — salvar edição com título em branco não dispara a `update` mutation.
+
+## Cobertura por AC
+
+| AC | Camada | Status |
+| --- | --- | --- |
+| AC1 — CRUD migra p/ o Planner | `RecurringPage.test.tsx` (smoke), `Sidebar.test.tsx` (item "Recorrentes"), E2E `recurring-templates.spec.ts` | ✅ |
+| AC2 — abas por grupo + filtro de ativos | `RecurringTemplateManager.test.tsx` (abas weekly/monthly/annual, filtro, criação por-grupo, validações, jest-axe) + E2E | ✅ |
+
+## Testes por arquivo
+
+| Arquivo | Testes | Nota |
+| --- | --- | --- |
+| `RecurringTemplateManager.test.tsx` | 17 | +7 lacunas adicionadas neste workflow |
+| `RecurringPage.test.tsx` | 4 | smoke de composição — sem lacuna |
+| `Sidebar.test.tsx` | 11 | item "Recorrentes" sob Planner — sem lacuna |
+| `recurring-templates.spec.ts` (E2E) | 2 | fluxos contra backend real — já verificados pela dev-story |
+
+## Resultado da execução
+
+```
+npm run typecheck  → ✓
+npm run lint       → ✓
+vitest run --no-file-parallelism → 392 passed / 42 files
+```
+
+Baseline da story era 385/42; +7 casos de componente → **392/42**. `--no-file-parallelism` por
+decisão do Debug Log da story (flakiness ambiental de timeout com paralelismo default).
+
+**E2E não re-executado neste passo:** exige backend + vite ativos e é documentadamente flaky em
+cold-start da branch Neon `e2e`. Os 2 fluxos já foram verificados passando contra o backend real
+na dev-story (38s/35s); como aqui só se adicionou teste de componente (nenhuma mudança de UI), o
+comportamento E2E permanece o já verificado. O grupo `annual` ficou coberto na camada de
+componente, evitando alongar um teste de backend real por valor marginal.
+
+## Checklist de validação
+
+- [x] Testes E2E gerados (UI existe) — spec já presente e verificado
+- [x] Testes usam APIs padrão do framework (Vitest + Testing Library + Playwright)
+- [x] Cobrem happy path
+- [x] Cobrem casos críticos de erro (guardas de validação de criação e de edição)
+- [x] Todos os testes rodam com sucesso (392/42)
+- [x] Locators semânticos/acessíveis (`getByRole('tab'|'combobox'|'option'|'checkbox'|'button')`, `getByLabelText`)
+- [x] Descrições claras em pt-BR
+- [x] Sem waits/sleeps artificiais
+- [x] Testes independentes (sem dependência de ordem)
+- [x] Summary salvo em `_bmad-output/implementation-artifacts/tests/test-summary.md`
