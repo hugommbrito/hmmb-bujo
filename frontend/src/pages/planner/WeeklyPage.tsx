@@ -133,12 +133,13 @@ export function WeeklyPage() {
           </DayHeader>
         </>
       ) : (
-        // 7 dias lado a lado, comprimindo proporcionalmente — `minWidth: 0`
-        // em cada coluna evita o scroll horizontal invisível (EXPERIENCE.md
-        // §responsividade).
-        <Box sx={{ display: 'flex', gap: 1 }}>
+        // 7 dias numa grade de 4 colunas → 2 linhas (4 + 3), aliviando o aperto
+        // da linha única (AC3). `gap: 1` cobre espaçamento horizontal e vertical;
+        // `minWidth: 0` em cada coluna evita o scroll horizontal invisível
+        // (EXPERIENCE.md §responsividade).
+        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 1 }}>
           {days.map((day) => (
-            <Box key={day.date} sx={{ flex: '1 1 0', minWidth: 0 }}>
+            <Box key={day.date} sx={{ minWidth: 0 }}>
               <DayHeader
                 logDate={day.date}
                 pendingCount={day.tasks.filter((task) => task.status === 'pending').length}

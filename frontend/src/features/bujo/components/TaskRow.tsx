@@ -143,7 +143,11 @@ export function TaskRow({
   }
 
   return (
-    <Box>
+    // AC5: cards de superfície larga (Daily/Mês/"Sem dia") capam e centralizam
+    // para aproximar chips/ações do título; nas colunas estreitas da grade da
+    // Semana (< maxWidth) o cap é inerte (no-op). Subtarefas fluem dentro do
+    // bloco já limitado do pai — sem centralização aninhada (gate !isSubtask).
+    <Box sx={{ width: '100%', maxWidth: isSubtask ? 'none' : 720, mx: isSubtask ? 0 : 'auto' }}>
       <Box
         data-testid="task-row"
         draggable={isReorderable && !isMobile}
@@ -167,6 +171,8 @@ export function TaskRow({
           pl: 1,
           pr: 1.5,
           position: 'relative',
+          transition: 'background-color 120ms ease',
+          '&:hover': { bgcolor: 'action.hover' },
           '&:hover .drag-handle': { opacity: 1 },
         }}
       >
@@ -193,39 +199,48 @@ export function TaskRow({
         >
           <StatusIcon fontSize="small" />
         </IconButton>
-        {onOpenDetail ? (
-          <Typography
-            component="button"
-            type="button"
-            onClick={() => onOpenDetail(task.id)}
-            aria-label={`Ver detalhes de ${task.title}`}
-            variant="body2"
-            sx={{
-              flex: 1,
-              textAlign: 'left',
-              background: 'none',
-              border: 'none',
-              font: 'inherit',
-              padding: 0,
-              cursor: 'pointer',
-              textDecoration: status === 'cancelled' ? 'line-through' : 'none',
-              color: status === 'completed' ? 'text.disabled' : 'text.primary',
-            }}
-          >
-            {task.title}
-          </Typography>
-        ) : (
-          <Typography
-            variant="body2"
-            sx={{
-              flex: 1,
-              textDecoration: status === 'cancelled' ? 'line-through' : 'none',
-              color: status === 'completed' ? 'text.disabled' : 'text.primary',
-            }}
-          >
-            {task.title}
-          </Typography>
-        )}
+        {/* Coluna título + descrição. `minWidth: 0` é obrigatório para o
+            ellipsis (`noWrap`) da descrição funcionar dentro do flex do card. */}
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          {onOpenDetail ? (
+            <Typography
+              component="button"
+              type="button"
+              onClick={() => onOpenDetail(task.id)}
+              aria-label={`Ver detalhes de ${task.title}`}
+              variant="body2"
+              sx={{
+                textAlign: 'left',
+                background: 'none',
+                border: 'none',
+                font: 'inherit',
+                padding: 0,
+                cursor: 'pointer',
+                textDecoration: status === 'cancelled' ? 'line-through' : 'none',
+                color: status === 'completed' ? 'text.disabled' : 'text.primary',
+              }}
+            >
+              {task.title}
+            </Typography>
+          ) : (
+            <Typography
+              variant="body2"
+              sx={{
+                textDecoration: status === 'cancelled' ? 'line-through' : 'none',
+                color: status === 'completed' ? 'text.disabled' : 'text.primary',
+              }}
+            >
+              {task.title}
+            </Typography>
+          )}
+          {/* AC1/AC2: descrição truncada em 1 linha, só quando há conteúdo
+              (guard falsy cobre null/""/undefined). */}
+          {task.description && (
+            <Typography variant="body-sm" color="text.secondary" noWrap>
+              {task.description}
+            </Typography>
+          )}
+        </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           {eisenhowerChip && (
             <Chip

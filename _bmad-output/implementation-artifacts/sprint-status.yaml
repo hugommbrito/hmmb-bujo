@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-22
-last_updated: 2026-07-16  # story 11.8 → done (review); 11.7 done
+last_updated: 2026-07-16  # story 11.9 → review (dev-story); 11.8 done
 project: hmmb-bujo
 project_key: NOKEY
 tracking_system: file-system
@@ -87,7 +87,7 @@ development_status:
   11-6-mover-migrar-tarefa-de-qualquer-superficie: done
   11-7-edicao-de-tarefa-persiste-em-esta-semana-este-mes: done
   11-8-infos-da-recorrencia-no-modal-de-placement: done
-  11-9-polimento-visual-dos-cards-e-grid-da-semana: backlog
+  11-9-polimento-visual-dos-cards-e-grid-da-semana: review
   11-10-seletor-mover-migrar-completo: backlog
   11-11-navegar-e-agir-em-logs-passados-nao-fechados: backlog
   epic-11-retrospective: optional  # 1ª passada (2026-07-15) mantida; nova retro cobre 11.7–11.11

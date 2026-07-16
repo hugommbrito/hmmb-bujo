@@ -140,6 +140,27 @@ describe('RecurringPlacementSection (AC2)', () => {
     expect(screen.getByText(/Revisão semanal/)).toBeInTheDocument()
   })
 
+  it('exibe a descrição do template quando presente (Story 11.9, AC1)', () => {
+    mockUseRecurringTemplatesQuery.mockReturnValue({
+      isPending: false,
+      data: [{ ...WEEKLY_TEMPLATE, description: 'Rodar a retrospectiva' }],
+    })
+
+    renderSection(['weekly'])
+
+    expect(screen.getByText('Rodar a retrospectiva')).toBeInTheDocument()
+  })
+
+  it('não exibe linha de descrição quando o template não tem descrição (Story 11.9, AC2)', () => {
+    mockUseRecurringTemplatesQuery.mockReturnValue({ isPending: false, data: [WEEKLY_TEMPLATE] })
+
+    renderSection(['weekly'])
+
+    // WEEKLY_TEMPLATE.description é null → só a linha "título — Grupo".
+    expect(screen.getByText(/Revisão semanal/)).toBeInTheDocument()
+    expect(screen.queryByText('Rodar a retrospectiva')).not.toBeInTheDocument()
+  })
+
   it('sem violações de acessibilidade (jest-axe)', async () => {
     mockUseRecurringTemplatesQuery.mockReturnValue({ isPending: false, data: [WEEKLY_TEMPLATE] })
 

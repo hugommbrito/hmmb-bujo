@@ -70,15 +70,30 @@ export function RecurringPlacementSection({
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
+              gap: 1,
               px: 1,
               py: 1,
             }}
           >
-            <Typography variant="body2">
-              {template.title} — {RECURRENCE_GROUP_LABEL[template.recurrenceGroup]}
-              {alreadyPlaced && ' (já colocado)'}
-            </Typography>
-            <Button size="small" variant="outlined" onClick={() => onPlace(template)}>
+            {/* Coluna à esquerda; `minWidth: 0` habilita o ellipsis da descrição. */}
+            <Box sx={{ minWidth: 0 }}>
+              <Typography variant="body2">
+                {template.title} — {RECURRENCE_GROUP_LABEL[template.recurrenceGroup]}
+                {alreadyPlaced && ' (já colocado)'}
+              </Typography>
+              {/* AC1/AC2: descrição truncada em 1 linha, só quando há conteúdo. */}
+              {template.description && (
+                <Typography variant="body-sm" color="text.secondary" noWrap>
+                  {template.description}
+                </Typography>
+              )}
+            </Box>
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={() => onPlace(template)}
+              sx={{ flexShrink: 0 }}
+            >
               Definir placement
             </Button>
           </Box>

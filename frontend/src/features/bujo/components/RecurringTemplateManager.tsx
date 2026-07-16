@@ -92,12 +92,18 @@ function TemplateRow({ template }: TemplateRowProps) {
         </>
       ) : (
         <>
-          <Box sx={{ flex: 1 }}>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
             <Typography variant="body2">{template.title}</Typography>
             <Typography variant="body-sm" color="text.secondary">
               {RECURRENCE_GROUP_LABEL[template.recurrenceGroup]} — {template.recurrenceText}
               {!template.active && ' (inativo)'}
             </Typography>
+            {/* AC1/AC2: descrição truncada em 1 linha, só quando há conteúdo. */}
+            {template.description && (
+              <Typography variant="body-sm" color="text.secondary" noWrap>
+                {template.description}
+              </Typography>
+            )}
           </Box>
           <Button size="small" onClick={() => setEditing(true)}>
             Editar

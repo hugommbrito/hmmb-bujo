@@ -232,6 +232,60 @@ describe('TaskRow (AC2)', () => {
   })
 })
 
+describe('TaskRow — descrição (Story 11.9, AC1/AC2)', () => {
+  const DESCRIPTION = 'Levar documentos ao consulado'
+
+  beforeEach(() => {
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    })
+  })
+
+  it('exibe a descrição abaixo do título quando task.description tem conteúdo (AC1)', () => {
+    renderTaskRow(baseTask({ description: DESCRIPTION }))
+    expect(screen.getByText(DESCRIPTION)).toBeInTheDocument()
+  })
+
+  it.each([
+    ['ausente (undefined)', undefined],
+    ['null', null],
+    ['string vazia', ''],
+  ])('não renderiza linha de descrição quando é %s, sem placeholder (AC2)', (_label, value) => {
+    renderTaskRow(baseTask(value === undefined ? {} : { description: value }))
+    // O título continua visível (o guard não quebrou o card) e nenhuma linha
+    // secundária de descrição aparece.
+    expect(screen.getByText('Finalizar relatório Q2')).toBeInTheDocument()
+    expect(screen.queryByText(DESCRIPTION)).not.toBeInTheDocument()
+  })
+
+  it('subtarefa exibe a própria descrição (herança via recursão, AC1)', () => {
+    renderTaskRow(
+      baseTask({
+        subtasks: [
+          {
+            id: 'sub-1',
+            title: 'Subtarefa 1',
+            status: 'pending',
+            subtasks: [],
+            description: 'Detalhe da subtarefa',
+          },
+        ],
+      }),
+    )
+    expect(screen.getByText('Detalhe da subtarefa')).toBeInTheDocument()
+  })
+})
+
 describe('TaskRow — somente-leitura (Story 4.1, Weekly/Monthly)', () => {
   beforeEach(() => {
     Object.defineProperty(window, 'matchMedia', {

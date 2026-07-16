@@ -318,6 +318,27 @@ describe('RecurringTemplateManager (AC1, AC2)', () => {
     expect(mockUpdateMutate).toHaveBeenCalledWith({ templateId: 'tpl-1', active: false })
   })
 
+  it('a linha do template exibe a descrição quando presente (Story 11.9, AC1)', () => {
+    mockUseRecurringTemplatesQuery.mockReturnValue({
+      isPending: false,
+      data: [{ ...WEEKLY_TEMPLATE, description: 'Fechar pendências da semana' }],
+    })
+
+    renderManager()
+
+    expect(screen.getByText('Fechar pendências da semana')).toBeInTheDocument()
+  })
+
+  it('template sem descrição não mostra linha ruidosa (Story 11.9, AC2)', () => {
+    mockUseRecurringTemplatesQuery.mockReturnValue({ isPending: false, data: [WEEKLY_TEMPLATE] })
+
+    renderManager()
+
+    // WEEKLY_TEMPLATE.description é null → só título + subline de recorrência.
+    expect(screen.getByText('Revisão semanal')).toBeInTheDocument()
+    expect(screen.queryByText('Fechar pendências da semana')).not.toBeInTheDocument()
+  })
+
   it('form de criação segue o grupo da aba: escopo por within evita labels duplicados', () => {
     mockUseRecurringTemplatesQuery.mockReturnValue({ isPending: false, data: [WEEKLY_TEMPLATE] })
 

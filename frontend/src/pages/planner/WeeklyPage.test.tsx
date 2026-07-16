@@ -116,13 +116,17 @@ describe('WeeklyPage (AC3)', () => {
     expect(screen.getByLabelText('Esta Semana')).toBeInTheDocument()
   })
 
-  it('desktop: renderiza os 7 dias lado a lado', () => {
+  it('desktop: renderiza os 7 dias em grade de 2 linhas (AC3)', () => {
     mockUseWeeklyLogQuery.mockReturnValue({ isPending: false, data: WEEKLY_LOG })
 
     renderWeeklyPage()
 
     expect(screen.getByText('Tarefa segunda')).toBeInTheDocument()
     expect(screen.queryByRole('tablist')).not.toBeInTheDocument()
+    // Os 7 dias continuam renderizando (grade de 4 colunas → 4 + 3): um
+    // DayHeader por dia, cada um com seu botão de colapsar. Sem asserção
+    // frágil de `display: grid`.
+    expect(screen.getAllByRole('button', { name: 'Colapsar lista de tarefas' })).toHaveLength(7)
   })
 
   it('mobile: renderiza o seletor de dia e mostra só o dia selecionado', () => {
