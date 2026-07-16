@@ -468,6 +468,7 @@ export interface components {
             title?: string;
             description?: string | null;
             eisenhower?: (components["schemas"]["EisenhowerEnum"] | components["schemas"]["NullEnum"]) | null;
+            category?: (components["schemas"]["CategoryEnum"] | components["schemas"]["NullEnum"]) | null;
             recurrenceGroup?: components["schemas"]["RecurrenceGroupEnum"];
             recurrenceText?: string;
             active?: boolean;
@@ -499,6 +500,7 @@ export interface components {
             title: string;
             description?: string | null;
             eisenhower?: (components["schemas"]["EisenhowerEnum"] | components["schemas"]["BlankEnum"] | components["schemas"]["NullEnum"]) | null;
+            category?: (components["schemas"]["CategoryEnum"] | components["schemas"]["BlankEnum"] | components["schemas"]["NullEnum"]) | null;
             recurrenceGroup: components["schemas"]["RecurrenceGroupEnum"];
             recurrenceText: string;
             active?: boolean;
@@ -507,6 +509,7 @@ export interface components {
             title: string;
             description?: string | null;
             eisenhower?: (components["schemas"]["EisenhowerEnum"] | components["schemas"]["NullEnum"]) | null;
+            category?: (components["schemas"]["CategoryEnum"] | components["schemas"]["NullEnum"]) | null;
             recurrenceGroup: components["schemas"]["RecurrenceGroupEnum"];
             recurrenceText: string;
             /** @default true */

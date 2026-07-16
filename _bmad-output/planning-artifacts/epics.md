@@ -1006,6 +1006,39 @@ So that pendências de períodos passados abertos não fiquem presas — hoje o 
 
 ---
 
+> **3º lote do Épico 11 — nova story via Correct Course (2026-07-16).** A Story 11.12 abaixo nasce da questão em aberto registrada na Story 11.8: o modelo `RecurringTaskTemplate` **não tem** campo `category` (só o `Task` tem, via `Category`/`CategoryEnum`). O Hugo decidiu fechá-la como story curta. Fecha também o item em aberto da **AC4 da Story 11.8** (exibir a categoria da recorrência no placement). Origem: retro do 2º lote + decisão direta do Hugo. **Diferente das stories só-de-frontend deste épico, esta muda schema** (migração + regen de `schema.yaml`/`types.gen.ts`).
+
+### Story 11.12: Categoria em templates recorrentes
+
+As a Hugo,
+I want atribuir uma categoria (cor) aos templates de tarefas recorrentes,
+So that a recorrência já carregue sua categoria e a tarefa gerada herde a cor sem eu reclassificar toda vez (fecha a questão em aberto registrada na Story 11.8).
+
+**Acceptance Criteria:**
+
+**Given** o modelo `RecurringTaskTemplate` (backend),
+**Then** ganha um campo `category` opcional/nulável que **reusa os valores do `Category`/`CategoryEnum` já existente no `Task`** (teal/purple/pink/yellow/green/blue) — sem inventar enum novo; template sem categoria continua válido (`null`).
+
+**Given** a mudança de modelo,
+**Then** há migração Django + serializer atualizado + **regen do contrato** — `schema.yaml` do OpenAPI e `types.gen.ts` gerado; esta story **muda schema**, ao contrário das stories só-de-frontend do 2º lote.
+
+**Given** o CRUD de templates (`RecurringTemplateManager`),
+**When** crio/edito um template,
+**Then** há um seletor de categoria (as mesmas cores do `Task`), a categoria escolhida é persistida e exibida na listagem/edição; deixá-la vazia é permitido (sem categoria).
+
+**Given** o modal/seção de placement de recorrentes (`RecurringPlacementDialog`/`RecurringPlacementSection`, Stories 11.3/11.8),
+**Then** a categoria do template é exibida junto às demais infos — fechando o item em aberto da **AC4 da Story 11.8**; template sem categoria simplesmente não mostra o campo (sem placeholder ruidoso).
+
+**Given** um template **com** categoria colocado/gerado como `Task` real (fluxos de placement manual e de auto-geração já existentes),
+**Then** a `Task` criada **herda** a `category` do template — e permanece **editável** depois na tarefa (sem travar o campo).
+
+**Given** um template **sem** categoria colocado/gerado,
+**Then** a `Task` criada nasce sem categoria (`null`), como hoje — sem regressão.
+
+*Nota:* story curta, mas **toca backend + contrato + frontend** (migração, serializer, regen de `schema.yaml`/`types.gen.ts`, seletor no CRUD e exibição no placement) — não é só-frontend.
+
+---
+
 ## Epic 5: Brain Dump & Captura Rápida (Fase 1b)
 
 A válvula de escape do sistema, especialmente no mobile. Caixa de entrada sem data, indicador persistente como server state derivado e processamento manual.

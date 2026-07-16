@@ -19,6 +19,7 @@ const TEMPLATE: RecurringTaskTemplate = {
   title: 'Revisão mensal',
   description: 'Fechar as contas do mês',
   eisenhower: null,
+  category: null,
   recurrenceGroup: 'monthly',
   recurrenceText: '3x por semana',
   active: true,
@@ -125,6 +126,24 @@ describe('RecurringPlacementDialog (AC2)', () => {
     renderDialog({ template: { ...TEMPLATE, eisenhower } })
 
     expect(screen.queryByText(/Prioridade:/)).not.toBeInTheDocument()
+  })
+
+  // AC4 (Story 11.12): quando o template tem categoria definida, o modal exibe
+  // a etiqueta por extenso junto das demais infos.
+  it.each([
+    ['teal', 'Teal'],
+    ['purple', 'Purple'],
+    ['pink', 'Pink'],
+  ] as const)('exibe a categoria quando definida (%s)', (category, label) => {
+    renderDialog({ template: { ...TEMPLATE, category } })
+
+    expect(screen.getByText(`Categoria: ${label}`)).toBeInTheDocument()
+  })
+
+  it('não exibe a linha de categoria quando ausente (null, fixture default)', () => {
+    renderDialog()
+
+    expect(screen.queryByText(/Categoria:/)).not.toBeInTheDocument()
   })
 
   it('sem violações de acessibilidade (jest-axe)', async () => {

@@ -254,6 +254,7 @@ class RecurringTaskTemplateSerializer(serializers.ModelSerializer):
             "title",
             "description",
             "eisenhower",
+            "category",
             "recurrence_group",
             "recurrence_text",
             "active",
@@ -265,6 +266,9 @@ class RecurringTaskTemplateCreateSerializer(serializers.Serializer):
     description = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     eisenhower = serializers.ChoiceField(
         choices=Task.Eisenhower.choices, required=False, allow_null=True
+    )
+    category = serializers.ChoiceField(
+        choices=Task.Category.choices, required=False, allow_null=True
     )
     recurrence_group = serializers.ChoiceField(
         choices=RecurringTaskTemplate.RecurrenceGroup.choices
@@ -278,6 +282,9 @@ class RecurringTaskTemplateUpdateSerializer(serializers.Serializer):
     description = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     eisenhower = serializers.ChoiceField(
         choices=Task.Eisenhower.choices, required=False, allow_null=True
+    )
+    category = serializers.ChoiceField(
+        choices=Task.Category.choices, required=False, allow_null=True
     )
     recurrence_group = serializers.ChoiceField(
         choices=RecurringTaskTemplate.RecurrenceGroup.choices, required=False

@@ -1659,6 +1659,7 @@ def test_post_recurring_template_cria_e_retorna_201(auth_client):
             "title": "Revisão semanal",
             "recurrenceGroup": "weekly",
             "recurrenceText": "toda sexta",
+            "category": "teal",
         },
         format="json",
     )
@@ -1667,6 +1668,7 @@ def test_post_recurring_template_cria_e_retorna_201(auth_client):
     assert response.data["title"] == "Revisão semanal"
     assert response.data["recurrence_group"] == "weekly"
     assert response.data["active"] is True
+    assert response.data["category"] == "teal"
 
 
 @pytest.mark.django_db
@@ -1934,6 +1936,21 @@ def test_patch_recurring_template_atualiza_e_retorna_200(auth_client, user):
 
     assert response.status_code == 200
     assert response.data["title"] == "Atualizado"
+
+
+@pytest.mark.django_db
+def test_patch_recurring_template_atualiza_category_e_retorna_200(auth_client, user):
+    with tenant_context(user):
+        template = RecurringTaskTemplateFactory(user=user, category=None)
+
+    response = auth_client.patch(
+        f"/api/bujo/recurring-templates/{template.id}/",
+        {"category": "purple"},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert response.data["category"] == "purple"
 
 
 @pytest.mark.django_db

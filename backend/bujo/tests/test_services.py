@@ -924,12 +924,14 @@ def test_create_template_grava_campos_passados(user):
             title="Revisão semanal",
             recurrence_group=RecurringTaskTemplate.RecurrenceGroup.WEEKLY,
             recurrence_text="toda sexta",
+            category=Task.Category.TEAL,
         )
 
         assert template.title == "Revisão semanal"
         assert template.recurrence_group == RecurringTaskTemplate.RecurrenceGroup.WEEKLY
         assert template.recurrence_text == "toda sexta"
         assert template.active is True
+        assert template.category == Task.Category.TEAL
 
 
 @pytest.mark.django_db
@@ -975,6 +977,7 @@ def test_place_template_weekly_cria_task_com_campos_esperados(user):
             title="Revisão semanal",
             description="Descrição",
             eisenhower=Task.Eisenhower.IMPORTANT,
+            category=Task.Category.TEAL,
             recurrence_group=RecurringTaskTemplate.RecurrenceGroup.WEEKLY,
         )
         week_start = week_start_of(today_for(user))
@@ -990,6 +993,24 @@ def test_place_template_weekly_cria_task_com_campos_esperados(user):
         assert task.title == "Revisão semanal"
         assert task.description == "Descrição"
         assert task.eisenhower == Task.Eisenhower.IMPORTANT
+        assert task.category == Task.Category.TEAL
+
+
+@pytest.mark.django_db
+def test_place_template_sem_category_cria_task_sem_categoria(user):
+    """AC6 — regressão: template sem categoria continua colocando a Task
+    sem categoria, exatamente como antes desta story."""
+    with tenant_context(user):
+        template = RecurringTaskTemplateFactory(
+            user=user,
+            category=None,
+            recurrence_group=RecurringTaskTemplate.RecurrenceGroup.WEEKLY,
+        )
+        week_start = week_start_of(today_for(user))
+
+        task = place_template(user=user, template_id=template.id, week_start=week_start)
+
+        assert task.category is None
 
 
 @pytest.mark.django_db

@@ -426,6 +426,7 @@ interface RecurringTemplateFields {
   title: string
   description?: string | null
   eisenhower?: TaskEisenhower | null
+  category?: TaskCategory | null
   recurrenceGroup: RecurrenceGroup
   recurrenceText: string
   active?: boolean

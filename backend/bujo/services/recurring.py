@@ -37,6 +37,7 @@ def place_template(
         title=template.title,
         description=template.description,
         eisenhower=template.eisenhower,
+        category=template.category,
         source_template=template,
     )
     if template.recurrence_group == RecurringTaskTemplate.RecurrenceGroup.WEEKLY:

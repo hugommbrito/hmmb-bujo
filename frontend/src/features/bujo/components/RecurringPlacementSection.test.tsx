@@ -166,6 +166,25 @@ describe('RecurringPlacementSection (AC2)', () => {
     expect(screen.queryByText('Rodar a retrospectiva')).not.toBeInTheDocument()
   })
 
+  it('exibe a categoria do template quando presente (Story 11.12, AC4)', () => {
+    mockUseRecurringTemplatesQuery.mockReturnValue({
+      isPending: false,
+      data: [{ ...WEEKLY_TEMPLATE, category: 'teal' }],
+    })
+
+    renderSection(['weekly'])
+
+    expect(screen.getByText('Categoria: Teal')).toBeInTheDocument()
+  })
+
+  it('não exibe linha de categoria quando o template não tem categoria (Story 11.12, AC4)', () => {
+    mockUseRecurringTemplatesQuery.mockReturnValue({ isPending: false, data: [WEEKLY_TEMPLATE] })
+
+    renderSection(['weekly'])
+
+    expect(screen.queryByText(/Categoria:/)).not.toBeInTheDocument()
+  })
+
   it('sem violações de acessibilidade (jest-axe)', async () => {
     mockUseRecurringTemplatesQuery.mockReturnValue({ isPending: false, data: [WEEKLY_TEMPLATE] })
 

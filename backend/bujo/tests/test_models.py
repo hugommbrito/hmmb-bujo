@@ -228,3 +228,20 @@ def test_deletar_template_nao_deleta_a_task_instancia_set_null(user):
 
         assert Task.objects.filter(id=task.id).exists()
         assert task.source_template_id is None
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("category", list(Task.Category.values))
+def test_recurring_task_template_category_aceita_as_6_choices_validas(user, category):
+    with tenant_context(user):
+        template = RecurringTaskTemplateFactory(user=user, category=category)
+
+        assert template.category == category
+
+
+@pytest.mark.django_db
+def test_recurring_task_template_category_aceita_null(user):
+    with tenant_context(user):
+        template = RecurringTaskTemplateFactory(user=user, category=None)
+
+        assert template.category is None

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Box, Button, Dialog, DialogActions, DialogTitle, TextField, Typography } from '@mui/material'
 import { useTaskDensityQuery } from '../api'
-import type { RecurringTaskTemplate } from '../types'
+import type { RecurringTaskTemplate, TaskCategory } from '../types'
 import { MonthDensityCalendar } from './MonthDensityCalendar'
 
 // Rótulos por extenso das prioridades Eisenhower "reais" (Story 11.8). Só
@@ -12,6 +12,17 @@ const EISENHOWER_LABEL: Record<'ui' | 'u' | 'i', string> = {
   ui: 'Urgente + Importante',
   u: 'Urgente',
   i: 'Importante',
+}
+
+// Categoria não tem sentinela tipo `'none'` (Story 11.12) — todo valor do
+// enum é uma cor real, ausência é só `null`/`''`/`undefined`.
+const CATEGORY_LABEL: Record<TaskCategory, string> = {
+  teal: 'Teal',
+  purple: 'Purple',
+  pink: 'Pink',
+  yellow: 'Yellow',
+  green: 'Green',
+  blue: 'Blue',
 }
 
 interface RecurringPlacementDialogProps {
@@ -73,6 +84,11 @@ export function RecurringPlacementDialog({
             {template.eisenhower && template.eisenhower in EISENHOWER_LABEL && (
               <Typography variant="body-sm" color="text.secondary" component="div" sx={{ mt: 0.5 }}>
                 Prioridade: {EISENHOWER_LABEL[template.eisenhower as 'ui' | 'u' | 'i']}
+              </Typography>
+            )}
+            {template.category && (
+              <Typography variant="body-sm" color="text.secondary" component="div" sx={{ mt: 0.5 }}>
+                Categoria: {CATEGORY_LABEL[template.category]}
               </Typography>
             )}
           </Box>

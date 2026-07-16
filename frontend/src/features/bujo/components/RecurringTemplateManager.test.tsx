@@ -145,6 +145,7 @@ describe('RecurringTemplateManager (AC1, AC2)', () => {
       title: 'Nova tarefa',
       description: null,
       eisenhower: null,
+      category: null,
       recurrenceGroup: 'weekly',
       recurrenceText: 'toda sexta',
       active: true,
@@ -167,6 +168,7 @@ describe('RecurringTemplateManager (AC1, AC2)', () => {
       title: 'Nova mensal',
       description: null,
       eisenhower: null,
+      category: null,
       recurrenceGroup: 'monthly',
       recurrenceText: 'todo dia 1',
       active: true,
@@ -203,6 +205,7 @@ describe('RecurringTemplateManager (AC1, AC2)', () => {
       title: 'Nova anual',
       description: null,
       eisenhower: null,
+      category: null,
       recurrenceGroup: 'annual',
       recurrenceText: 'todo janeiro',
       active: true,
@@ -228,6 +231,32 @@ describe('RecurringTemplateManager (AC1, AC2)', () => {
       title: 'Com detalhes',
       description: 'contexto extra',
       eisenhower: 'ui',
+      category: null,
+      recurrenceGroup: 'weekly',
+      recurrenceText: 'toda sexta',
+      active: true,
+    })
+  })
+
+  it('criar com categoria repassa esse campo no payload', () => {
+    mockUseRecurringTemplatesQuery.mockReturnValue({ isPending: false, data: [] })
+
+    renderManager()
+
+    fireEvent.change(screen.getByLabelText('Título'), { target: { value: 'Com categoria' } })
+    // A categoria é um MUI Select: abrir o combobox e escolher a opção.
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: 'Categoria' }))
+    fireEvent.click(screen.getByRole('option', { name: 'Teal' }))
+    fireEvent.change(screen.getByLabelText('Recorrência (texto livre)'), {
+      target: { value: 'toda sexta' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Criar' }))
+
+    expect(mockCreateMutate).toHaveBeenCalledWith({
+      title: 'Com categoria',
+      description: null,
+      eisenhower: null,
+      category: 'teal',
       recurrenceGroup: 'weekly',
       recurrenceText: 'toda sexta',
       active: true,
@@ -343,6 +372,26 @@ describe('RecurringTemplateManager (AC1, AC2)', () => {
     // WEEKLY_TEMPLATE.description é null → só título + subline de recorrência.
     expect(screen.getByText('Revisão semanal')).toBeInTheDocument()
     expect(screen.queryByText('Fechar pendências da semana')).not.toBeInTheDocument()
+  })
+
+  it('a linha do template exibe a categoria quando presente (Story 11.12, AC3)', () => {
+    mockUseRecurringTemplatesQuery.mockReturnValue({
+      isPending: false,
+      data: [{ ...WEEKLY_TEMPLATE, category: 'teal' }],
+    })
+
+    renderManager()
+
+    expect(screen.getByText('Categoria: Teal')).toBeInTheDocument()
+  })
+
+  it('template sem categoria não mostra linha ruidosa (Story 11.12, AC3)', () => {
+    mockUseRecurringTemplatesQuery.mockReturnValue({ isPending: false, data: [WEEKLY_TEMPLATE] })
+
+    renderManager()
+
+    // WEEKLY_TEMPLATE não declara category (undefined) → sem linha "Categoria: …".
+    expect(screen.queryByText(/Categoria:/)).not.toBeInTheDocument()
   })
 
   it('form de criação segue o grupo da aba: escopo por within evita labels duplicados', () => {

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Box, Button, FormControlLabel, Switch, Typography } from '@mui/material'
 import { useRecurringTemplatesQuery } from '../api'
-import type { RecurrenceGroup, RecurringTaskTemplate } from '../types'
+import type { RecurrenceGroup, RecurringTaskTemplate, TaskCategory } from '../types'
 
 interface RecurringPlacementSectionProps {
   recurrenceGroups: RecurrenceGroup[]
@@ -16,6 +16,17 @@ const RECURRENCE_GROUP_LABEL: Record<RecurrenceGroup, string> = {
   weekly: 'Semanal',
   monthly: 'Mensal',
   annual: 'Anual',
+}
+
+// Categoria não tem sentinela tipo `'none'` (Story 11.12) — todo valor do
+// enum é uma cor real, ausência é só `null`/`''`/`undefined`.
+const CATEGORY_LABEL: Record<TaskCategory, string> = {
+  teal: 'Teal',
+  purple: 'Purple',
+  pink: 'Pink',
+  yellow: 'Yellow',
+  green: 'Green',
+  blue: 'Blue',
 }
 
 // Mesmo molde "banner vazio = sem DOM" de MigrationBanner/CatchUpBanner — um
@@ -88,6 +99,11 @@ export function RecurringPlacementSection({
               {template.description && (
                 <Typography variant="body-sm" color="text.secondary" component="div" noWrap>
                   {template.description}
+                </Typography>
+              )}
+              {template.category && (
+                <Typography variant="body-sm" color="text.secondary" component="div">
+                  Categoria: {CATEGORY_LABEL[template.category]}
                 </Typography>
               )}
             </Box>

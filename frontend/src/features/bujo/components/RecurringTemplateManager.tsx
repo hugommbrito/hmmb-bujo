@@ -18,7 +18,7 @@ import {
   useRecurringTemplatesQuery,
   useUpdateRecurringTemplateMutation,
 } from '../api'
-import type { RecurrenceGroup, RecurringTaskTemplate, TaskEisenhower } from '../types'
+import type { RecurrenceGroup, RecurringTaskTemplate, TaskCategory, TaskEisenhower } from '../types'
 
 const RECURRENCE_GROUP_LABEL: Record<RecurrenceGroup, string> = {
   weekly: 'Semanal',
@@ -31,6 +31,15 @@ const EISENHOWER_LABEL: Record<TaskEisenhower, string> = {
   u: 'Urgente',
   i: 'Importante',
   none: 'Nenhum',
+}
+
+const CATEGORY_LABEL: Record<TaskCategory, string> = {
+  teal: 'Teal',
+  purple: 'Purple',
+  pink: 'Pink',
+  yellow: 'Yellow',
+  green: 'Green',
+  blue: 'Blue',
 }
 
 interface TemplateRowProps {
@@ -107,6 +116,13 @@ function TemplateRow({ template }: TemplateRowProps) {
                 {template.description}
               </Typography>
             )}
+            {/* AC3: categoria persistida "exibida na listagem" — leitura literal
+                escolhida (Dev Notes/Task 11.1): mostrar aqui, não só no formulário. */}
+            {template.category && (
+              <Typography variant="body-sm" color="text.secondary" component="div">
+                Categoria: {CATEGORY_LABEL[template.category]}
+              </Typography>
+            )}
           </Box>
           <Button size="small" onClick={() => setEditing(true)}>
             Editar
@@ -131,6 +147,7 @@ export function RecurringTemplateManager() {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [eisenhower, setEisenhower] = useState<TaskEisenhower | ''>('')
+  const [category, setCategory] = useState<TaskCategory | ''>('')
   const [recurrenceText, setRecurrenceText] = useState('')
   const [active, setActive] = useState(true)
 
@@ -152,6 +169,7 @@ export function RecurringTemplateManager() {
       title: trimmedTitle,
       description: description.trim() || null,
       eisenhower: eisenhower || null,
+      category: category || null,
       recurrenceGroup: group,
       recurrenceText: trimmedText,
       active,
@@ -159,6 +177,7 @@ export function RecurringTemplateManager() {
     setTitle('')
     setDescription('')
     setEisenhower('')
+    setCategory('')
     setRecurrenceText('')
     setActive(true)
   }
@@ -235,6 +254,20 @@ export function RecurringTemplateManager() {
                   {EISENHOWER_LABEL[value]}
                 </MenuItem>
               ))}
+          </Select>
+          <Select
+            size="small"
+            displayEmpty
+            value={category}
+            onChange={(event) => setCategory(event.target.value as TaskCategory | '')}
+            inputProps={{ 'aria-label': 'Categoria' }}
+          >
+            <MenuItem value="">Nenhuma</MenuItem>
+            {(Object.keys(CATEGORY_LABEL) as TaskCategory[]).map((value) => (
+              <MenuItem key={value} value={value}>
+                {CATEGORY_LABEL[value]}
+              </MenuItem>
+            ))}
           </Select>
           <TextField
             label="Recorrência (texto livre)"

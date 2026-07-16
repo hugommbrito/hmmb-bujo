@@ -186,6 +186,9 @@ class RecurringTaskTemplate(TenantModel):
     eisenhower = models.CharField(  # noqa: DJ001 - default copiado no placement; ausência é valor válido
         max_length=8, choices=Task.Eisenhower.choices, null=True, blank=True
     )
+    category = models.CharField(  # noqa: DJ001 - mesma semântica nulável de Task.category
+        max_length=8, choices=Task.Category.choices, null=True, blank=True
+    )
     recurrence_group = models.CharField(max_length=8, choices=RecurrenceGroup.choices)
     # livre, NÃO parseado (addendum AD-08 item 4) — só exibição
     recurrence_text = models.TextField()
