@@ -167,7 +167,7 @@ class TaskReorderView(APIView):
 class RecurringTaskTemplateListView(APIView):
     @extend_schema(responses=RecurringTaskTemplateSerializer(many=True))
     def get(self, request):
-        templates = RecurringTaskTemplate.objects.all()
+        templates = RecurringTaskTemplate.objects.all().order_by("recurrence_text")
         active_param = request.query_params.get("active")
         if active_param is not None:
             templates = templates.filter(active=active_param.lower() == "true")

@@ -1631,6 +1631,27 @@ def test_get_recurring_templates_lista_todos_sem_filtro(auth_client, user):
 
 
 @pytest.mark.django_db
+def test_get_recurring_templates_ordena_por_recurrence_text(auth_client, user):
+    with tenant_context(user):
+        RecurringTaskTemplateFactory(user=user, title="Sexta", recurrence_text="toda sexta")
+        RecurringTaskTemplateFactory(
+            user=user, title="Quarta", recurrence_text="toda quarta"
+        )
+        RecurringTaskTemplateFactory(
+            user=user, title="Segunda", recurrence_text="toda segunda"
+        )
+
+    response = auth_client.get("/api/bujo/recurring-templates/")
+
+    assert response.status_code == 200
+    assert [t["recurrence_text"] for t in response.data] == [
+        "toda quarta",
+        "toda segunda",
+        "toda sexta",
+    ]
+
+
+@pytest.mark.django_db
 def test_get_recurring_templates_filtra_por_active(auth_client, user):
     with tenant_context(user):
         RecurringTaskTemplateFactory(user=user, title="Ativo", active=True)
