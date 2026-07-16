@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react'
+import { Link as RouterLink } from 'react-router-dom'
 import { Box, IconButton, Typography } from '@mui/material'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 
@@ -6,6 +7,15 @@ interface DayHeaderProps {
   logDate: string
   pendingCount: number
   children: ReactNode
+  linkToDaily?: boolean
+}
+
+// ISO ('YYYY-MM-DD') de hoje — cálculo local de UI (mesma técnica de
+// MonthDensityCalendar/Story 11.10); comparação de string, não `Date.getTime()`
+// (Task 8.3), evita falso-negativo por hora/minuto.
+function todayIso(): string {
+  const now = new Date()
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
 }
 
 /**
@@ -25,8 +35,11 @@ function formatDayHeaderDate(logDate: string): string {
   return `${part('weekday')}, ${part('day')} ${part('month')}`.toUpperCase()
 }
 
-export function DayHeader({ logDate, pendingCount, children }: DayHeaderProps) {
+export function DayHeader({ logDate, pendingCount, children, linkToDaily = false }: DayHeaderProps) {
   const [collapsed, setCollapsed] = useState(false)
+  const isToday = logDate === todayIso()
+  const isFuture = logDate > todayIso()
+  const showLink = linkToDaily && !isFuture
 
   return (
     <Box>
@@ -41,7 +54,18 @@ export function DayHeader({ logDate, pendingCount, children }: DayHeaderProps) {
           borderRadius: '2px',
         }}
       >
-        <Typography variant="heading">{formatDayHeaderDate(logDate)}</Typography>
+        {showLink ? (
+          <Typography
+            variant="heading"
+            component={RouterLink}
+            to={isToday ? '/today' : `/daily/${logDate}`}
+            sx={{ color: 'inherit', textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}
+          >
+            {formatDayHeaderDate(logDate)}
+          </Typography>
+        ) : (
+          <Typography variant="heading">{formatDayHeaderDate(logDate)}</Typography>
+        )}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <Typography variant="body-sm" color="text.secondary">
             {pendingCount} pendentes

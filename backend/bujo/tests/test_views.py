@@ -79,6 +79,47 @@ def test_get_today_log_isolamento_entre_tenants(auth_client, user, other_user):
 
 
 @pytest.mark.django_db
+def test_get_today_log_com_log_date_passado_retorna_log_daquele_dia(auth_client, user):
+    past_date = today_for(user) - timedelta(days=10)
+
+    response = auth_client.get(f"/api/bujo/logs/today/?log_date={past_date.isoformat()}")
+
+    assert response.status_code == 200
+    assert response.data["log_date"] == past_date.isoformat()
+
+
+@pytest.mark.django_db
+def test_get_today_log_com_log_date_e_idempotente(auth_client, user):
+    past_date = today_for(user) - timedelta(days=10)
+
+    first = auth_client.get(f"/api/bujo/logs/today/?log_date={past_date.isoformat()}")
+    second = auth_client.get(f"/api/bujo/logs/today/?log_date={past_date.isoformat()}")
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.data["id"] == second.data["id"]
+
+
+@pytest.mark.django_db
+def test_get_today_log_log_date_malformado_retorna_400(auth_client):
+    response = auth_client.get("/api/bujo/logs/today/?log_date=not-a-date")
+
+    assert response.status_code == 400
+    assert "log_date" in response.data["fields"]
+
+
+@pytest.mark.django_db
+def test_get_today_log_sem_log_date_continua_retornando_log_de_hoje(auth_client, user):
+    """Regressão: sem `log_date`, `TodayLogView` continua resolvendo hoje."""
+    expected_today = today_for(user)
+
+    response = auth_client.get("/api/bujo/logs/today/")
+
+    assert response.status_code == 200
+    assert response.data["log_date"] == expected_today.isoformat()
+
+
+@pytest.mark.django_db
 def test_post_transition_valida_pending_para_started(auth_client, user):
     with tenant_context(user):
         task = TaskFactory(user=user, status=Task.Status.PENDING)

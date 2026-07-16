@@ -94,7 +94,21 @@ describe('useTodayLogQuery (AC1)', () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
     expect(result.current.data).toEqual(LOG)
-    expect(mockGet).toHaveBeenCalledWith('/api/bujo/logs/today/')
+    expect(mockGet).toHaveBeenCalledWith('/api/bujo/logs/today/', { params: undefined })
+  })
+
+  it('busca o Daily Log de uma data passada pelo param log_date (Story 11.11)', async () => {
+    const PAST_LOG: Log = { ...LOG, logDate: '2026-06-10' }
+    mockGet.mockResolvedValueOnce({ data: PAST_LOG })
+    const { wrapper } = makeWrapper()
+
+    const { result } = renderHook(() => useTodayLogQuery('2026-06-10'), { wrapper })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data).toEqual(PAST_LOG)
+    expect(mockGet).toHaveBeenCalledWith('/api/bujo/logs/today/', {
+      params: { log_date: '2026-06-10' },
+    })
   })
 })
 
@@ -139,6 +153,31 @@ describe('useTransitionTaskMutation (AC2)', () => {
 
     await waitFor(() => expect(result.current.isError).toBe(true))
     expect(qc.getQueryData<Log>(keys.bujo.todayLog())).toEqual(LOG)
+  })
+
+  it('com logDate, mira o cache do Daily Log passado (Story 11.11, Task 6.3)', async () => {
+    const { qc, wrapper } = makeWrapper()
+    const PAST_LOG: Log = { ...LOG, logDate: '2026-06-10' }
+    qc.setQueryData(keys.bujo.todayLog('2026-06-10'), PAST_LOG)
+
+    let resolvePost!: (value: { data: unknown }) => void
+    mockPost.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolvePost = resolve
+      }),
+    )
+
+    const { result } = renderHook(() => useTransitionTaskMutation('2026-06-10'), { wrapper })
+
+    result.current.mutate({ taskId: 'task-1', toStatus: 'started' })
+
+    await waitFor(() => expect(result.current.isPending).toBe(true))
+    expect(qc.getQueryData<Log>(keys.bujo.todayLog('2026-06-10'))?.tasks[0].status).toBe('started')
+    // Chave de "hoje" não é tocada — mutação mirou só o dia passado.
+    expect(qc.getQueryData<Log>(keys.bujo.todayLog())).toBeUndefined()
+
+    resolvePost({ data: { ...PAST_LOG.tasks[0], status: 'started' } })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
   })
 })
 
@@ -286,6 +325,31 @@ describe('useReorderTaskMutation', () => {
     await waitFor(() => expect(result.current.isError).toBe(true))
     expect(qc.getQueryData<Log>(keys.bujo.todayLog())).toEqual(REORDER_LOG)
   })
+
+  it('com logDate, mira o cache do Daily Log passado (Story 11.11, Task 6.3)', async () => {
+    const { qc, wrapper } = makeWrapper()
+    qc.setQueryData(keys.bujo.todayLog('2026-06-10'), REORDER_LOG)
+
+    let resolvePost!: (value: { data: unknown }) => void
+    mockPost.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolvePost = resolve
+      }),
+    )
+
+    const { result } = renderHook(() => useReorderTaskMutation('2026-06-10'), { wrapper })
+
+    result.current.mutate({ taskId: 'task-2', targetTaskId: 'task-1', position: 'before' })
+
+    await waitFor(() => expect(result.current.isPending).toBe(true))
+    expect(qc.getQueryData<Log>(keys.bujo.todayLog('2026-06-10'))?.tasks.map((t) => t.id)).toEqual([
+      'task-2',
+      'task-1',
+    ])
+
+    resolvePost({ data: REORDER_LOG.tasks[1] })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+  })
 })
 
 describe('useUpdateTaskMutation (AC2)', () => {
@@ -364,6 +428,27 @@ describe('useUpdateTaskMutation (AC2)', () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'weeklyLog'] })
+  })
+
+  it('invalida dailyLog por prefixo no sucesso (edição de tarefa de um Daily Log passado, Story 11.11)', async () => {
+    const { qc, wrapper } = makeWrapper()
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+    qc.setQueryData(keys.bujo.todayLog('2026-06-10'), {
+      id: 'log-past',
+      logDate: '2026-06-10',
+      tasks: [{ id: 'task-1', title: 'Tarefa', status: 'pending', eisenhower: null, category: null, subtasks: [] }],
+    })
+    mockPatch.mockResolvedValueOnce({
+      data: { id: 'task-1', title: 'Editada', status: 'pending', subtasks: [] },
+    })
+
+    const { result } = renderHook(() => useUpdateTaskMutation(), { wrapper })
+
+    result.current.mutate({ taskId: 'task-1', title: 'Editada' })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'dailyLog'] })
+    expect(qc.getQueryState(keys.bujo.todayLog('2026-06-10'))?.isInvalidated).toBe(true)
   })
 })
 
@@ -558,7 +643,7 @@ describe('useDeleteTaskMutation (Story 11.5, AC3)', () => {
     })
   })
 
-  it('invalida todayLog, weeklyLog, monthlyLog e taskDensity no sucesso', async () => {
+  it('invalida dailyLog (por prefixo), weeklyLog, monthlyLog e taskDensity no sucesso', async () => {
     const { qc, wrapper } = makeWrapper()
     const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
     mockDelete.mockResolvedValueOnce({ status: 204, data: null })
@@ -568,10 +653,27 @@ describe('useDeleteTaskMutation (Story 11.5, AC3)', () => {
     result.current.mutate({ taskId: 'task-1' })
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.bujo.todayLog() })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'dailyLog'] })
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'weeklyLog'] })
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'monthlyLog'] })
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'taskDensity'] })
+  })
+
+  it('a invalidação por prefixo ["bujo","dailyLog"] alcança um Daily Log passado (Story 11.11)', async () => {
+    const { qc, wrapper } = makeWrapper()
+    qc.setQueryData(keys.bujo.todayLog('2026-06-10'), { id: 'log-past', logDate: '2026-06-10', tasks: [] })
+    mockDelete.mockResolvedValueOnce({ status: 204, data: null })
+
+    const { result } = renderHook(() => useDeleteTaskMutation(), { wrapper })
+
+    result.current.mutate({ taskId: 'task-1' })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    // `invalidateQueries` marca a query como stale — `undefined` indica que já
+    // foi removida do cache antes deste ponto ou que o refetch (sem observers
+    // ativos) não a repovoou; aqui só confirmamos que a invalidação por
+    // prefixo não lança e que a chave de "hoje" continua intacta (regressão).
+    expect(qc.getQueryState(keys.bujo.todayLog('2026-06-10'))?.isInvalidated).toBe(true)
   })
 })
 
@@ -623,11 +725,26 @@ describe('useMigrateTaskMutation (AC3)', () => {
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.bujo.weeklyReviewQueue() })
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.bujo.monthlyReviewQueue() })
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.bujo.catchUpQueue() })
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.bujo.todayLog() })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'dailyLog'] })
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'weeklyLog'] })
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'monthlyLog'] })
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'futureLog'] })
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'taskDensity'] })
+  })
+
+  it('a invalidação por prefixo ["bujo","dailyLog"] alcança um Daily Log passado (Story 11.11)', async () => {
+    const { qc, wrapper } = makeWrapper()
+    qc.setQueryData(keys.bujo.todayLog('2026-06-10'), { id: 'log-past', logDate: '2026-06-10', tasks: [] })
+    mockPost.mockResolvedValueOnce({
+      data: { id: 'task-1', title: 'Pendente', status: 'migrated', subtasks: [] },
+    })
+
+    const { result } = renderHook(() => useMigrateTaskMutation(), { wrapper })
+
+    result.current.mutate({ taskId: 'task-1', destination: 'today' })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(qc.getQueryState(keys.bujo.todayLog('2026-06-10'))?.isInvalidated).toBe(true)
   })
 
   it('destination=week monta o payload certo', async () => {

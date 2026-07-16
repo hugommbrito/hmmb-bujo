@@ -54,7 +54,16 @@ from core.calendar import today_for, week_start_of
 class TodayLogView(APIView):
     @extend_schema(responses=LogSerializer)
     def get(self, request):
-        log_date = today_for(request.user)
+        log_date_param = request.query_params.get("log_date")
+        if log_date_param:
+            try:
+                log_date = date.fromisoformat(log_date_param)
+            except ValueError:
+                raise serializers.ValidationError(
+                    {"log_date": "Data inválida. Use o formato AAAA-MM-DD."}
+                ) from None
+        else:
+            log_date = today_for(request.user)
         log = get_or_create_daily_log(user=request.user, log_date=log_date)
         return Response(LogSerializer(log).data)
 

@@ -490,7 +490,7 @@ describe('Indicador "Fechado" e modo Arquivo (AC1/AC2)', () => {
     expect(screen.queryByText('Fechado')).not.toBeInTheDocument()
   })
 
-  it('rota /archive/monthly/:monthFirst chama useMonthlyLogQuery com o monthFirst da URL e esconde form + recorrentes', () => {
+  it('rota /archive/monthly/:monthFirst chama useMonthlyLogQuery com o monthFirst da URL, closed: true esconde form + recorrentes', () => {
     mockUseMonthlyLogQuery.mockReturnValue({
       isPending: false,
       data: { ...MONTHLY_LOG, closed: true },
@@ -505,6 +505,18 @@ describe('Indicador "Fechado" e modo Arquivo (AC1/AC2)', () => {
     expect(screen.queryByRole('button', { name: 'Definir placement' })).not.toBeInTheDocument()
   })
 
+  it('form aparece em período passado aberto (closed: false) mesmo via rota parametrizada', () => {
+    mockUseMonthlyLogQuery.mockReturnValue({
+      isPending: false,
+      data: { ...MONTHLY_LOG, closed: false },
+      refetch: mockRefetch,
+    })
+
+    renderMonthlyPageAtArchiveRoute('2026-06-01')
+
+    expect(screen.getByLabelText('Adicionar tarefa ao mês')).toBeInTheDocument()
+  })
+
   it('closed: true também esconde o form de criação no período corrente (não só no Arquivo)', () => {
     mockUseMonthlyLogQuery.mockReturnValue({
       isPending: false,
@@ -515,6 +527,141 @@ describe('Indicador "Fechado" e modo Arquivo (AC1/AC2)', () => {
     renderMonthlyPage()
 
     expect(screen.queryByLabelText('Adicionar tarefa ao mês')).not.toBeInTheDocument()
+  })
+})
+
+describe('Navegação anterior/próximo + indicadores de 3 estados (Story 11.11, AC1/AC5)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockGet.mockResolvedValue({ data: [] })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('mês corrente: botão "Mês anterior" navega para monthFirst -1 mês, sem "Próximo mês"', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-15T12:00:00'))
+    mockUseMonthlyLogQuery.mockReturnValue({
+      isPending: false,
+      data: MONTHLY_LOG_CURRENT,
+      refetch: mockRefetch,
+    })
+
+    renderMonthlyPage()
+
+    expect(screen.getByRole('link', { name: 'Mês anterior' })).toHaveAttribute(
+      'href',
+      '/archive/monthly/2026-06-01',
+    )
+    expect(screen.queryByRole('link', { name: 'Próximo mês' })).not.toBeInTheDocument()
+    expect(screen.queryByText('Você está vendo um mês passado.')).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Voltar para o mês atual' })).not.toBeInTheDocument()
+  })
+
+  it('mês passado aberto: indicador informativo + "Próximo mês" navega para monthFirst +1 mês', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-15T12:00:00'))
+    mockUseMonthlyLogQuery.mockReturnValue({
+      isPending: false,
+      data: MONTHLY_LOG_CURRENT,
+      refetch: mockRefetch,
+    })
+
+    renderMonthlyPage()
+
+    expect(screen.getByText('Você está vendo um mês passado.')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Próximo mês' })).toHaveAttribute(
+      'href',
+      '/archive/monthly/2026-08-01',
+    )
+    expect(screen.getByRole('link', { name: 'Voltar para o mês atual' })).toHaveAttribute(
+      'href',
+      '/planner/month',
+    )
+  })
+
+  it('"Próximo mês" a partir do mês imediatamente anterior ao corrente cai na rota canônica', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-08-15T12:00:00'))
+    mockUseMonthlyLogQuery.mockReturnValue({
+      isPending: false,
+      data: MONTHLY_LOG_CURRENT,
+      refetch: mockRefetch,
+    })
+
+    renderMonthlyPage()
+
+    expect(screen.getByRole('link', { name: 'Próximo mês' })).toHaveAttribute(
+      'href',
+      '/planner/month',
+    )
+  })
+
+  it('mês passado fechado: indicador "Fechado" (não o informativo) + link de volta', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-15T12:00:00'))
+    mockUseMonthlyLogQuery.mockReturnValue({
+      isPending: false,
+      data: { ...MONTHLY_LOG_CURRENT, closed: true },
+      refetch: mockRefetch,
+    })
+
+    renderMonthlyPage()
+
+    expect(screen.getByText('Fechado')).toBeInTheDocument()
+    expect(screen.queryByText('Você está vendo um mês passado.')).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Voltar para o mês atual' })).toBeInTheDocument()
+  })
+
+  it('sem violações de acessibilidade (jest-axe) num mês passado aberto (nav anterior/próximo + indicador + link de volta)', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-15T12:00:00'))
+    mockUseMonthlyLogQuery.mockReturnValue({
+      isPending: false,
+      data: MONTHLY_LOG_CURRENT,
+      refetch: mockRefetch,
+    })
+
+    const { container } = renderMonthlyPage()
+    // `axe` usa timers reais internamente — sem isso, trava com fake timers ativos.
+    vi.useRealTimers()
+
+    expect(await axe(container)).toHaveNoViolations()
+  })
+
+  it('rascunho do formulário não vaza entre meses ao navegar via "Mês anterior" (regressão — MonthlyPage não remonta entre rotas)', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-15T12:00:00'))
+    mockUseMonthlyLogQuery.mockImplementation((monthFirst?: string) => ({
+      isPending: false,
+      data: { ...MONTHLY_LOG_CURRENT, monthFirst: monthFirst ?? MONTHLY_LOG_CURRENT.monthFirst },
+      refetch: mockRefetch,
+    }))
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+
+    render(
+      <QueryClientProvider client={qc}>
+        <ThemeProvider theme={createBujoTheme('light')}>
+          <MemoryRouter initialEntries={['/planner/month']}>
+            <Routes>
+              <Route path="/planner/month" element={<MonthlyPage />} />
+              <Route path="/archive/monthly/:monthFirst" element={<MonthlyPage />} />
+            </Routes>
+          </MemoryRouter>
+        </ThemeProvider>
+      </QueryClientProvider>,
+    )
+
+    fireEvent.change(screen.getByLabelText('Título'), { target: { value: 'rascunho não enviado' } })
+    expect(screen.getByLabelText('Título')).toHaveValue('rascunho não enviado')
+
+    fireEvent.click(screen.getByRole('link', { name: 'Mês anterior' }))
+
+    expect(screen.getByLabelText('Título')).toHaveValue('')
   })
 })
 
@@ -543,7 +690,7 @@ describe('onOpenDetail (Story 11.5, AC2/AC4)', () => {
     expect(titleInputs[titleInputs.length - 1]).toHaveValue('Com dia')
   })
 
-  it('painel não abre (TaskRow somente-leitura) quando isArchiveView', () => {
+  it('painel não abre (TaskRow somente-leitura) quando closed: true, mesmo via rota parametrizada', () => {
     mockUseMonthlyLogQuery.mockReturnValue({
       isPending: false,
       data: { ...MONTHLY_LOG, closed: true },
@@ -553,6 +700,18 @@ describe('onOpenDetail (Story 11.5, AC2/AC4)', () => {
     renderMonthlyPageAtArchiveRoute('2026-06-01')
 
     expect(screen.queryByRole('button', { name: 'Ver detalhes de Com dia' })).not.toBeInTheDocument()
+  })
+
+  it('painel abre (TaskRow acionável) em período passado aberto (closed: false) via rota parametrizada', () => {
+    mockUseMonthlyLogQuery.mockReturnValue({
+      isPending: false,
+      data: { ...MONTHLY_LOG, closed: false },
+      refetch: mockRefetch,
+    })
+
+    renderMonthlyPageAtArchiveRoute('2026-06-01')
+
+    expect(screen.getByRole('button', { name: 'Ver detalhes de Com dia' })).toBeInTheDocument()
   })
 
   it('painel não abre (TaskRow somente-leitura) quando closed: true no período corrente', () => {

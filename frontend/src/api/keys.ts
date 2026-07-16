@@ -11,7 +11,7 @@ export const keys = {
   // Story 3.2. `AuthProvider.logout()` já limpa o cache inteiro na troca de
   // usuário, cobrindo o risco que o userId na chave mitigaria.
   bujo: {
-    todayLog: () => ['bujo', 'dailyLog', 'today'] as const,
+    todayLog: (logDate?: string) => ['bujo', 'dailyLog', logDate ?? 'today'] as const,
     weeklyLog: (weekStart?: string) => ['bujo', 'weeklyLog', weekStart ?? 'current'] as const,
     monthlyLog: (monthFirst?: string) => ['bujo', 'monthlyLog', monthFirst ?? 'current'] as const,
     futureLog: () => ['bujo', 'futureLog', 'list'] as const,

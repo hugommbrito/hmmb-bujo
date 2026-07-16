@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { Box, Typography } from '@mui/material'
+import { Link as RouterLink, useParams } from 'react-router-dom'
+import { Box, Button, Typography } from '@mui/material'
 import {
   CatchUpBanner,
   MigrationBanner,
@@ -18,19 +19,26 @@ import { findTaskById } from '../../features/bujo/taskTree'
 import { useDailyData } from './useDailyData'
 
 export function DailyPage() {
-  const { todayLog } = useDailyData()
-  const transition = useTransitionTaskMutation()
+  const { date: routeDate } = useParams<{ date: string }>()
+  const { todayLog } = useDailyData(routeDate)
+  const transition = useTransitionTaskMutation(routeDate)
   const createTask = useCreateTaskMutation()
-  const reorder = useReorderTaskMutation()
+  const reorder = useReorderTaskMutation(routeDate)
   const [openTaskId, setOpenTaskId] = useState<string | null>(null)
   const addTaskInputRef = useRef<HTMLInputElement>(null)
+  const ariaLabel = routeDate ? `Daily Log de ${routeDate}` : 'Hoje'
 
   function handleReorder(taskId: string, targetTaskId: string, position: 'before' | 'after') {
     reorder.mutate({ taskId, targetTaskId, position })
   }
 
   // Atalho `N` — escopo desta página (não global como `[` em AppLayout.tsx).
+  // Desativado num Daily Log passado (`routeDate` presente): criação de
+  // tarefa fica restrita a hoje (Task 1.2/6.5, sem endpoint de backend
+  // para criar num container `log` arbitrário).
   useEffect(() => {
+    if (routeDate) return
+
     function handleKeyDown(event: KeyboardEvent) {
       // Sem este guard, Ctrl+N/Cmd+N (atalho nativo do navegador para nova
       // janela) seria sequestrado: o `key` continua "n" com um modificador
@@ -53,11 +61,11 @@ export function DailyPage() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [])
+  }, [routeDate])
 
   if (todayLog.isPending) {
     return (
-      <Box component="main" aria-label="Hoje" sx={{ p: 3 }}>
+      <Box component="main" aria-label={ariaLabel} sx={{ p: 3 }}>
         <DailyLogSkeleton />
       </Box>
     )
@@ -71,15 +79,25 @@ export function DailyPage() {
   const isOpenTaskSubtask = openTaskId ? !tasks.some((task) => task.id === openTaskId) : false
 
   return (
-    <Box component="main" aria-label="Hoje" sx={{ p: 3 }}>
-      <MigrationBanner />
-      <WeeklyReviewBanner />
-      <MonthlyReviewBanner />
-      <CatchUpBanner />
+    <Box component="main" aria-label={ariaLabel} sx={{ p: 3 }}>
+      {routeDate ? (
+        <Button component={RouterLink} to="/today" size="small" sx={{ mb: 1 }}>
+          Voltar para hoje
+        </Button>
+      ) : (
+        <>
+          <MigrationBanner />
+          <WeeklyReviewBanner />
+          <MonthlyReviewBanner />
+          <CatchUpBanner />
+        </>
+      )}
       <DayHeader logDate={logDate} pendingCount={pendingCount}>
         {tasks.length === 0 ? (
           <Typography variant="body2" color="text.secondary" sx={{ px: 3, py: 2 }}>
-            Nenhuma tarefa para hoje. Adicione ou migre do dia anterior.
+            {routeDate
+              ? 'Nenhuma tarefa neste dia.'
+              : 'Nenhuma tarefa para hoje. Adicione ou migre do dia anterior.'}
           </Typography>
         ) : (
           tasks.map((task) => (
@@ -93,7 +111,9 @@ export function DailyPage() {
             />
           ))
         )}
-        <AddTaskRow ref={addTaskInputRef} onAdd={(title) => createTask.mutate({ title })} />
+        {!routeDate && (
+          <AddTaskRow ref={addTaskInputRef} onAdd={(title) => createTask.mutate({ title })} />
+        )}
       </DayHeader>
       <TaskDetailPanel
         key={openTaskId ?? 'none'}

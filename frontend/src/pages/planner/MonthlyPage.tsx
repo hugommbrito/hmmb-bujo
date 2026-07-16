@@ -1,7 +1,9 @@
-import { useState, type FormEvent } from 'react'
-import { useParams } from 'react-router-dom'
-import { Box, Button, TextField, Typography } from '@mui/material'
+import { useEffect, useState, type FormEvent } from 'react'
+import { Link as RouterLink, useParams } from 'react-router-dom'
+import { Box, Button, IconButton, TextField, Typography } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
+import NavigateBeforeIcon from '@mui/icons-material/NavigateBefore'
+import NavigateNextIcon from '@mui/icons-material/NavigateNext'
 import {
   RecurringPlacementSection,
   useCreateMonthlyTaskMutation,
@@ -27,6 +29,14 @@ function currentMonthFirst(): string {
   const year = now.getFullYear()
   const month = String(now.getMonth() + 1).padStart(2, '0')
   return `${year}-${month}-01`
+}
+
+// 'YYYY-MM-01' + N meses (Task 4.3) — reusa `currentMonthFirst()` acima como
+// a única autoridade de "mês corrente" desta página.
+function addMonthsIso(monthFirstIso: string, delta: number): string {
+  const [year, month] = monthFirstIso.split('-').map(Number)
+  const date = new Date(year, month - 1 + delta, 1)
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-01`
 }
 
 function groupTasksByScheduledDate(tasks: Task[]) {
@@ -62,6 +72,18 @@ export function MonthlyPage() {
   const [placingTemplate, setPlacingTemplate] = useState<RecurringTaskTemplate | null>(null)
   const [openTaskId, setOpenTaskId] = useState<string | null>(null)
 
+  // `/planner/month` e `/archive/monthly/:monthFirst` renderizam o mesmo
+  // componente na mesma posição da árvore — navegar entre meses via
+  // anterior/próximo (Story 11.11, Task 4) não remonta `MonthlyPage`, então
+  // sem este reset o rascunho do formulário/painel aberto de um mês vazaria
+  // para o próximo.
+  useEffect(() => {
+    setTitle('')
+    setDay('')
+    setPlacingTemplate(null)
+    setOpenTaskId(null)
+  }, [routeMonthFirst])
+
   if (monthlyLog.isPending) {
     return (
       <Box component="main" aria-label="Este Mês" sx={{ p: 3 }}>
@@ -91,7 +113,12 @@ export function MonthlyPage() {
 
   const openTask = openTaskId ? findTaskById(tasks, openTaskId) : undefined
   const isOpenTaskSubtask = openTaskId ? !tasks.some((task) => task.id === openTaskId) : false
-  const onOpenDetail = !isArchiveView && !closed ? setOpenTaskId : undefined
+  const onOpenDetail = !closed ? setOpenTaskId : undefined
+
+  // Navegação anterior/próximo (AC1) — reusa `isCurrentMonth`/`currentMonthFirst()`.
+  const previousMonthFirst = addMonthsIso(monthFirst, -1)
+  const nextMonthFirst = addMonthsIso(monthFirst, 1)
+  const nextMonthIsCurrent = nextMonthFirst === currentMonthFirst()
 
   function handleConfirmScheduledDate(taskId: string, value: string) {
     if (!value) return
@@ -147,10 +174,38 @@ export function MonthlyPage() {
       aria-label={isArchiveView ? `Arquivo — Mês de ${monthFirst}` : 'Este Mês'}
       sx={{ p: 3 }}
     >
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+        <IconButton
+          component={RouterLink}
+          to={`/archive/monthly/${previousMonthFirst}`}
+          aria-label="Mês anterior"
+        >
+          <NavigateBeforeIcon />
+        </IconButton>
+        {!isCurrentMonth && (
+          <IconButton
+            component={RouterLink}
+            to={nextMonthIsCurrent ? '/planner/month' : `/archive/monthly/${nextMonthFirst}`}
+            aria-label="Próximo mês"
+          >
+            <NavigateNextIcon />
+          </IconButton>
+        )}
+      </Box>
       {closed && (
         <Typography variant="heading" sx={{ px: 1, mb: 1 }}>
           Fechado
         </Typography>
+      )}
+      {!closed && !isCurrentMonth && (
+        <Typography variant="body-sm" component="div" sx={{ px: 1, mb: 1 }}>
+          Você está vendo um mês passado.
+        </Typography>
+      )}
+      {!isCurrentMonth && (
+        <Button component={RouterLink} to="/planner/month" size="small" sx={{ px: 1, mb: 1 }}>
+          Voltar para o mês atual
+        </Button>
       )}
       {tasks.length === 0 ? (
         <Typography variant="body2" color="text.secondary" sx={{ px: 1, mb: 2 }}>
@@ -164,6 +219,7 @@ export function MonthlyPage() {
               key={date}
               logDate={date}
               pendingCount={dayTasks.filter((task) => task.status === 'pending').length}
+              linkToDaily
             >
               {dayTasks.map((task) => (
                 <TaskRow key={task.id} task={task} onOpenDetail={onOpenDetail} />
@@ -178,6 +234,7 @@ export function MonthlyPage() {
               key={date}
               logDate={date}
               pendingCount={dayTasks.filter((task) => task.status === 'pending').length}
+              linkToDaily
             >
               {dayTasks.map((task) => (
                 <TaskRow key={task.id} task={task} onOpenDetail={onOpenDetail} />
@@ -187,7 +244,7 @@ export function MonthlyPage() {
           {withoutDateSection}
         </>
       )}
-      {!isArchiveView && !closed && (
+      {!closed && (
         <>
           <Box
             component="form"

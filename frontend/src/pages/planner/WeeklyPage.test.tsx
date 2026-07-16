@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { ThemeProvider } from '@mui/material'
@@ -356,6 +356,128 @@ describe('Indicador "Fechada" e modo Arquivo (AC1/AC2)', () => {
   })
 })
 
+describe('Navegação anterior/próximo + indicadores de 3 estados (Story 11.11, AC1/AC5)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockMatchMedia(false)
+    mockGet.mockResolvedValue({ data: [] })
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('semana corrente: botão "Semana anterior" navega para weekStart -7 dias', () => {
+    vi.setSystemTime(new Date('2026-07-13T12:00:00'))
+    mockUseWeeklyLogQuery.mockReturnValue({ isPending: false, data: WEEKLY_LOG })
+
+    renderWeeklyPage()
+
+    expect(screen.getByRole('link', { name: 'Semana anterior' })).toHaveAttribute(
+      'href',
+      '/archive/weekly/2026-07-06',
+    )
+  })
+
+  it('semana corrente: botão "Próxima semana" ausente, sem indicador extra, sem link de volta', () => {
+    vi.setSystemTime(new Date('2026-07-13T12:00:00'))
+    mockUseWeeklyLogQuery.mockReturnValue({ isPending: false, data: WEEKLY_LOG })
+
+    renderWeeklyPage()
+
+    expect(screen.queryByRole('link', { name: 'Próxima semana' })).not.toBeInTheDocument()
+    expect(screen.queryByText('Você está vendo uma semana passada.')).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Voltar para a semana atual' })).not.toBeInTheDocument()
+  })
+
+  it('semana passada aberta: indicador informativo + "Próxima semana" navega para weekStart +7 dias', () => {
+    vi.setSystemTime(new Date('2026-07-27T12:00:00'))
+    mockUseWeeklyLogQuery.mockReturnValue({ isPending: false, data: WEEKLY_LOG })
+
+    renderWeeklyPage()
+
+    expect(screen.getByText('Você está vendo uma semana passada.')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Próxima semana' })).toHaveAttribute(
+      'href',
+      '/archive/weekly/2026-07-20',
+    )
+    expect(screen.getByRole('link', { name: 'Voltar para a semana atual' })).toHaveAttribute(
+      'href',
+      '/planner/week',
+    )
+  })
+
+  it('"Próxima semana" a partir da semana imediatamente anterior à corrente cai na rota canônica', () => {
+    vi.setSystemTime(new Date('2026-07-20T12:00:00'))
+    mockUseWeeklyLogQuery.mockReturnValue({ isPending: false, data: WEEKLY_LOG })
+
+    renderWeeklyPage()
+
+    expect(screen.getByRole('link', { name: 'Próxima semana' })).toHaveAttribute(
+      'href',
+      '/planner/week',
+    )
+  })
+
+  it('semana passada fechada: indicador "Fechada" (não o informativo) + link de volta', () => {
+    vi.setSystemTime(new Date('2026-07-27T12:00:00'))
+    mockUseWeeklyLogQuery.mockReturnValue({
+      isPending: false,
+      data: { ...WEEKLY_LOG, closed: true },
+    })
+
+    renderWeeklyPage()
+
+    expect(screen.getByText('Fechada')).toBeInTheDocument()
+    expect(screen.queryByText('Você está vendo uma semana passada.')).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Voltar para a semana atual' })).toBeInTheDocument()
+  })
+
+  it('sem violações de acessibilidade (jest-axe) numa semana passada aberta (nav anterior/próximo + indicador + link de volta)', async () => {
+    vi.setSystemTime(new Date('2026-07-27T12:00:00'))
+    mockUseWeeklyLogQuery.mockReturnValue({ isPending: false, data: WEEKLY_LOG })
+
+    const { container } = renderWeeklyPage()
+    // `axe` usa timers reais internamente — sem isso, trava com fake timers
+    // ativos (mesmo problema do describe block inteiro usar `vi.useFakeTimers`).
+    vi.useRealTimers()
+
+    expect(await axe(container)).toHaveNoViolations()
+  })
+
+  it('rascunho do formulário/painel aberto não vaza entre semanas ao navegar via "Semana anterior" (regressão — WeeklyPage não remonta entre rotas)', () => {
+    vi.setSystemTime(new Date('2026-07-13T12:00:00'))
+    mockUseWeeklyLogQuery.mockImplementation((weekStart?: string) => ({
+      isPending: false,
+      data: { ...WEEKLY_LOG, weekStart: weekStart ?? WEEKLY_LOG.weekStart },
+    }))
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+
+    render(
+      <QueryClientProvider client={qc}>
+        <ThemeProvider theme={createBujoTheme('light')}>
+          <MemoryRouter initialEntries={['/planner/week']}>
+            <Routes>
+              <Route path="/planner/week" element={<WeeklyPage />} />
+              <Route path="/archive/weekly/:weekStart" element={<WeeklyPage />} />
+            </Routes>
+          </MemoryRouter>
+        </ThemeProvider>
+      </QueryClientProvider>,
+    )
+
+    fireEvent.change(screen.getByLabelText('Título'), { target: { value: 'rascunho não enviado' } })
+    expect(screen.getByLabelText('Título')).toHaveValue('rascunho não enviado')
+
+    fireEvent.click(screen.getByRole('link', { name: 'Semana anterior' }))
+
+    expect(screen.getByLabelText('Título')).toHaveValue('')
+  })
+})
+
 describe('Formulário de criação de tarefa (Story 11.5, AC1/AC4)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -423,12 +545,12 @@ describe('Formulário de criação de tarefa (Story 11.5, AC1/AC4)', () => {
     expect(screen.queryByLabelText('Adicionar tarefa à semana')).not.toBeInTheDocument()
   })
 
-  it('form não aparece em isArchiveView', () => {
+  it('form aparece em período passado aberto (closed: false) mesmo via rota parametrizada', () => {
     mockUseWeeklyLogQuery.mockReturnValue({ isPending: false, data: WEEKLY_LOG })
 
     renderWeeklyPageAtArchiveRoute('2026-07-13')
 
-    expect(screen.queryByLabelText('Adicionar tarefa à semana')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Adicionar tarefa à semana')).toBeInTheDocument()
   })
 })
 
@@ -452,7 +574,7 @@ describe('onOpenDetail (Story 11.5, AC2/AC4)', () => {
     expect(titleInputs[titleInputs.length - 1]).toHaveValue('Tarefa segunda')
   })
 
-  it('painel não abre (TaskRow somente-leitura) quando isArchiveView', () => {
+  it('painel não abre (TaskRow somente-leitura) quando closed: true, mesmo via rota parametrizada', () => {
     mockUseWeeklyLogQuery.mockReturnValue({ isPending: false, data: { ...WEEKLY_LOG, closed: true } })
 
     renderWeeklyPageAtArchiveRoute('2026-07-13')
@@ -460,6 +582,14 @@ describe('onOpenDetail (Story 11.5, AC2/AC4)', () => {
     expect(
       screen.queryByRole('button', { name: 'Ver detalhes de Tarefa segunda' }),
     ).not.toBeInTheDocument()
+  })
+
+  it('painel abre (TaskRow acionável) em período passado aberto (closed: false) via rota parametrizada', () => {
+    mockUseWeeklyLogQuery.mockReturnValue({ isPending: false, data: WEEKLY_LOG })
+
+    renderWeeklyPageAtArchiveRoute('2026-07-13')
+
+    expect(screen.getByRole('button', { name: 'Ver detalhes de Tarefa segunda' })).toBeInTheDocument()
   })
 
   it('painel não abre (TaskRow somente-leitura) quando closed: true no período corrente', () => {

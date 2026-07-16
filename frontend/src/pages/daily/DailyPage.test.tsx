@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { ThemeProvider } from '@mui/material'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { axe } from 'jest-axe'
@@ -88,7 +89,29 @@ function renderDailyPage() {
   const utils = render(
     <QueryClientProvider client={qc}>
       <ThemeProvider theme={createBujoTheme('light')}>
-        <DailyPage />
+        <MemoryRouter>
+          <DailyPage />
+        </MemoryRouter>
+      </ThemeProvider>
+    </QueryClientProvider>,
+  )
+  return { ...utils, qc }
+}
+
+// Rota `/daily/:date` (Task 9.3) — só esta variante monta `useParams` com
+// valor real, mesma técnica de `renderWeeklyPageAtArchiveRoute`.
+function renderDailyPageAtDate(date: string) {
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  })
+  const utils = render(
+    <QueryClientProvider client={qc}>
+      <ThemeProvider theme={createBujoTheme('light')}>
+        <MemoryRouter initialEntries={[`/daily/${date}`]}>
+          <Routes>
+            <Route path="daily/:date" element={<DailyPage />} />
+          </Routes>
+        </MemoryRouter>
       </ThemeProvider>
     </QueryClientProvider>,
   )
@@ -550,5 +573,108 @@ describe('WeeklyReviewBanner/MonthlyReviewBanner/CatchUpBanner integration (AC1,
     expect(screen.queryByText(/Semana anterior tem/)).not.toBeInTheDocument()
     expect(screen.queryByText(/Mês anterior tem/)).not.toBeInTheDocument()
     expect(screen.queryByText(/sem disposição de dias, semanas ou meses anteriores/)).not.toBeInTheDocument()
+  })
+})
+
+describe('Rota /daily/:date — Daily Log de um dia passado (Story 11.11, AC2/AC3)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    resetGetRouting()
+  })
+
+  it('renderiza via /daily/:date com aria-label refletindo a data', () => {
+    mockUseTodayLogQuery.mockReturnValue({
+      isPending: false,
+      data: { id: 'log-past', logDate: '2026-06-10', tasks: [] },
+    })
+
+    renderDailyPageAtDate('2026-06-10')
+
+    expect(mockUseTodayLogQuery.mock.calls[0][0]).toBe('2026-06-10')
+    expect(screen.getByLabelText('Daily Log de 2026-06-10')).toBeInTheDocument()
+  })
+
+  it('não renderiza banners de ritual num dia passado', () => {
+    setGetResponse('/api/bujo/migration/queue/', { logDate: '2026-06-14', tasks: [YESTERDAY_TASK] })
+    mockUseTodayLogQuery.mockReturnValue({
+      isPending: false,
+      data: { id: 'log-past', logDate: '2026-06-10', tasks: [] },
+    })
+
+    renderDailyPageAtDate('2026-06-10')
+
+    expect(
+      screen.queryByText('1 tarefas pendentes de ontem. Iniciar migração?'),
+    ).not.toBeInTheDocument()
+  })
+
+  it('não renderiza AddTaskRow num dia passado (criação restrita a hoje)', () => {
+    mockUseTodayLogQuery.mockReturnValue({
+      isPending: false,
+      data: { id: 'log-past', logDate: '2026-06-10', tasks: [] },
+    })
+
+    renderDailyPageAtDate('2026-06-10')
+
+    expect(screen.queryByRole('textbox', { name: 'Nova tarefa' })).not.toBeInTheDocument()
+  })
+
+  it('atalho N não foca nenhum campo num dia passado (sem AddTaskRow)', () => {
+    mockUseTodayLogQuery.mockReturnValue({
+      isPending: false,
+      data: { id: 'log-past', logDate: '2026-06-10', tasks: [] },
+    })
+
+    renderDailyPageAtDate('2026-06-10')
+
+    const activeBefore = document.activeElement
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', bubbles: true, cancelable: true }))
+
+    expect(document.activeElement).toBe(activeBefore)
+  })
+
+  it('TaskRow funcional: onTransition/onOpenDetail/onReorder chamam as mutações certas', () => {
+    mockUseTodayLogQuery.mockReturnValue({
+      isPending: false,
+      data: {
+        id: 'log-past',
+        logDate: '2026-06-10',
+        tasks: [
+          { id: 't1', title: 'Tarefa passada', status: 'pending', eisenhower: null, category: null, subtasks: [] },
+        ],
+      },
+    })
+
+    renderDailyPageAtDate('2026-06-10')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pendente' }))
+    expect(mockMutate).toHaveBeenCalledWith({ taskId: 't1', toStatus: 'started' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ver detalhes de Tarefa passada' }))
+    expect(screen.getByTestId('task-detail-panel')).toBeInTheDocument()
+  })
+
+  it('link "Voltar para hoje" aponta para /today', () => {
+    mockUseTodayLogQuery.mockReturnValue({
+      isPending: false,
+      data: { id: 'log-past', logDate: '2026-06-10', tasks: [] },
+    })
+
+    renderDailyPageAtDate('2026-06-10')
+
+    expect(screen.getByRole('link', { name: 'Voltar para hoje' })).toHaveAttribute('href', '/today')
+  })
+
+  it('rota /today (sem parâmetro) mantém o comportamento de hoje: aria-label "Hoje", sem link de volta', () => {
+    mockUseTodayLogQuery.mockReturnValue({
+      isPending: false,
+      data: { id: 'log-1', logDate: '2026-06-15', tasks: [] },
+    })
+
+    renderDailyPage()
+
+    expect(screen.getByLabelText('Hoje')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Voltar para hoje' })).not.toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Nova tarefa' })).toBeInTheDocument()
   })
 })

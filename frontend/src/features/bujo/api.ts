@@ -23,15 +23,17 @@ import type {
   WeeklyReviewQueue,
 } from './types'
 
-async function fetchTodayLog(): Promise<Log> {
-  const response = await client.get<Log>('/api/bujo/logs/today/')
+async function fetchTodayLog(logDate?: string): Promise<Log> {
+  const response = await client.get<Log>('/api/bujo/logs/today/', {
+    params: logDate ? { log_date: logDate } : undefined,
+  })
   return response.data
 }
 
-export function useTodayLogQuery() {
+export function useTodayLogQuery(logDate?: string) {
   return useQuery({
-    queryKey: keys.bujo.todayLog(),
-    queryFn: fetchTodayLog,
+    queryKey: keys.bujo.todayLog(logDate),
+    queryFn: () => fetchTodayLog(logDate),
   })
 }
 
@@ -45,10 +47,10 @@ async function transitionTask({ taskId, toStatus }: TransitionTaskVariables): Pr
   return response.data
 }
 
-export function useTransitionTaskMutation() {
+export function useTransitionTaskMutation(logDate?: string) {
   return useOptimisticMutation<Task, unknown, TransitionTaskVariables, Log>({
     mutationFn: transitionTask,
-    queryKey: keys.bujo.todayLog(),
+    queryKey: keys.bujo.todayLog(logDate),
     updater: (current, { taskId, toStatus }) => {
       if (!current) return current as unknown as Log
       return {
@@ -152,6 +154,11 @@ export function useUpdateTaskMutation() {
         // prefixo garante o refetch.
         queryClient.invalidateQueries({ queryKey: ['bujo', 'weeklyLog'] })
         queryClient.invalidateQueries({ queryKey: ['bujo', 'monthlyLog'] })
+        // Idem para um Daily Log passado (Story 11.11, Task 6.4) — sem isso,
+        // editar uma tarefa de um dia passado via TaskDetailPanel faria um
+        // update otimista "no-op" (chave exata 'today' não bate) sem nunca
+        // convergir para o servidor.
+        queryClient.invalidateQueries({ queryKey: ['bujo', 'dailyLog'] })
       },
     },
   })
@@ -171,10 +178,10 @@ async function reorderTask({ taskId, targetTaskId, position }: ReorderTaskVariab
   return response.data
 }
 
-export function useReorderTaskMutation() {
+export function useReorderTaskMutation(logDate?: string) {
   return useOptimisticMutation<Task, unknown, ReorderTaskVariables, Log>({
     mutationFn: reorderTask,
-    queryKey: keys.bujo.todayLog(),
+    queryKey: keys.bujo.todayLog(logDate),
     updater: (current, { taskId, targetTaskId, position }) => {
       if (!current) return current as unknown as Log
       return { ...current, tasks: reorderTaskTree(current.tasks, taskId, targetTaskId, position) }
@@ -237,8 +244,9 @@ export function useDeleteTaskMutation() {
     onSuccess: () => {
       // Container de origem é desconhecido no call-site genérico (Daily,
       // Weekly ou Monthly) — invalidação por prefixo nas 3 chaves, mesmo
-      // padrão de useUpdateTaskMutation pra 'monthlyLog'.
-      queryClient.invalidateQueries({ queryKey: keys.bujo.todayLog() })
+      // padrão de useUpdateTaskMutation pra 'monthlyLog'. Prefixo (não a chave
+      // exata 'today') alcança também um Daily Log passado (Story 11.11).
+      queryClient.invalidateQueries({ queryKey: ['bujo', 'dailyLog'] })
       queryClient.invalidateQueries({ queryKey: ['bujo', 'weeklyLog'] })
       queryClient.invalidateQueries({ queryKey: ['bujo', 'monthlyLog'] })
       queryClient.invalidateQueries({ queryKey: ['bujo', 'taskDensity'] })
@@ -373,7 +381,9 @@ export function useMigrateTaskMutation() {
       queryClient.invalidateQueries({ queryKey: keys.bujo.weeklyReviewQueue() })
       queryClient.invalidateQueries({ queryKey: keys.bujo.monthlyReviewQueue() })
       queryClient.invalidateQueries({ queryKey: keys.bujo.catchUpQueue() })
-      queryClient.invalidateQueries({ queryKey: keys.bujo.todayLog() })
+      // Prefixo (não a chave exata 'today') — alcança também um Daily Log
+      // passado (Story 11.11, Task 6.4).
+      queryClient.invalidateQueries({ queryKey: ['bujo', 'dailyLog'] })
       queryClient.invalidateQueries({ queryKey: ['bujo', 'weeklyLog'] })
       queryClient.invalidateQueries({ queryKey: ['bujo', 'monthlyLog'] })
       queryClient.invalidateQueries({ queryKey: ['bujo', 'futureLog'] })

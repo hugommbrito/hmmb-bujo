@@ -1,7 +1,9 @@
-import { useState, type FormEvent } from 'react'
-import { useParams } from 'react-router-dom'
-import { Box, Button, MenuItem, Select, TextField, Typography, useMediaQuery } from '@mui/material'
+import { useEffect, useState, type FormEvent } from 'react'
+import { Link as RouterLink, useParams } from 'react-router-dom'
+import { Box, Button, IconButton, MenuItem, Select, TextField, Typography, useMediaQuery } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
+import NavigateBeforeIcon from '@mui/icons-material/NavigateBefore'
+import NavigateNextIcon from '@mui/icons-material/NavigateNext'
 import {
   RecurringPlacementSection,
   useCreateWeeklyTaskMutation,
@@ -32,6 +34,29 @@ function formatDaySelectLabel(date: string): string {
   return `${part('weekday')} ${part('day')}`.toUpperCase()
 }
 
+function isoOf(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+// 'YYYY-MM-DD' + N dias, parseando por partes (evita off-by-one de UTC de
+// `new Date(isoString)`, mesma técnica de `formatDaySelectLabel`).
+function addDaysIso(iso: string, days: number): string {
+  const [year, month, day] = iso.split('-').map(Number)
+  const date = new Date(year, month - 1, day)
+  date.setDate(date.getDate() + days)
+  return isoOf(date)
+}
+
+// Segunda-feira da semana corrente — cálculo de UI (mesma técnica de
+// MonthDensityCalendar/currentMonthFirst), não autoridade de domínio.
+function currentWeekStart(): string {
+  const now = new Date()
+  const mondayIndex = (now.getDay() + 6) % 7
+  const monday = new Date(now)
+  monday.setDate(now.getDate() - mondayIndex)
+  return isoOf(monday)
+}
+
 export function WeeklyPage() {
   const { weekStart: routeWeekStart } = useParams<{ weekStart: string }>()
   const isArchiveView = Boolean(routeWeekStart)
@@ -44,6 +69,19 @@ export function WeeklyPage() {
   const [title, setTitle] = useState('')
   const [formSelectedDay, setFormSelectedDay] = useState('')
   const [openTaskId, setOpenTaskId] = useState<string | null>(null)
+
+  // `/planner/week` e `/archive/weekly/:weekStart` renderizam o mesmo
+  // componente na mesma posição da árvore — navegar entre semanas via
+  // anterior/próximo (Story 11.11, Task 4) não remonta `WeeklyPage`, então
+  // sem este reset o rascunho do formulário/painel aberto de uma semana
+  // vazaria para a próxima.
+  useEffect(() => {
+    setSelectedDayIndex(0)
+    setPlacingTemplate(null)
+    setTitle('')
+    setFormSelectedDay('')
+    setOpenTaskId(null)
+  }, [routeWeekStart])
 
   if (weeklyLog.isPending) {
     return (
@@ -73,7 +111,14 @@ export function WeeklyPage() {
   const allTasks = [...days.flatMap((day) => day.tasks), ...unscheduled]
   const openTask = openTaskId ? findTaskById(allTasks, openTaskId) : undefined
   const isOpenTaskSubtask = openTaskId ? !allTasks.some((task) => task.id === openTaskId) : false
-  const onOpenDetail = !isArchiveView && !closed ? setOpenTaskId : undefined
+  const onOpenDetail = !closed ? setOpenTaskId : undefined
+
+  // Navegação anterior/próximo (AC1) — semana corrente calculada client-side,
+  // comparada com a semana carregada pela query.
+  const isCurrentWeek = weekStart === currentWeekStart()
+  const previousWeekStart = addDaysIso(weekStart, -7)
+  const nextWeekStart = addDaysIso(weekStart, 7)
+  const nextWeekIsCurrent = nextWeekStart === currentWeekStart()
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault()
@@ -105,10 +150,38 @@ export function WeeklyPage() {
       aria-label={isArchiveView ? `Arquivo — Semana de ${weekStart}` : 'Esta Semana'}
       sx={{ p: 3 }}
     >
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+        <IconButton
+          component={RouterLink}
+          to={`/archive/weekly/${previousWeekStart}`}
+          aria-label="Semana anterior"
+        >
+          <NavigateBeforeIcon />
+        </IconButton>
+        {!isCurrentWeek && (
+          <IconButton
+            component={RouterLink}
+            to={nextWeekIsCurrent ? '/planner/week' : `/archive/weekly/${nextWeekStart}`}
+            aria-label="Próxima semana"
+          >
+            <NavigateNextIcon />
+          </IconButton>
+        )}
+      </Box>
       {closed && (
         <Typography variant="heading" sx={{ px: 1, mb: 1 }}>
           Fechada
         </Typography>
+      )}
+      {!closed && !isCurrentWeek && (
+        <Typography variant="body-sm" component="div" sx={{ px: 1, mb: 1 }}>
+          Você está vendo uma semana passada.
+        </Typography>
+      )}
+      {!isCurrentWeek && (
+        <Button component={RouterLink} to="/planner/week" size="small" sx={{ px: 1, mb: 1 }}>
+          Voltar para a semana atual
+        </Button>
       )}
       {isMobile ? (
         <>
@@ -120,6 +193,7 @@ export function WeeklyPage() {
           <DayHeader
             logDate={selectedDay.date}
             pendingCount={selectedDay.tasks.filter((task) => task.status === 'pending').length}
+            linkToDaily
           >
             {selectedDay.tasks.length === 0 ? (
               <Typography variant="body2" color="text.secondary" sx={{ px: 3, py: 2 }}>
@@ -143,6 +217,7 @@ export function WeeklyPage() {
               <DayHeader
                 logDate={day.date}
                 pendingCount={day.tasks.filter((task) => task.status === 'pending').length}
+                linkToDaily
               >
                 {day.tasks.length === 0 ? (
                   <Typography variant="body2" color="text.secondary" sx={{ px: 1, py: 1 }}>
@@ -168,7 +243,7 @@ export function WeeklyPage() {
           ))}
         </Box>
       )}
-      {!isArchiveView && !closed && (
+      {!closed && (
         <>
           <Box
             component="form"

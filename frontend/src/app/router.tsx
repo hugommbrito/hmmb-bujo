@@ -60,6 +60,7 @@ export const routeDefinitions: RouteObject[] = [
     children: [
       { index: true, element: <Navigate to="/today" replace /> },
       { path: 'today', element: <DailyPage />, handle: { title: 'Hoje' } },
+      { path: 'daily/:date', element: <DailyPage />, handle: { title: 'Daily Log' } },
       {
         path: 'planner/week',
         element: <WeeklyPage />,
