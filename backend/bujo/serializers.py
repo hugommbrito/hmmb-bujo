@@ -145,10 +145,6 @@ class TaskMigrateSerializer(serializers.Serializer):
 
     def validate(self, attrs):
         destination = attrs["destination"]
-        if destination == "month" and not attrs.get("scheduled_date"):
-            raise serializers.ValidationError(
-                {"scheduled_date": "Obrigatório para adiar no mês."}
-            )
         if destination == "future":
             if not attrs.get("month_first"):
                 raise serializers.ValidationError(

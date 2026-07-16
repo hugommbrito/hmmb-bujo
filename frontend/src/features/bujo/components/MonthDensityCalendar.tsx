@@ -32,6 +32,19 @@ function isoOf(year: number, month: number, day: number): string {
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
 }
 
+// ISO ('YYYY-MM-DD') da segunda-feira da semana que contém `date` — mesma
+// técnica Monday-based (`getDay()` 0=Dom…6=Sáb → índice seg-based) já usada
+// para `leadingBlanks`. Retorna string (não `Date`) para a comparação em
+// `isCurrentWeek` ficar imune ao horário de `date` (ex.: `new Date()` real
+// carrega hora/minuto/segundo; comparar `Date.getTime()` diretamente com um
+// `parseLocalDate` à meia-noite dava falso-negativo mesmo no mesmo dia).
+function mondayIsoOf(date: Date): string {
+  const mondayIndex = (date.getDay() + 6) % 7
+  const monday = new Date(date)
+  monday.setDate(date.getDate() - mondayIndex)
+  return isoOf(monday.getFullYear(), monday.getMonth() + 1, monday.getDate())
+}
+
 export function MonthDensityCalendar({
   monthFirst,
   densityByDate,
@@ -57,6 +70,14 @@ export function MonthDensityCalendar({
   for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7))
 
   const interactive = Boolean(onSelectDay)
+
+  // "Hoje"/"semana corrente" calculados aqui via `new Date()` local — mesmo
+  // padrão de cálculo-de-UI-não-autoridade-de-domínio de `currentMonthFirst()`
+  // (TaskDestinationDialog) / `currentMonthBounds()`/`currentMonthLabel()`
+  // (MigrationCard). Não recebido via prop nem fetch/contexto.
+  const today = new Date()
+  const todayIso = isoOf(today.getFullYear(), today.getMonth() + 1, today.getDate())
+  const todayMondayIso = mondayIsoOf(today)
 
   return (
     <Box
@@ -98,6 +119,8 @@ export function MonthDensityCalendar({
                   ? `${day} de ${monthLabel}, ${count} ${count === 1 ? 'tarefa' : 'tarefas'}`
                   : `${day} de ${monthLabel}, sem tarefas`
               const selected = interactive && selectedDate === iso
+              const isToday = iso === todayIso
+              const isCurrentWeek = mondayIsoOf(parseLocalDate(iso)) === todayMondayIso
 
               const content = (
                 <>
@@ -119,11 +142,21 @@ export function MonthDensityCalendar({
                   // No modo informativo o nome acessível vive no <td>; no modo
                   // interativo (11.6) migra para o <ButtonBase>.
                   aria-label={interactive ? undefined : label}
+                  data-today={isToday ? 'true' : undefined}
+                  data-current-week={isCurrentWeek ? 'true' : undefined}
                   sx={{
                     border: '1px solid',
                     borderColor: 'divider',
                     p: 0,
                     verticalAlign: 'top',
+                    ...(isCurrentWeek && { bgcolor: 'action.hover' }),
+                    // Contorno interno (não `border`, já ocupado pela grade) —
+                    // convive com o `bgcolor: 'action.selected'` do dia
+                    // selecionado (Task 3.3: hoje pode ser o dia selecionado ao
+                    // mesmo tempo, os dois sinais não podem se cancelar).
+                    ...(isToday && {
+                      boxShadow: (theme) => `inset 0 0 0 2px ${theme.palette.primary.main}`,
+                    }),
                   }}
                 >
                   {interactive ? (

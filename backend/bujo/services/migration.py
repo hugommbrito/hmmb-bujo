@@ -23,10 +23,17 @@ def _migrate_subtree(
 ) -> Task:
     """Recursivo (AD-08 item 11) — migra `source` e, em seguida, só os filhos
     ainda não-dispostos (`pending`/`started`); filhos `completed`/`cancelled`
-    ficam intocados na origem. Ordem importa: transicionar a origem PRIMEIRO
-    (fail-fast via `transition_task`, que já impõe a matriz `ALLOWED`) e só
-    depois criar o novo registro."""
-    transition_task(user=user, task_id=source.id, to_status=new_status)  # fail-fast; via ALLOWED
+    ficam intocados na origem. Ordem importa: criar o novo registro PRIMEIRO e
+    só depois transicionar a origem — não o inverso. Quando o destino é o
+    MESMO container da origem (ex.: "semana sem data" → um dia específico
+    dessa mesma semana corrente), transicionar `source` antes deixaria o
+    container sem nenhuma tarefa `pending`/`started` por um instante, e
+    `is_container_closed` (`services/archive.py`) o consideraria fechado —
+    `create_task` então rejeitaria a própria inserção que a migração está
+    tentando fazer (`ClosedCycleReadOnly`, 409). Criar antes elimina essa
+    janela; `migrate_task` é `@transaction.atomic`, então uma falha posterior
+    em `transition_task` (não esperada aqui — `source` já passou pela mesma
+    matriz `ALLOWED` na chamada raiz) reverte a criação também, sem órfão."""
     new_task = create_task(
         user=user,
         parent_task=parent_task,
@@ -37,6 +44,7 @@ def _migrate_subtree(
         category=source.category,
         **{container_field: container},
     )
+    transition_task(user=user, task_id=source.id, to_status=new_status)
     set_lineage_fields(task_id=new_task.id, migration_count=source.migration_count + 1)
     set_lineage_fields(task_id=source.id, migrated_to_task=new_task)
 
@@ -67,7 +75,7 @@ def migrate_task(*, user, task_id, destination, month_first=None, scheduled_date
                  em ambos os casos.
     "month"  -> destino = Monthly Log do MÊS CORRENTE (month_first calculado
                  aqui via today_for, NUNCA aceito do cliente); scheduled_date
-                 obrigatório; origem vira POSTPONED.
+                 opcional; origem vira POSTPONED.
     "future" -> destino = Monthly Log de month_first (validado > mês corrente
                  na view); scheduled_date opcional; origem vira POSTPONED.
     "cancel" -> sem destino; origem vira CANCELLED via transition_task; sem

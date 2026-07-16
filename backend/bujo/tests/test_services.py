@@ -693,6 +693,35 @@ def test_migrate_task_destination_week_com_scheduled_date_passada_deduz_semana_a
 
 
 @pytest.mark.django_db
+def test_migrate_task_destination_week_mesma_semana_da_origem_nao_fecha_o_proprio_destino(user):
+    """Regressão do bug relatado na Story 11.10 (AC4, "modal de migração não
+    funciona em Esta Semana"): quando `task` é a ÚNICA pending/started do seu
+    `weekly_log` de origem E o destino calculado (`week_start_of(scheduled_date)`)
+    é ESSE MESMO weekly_log (ex.: dar um dia a uma tarefa "sem dia" da semana
+    corrente), transicionar a origem ANTES de criar o novo registro fechava o
+    container (`is_container_closed`) debaixo dos próprios pés — `create_task`
+    rejeitava a própria criação com `ClosedCycleReadOnly` (409). Root cause
+    encontrada nesta story via e2e; fix em `_migrate_subtree` (cria antes de
+    transicionar)."""
+    with tenant_context(user):
+        current_week_start = week_start_of(today_for(user))
+        weekly_log = WeeklyLogFactory(user=user, week_start=current_week_start)
+        task = TaskFactory(user=user, weekly_log=weekly_log, status=Task.Status.PENDING)
+        scheduled_date = current_week_start + timedelta(days=2)
+
+        result = migrate_task(
+            user=user, task_id=task.id, destination="week", scheduled_date=scheduled_date
+        )
+
+        assert result.status == Task.Status.MIGRATED
+        new_task = result.migrated_to_task
+        assert new_task is not None
+        assert new_task.weekly_log_id == weekly_log.id
+        assert new_task.scheduled_date == scheduled_date
+        assert new_task.status == Task.Status.PENDING
+
+
+@pytest.mark.django_db
 def test_migrate_task_destination_month_torna_origem_postponed_e_cria_no_monthly_corrente(user):
     with tenant_context(user):
         log = LogFactory(user=user)
@@ -714,6 +743,56 @@ def test_migrate_task_destination_month_torna_origem_postponed_e_cria_no_monthly
         assert new_task.status == Task.Status.PENDING
         assert new_task.monthly_log_id == monthly_log.id
         assert new_task.scheduled_date == scheduled_date
+
+
+@pytest.mark.django_db
+def test_migrate_task_destination_month_sem_scheduled_date_postpoe_sem_dia(user):
+    with tenant_context(user):
+        log = LogFactory(user=user)
+        task = TaskFactory(user=user, log=log, status=Task.Status.PENDING)
+        current_month_first = today_for(user).replace(day=1)
+
+        result = migrate_task(
+            user=user,
+            task_id=task.id,
+            destination="month",
+            month_first=current_month_first,
+        )
+
+        monthly_log = get_or_create_monthly_log(user=user, month_first=current_month_first)
+        assert result.status == Task.Status.POSTPONED
+        new_task = result.migrated_to_task
+        assert new_task.scheduled_date is None
+        assert new_task.monthly_log_id == monthly_log.id
+
+
+@pytest.mark.django_db
+def test_migrate_task_destination_month_mesmo_mes_da_origem_nao_fecha_o_proprio_destino(user):
+    """Mesma regressão de
+    `test_migrate_task_destination_week_mesma_semana_da_origem_nao_fecha_o_proprio_destino`,
+    para "month": tarefa é a única pending/started do `monthly_log` corrente
+    (ex.: item "sem dia" do Future Log já chegado ao mês) e ganha um dia
+    dentro desse MESMO mês — destino coincide com a origem."""
+    with tenant_context(user):
+        current_month_first = today_for(user).replace(day=1)
+        monthly_log = MonthlyLogFactory(user=user, month_first=current_month_first)
+        task = TaskFactory(user=user, monthly_log=monthly_log, status=Task.Status.PENDING)
+        scheduled_date = current_month_first.replace(day=15)
+
+        result = migrate_task(
+            user=user,
+            task_id=task.id,
+            destination="month",
+            month_first=current_month_first,
+            scheduled_date=scheduled_date,
+        )
+
+        assert result.status == Task.Status.POSTPONED
+        new_task = result.migrated_to_task
+        assert new_task is not None
+        assert new_task.monthly_log_id == monthly_log.id
+        assert new_task.scheduled_date == scheduled_date
+        assert new_task.status == Task.Status.PENDING
 
 
 @pytest.mark.django_db

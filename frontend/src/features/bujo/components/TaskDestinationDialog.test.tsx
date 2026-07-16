@@ -47,12 +47,21 @@ describe('TaskDestinationDialog (AC1, AC2, AC3)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockUseMigrateTaskMutation.mockReturnValue({ mutate: mockMigrateMutate, isError: false })
+    // "Esta semana" e "Este mês" partem do mês corrente real (currentMonthFirst
+    // não é mockado) — os rótulos "10/15 de julho" assumem execução em julho
+    // de 2026, mesma premissa já usada na suite anterior a esta story.
     mockUseTaskDensityQuery.mockReturnValue({
       data: [
         { date: '2026-07-10', count: 2 },
         { date: '2026-07-15', count: 1 },
       ],
     })
+  })
+
+  it('título do diálogo é "Migrar Tarefa"', () => {
+    renderDialog()
+
+    expect(screen.getByRole('dialog', { name: 'Migrar Tarefa' })).toBeInTheDocument()
   })
 
   it('exibe título, descrição e subtarefas', () => {
@@ -68,28 +77,80 @@ describe('TaskDestinationDialog (AC1, AC2, AC3)', () => {
     expect(screen.getByText('Subtarefa 1')).toBeInTheDocument()
   })
 
-  it('aba "Dia" mostra o MonthDensityCalendar interativo com as densidades da query', () => {
-    renderDialog()
+  it('exibe "Atualmente: DD/MM" quando task.scheduledDate está presente', () => {
+    renderDialog({ task: baseTask({ scheduledDate: '2026-07-20' }) })
 
-    expect(screen.getByLabelText('10 de julho, 2 tarefas')).toBeInTheDocument()
-    expect(screen.getByLabelText('15 de julho, 1 tarefa')).toBeInTheDocument()
+    expect(screen.getByText('Atualmente: 20/07')).toBeInTheDocument()
   })
 
-  it('clicar num dia chama mutate com destination=week e fecha o diálogo no sucesso', () => {
+  it('não exibe "Atualmente" quando task.scheduledDate está ausente', () => {
+    renderDialog()
+
+    expect(screen.queryByText(/^Atualmente:/)).not.toBeInTheDocument()
+  })
+
+  it('4 abas na ordem Hoje/Esta semana/Este mês/Futuro, com "Hoje" selecionada por padrão', () => {
+    renderDialog()
+
+    const tabs = screen.getAllByRole('tab').map((tab) => tab.textContent)
+    expect(tabs).toEqual(['Hoje', 'Esta semana', 'Este mês', 'Futuro'])
+    expect(screen.getByRole('tab', { name: 'Hoje' })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('aba "Hoje" — sem campos; Migrar chama mutate com destination=today', () => {
     const { onClose } = renderDialog()
 
-    fireEvent.click(screen.getByLabelText('10 de julho, 2 tarefas'))
+    expect(screen.getByText('Mover para o Daily Log de hoje.')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Migrar' }))
 
     expect(mockMigrateMutate).toHaveBeenCalledWith(
-      { taskId: 'task-1', destination: 'week', scheduledDate: '2026-07-10' },
+      { taskId: 'task-1', destination: 'today' },
       expect.objectContaining({ onSuccess: expect.any(Function) }),
     )
     mockMigrateMutate.mock.calls[0][1].onSuccess()
     expect(onClose).toHaveBeenCalled()
   })
 
-  it('Prev/Next mês trocam o mês do calendário e disparam novo fetch de densidade', () => {
+  it('aba "Esta semana" — clicar um dia não migra ainda; só migra ao clicar "Migrar"', () => {
     renderDialog()
+    fireEvent.click(screen.getByRole('tab', { name: 'Esta semana' }))
+
+    fireEvent.click(screen.getByLabelText('10 de julho, 2 tarefas'))
+    expect(mockMigrateMutate).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Migrar' }))
+    expect(mockMigrateMutate).toHaveBeenCalledWith(
+      { taskId: 'task-1', destination: 'week', scheduledDate: '2026-07-10' },
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    )
+  })
+
+  it('aba "Esta semana" — sem clicar dia, Migrar chama mutate com scheduledDate undefined (semana sem data)', () => {
+    renderDialog()
+    fireEvent.click(screen.getByRole('tab', { name: 'Esta semana' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Migrar' }))
+    expect(mockMigrateMutate).toHaveBeenCalledWith(
+      { taskId: 'task-1', destination: 'week', scheduledDate: undefined },
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    )
+  })
+
+  it('aba "Esta semana" — clicar no dia já selecionado desmarca (toggle)', () => {
+    renderDialog()
+    fireEvent.click(screen.getByRole('tab', { name: 'Esta semana' }))
+    const day = screen.getByLabelText('10 de julho, 2 tarefas')
+
+    fireEvent.click(day)
+    expect(day).toHaveAttribute('aria-pressed', 'true')
+
+    fireEvent.click(day)
+    expect(day).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('Prev/Next mês (aba "Esta semana") trocam o mês do calendário e disparam novo fetch de densidade', () => {
+    renderDialog()
+    fireEvent.click(screen.getByRole('tab', { name: 'Esta semana' }))
 
     mockUseTaskDensityQuery.mockClear()
     fireEvent.click(screen.getByRole('button', { name: 'Próximo mês' }))
@@ -99,29 +160,59 @@ describe('TaskDestinationDialog (AC1, AC2, AC3)', () => {
     expect(lastCallMonthFirst).toMatch(/-01$/)
   })
 
-  it('aba "Este mês" — onChange da data chama mutate com destination=month', () => {
-    const { onClose } = renderDialog()
-
+  it('aba "Este mês" — sem navegação Prev/Next (mês fixo no corrente)', () => {
+    renderDialog()
     fireEvent.click(screen.getByRole('tab', { name: 'Este mês' }))
-    fireEvent.change(screen.getByLabelText('Data no mês corrente'), {
-      target: { value: '2026-07-20' },
-    })
 
-    expect(mockMigrateMutate).toHaveBeenCalledWith(
-      { taskId: 'task-1', destination: 'month', scheduledDate: '2026-07-20' },
-      expect.objectContaining({ onSuccess: expect.any(Function) }),
-    )
-    mockMigrateMutate.mock.calls[0][1].onSuccess()
-    expect(onClose).toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: 'Mês anterior' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Próximo mês' })).not.toBeInTheDocument()
   })
 
-  it('aba "Futuro" — dia então mês chama mutate com scheduledDate composto', () => {
+  it('aba "Este mês" — clicar um dia + Migrar chama mutate com destination=month e scheduledDate', () => {
     renderDialog()
+    fireEvent.click(screen.getByRole('tab', { name: 'Este mês' }))
 
+    fireEvent.click(screen.getByLabelText('10 de julho, 2 tarefas'))
+    expect(mockMigrateMutate).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Migrar' }))
+    expect(mockMigrateMutate).toHaveBeenCalledWith(
+      { taskId: 'task-1', destination: 'month', scheduledDate: '2026-07-10' },
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    )
+  })
+
+  it('aba "Este mês" — sem clicar dia, Migrar chama mutate com scheduledDate undefined (mês sem data)', () => {
+    renderDialog()
+    fireEvent.click(screen.getByRole('tab', { name: 'Este mês' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Migrar' }))
+    expect(mockMigrateMutate).toHaveBeenCalledWith(
+      { taskId: 'task-1', destination: 'month', scheduledDate: undefined },
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    )
+  })
+
+  it('aba "Este mês" — clicar no dia já selecionado desmarca (toggle)', () => {
+    renderDialog()
+    fireEvent.click(screen.getByRole('tab', { name: 'Este mês' }))
+    const day = screen.getByLabelText('10 de julho, 2 tarefas')
+
+    fireEvent.click(day)
+    expect(day).toHaveAttribute('aria-pressed', 'true')
+
+    fireEvent.click(day)
+    expect(day).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('aba "Futuro" — dia então mês; Migrar chama mutate com scheduledDate composto', () => {
+    renderDialog()
     fireEvent.click(screen.getByRole('tab', { name: 'Futuro' }))
     fireEvent.change(screen.getByLabelText('Dia (opcional)'), { target: { value: '5' } })
     fireEvent.change(screen.getByLabelText('Mês'), { target: { value: '2026-09' } })
+    expect(mockMigrateMutate).not.toHaveBeenCalled()
 
+    fireEvent.click(screen.getByRole('button', { name: 'Migrar' }))
     expect(mockMigrateMutate).toHaveBeenCalledWith(
       {
         taskId: 'task-1',
@@ -133,12 +224,12 @@ describe('TaskDestinationDialog (AC1, AC2, AC3)', () => {
     )
   })
 
-  it('aba "Futuro" — sem dia, só mês, chama mutate com scheduledDate undefined', () => {
+  it('aba "Futuro" — sem dia, só mês; Migrar chama mutate com scheduledDate undefined', () => {
     renderDialog()
-
     fireEvent.click(screen.getByRole('tab', { name: 'Futuro' }))
     fireEvent.change(screen.getByLabelText('Mês'), { target: { value: '2026-09' } })
 
+    fireEvent.click(screen.getByRole('button', { name: 'Migrar' }))
     expect(mockMigrateMutate).toHaveBeenCalledWith(
       {
         taskId: 'task-1',
@@ -146,6 +237,33 @@ describe('TaskDestinationDialog (AC1, AC2, AC3)', () => {
         monthFirst: '2026-09-01',
         scheduledDate: undefined,
       },
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    )
+  })
+
+  it('aba "Futuro" — botão "Migrar" desabilitado até o mês ser preenchido', () => {
+    renderDialog()
+    fireEvent.click(screen.getByRole('tab', { name: 'Futuro' }))
+
+    expect(screen.getByRole('button', { name: 'Migrar' })).toBeDisabled()
+
+    fireEvent.change(screen.getByLabelText('Mês'), { target: { value: '2026-09' } })
+    expect(screen.getByRole('button', { name: 'Migrar' })).toBeEnabled()
+  })
+
+  it('trocar de aba não reseta o estado das outras', () => {
+    renderDialog()
+    fireEvent.click(screen.getByRole('tab', { name: 'Esta semana' }))
+    fireEvent.click(screen.getByLabelText('10 de julho, 2 tarefas'))
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Futuro' }))
+    fireEvent.change(screen.getByLabelText('Mês'), { target: { value: '2026-09' } })
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Esta semana' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Migrar' }))
+
+    expect(mockMigrateMutate).toHaveBeenCalledWith(
+      { taskId: 'task-1', destination: 'week', scheduledDate: '2026-07-10' },
       expect.objectContaining({ onSuccess: expect.any(Function) }),
     )
   })
@@ -183,10 +301,7 @@ describe('TaskDestinationDialog (AC1, AC2, AC3)', () => {
     const onSuccess = vi.fn()
     renderDialog({ onSuccess })
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Este mês' }))
-    fireEvent.change(screen.getByLabelText('Data no mês corrente'), {
-      target: { value: '2026-07-20' },
-    })
+    fireEvent.click(screen.getByRole('button', { name: 'Migrar' }))
     mockMigrateMutate.mock.calls[0][1].onSuccess()
 
     expect(onSuccess).toHaveBeenCalled()

@@ -603,7 +603,7 @@ describe('TaskRow — Mover (Story 11.6, AC1)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Mover tarefa' }))
 
-    expect(screen.getByRole('dialog', { name: 'Mover tarefa' })).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Migrar Tarefa' })).toBeInTheDocument()
     expect(screen.getAllByText('Consulado PT').length).toBeGreaterThan(0)
   })
 

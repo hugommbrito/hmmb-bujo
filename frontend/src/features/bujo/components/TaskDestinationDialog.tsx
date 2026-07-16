@@ -14,7 +14,6 @@ import {
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
 import ChevronRightIcon from '@mui/icons-material/ChevronRight'
 import { useMigrateTaskMutation, useTaskDensityQuery } from '../api'
-import { currentMonthBounds } from './MigrationCard'
 import { MonthDensityCalendar } from './MonthDensityCalendar'
 import { MONTH_NAMES_PT } from '../monthNames'
 import type { Task } from '../types'
@@ -30,7 +29,7 @@ interface TaskDestinationDialogProps {
   onSuccess?: () => void
 }
 
-type DestinationMode = 'day' | 'thisMonth' | 'future'
+type DestinationMode = 'today' | 'week' | 'month' | 'future'
 
 // Mesmo cálculo de "mês corrente" já duplicado em MonthlyPage/FuturePage —
 // cálculo de UI, não autoridade de domínio.
@@ -41,18 +40,38 @@ function currentMonthFirst(): string {
   return `${year}-${month}-01`
 }
 
+// Parse por partes (não `new Date(isoString)`, que sofre off-by-one de UTC —
+// mesma técnica de `MonthDensityCalendar.parseLocalDate`); só formata, não
+// precisa de objeto Date.
+function formatDDMM(iso: string): string {
+  const [, month, day] = iso.split('-')
+  return `${day}/${month}`
+}
+
 // Autocontido (mesmo padrão do MoveTaskDialog embutido em TaskRow para
 // reorder) — usa useMigrateTaskMutation() internamente, não recebe a
 // mutation via prop.
 export function TaskDestinationDialog({ task, open, onClose, onSuccess }: TaskDestinationDialogProps) {
-  const [mode, setMode] = useState<DestinationMode>('day')
+  const [mode, setMode] = useState<DestinationMode>('today')
   const [calendarMonthFirst, setCalendarMonthFirst] = useState(currentMonthFirst())
+  const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  const [monthDate, setMonthDate] = useState('')
   const [futureDay, setFutureDay] = useState('')
+  const [futureMonth, setFutureMonth] = useState('')
   const migrate = useMigrateTaskMutation()
-  const { min, max } = currentMonthBounds()
 
-  const density = useTaskDensityQuery(calendarMonthFirst, { enabled: open && mode === 'day' })
-  const densityByDate = new Map((density.data ?? []).map((entry) => [entry.date, entry.count]))
+  // Aba "Este mês" fixa o mês corrente (o backend força `month_first =
+  // current_month_first` para `destination === 'month'`) — sem navegação
+  // Prev/Next, diferente da aba "Esta semana".
+  const thisMonthFirst = currentMonthFirst()
+
+  const weekDensity = useTaskDensityQuery(calendarMonthFirst, { enabled: open && mode === 'week' })
+  const weekDensityByDate = new Map((weekDensity.data ?? []).map((entry) => [entry.date, entry.count]))
+
+  const monthDensity = useTaskDensityQuery(thisMonthFirst, { enabled: open && mode === 'month' })
+  const monthDensityByDate = new Map(
+    (monthDensity.data ?? []).map((entry) => [entry.date, entry.count]),
+  )
 
   const subtasks = task.subtasks ?? []
 
@@ -73,28 +92,46 @@ export function TaskDestinationDialog({ task, open, onClose, onSuccess }: TaskDe
     )
   }
 
-  function handleThisMonthChange(event: ChangeEvent<HTMLInputElement>) {
-    const value = event.target.value
-    if (!value) return
-    migrate.mutate(
-      { taskId: task.id, destination: 'month', scheduledDate: value },
-      { onSuccess: handleMoveSuccess },
-    )
+  // Clique no dia já selecionado desseleciona (toggle) — caminho mais simples
+  // para o usuário voltar a "semana/mês sem data" sem um controle extra.
+  function handleSelectWeekDay(iso: string) {
+    setSelectedDate((current) => (current === iso ? null : iso))
+  }
+
+  function handleSelectMonthDay(iso: string) {
+    setMonthDate((current) => (current === iso ? '' : iso))
   }
 
   function handleFutureMonthChange(event: ChangeEvent<HTMLInputElement>) {
-    const month = event.target.value
-    if (!month) return
-    const scheduledDate = futureDay ? `${month}-${futureDay.padStart(2, '0')}` : undefined
-    migrate.mutate(
-      { taskId: task.id, destination: 'future', monthFirst: `${month}-01`, scheduledDate },
-      { onSuccess: handleMoveSuccess },
-    )
+    setFutureMonth(event.target.value)
+  }
+
+  function handleConfirm() {
+    if (mode === 'today') {
+      migrate.mutate({ taskId: task.id, destination: 'today' }, { onSuccess: handleMoveSuccess })
+    } else if (mode === 'week') {
+      migrate.mutate(
+        { taskId: task.id, destination: 'week', scheduledDate: selectedDate ?? undefined },
+        { onSuccess: handleMoveSuccess },
+      )
+    } else if (mode === 'month') {
+      migrate.mutate(
+        { taskId: task.id, destination: 'month', scheduledDate: monthDate || undefined },
+        { onSuccess: handleMoveSuccess },
+      )
+    } else {
+      if (!futureMonth) return
+      const scheduledDate = futureDay ? `${futureMonth}-${futureDay.padStart(2, '0')}` : undefined
+      migrate.mutate(
+        { taskId: task.id, destination: 'future', monthFirst: `${futureMonth}-01`, scheduledDate },
+        { onSuccess: handleMoveSuccess },
+      )
+    }
   }
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="xs">
-      <DialogTitle>Mover tarefa</DialogTitle>
+      <DialogTitle>Migrar Tarefa</DialogTitle>
       <Box sx={{ px: 3, pb: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
         <Box>
           <Typography variant="heading" component="div">
@@ -103,6 +140,11 @@ export function TaskDestinationDialog({ task, open, onClose, onSuccess }: TaskDe
           {task.description && (
             <Typography variant="body-sm" color="text.secondary" component="div" sx={{ mt: 0.5 }}>
               {task.description}
+            </Typography>
+          )}
+          {task.scheduledDate && (
+            <Typography variant="body-sm" color="text.secondary" component="div" sx={{ mt: 0.5 }}>
+              Atualmente: {formatDDMM(task.scheduledDate)}
             </Typography>
           )}
           {subtasks.length > 0 && (
@@ -117,13 +159,19 @@ export function TaskDestinationDialog({ task, open, onClose, onSuccess }: TaskDe
         </Box>
 
         <Tabs value={mode} onChange={handleTabChange} aria-label="Destino da tarefa">
-          <Tab value="day" label="Dia" />
-          <Tab value="thisMonth" label="Este mês" />
+          <Tab value="today" label="Hoje" />
+          <Tab value="week" label="Esta semana" />
+          <Tab value="month" label="Este mês" />
           <Tab value="future" label="Futuro" />
         </Tabs>
 
         <Box role="tabpanel">
-          {mode === 'day' && (
+          {mode === 'today' && (
+            <Typography variant="body2" color="text.secondary">
+              Mover para o Daily Log de hoje.
+            </Typography>
+          )}
+          {mode === 'week' && (
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <IconButton size="small" onClick={() => shiftCalendarMonth(-1)} aria-label="Mês anterior">
@@ -139,24 +187,18 @@ export function TaskDestinationDialog({ task, open, onClose, onSuccess }: TaskDe
               </Box>
               <MonthDensityCalendar
                 monthFirst={calendarMonthFirst}
-                densityByDate={densityByDate}
-                onSelectDay={(iso) =>
-                  migrate.mutate(
-                    { taskId: task.id, destination: 'week', scheduledDate: iso },
-                    { onSuccess: handleMoveSuccess },
-                  )
-                }
+                densityByDate={weekDensityByDate}
+                selectedDate={selectedDate}
+                onSelectDay={handleSelectWeekDay}
               />
             </Box>
           )}
-          {mode === 'thisMonth' && (
-            <TextField
-              label="Data no mês corrente"
-              type="date"
-              size="small"
-              fullWidth
-              slotProps={{ htmlInput: { min, max }, inputLabel: { shrink: true } }}
-              onChange={handleThisMonthChange}
+          {mode === 'month' && (
+            <MonthDensityCalendar
+              monthFirst={thisMonthFirst}
+              densityByDate={monthDensityByDate}
+              selectedDate={monthDate || null}
+              onSelectDay={handleSelectMonthDay}
             />
           )}
           {mode === 'future' && (
@@ -174,8 +216,9 @@ export function TaskDestinationDialog({ task, open, onClose, onSuccess }: TaskDe
                 label="Mês"
                 type="month"
                 size="small"
-                slotProps={{ inputLabel: { shrink: true } }}
+                value={futureMonth}
                 onChange={handleFutureMonthChange}
+                slotProps={{ inputLabel: { shrink: true } }}
               />
             </Box>
           )}
@@ -189,6 +232,13 @@ export function TaskDestinationDialog({ task, open, onClose, onSuccess }: TaskDe
       </Box>
       <DialogActions>
         <Button onClick={onClose}>Cancelar</Button>
+        <Button
+          onClick={handleConfirm}
+          disabled={mode === 'future' && !futureMonth}
+          variant="contained"
+        >
+          Migrar
+        </Button>
       </DialogActions>
     </Dialog>
   )

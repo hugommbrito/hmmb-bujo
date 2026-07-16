@@ -287,7 +287,7 @@ describe('TaskDetailPanel (AC1, AC2, AC3)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Mover tarefa' }))
 
-    expect(screen.getByRole('dialog', { name: 'Mover tarefa' })).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Migrar Tarefa' })).toBeInTheDocument()
   })
 
   it('botão "Mover tarefa" desabilitado fora de pending/started', () => {
@@ -307,9 +307,8 @@ describe('TaskDetailPanel (AC1, AC2, AC3)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Mover tarefa' }))
     fireEvent.click(screen.getByRole('tab', { name: 'Este mês' }))
-    fireEvent.change(screen.getByLabelText('Data no mês corrente'), {
-      target: { value: '2026-07-20' },
-    })
+    fireEvent.click(screen.getByLabelText('20 de julho, sem tarefas'))
+    fireEvent.click(screen.getByRole('button', { name: 'Migrar' }))
 
     expect(mockMigrateMutate).toHaveBeenCalledWith(
       { taskId: 'task-1', destination: 'month', scheduledDate: '2026-07-20' },
@@ -320,7 +319,7 @@ describe('TaskDetailPanel (AC1, AC2, AC3)', () => {
     })
 
     await waitFor(() =>
-      expect(screen.queryByRole('dialog', { name: 'Mover tarefa' })).not.toBeInTheDocument(),
+      expect(screen.queryByRole('dialog', { name: 'Migrar Tarefa' })).not.toBeInTheDocument(),
     )
     expect(onClose).toHaveBeenCalled()
   })
@@ -329,12 +328,12 @@ describe('TaskDetailPanel (AC1, AC2, AC3)', () => {
     const { onClose } = renderPanel(baseTask({ status: 'pending' }))
 
     fireEvent.click(screen.getByRole('button', { name: 'Mover tarefa' }))
-    expect(screen.getByRole('dialog', { name: 'Mover tarefa' })).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Migrar Tarefa' })).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }))
 
     await waitFor(() =>
-      expect(screen.queryByRole('dialog', { name: 'Mover tarefa' })).not.toBeInTheDocument(),
+      expect(screen.queryByRole('dialog', { name: 'Migrar Tarefa' })).not.toBeInTheDocument(),
     )
     expect(mockMigrateMutate).not.toHaveBeenCalled()
     expect(onClose).not.toHaveBeenCalled()

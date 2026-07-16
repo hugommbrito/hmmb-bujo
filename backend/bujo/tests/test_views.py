@@ -1032,15 +1032,25 @@ def test_post_migrate_destination_today_migra_para_daily_log_de_hoje(auth_client
 
 
 @pytest.mark.django_db
-def test_post_migrate_destination_month_sem_scheduled_date_retorna_400(auth_client, user):
+def test_post_migrate_destination_month_sem_scheduled_date_postpoe_no_monthly_corrente(
+    auth_client, user
+):
     with tenant_context(user):
         task = TaskFactory(user=user, status=Task.Status.PENDING)
+        current_month_first = today_for(user).replace(day=1)
 
     response = auth_client.post(
         f"/api/bujo/tasks/{task.id}/migrate/", {"destination": "month"}, format="json"
     )
 
-    assert response.status_code == 400
+    assert response.status_code == 200
+    assert response.data["status"] == "postponed"
+    with tenant_context(user):
+        task.refresh_from_db()
+        assert task.status == "postponed"
+        monthly_log = get_or_create_monthly_log(user=user, month_first=current_month_first)
+        assert monthly_log.tasks.filter(id=task.migrated_to_task_id).exists()
+        assert task.migrated_to_task.scheduled_date is None
 
 
 @pytest.mark.django_db
