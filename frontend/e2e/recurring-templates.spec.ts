@@ -295,3 +295,80 @@ test('AC2/AC3 — modal do Monthly mostra título/descrição/recorrência + cal
 
   expect(consoleErrors).toEqual([])
 })
+
+// Cobre a Story 11.8 (etiqueta Eisenhower no modal de placement) ponta-a-ponta
+// contra o backend real. Os outros testes deste arquivo criam templates SEM
+// prioridade, então nunca exercitam a linha nova "Prioridade: …" — e o teste de
+// componente monta o dialog com uma fixture mockada, sem provar que `eisenhower`
+// percorre form → serializer real → lista → modal. Este teste fecha esse gap:
+// cria um template COM prioridade e outro SEM, e assere presença/ausência da
+// linha no modal real (AC1 e a regra de nulos AC3).
+test('AC1/AC3 (Story 11.8) — modal de placement exibe a etiqueta Eisenhower do template com prioridade real e a omite quando ausente', async ({
+  page,
+}) => {
+  test.setTimeout(120_000)
+
+  const consoleErrors: string[] = []
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') consoleErrors.push(msg.text())
+  })
+  page.on('pageerror', (err) => consoleErrors.push(err.message))
+
+  await page.getByRole('button', { name: 'Recorrentes' }).click()
+  await expect(page.getByLabel('Recorrentes')).toBeVisible()
+
+  // Template COM prioridade Eisenhower "Urgente + Importante" (ui). O Select é
+  // um MUI Select (aria-label "Eisenhower"): abrir e escolher a opção — mesmo
+  // padrão de daily-tasks.spec.ts. O snapshot de placement copia `eisenhower`
+  // do template, então esse valor precisa vir do backend de verdade, não de uma
+  // fixture.
+  const form = page.getByRole('form', { name: 'Novo template recorrente' })
+  await form.getByLabel('Título').fill('Planejamento crítico')
+  await form.getByLabel('Recorrência (texto livre)').fill('toda segunda')
+  await form.getByLabel('Eisenhower').click()
+  await page.getByRole('option', { name: 'Urgente + Importante' }).click()
+  await form.getByRole('button', { name: 'Criar' }).click()
+  await expect(page.getByText('Semanal — toda segunda')).toBeVisible({ timeout: 10_000 })
+
+  // Template SEM prioridade (Eisenhower deixado em "Nenhum") — controle da
+  // regra de nulos (AC3).
+  await form.getByLabel('Título').fill('Rotina neutra')
+  await form.getByLabel('Recorrência (texto livre)').fill('toda sexta')
+  await form.getByRole('button', { name: 'Criar' }).click()
+  await expect(page.getByText('Semanal — toda sexta')).toBeVisible({ timeout: 10_000 })
+
+  await page.getByRole('button', { name: 'Esta Semana' }).click()
+  await expect(page.getByLabel('Esta Semana')).toBeVisible()
+  await expect(page.getByText('Planejamento crítico — Semanal')).toBeVisible({ timeout: 10_000 })
+  await expect(page.getByText('Rotina neutra — Semanal')).toBeVisible()
+
+  // AC1: o modal do template com prioridade real mostra "Prioridade: …" junto
+  // de título e recorrência (que a 11.3 já exibia). Escopa o botão à linha certa
+  // (há dois "Definir placement" na seção).
+  const criticalRow = page
+    .getByText('Planejamento crítico — Semanal', { exact: true })
+    .locator('xpath=ancestor::div[1]')
+  await criticalRow.getByRole('button', { name: 'Definir placement' }).click()
+  const criticalDialog = page.getByRole('dialog')
+  await expect(criticalDialog.getByText('Planejamento crítico', { exact: true })).toBeVisible()
+  await expect(criticalDialog.getByText('Recorrência: toda segunda')).toBeVisible()
+  await expect(criticalDialog.getByText('Prioridade: Urgente + Importante')).toBeVisible()
+  // Fechar sem colocar — o teste é sobre a renderização do modal, não o placement.
+  await criticalDialog.getByRole('button', { name: 'Cancelar' }).click()
+  await expect(criticalDialog).toHaveCount(0)
+
+  // AC3: o modal do template sem prioridade não exibe nenhuma linha "Prioridade:"
+  // (nada de "Prioridade: Nenhum"), mas segue mostrando título e recorrência.
+  const neutralRow = page
+    .getByText('Rotina neutra — Semanal', { exact: true })
+    .locator('xpath=ancestor::div[1]')
+  await neutralRow.getByRole('button', { name: 'Definir placement' }).click()
+  const neutralDialog = page.getByRole('dialog')
+  await expect(neutralDialog.getByText('Rotina neutra', { exact: true })).toBeVisible()
+  await expect(neutralDialog.getByText('Recorrência: toda sexta')).toBeVisible()
+  await expect(neutralDialog.getByText(/Prioridade:/)).toHaveCount(0)
+  await neutralDialog.getByRole('button', { name: 'Cancelar' }).click()
+  await expect(neutralDialog).toHaveCount(0)
+
+  expect(consoleErrors).toEqual([])
+})

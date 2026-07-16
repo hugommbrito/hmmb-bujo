@@ -4,6 +4,16 @@ import { useTaskDensityQuery } from '../api'
 import type { RecurringTaskTemplate } from '../types'
 import { MonthDensityCalendar } from './MonthDensityCalendar'
 
+// Rótulos por extenso das prioridades Eisenhower "reais" (Story 11.8). Só
+// ui/u/i entram no mapa: none/''/null significam "sem prioridade" e não
+// renderizam nada (regra de nulos, AC3 — mesma convenção de TaskDetailPanel e
+// RecurringTemplateManager, que também duplicam este mapa localmente).
+const EISENHOWER_LABEL: Record<'ui' | 'u' | 'i', string> = {
+  ui: 'Urgente + Importante',
+  u: 'Urgente',
+  i: 'Importante',
+}
+
 interface RecurringPlacementDialogProps {
   open: boolean
   dateFieldType: 'date' | 'day'
@@ -60,6 +70,11 @@ export function RecurringPlacementDialog({
             <Typography variant="body-sm" color="text.secondary" component="div" sx={{ mt: 0.5 }}>
               Recorrência: {template.recurrenceText}
             </Typography>
+            {template.eisenhower && template.eisenhower in EISENHOWER_LABEL && (
+              <Typography variant="body-sm" color="text.secondary" component="div" sx={{ mt: 0.5 }}>
+                Prioridade: {EISENHOWER_LABEL[template.eisenhower as 'ui' | 'u' | 'i']}
+              </Typography>
+            )}
           </Box>
         )}
 

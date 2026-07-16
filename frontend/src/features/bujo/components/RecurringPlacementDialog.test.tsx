@@ -103,6 +103,30 @@ describe('RecurringPlacementDialog (AC2)', () => {
     expect(screen.getByLabelText('Data (opcional)')).toBeInTheDocument()
   })
 
+  // AC1: quando o template tem prioridade Eisenhower real (ui/u/i), o modal
+  // exibe a etiqueta por extenso junto de descrição e recorrência.
+  it.each([
+    ['ui', 'Urgente + Importante'],
+    ['u', 'Urgente'],
+    ['i', 'Importante'],
+  ] as const)('exibe a etiqueta Eisenhower quando definida (%s)', (eisenhower, label) => {
+    renderDialog({ template: { ...TEMPLATE, eisenhower } })
+
+    expect(screen.getByText(`Prioridade: ${label}`)).toBeInTheDocument()
+  })
+
+  // AC3: none/''/null são "sem prioridade" — a linha simplesmente não aparece
+  // (nada de "Prioridade: Nenhum" nem chip vazio).
+  it.each([
+    ['null (default do fixture)', null],
+    ["'none'", 'none'],
+    ["'' (blank)", ''],
+  ] as const)('não exibe a linha de prioridade quando ausente (%s)', (_caso, eisenhower) => {
+    renderDialog({ template: { ...TEMPLATE, eisenhower } })
+
+    expect(screen.queryByText(/Prioridade:/)).not.toBeInTheDocument()
+  })
+
   it('sem violações de acessibilidade (jest-axe)', async () => {
     renderDialog()
     // O conteúdo do MUI Dialog é portalado para fora do container do render —

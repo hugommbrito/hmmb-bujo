@@ -1714,3 +1714,81 @@ Rodado contra o stack real (`npm run dev` + `manage.py runserver` sob `config.se
 
 - **Lição para guardrail:** ao alterar um componente **compartilhado** (`TaskDetailPanel` serve Daily/Semana/Mês), reexecutar a **suíte E2E inteira**, não só o `.spec.ts` da superfície-alvo — foi exatamente o que deixou a regressão do `daily-tasks.spec.ts` passar. Candidato a `persistent_fact`/guardrail em `_bmad/custom/bmad-dev-story.toml` (não aplicado aqui — decisão do Hugo, fora do escopo deste workflow de QA).
 - Nenhum outro gap bloqueante identificado.
+
+---
+
+# Resumo de Automação de Testes — Story 11.8: Infos da recorrência no modal de placement
+
+**Data:** 2026-07-16
+**Story:** 11.8 — Etiqueta Eisenhower ("Prioridade: …") no `RecurringPlacementDialog`
+**Framework:** Vitest 4.1 + @testing-library/react + jest-axe (componente) · Playwright (E2E, branch Neon `e2e`). Backend não tocado; contrato inalterado.
+
+---
+
+## Contexto
+
+A story chegou em `review` com o gap de componente **já fechado** pelo dev-story: `RecurringPlacementDialog.test.tsx` tem `it.each` para `ui`/`u`/`i` exibidos (AC1) e para `null`/`'none'`/`''` omitidos (AC3), mais o jest-axe contra o Dialog real portalado. Esta rodada de QA revisou a suíte contra AC1–AC4 e o checklist do `bmad-qa-generate-e2e-tests` procurando gaps reais para auto-aplicar. Encontrou **um gap de cobertura E2E** e o fechou.
+
+## Gaps Descobertos e Auto-Aplicados
+
+| # | Gap | Arquivo | AC | Severidade |
+|---|-----|---------|-----|-----------|
+| 1 | O modal de placement é exercitado E2E (`recurring-templates.spec.ts`, `future-log-annual.spec.ts`) só com templates **sem** Eisenhower → a linha nova "Prioridade: …" nunca era provada contra o backend real. O teste de componente monta o modal com uma **fixture mockada**, sem provar que `eisenhower` percorre `Select` do form → serializer → snapshot de placement → modal. | `recurring-templates.spec.ts` | AC1, AC3 | Médio |
+
+**Sobre o escopo (deviation consciente):** o dev-story (Task 4.5) decidiu **não** adicionar E2E, tratando o teste de componente como fonte de verdade da renderização. Este workflow de QA foi invocado explicitamente com "auto-apply all discovered gaps" e tem como mandato gerar cobertura E2E; o gap fechado é o **caminho de integração real** (form MUI + serializer + snapshot) que a fixture mockada do teste de componente não alcança. Registrado aqui para o Hugo ver a decisão. Nenhum arquivo de contrato/backend foi tocado.
+
+## Testes Gerados
+
+### `frontend/e2e/recurring-templates.spec.ts` — 1 teste novo
+
+- [x] `AC1/AC3 (Story 11.8) — modal de placement exibe a etiqueta Eisenhower do template com prioridade real e a omite quando ausente` — cria via UI + backend real **dois** templates weekly: um **com** Eisenhower "Urgente + Importante" (selecionado no `Select` real, `getByLabel('Eisenhower').click()` → `getByRole('option', …)`, mesmo padrão de `daily-tasks.spec.ts`) e um **sem** prioridade. **AC1:** o modal do primeiro mostra `Prioridade: Urgente + Importante` junto de título e `Recorrência: …`. **AC3:** o modal do segundo **não** exibe nenhuma linha `Prioridade:` (nada de "Prioridade: Nenhum"), mantendo título/recorrência. Fecha por "Cancelar" (foco é a renderização, não o placement); `consoleErrors == []`.
+
+### Componente (`RecurringPlacementDialog.test.tsx`) — sem mudança nesta rodada
+
+Já coberto pelo dev-story: `it.each` presente (ui/u/i) + ausente (null/'none'/'') + jest-axe. Nenhum gap → não tocado.
+
+## Cobertura por AC
+
+| AC | Critério | Coberto por |
+|----|----------|-------------|
+| AC1 | Etiqueta Eisenhower exibida quando prioridade real | `RecurringPlacementDialog.test.tsx` (ui/u/i) + `recurring-templates.spec.ts` ← **novo, backend real (ui)** |
+| AC2 | Sem regressão; 3 superfícies (componente único) | `RecurringPlacementDialog.test.tsx` (título/descrição/recorrência/densidade + jest-axe) + os 3 testes de placement E2E pré-existentes (seguem verdes) |
+| AC3 | Regra de nulos (none/''/null não renderiza) | `RecurringPlacementDialog.test.tsx` (3 casos) + `recurring-templates.spec.ts` ← **novo, template sem prioridade** |
+| AC4 | Categoria estruturalmente ausente em templates | Nada a testar — campo não existe em `RecurringTaskTemplate`; questão aberta ao Hugo registrada na story |
+
+## Resultado da Execução
+
+```
+nvm use 22   (Node 22.15.1)
+
+npx vitest run --no-file-parallelism
+  Test Files  45 passed (45)
+       Tests  484 passed (484)     ← inalterado (nenhum componente/teste de componente tocado nesta rodada)
+
+npx playwright test recurring-templates.spec.ts --workers=1 --reporter=list
+  4 passed (1.7m)                  ← 3 pré-existentes + o novo da 11.8; zero console.error
+  (teste isolado -g "Story 11.8": 1 passed, 17s)
+
+npm run typecheck                          → 0 erros
+npx eslint e2e/recurring-templates.spec.ts → 0 erros/avisos
+```
+
+Rodado contra o stack real (`npm run dev` + `manage.py runserver` sob `config.settings.e2e`, branch Neon `e2e` — Story 11.1), `--workers=1` por cold-start (lição recorrente 11.2→11.7). Backend não tocado → `pytest` não reexecutado (baseline 11.7: 360 passed, sem mudança esperada). Contrato intacto: `git status --short` não inclui `schema.yaml`/`types.gen.ts`/`api.ts`/`keys.ts`/`backend/`. Diff: `recurring-templates.spec.ts` +77 linhas (1 teste novo), único arquivo alterado.
+
+## Checklist de Validação
+
+- [x] Testes E2E gerados (UI existe) — 1 teste novo cobrindo AC1 + AC3 contra o backend real
+- [x] API tests: N/A (story frontend-only, sem endpoint/serializer/modelo novo)
+- [x] Usam APIs padrão do framework já adotado (Playwright + fixtures do projeto) — nenhuma ferramenta nova
+- [x] Cobrem happy path (template com prioridade → linha exibida) + caso crítico (template sem prioridade → linha omitida)
+- [x] Todos os testes rodam com sucesso (484 vitest + 4 e2e no arquivo)
+- [x] Locators semânticos/acessíveis (`getByRole`, `getByLabel`, texto visível; row escopada por `ancestor::div[1]`)
+- [x] Descrições claras em pt-BR, seguindo a convenção do arquivo
+- [x] Sem waits/sleeps artificiais (`toBeVisible`/`toHaveCount` com timeout de config; sem `sleep`)
+- [x] Testes independentes entre si (fixture cria usuário novo por teste)
+- [x] Summary salvo em `_bmad-output/implementation-artifacts/tests/test-summary.md`
+
+## Próximos Passos
+
+- **Questão aberta da AC4 (decisão do Hugo, fora desta story):** templates recorrentes ganharem campo `category` como as tasks têm — puxaria backend + migração + contrato + CRUD + snapshot → story própria. Registrada em `11-8-*.md`.
+- Nenhum outro gap bloqueante identificado.

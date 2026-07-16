@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-22
-last_updated: 2026-07-15  # story 11.7 → review (dev-story); epic-11 reaberto (Correct Course): 11.8–11.11 backlog, retro → optional
+last_updated: 2026-07-16  # story 11.8 → done (review); 11.7 done
 project: hmmb-bujo
 project_key: NOKEY
 tracking_system: file-system
@@ -86,7 +86,7 @@ development_status:
   11-5-crud-de-tarefas-em-esta-semana-este-mes: done
   11-6-mover-migrar-tarefa-de-qualquer-superficie: done
   11-7-edicao-de-tarefa-persiste-em-esta-semana-este-mes: done
-  11-8-infos-da-recorrencia-no-modal-de-placement: backlog
+  11-8-infos-da-recorrencia-no-modal-de-placement: done
   11-9-polimento-visual-dos-cards-e-grid-da-semana: backlog
   11-10-seletor-mover-migrar-completo: backlog
   11-11-navegar-e-agir-em-logs-passados-nao-fechados: backlog
