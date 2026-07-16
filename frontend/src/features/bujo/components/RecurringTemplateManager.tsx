@@ -98,9 +98,12 @@ function TemplateRow({ template }: TemplateRowProps) {
               {RECURRENCE_GROUP_LABEL[template.recurrenceGroup]} — {template.recurrenceText}
               {!template.active && ' (inativo)'}
             </Typography>
-            {/* AC1/AC2: descrição truncada em 1 linha, só quando há conteúdo. */}
+            {/* AC1/AC2: descrição truncada em 1 linha, só quando há conteúdo.
+                `component="div"`: sem ela, `body-sm` (variante custom) cai no
+                fallback <span> e a descrição colaria na mesma linha da subline
+                de recorrência, sem ellipsis. */}
             {template.description && (
-              <Typography variant="body-sm" color="text.secondary" noWrap>
+              <Typography variant="body-sm" color="text.secondary" component="div" noWrap>
                 {template.description}
               </Typography>
             )}

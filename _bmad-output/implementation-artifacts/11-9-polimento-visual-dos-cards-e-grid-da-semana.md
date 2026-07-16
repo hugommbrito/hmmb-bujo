@@ -4,7 +4,7 @@ baseline_commit: 65c177c
 
 # Story 11.9: Polimento visual dos cards de tarefa e grid da semana
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -224,41 +224,78 @@ claude-opus-4-8 (Claude Opus 4.8) — workflow bmad-dev-story.
 - `npm run lint` → verde (eslint ., sem warnings/erros).
 - `npm run build` → verde (build em ~354ms; o único aviso é o de chunk > 500 kB, **pré-existente** e não relacionado a esta story).
 - `npx vitest run --no-file-parallelism` → **45 arquivos, 493 passed** (baseline 11.8: 484 → +9 casos novos desta story). Node 22.15.1 (`nvm use 22`).
+- **Após o code review (auto-fix):** typecheck/lint/build verdes e `npx vitest run --no-file-parallelism` → **45 arquivos, 494 passed** (+1 caso de regressão do Finding #1). Ver "Senior Developer Review (AI)".
 
 ### Completion Notes List
 
 Story **puramente de estilo/layout no frontend** — sem backend, contrato, migração ou dependência nova (AC6 confirmado: `git diff --name-only` não inclui `backend/`, `schema.yaml`, `types.gen.ts`, `api.ts` nem `keys.ts`).
 
-- **AC1/AC2 (descrição truncada):** `TaskRow` agora envolve título + descrição numa coluna `<Box sx={{ flex: 1, minWidth: 0 }}>` (o `flex: 1` migrou do `<Typography>` do título para o `<Box>`; `minWidth: 0` habilita o ellipsis). A descrição usa `variant="body-sm"` / `color="text.secondary"` / `noWrap`, sob guard falsy `task.description && (…)` — cobre `null`/`""`/`undefined` de uma vez. Mesmo padrão aplicado a `TemplateRow` (aba Recorrentes) e à linha de `RecurringPlacementSection` (lado esquerdo reestruturado em coluna com `minWidth: 0`; botão ganhou `flexShrink: 0` para não ser espremido). `RecurringPlacementDialog` **não** foi tocado (já entregava a descrição desde a 11.8). Como `TaskRow` é compartilhado (Daily/Semana/Mês/Future/subtarefas), AC1 vale nas 4 superfícies + subtarefas de uma vez — subtarefas herdam a descrição via recursão (testado).
+- **AC1/AC2 (descrição truncada):** `TaskRow` agora envolve título + descrição numa coluna `<Box sx={{ flex: 1, minWidth: 0 }}>` (o `flex: 1` migrou do `<Typography>` do título para o `<Box>`; `minWidth: 0` habilita o ellipsis). A descrição usa `variant="body-sm"` / `color="text.secondary"` / `component="div"` / `noWrap`, sob guard falsy `task.description && (…)` — cobre `null`/`""`/`undefined` de uma vez. **⚠️ Corrigido no code review:** o `component="div"` **faltava** — sem ele o `body-sm` (variante custom) caía no fallback `<span>` do MUI e a descrição não truncava **nem** ficava abaixo do título (Finding #1 da review). O `minWidth: 0` sozinho não bastava: `overflow`/`text-overflow` não se aplicam a `display:inline`. Mesmo padrão aplicado a `TemplateRow` (aba Recorrentes) e à linha de `RecurringPlacementSection` (lado esquerdo reestruturado em coluna com `minWidth: 0`; botão ganhou `flexShrink: 0` para não ser espremido). `RecurringPlacementDialog` **não** foi tocado (já entregava a descrição desde a 11.8). Como `TaskRow` é compartilhado (Daily/Semana/Mês/Future/subtarefas), AC1 vale nas 4 superfícies + subtarefas de uma vez — subtarefas herdam a descrição via recursão (testado).
 - **AC3 (semana em 2 linhas):** ramo desktop da `WeeklyPage` trocou o container `flex` de 7 colunas por `display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 1` → 7 dias em 2 linhas (4 + 3), sem scroll horizontal; `gap: 1` cobre espaçamento horizontal e vertical. Cada coluna perdeu `flex: '1 1 0'` (não se aplica a grid) e manteve `minWidth: 0`. Comentário de código atualizado. Ramo **mobile** (`WeekDaySelector`) intocado.
 - **AC4 (hover):** `Box data-testid="task-row"` ganhou `'&:hover': { bgcolor: 'action.hover' }` + `transition: 'background-color 120ms ease'` (mesma duração/easing do `DayHeader`). O hover preexistente que revela o drag handle (`'&:hover .drag-handle': { opacity: 1 }`) foi **preservado**. Sem sombra/elevation (design flat).
 - **AC5 (cap + centralização):** `Box` externo do `TaskRow` ganhou `width: '100%'`, `maxWidth: isSubtask ? 'none' : 720`, `mx: isSubtask ? 0 : 'auto'`. Cards largos (Daily/Mês/"Sem dia") capam em 720 e centralizam, aproximando chips/ações do título; nas colunas estreitas da grade da Semana o cap é inerte (no-op); subtarefas fluem dentro do bloco já limitado do pai (gate `!isSubtask`, sem centralização aninhada).
-- **Cobertura de testes (Task 7/8/9):** os itens **observáveis** (renderização da descrição, AC1/AC2) têm testes de componente — a fonte de verdade da renderização neste projeto (mesma divisão da 11.7/11.8). Adicionados: `TaskRow` (5 casos: presente / `undefined`,`null`,`""` via `it.each` / subtarefa herda), `RecurringTemplateManager` (2), `RecurringPlacementSection` (2). Os testes de a11y (jest-axe) de `WeeklyPage` e `RecurringPlacementSection` seguem verdes. Conforme Task 7.2/10.2, **não** foram escritos testes frágeis de `:hover`/`maxWidth`/`display:grid` (jsdom não aplica pseudo-classe; layout de baixo valor unitário).
+- **Cobertura de testes (Task 7/8/9):** os itens **observáveis** (renderização da descrição, AC1/AC2) têm testes de componente — a fonte de verdade da renderização neste projeto (mesma divisão da 11.7/11.8). Adicionados: `TaskRow` (5 casos: presente / `undefined`,`null`,`""` via `it.each` / subtarefa herda), `RecurringTemplateManager` (2), `RecurringPlacementSection` (2). **⚠️ Ajustado no code review:** esses casos assertavam só presença no DOM (`getByText`) e por isso **não pegaram** o Finding #1 — a truncagem, que é o núcleo da AC1, nunca era verificada. Somado +1 caso de regressão (`display: block` + classe `noWrap`) e a mesma asserção embutida nos casos das duas listagens de recorrentes. Os testes de a11y (jest-axe) de `WeeklyPage` e `RecurringPlacementSection` seguem verdes. Conforme Task 7.2/10.2, **não** foram escritos testes frágeis de `:hover`/`maxWidth`/`display:grid` (jsdom não aplica pseudo-classe; layout de baixo valor unitário).
 - **Verificação manual (Task 10.3):** por ser story visual, os itens de hover/grid/centralização são CSS puro confirmados em nível de código (wiring conforme spec) e ficam para confirmação visual do Hugo no review — mesma convenção da 11.8 (o componente compartilhado é exercitado pelos testes de componente; a renderização da descrição, a parte testável, está coberta). O caso especial da `MonthlyPage` "Itens do Future Log" (Task 6.2, `TaskRow` num `<Box flex:1>` ao lado do `TextField`) usa a variante centralizada recomendada; se destoar visualmente, `maxWidth` sem `mx:'auto'` é o recuo aceitável previsto no AC.
 - **e2e (Task 10.4):** mudança puramente visual — nenhum e2e novo; `e2e/` sem mudança. Nenhum seletor de e2e existente precisou de ajuste (suíte vitest não acusou; e2e não roda no dev-story).
 
 ### File List
 
 **Frontend — componentes (código):**
-- `frontend/src/features/bujo/components/TaskRow.tsx` (modificado — coluna título/descrição com `minWidth:0` + descrição `noWrap`; hover `action.hover` + transição; `maxWidth`/`mx` no Box externo gated por `!isSubtask`)
-- `frontend/src/features/bujo/components/RecurringTemplateManager.tsx` (modificado — descrição truncada na view de leitura do `TemplateRow`; `minWidth:0` no wrapper)
-- `frontend/src/features/bujo/components/RecurringPlacementSection.tsx` (modificado — lado esquerdo reestruturado em coluna título+descrição com `minWidth:0`; `gap:1` e `flexShrink:0` no botão)
+- `frontend/src/features/bujo/components/TaskRow.tsx` (modificado — coluna título/descrição com `minWidth:0` + descrição `component="div"`/`noWrap`; hover `action.hover` + transição; `maxWidth`/`mx` no Box externo gated por `!isSubtask`) — *`component="div"` adicionado no code review (Finding #1)*
+- `frontend/src/features/bujo/components/RecurringTemplateManager.tsx` (modificado — descrição truncada na view de leitura do `TemplateRow`; `minWidth:0` no wrapper) — *`component="div"` adicionado no code review (Finding #1)*
+- `frontend/src/features/bujo/components/RecurringPlacementSection.tsx` (modificado — lado esquerdo reestruturado em coluna título+descrição com `minWidth:0`; `gap:1` e `flexShrink:0` no botão) — *`component="div"` adicionado no code review (Finding #1)*
 - `frontend/src/pages/planner/WeeklyPage.tsx` (modificado — grade desktop `repeat(4,1fr)` → 2 linhas; comentário atualizado; `flex:'1 1 0'` removido das colunas)
 
 **Frontend — testes (nenhum arquivo novo; casos adicionados a arquivos existentes):**
-- `frontend/src/features/bujo/components/TaskRow.test.tsx` (modificado — describe "descrição (Story 11.9, AC1/AC2)": +5 casos)
-- `frontend/src/features/bujo/components/RecurringTemplateManager.test.tsx` (modificado — +2 casos de exibição de descrição)
-- `frontend/src/features/bujo/components/RecurringPlacementSection.test.tsx` (modificado — +2 casos de exibição de descrição)
+- `frontend/src/features/bujo/components/TaskRow.test.tsx` (modificado — describe "descrição (Story 11.9, AC1/AC2)": +5 casos; **+1 caso de regressão no code review**: descrição é bloco com `noWrap`)
+- `frontend/src/features/bujo/components/RecurringTemplateManager.test.tsx` (modificado — +2 casos de exibição de descrição; **asserção de bloco/`noWrap` somada no code review**)
+- `frontend/src/features/bujo/components/RecurringPlacementSection.test.tsx` (modificado — +2 casos de exibição de descrição; **asserção de bloco/`noWrap` somada no code review**)
 - `frontend/src/pages/planner/WeeklyPage.test.tsx` (modificado — teste renomeado p/ "7 dias em grade de 2 linhas" + asserção de 7 DayHeaders)
 
 **Rastreamento da story (seções permitidas):**
-- `_bmad-output/implementation-artifacts/11-9-polimento-visual-dos-cards-e-grid-da-semana.md` (checkboxes, Dev Agent Record, File List, Change Log, Status)
-- `_bmad-output/implementation-artifacts/sprint-status.yaml` (11-9 → in-progress → review; `last_updated`)
+- `_bmad-output/implementation-artifacts/11-9-polimento-visual-dos-cards-e-grid-da-semana.md` (checkboxes, Dev Agent Record, File List, Change Log, Status, Senior Developer Review)
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` (11-9 → in-progress → review → done; `last_updated`)
+- `_bmad-output/implementation-artifacts/uncommitted-reports/2026-07-16-story-11-9-uncommitted-files-report.md` (report do protocolo de commit; entrou em `fc76f5f` — **reconciliado no code review**, Finding #3)
 
 *Backend intocado (nenhum arquivo novo de tipo E2E/management command/teste destrutivo criado). O artefato `_bmad-output/story-automator/orchestration-11-…md` aparece modificado no working tree, mas é do orquestrador — **fora do escopo desta story**, não commitar aqui (Dev Notes / Git Intelligence).*
+
+## Senior Developer Review (AI)
+
+**Revisor:** HugoMMBrito · **Data:** 2026-07-16 · **Resultado:** ✅ Aprovado (0 issues CRITICAL) — 1 finding **HIGH** (AC1 não entregue de fato) e 1 **MEDIUM** (cobertura) corrigidos nesta review.
+
+### Verificação executada (contagens reais)
+
+- `npm run typecheck` (tsc -b --noEmit): **0 erros**.
+- `npm run lint` (eslint .): **0 erros/avisos**.
+- `npm run build`: **verde** (~314ms). O aviso de chunk > 500 kB é **pré-existente**, não relacionado.
+- `npx vitest run --no-file-parallelism` (Node 22.15.1): **45 arquivos, 494 passed** — 493 reivindicados pelo dev + **1 caso de regressão** adicionado nesta review.
+- Backend não reexecutado: `git diff` confirma zero arquivo backend/contrato nesta story (AC6). *(Nota: `backend/bujo/views.py` aparece no range `65c177c..HEAD` mas vem do commit `9d5ef75`, um fix independente — fora desta story.)*
+
+### Validação das ACs contra o código
+
+- **AC1 ✗ → ✓ (corrigido)** — a descrição era renderizada, mas **não** truncava e **não** ficava abaixo do título. Ver Finding #1.
+- **AC2 ✓** — guard falsy `task.description && …` / `template.description && …` cobre `null`/`""`/`undefined`; coberto por `it.each` de 3 casos no `TaskRow`. Nenhum placeholder/espaço reservado.
+- **AC3 ✓** — `WeeklyPage.tsx:140` usa `display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap:1` → 7 dias em 4+3. O `minWidth: 0` mantido em cada coluna (`:142`) é o que impede o blowout de trilha: em `1fr` = `minmax(auto, 1fr)` o mínimo `auto` viraria min-content do item, e a descrição `nowrap` reintroduziria scroll horizontal. O dev acertou ao manter. Ramo mobile intocado.
+- **AC4 ✓** — `TaskRow.tsx:174-176`: `transition: 'background-color 120ms ease'` + `'&:hover': { bgcolor: 'action.hover' }`, com `'&:hover .drag-handle': { opacity: 1 }` **preservado** (chaves de seletor distintas, sem conflito). Sem sombra/elevation — coerente com o design flat.
+- **AC5 ✓** — `TaskRow.tsx:150`: `width:'100%', maxWidth: isSubtask ? 'none' : 720, mx: isSubtask ? 0 : 'auto'` no `Box` externo. Gate `!isSubtask` evita centralização aninhada; nas colunas da Semana (« 720) o cap é inerte (no-op).
+- **AC6 ✓** — `git show --name-only fc76f5f` = 8 arquivos de frontend + 3 de tracking. Zero backend/`schema.yaml`/`types.gen.ts`/`api.ts`/`keys.ts`.
+
+### Findings
+
+| # | Severidade | Finding | Ação |
+|---|---|---|---|
+| 1 | **HIGH** | **AC1 não era entregue de fato — a descrição não truncava e ficava colada na mesma linha do título.** `variant="body-sm"` é variante **custom**; o MUI só mapeia variante→elemento para as nativas (`body1`/`body2`/`h1`…), então sem `component` o `Typography` cai no fallback **`<span>`** (`Typography.js:166`). Em `display:inline`, `overflow`/`text-overflow` **não se aplicam** (CSS 2.1 §11.1.1 / CSS-UI §5.2) → o `noWrap` só entregava `white-space:nowrap`: **texto sem ellipsis, vazando horizontalmente**. Pior: como o título é `inline-block` (`component="button"`, presente em Daily/Semana/Mês — todas as superfícies editáveis), título e descrição caíam no **mesmo inline formatting context** e renderizavam **lado a lado, sem espaço** (`…>Titulo</button><span>Levar documentos…</span>`), em vez de "abaixo" como pede a AC. No `RecurringTemplateManager` o efeito era idêntico contra a subline de recorrência (dois `<span>` adjacentes). **Comprovado empiricamente** (probe descartável: `tagName: SPAN`, `display: inline`). A convenção do projeto já era `component="div"` em **todos** os `body-sm` de bloco (`RecurringPlacementDialog.tsx:66,70,74` — o próprio modelo da 11.8 que a story mandou espelhar —, `TaskDestinationDialog.tsx:104`, `MonthDensityCalendar.tsx:104`); o dev copiou `variant`/`color` e perdeu o `component`. | **Corrigido nesta review:** `component="div"` nas 3 linhas de descrição (`TaskRow.tsx:243`, `RecurringTemplateManager.tsx:106`, `RecurringPlacementSection.tsx:89`). Reprobado: `tagName: DIV`, `display: block`. |
+| 2 | MEDIUM | **Os testes de AC1 não podiam pegar o Finding #1.** Os 9 casos novos assertam apenas `getByText(descrição)` — presença no DOM —, que passa com ou sem truncagem. A AC1 é *"truncada em 1 linha (ellipsis via `noWrap`)"*: o comportamento sob teste nunca foi asserido, e o teste `'exibe a descrição **abaixo** do título'` não verificava "abaixo". A Task 7.2 excluiu com razão testes frágeis de `:hover`/`maxWidth` (jsdom não faz layout nem pseudo-classe), mas "é bloco + tem `noWrap`" é barato e estável — e é exatamente o que falhava. | **Corrigido nesta review:** +1 caso em `TaskRow.test.tsx` (`display === 'block'` + classe `MuiTypography-noWrap`) e a mesma asserção embutida nos casos de exibição de `RecurringTemplateManager.test.tsx` / `RecurringPlacementSection.test.tsx`. Verificado que falham contra o código antigo (`display: inline`). |
+| 3 | LOW | **File List omitia um arquivo do commit:** `uncommitted-reports/2026-07-16-story-11-9-uncommitted-files-report.md` entrou em `fc76f5f` mas não constava da seção de rastreamento. | **Corrigido nesta review:** adicionado à File List. |
+| 4 | LOW | **Área de clique do título encolheu.** O `flex: 1` saiu da `<Typography component="button">` e foi para o `<Box>` coluna (conforme Task 1.1). Como `<button>` é `inline-block`, o alvo de clique agora acompanha a largura do **texto**, não mais a faixa restante do card. O clique segue funcionando (AC6 ok) e clicar em vazio deixar de abrir o detalhe é defensável — mas é uma mudança de affordance não declarada na story. | **Registrado, não corrigido** (a estrutura foi prescrita pela story; mudar agora seria scope creep). Avaliar com o Hugo na verificação visual — se incomodar, `width: '100%'` no botão restaura a faixa. |
+
+### Verificação manual pendente (Hugo)
+
+Story majoritariamente visual: hover, cap/centralização de 720px e a grade 4+3 são CSS puro, sem asserção unitária de valor (jsdom não faz layout). O Finding #1 mudava o que se veria na tela, então **vale reconferir**: (a) descrição agora aparece **abaixo** do título e truncada com "…" em Daily/Semana/Mês; (b) grade da Semana em 2 linhas sem scroll horizontal; (c) hover muda o fundo; (d) cap de 720 no caso especial da `MonthlyPage` "Itens do Future Log" (Task 6.2) — se destoar, `maxWidth` sem `mx:'auto'` é o recuo já previsto na AC5.
 
 ## Change Log
 
 | Data | Versão | Descrição | Autor |
 |---|---|---|---|
 | 2026-07-16 | 1.0 | Story 11.9 implementada: descrição truncada em `TaskRow` + 2 listagens de recorrentes (AC1/AC2); grade da semana desktop em 2 linhas (AC3); hover perceptível nos cards (AC4); cap de largura + centralização dos cards largos (AC5); zero mudança de contrato/dados (AC6). +9 testes de componente; typecheck/lint/build/vitest (493 passed) verdes. Status → review. | Amelia (dev-story) |
+| 2026-07-16 | 1.1 | **Code review (auto-fix):** AC1 não era entregue — `variant="body-sm"` sem `component="div"` caía no fallback `<span>` do MUI, matando o ellipsis do `noWrap` e colando a descrição na linha do título (HIGH, corrigido nos 3 componentes). Testes de AC1 fortalecidos para pegar a regressão (MEDIUM, corrigido). File List reconciliada (LOW). Achado de affordance do clique no título registrado (LOW, não corrigido). typecheck/lint/build verdes; vitest **45 arquivos, 494 passed**. Status → done. | Review (AI) |

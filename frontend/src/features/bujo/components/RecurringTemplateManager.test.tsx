@@ -326,7 +326,13 @@ describe('RecurringTemplateManager (AC1, AC2)', () => {
 
     renderManager()
 
-    expect(screen.getByText('Fechar pendências da semana')).toBeInTheDocument()
+    const description = screen.getByText('Fechar pendências da semana')
+    expect(description).toBeInTheDocument()
+    // Regressão: `body-sm` é variante custom → sem `component="div"` o fallback
+    // <span> colaria a descrição na mesma linha da subline de recorrência, sem
+    // ellipsis.
+    expect(window.getComputedStyle(description).display).toBe('block')
+    expect(description).toHaveClass('MuiTypography-noWrap')
   })
 
   it('template sem descrição não mostra linha ruidosa (Story 11.9, AC2)', () => {

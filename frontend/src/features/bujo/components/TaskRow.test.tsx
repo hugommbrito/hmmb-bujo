@@ -256,6 +256,20 @@ describe('TaskRow — descrição (Story 11.9, AC1/AC2)', () => {
     expect(screen.getByText(DESCRIPTION)).toBeInTheDocument()
   })
 
+  // Regressão: `body-sm` é variante custom e o MUI só mapeia variante→elemento
+  // para as nativas (body1/body2/h1…). Sem `component="div"` o fallback é
+  // <span> (display:inline): `overflow`/`text-overflow` do `noWrap` são
+  // ignorados (some o ellipsis) e a descrição ainda sobe para a mesma linha do
+  // título, que é inline-block quando há `onOpenDetail`. Asserção de bloco +
+  // classe noWrap — não de layout renderizado (jsdom não faz layout).
+  it('a descrição é bloco com noWrap — sem isso não há truncagem em 1 linha (AC1)', () => {
+    renderTaskRow(baseTask({ description: DESCRIPTION }))
+    const description = screen.getByText(DESCRIPTION)
+
+    expect(window.getComputedStyle(description).display).toBe('block')
+    expect(description).toHaveClass('MuiTypography-noWrap')
+  })
+
   it.each([
     ['ausente (undefined)', undefined],
     ['null', null],

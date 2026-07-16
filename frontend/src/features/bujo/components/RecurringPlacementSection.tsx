@@ -81,9 +81,12 @@ export function RecurringPlacementSection({
                 {template.title} — {RECURRENCE_GROUP_LABEL[template.recurrenceGroup]}
                 {alreadyPlaced && ' (já colocado)'}
               </Typography>
-              {/* AC1/AC2: descrição truncada em 1 linha, só quando há conteúdo. */}
+              {/* AC1/AC2: descrição truncada em 1 linha, só quando há conteúdo.
+                  `component="div"`: sem ela, `body-sm` (variante custom) cai no
+                  fallback <span> (display:inline) e o ellipsis do `noWrap` não
+                  se aplica. */}
               {template.description && (
-                <Typography variant="body-sm" color="text.secondary" noWrap>
+                <Typography variant="body-sm" color="text.secondary" component="div" noWrap>
                   {template.description}
                 </Typography>
               )}

@@ -148,7 +148,12 @@ describe('RecurringPlacementSection (AC2)', () => {
 
     renderSection(['weekly'])
 
-    expect(screen.getByText('Rodar a retrospectiva')).toBeInTheDocument()
+    const description = screen.getByText('Rodar a retrospectiva')
+    expect(description).toBeInTheDocument()
+    // Regressão: `body-sm` é variante custom → sem `component="div"` o MUI cai
+    // no fallback <span> (display:inline) e o ellipsis do `noWrap` não aplica.
+    expect(window.getComputedStyle(description).display).toBe('block')
+    expect(description).toHaveClass('MuiTypography-noWrap')
   })
 
   it('não exibe linha de descrição quando o template não tem descrição (Story 11.9, AC2)', () => {

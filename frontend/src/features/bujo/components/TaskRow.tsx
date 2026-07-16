@@ -234,9 +234,14 @@ export function TaskRow({
             </Typography>
           )}
           {/* AC1/AC2: descrição truncada em 1 linha, só quando há conteúdo
-              (guard falsy cobre null/""/undefined). */}
+              (guard falsy cobre null/""/undefined). `component="div"` é
+              obrigatório: `body-sm` é variante custom e o MUI só mapeia as
+              variantes nativas para elemento — sem ela o fallback é <span>
+              (display:inline), onde `overflow`/`text-overflow` do `noWrap` não
+              se aplicam (some o ellipsis) e a linha sobe para junto do título.
+              Mesma razão do `component="div"` em RecurringPlacementDialog. */}
           {task.description && (
-            <Typography variant="body-sm" color="text.secondary" noWrap>
+            <Typography variant="body-sm" color="text.secondary" component="div" noWrap>
               {task.description}
             </Typography>
           )}
