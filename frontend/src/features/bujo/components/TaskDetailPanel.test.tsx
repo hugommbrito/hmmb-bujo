@@ -44,7 +44,7 @@ function renderPanel(task: Task | undefined, isSubtask = false, onClose = vi.fn(
   return { onClose }
 }
 
-describe('TaskDetailPanel (AC2, AC3)', () => {
+describe('TaskDetailPanel (AC1, AC2, AC3)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
@@ -61,46 +61,142 @@ describe('TaskDetailPanel (AC2, AC3)', () => {
     expect(screen.getByLabelText('Descrição')).toHaveValue('Descrição inicial')
   })
 
-  it('editar o título e sair do campo (blur) chama useUpdateTaskMutation com o patch correto', () => {
-    renderPanel(baseTask())
+  it('editar os 4 campos e clicar "Salvar" dispara um único PATCH combinado e, no sucesso, onClose (AC1)', () => {
+    const { onClose } = renderPanel(baseTask())
 
-    const titleInput = screen.getByLabelText('Título')
-    fireEvent.change(titleInput, { target: { value: 'Título editado' } })
-    fireEvent.blur(titleInput)
+    fireEvent.change(screen.getByLabelText('Título'), { target: { value: 'Título editado' } })
+    fireEvent.change(screen.getByLabelText('Descrição'), { target: { value: 'Nova descrição' } })
 
-    expect(mockUpdateMutate).toHaveBeenCalledWith({ taskId: 'task-1', title: 'Título editado' })
+    fireEvent.mouseDown(screen.getByLabelText('Categoria'))
+    fireEvent.click(screen.getByRole('option', { name: 'Teal' }))
+
+    fireEvent.mouseDown(screen.getByLabelText('Eisenhower'))
+    // name como string em getByRole faz match exato do nome acessível — casa
+    // só "Urgente", não "Urgente + Importante".
+    fireEvent.click(screen.getByRole('option', { name: 'Urgente' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }))
+
+    expect(mockUpdateMutate).toHaveBeenCalledTimes(1)
+    expect(mockUpdateMutate).toHaveBeenCalledWith(
+      {
+        taskId: 'task-1',
+        title: 'Título editado',
+        description: 'Nova descrição',
+        eisenhower: 'u',
+        category: 'teal',
+      },
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    )
+    mockUpdateMutate.mock.calls[0][1].onSuccess()
+    expect(onClose).toHaveBeenCalled()
   })
 
-  it('editar a descrição e sair do campo (blur) chama useUpdateTaskMutation', () => {
+  it('campos vazios são enviados como null no patch de "Salvar" (AC1)', () => {
     renderPanel(baseTask())
 
-    const descriptionInput = screen.getByLabelText('Descrição')
-    fireEvent.change(descriptionInput, { target: { value: 'Nova descrição' } })
-    fireEvent.blur(descriptionInput)
+    // Limpa a descrição; categoria/eisenhower já começam vazios (null),
+    // exercitando o mapeamento "vazio → null" (`description || null`, etc.).
+    fireEvent.change(screen.getByLabelText('Descrição'), { target: { value: '' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }))
 
-    expect(mockUpdateMutate).toHaveBeenCalledWith({
-      taskId: 'task-1',
-      description: 'Nova descrição',
-    })
+    expect(mockUpdateMutate).toHaveBeenCalledTimes(1)
+    expect(mockUpdateMutate).toHaveBeenCalledWith(
+      {
+        taskId: 'task-1',
+        title: 'Finalizar relatório Q2',
+        description: null,
+        eisenhower: null,
+        category: null,
+      },
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    )
   })
 
-  it('blur sem alterar o valor não chama a mutação', () => {
+  it('abre com categoria/eisenhower já definidos e limpá-los para "Nenhum" envia null no "Salvar" (AC1)', () => {
+    // Story 11.7 promoveu categoria/eisenhower a rascunho local: o painel deve
+    // inicializar os Selects a partir da tarefa (não só título/descrição) e o
+    // caminho reverso — limpar um valor já definido para "Nenhuma"/"Nenhum" —
+    // tem de mapear para null no patch (`category || null`, `eisenhower || null`).
+    renderPanel(baseTask({ category: 'teal', eisenhower: 'u' }))
+
+    expect(screen.getByLabelText('Categoria')).toHaveTextContent('Teal')
+    expect(screen.getByLabelText('Eisenhower')).toHaveTextContent('Urgente')
+
+    fireEvent.mouseDown(screen.getByLabelText('Categoria'))
+    fireEvent.click(screen.getByRole('option', { name: 'Nenhuma' }))
+
+    fireEvent.mouseDown(screen.getByLabelText('Eisenhower'))
+    fireEvent.click(screen.getByRole('option', { name: 'Nenhum' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }))
+
+    expect(mockUpdateMutate).toHaveBeenCalledTimes(1)
+    expect(mockUpdateMutate).toHaveBeenCalledWith(
+      {
+        taskId: 'task-1',
+        title: 'Finalizar relatório Q2',
+        description: 'Descrição inicial',
+        eisenhower: null,
+        category: null,
+      },
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    )
+  })
+
+  it('fechar o painel (Fechar) sem salvar não persiste — rascunho descartado (AC2)', () => {
+    const { onClose } = renderPanel(baseTask())
+
+    fireEvent.change(screen.getByLabelText('Título'), { target: { value: 'Rascunho não salvo' } })
+    fireEvent.click(screen.getByLabelText('Fechar'))
+
+    expect(mockUpdateMutate).not.toHaveBeenCalled()
+    expect(onClose).toHaveBeenCalled()
+  })
+
+  it('fechar o painel (Esc) sem salvar não persiste (AC2)', () => {
     renderPanel(baseTask())
 
-    fireEvent.blur(screen.getByLabelText('Título'))
+    fireEvent.change(screen.getByLabelText('Título'), { target: { value: 'Rascunho não salvo' } })
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' })
 
     expect(mockUpdateMutate).not.toHaveBeenCalled()
   })
 
-  it('esvaziar o título e sair do campo reverte para o título original, sem chamar a mutação', () => {
-    renderPanel(baseTask())
+  it('fechar o painel (clique no backdrop) sem salvar não persiste (AC2)', () => {
+    // AC2 enumera três caminhos de fechar — Fechar / Esc / backdrop. O Drawer
+    // (MUI Modal) renderiza um backdrop clicável; clicar nele dispara onClose
+    // sem tocar na mutação, igual aos outros dois caminhos (rascunho descartado).
+    const { onClose } = renderPanel(baseTask())
 
-    const titleInput = screen.getByLabelText('Título')
-    fireEvent.change(titleInput, { target: { value: '   ' } })
-    fireEvent.blur(titleInput)
+    fireEvent.change(screen.getByLabelText('Título'), { target: { value: 'Rascunho não salvo' } })
+    const backdrop = document.querySelector('.MuiBackdrop-root')
+    expect(backdrop).not.toBeNull()
+    fireEvent.click(backdrop as Element)
 
     expect(mockUpdateMutate).not.toHaveBeenCalled()
-    expect(titleInput).toHaveValue('Finalizar relatório Q2')
+    expect(onClose).toHaveBeenCalled()
+  })
+
+  it('botão "Salvar" desabilitado com título vazio/whitespace, habilitado com título válido (AC2)', () => {
+    renderPanel(baseTask())
+
+    const saveButton = screen.getByRole('button', { name: 'Salvar' })
+    expect(saveButton).toBeEnabled()
+
+    fireEvent.change(screen.getByLabelText('Título'), { target: { value: '   ' } })
+    expect(saveButton).toBeDisabled()
+
+    fireEvent.change(screen.getByLabelText('Título'), { target: { value: 'Título válido' } })
+    expect(saveButton).toBeEnabled()
+  })
+
+  it('botão "Salvar" presente também para subtarefa, ao contrário de "Mover"/"Excluir" (AC3)', () => {
+    renderPanel(baseTask({ status: 'pending' }), true)
+
+    expect(screen.getByRole('button', { name: 'Salvar' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Mover tarefa' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Excluir tarefa' })).not.toBeInTheDocument()
   })
 
   it('dropdown de Eisenhower não duplica a opção "Nenhum"', () => {

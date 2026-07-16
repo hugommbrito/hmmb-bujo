@@ -44,14 +44,40 @@ export function TaskDetailPanel({ task, isSubtask, onClose }: TaskDetailPanelPro
   const createSubtask = useCreateSubtaskMutation()
   const deleteTask = useDeleteTaskMutation()
 
+  // Rascunho local dos 4 campos editáveis (Story 11.7). Título/descrição já
+  // eram estado local; categoria/eisenhower passam a ser rascunho também para
+  // que "Salvar" persista tudo num único PATCH e "Fechar" descarte sem
+  // persistir (AC2). O `key={openTaskId}` nas páginas remonta o painel por
+  // tarefa, então o rascunho reinicializa a cada abertura sem `useEffect`.
   const [title, setTitle] = useState(task?.title ?? '')
   const [description, setDescription] = useState(task?.description ?? '')
+  const [category, setCategory] = useState<TaskCategory | ''>(task?.category ?? '')
+  const [eisenhower, setEisenhower] = useState<TaskEisenhower | ''>(task?.eisenhower ?? '')
   const [destinationDialogOpen, setDestinationDialogOpen] = useState(false)
 
   if (!task) return null
 
   const hasLineage = (task.migrationCount ?? 0) > 0 || Boolean(task.migratedToTask)
   const willHardDelete = task.status === 'pending' && !hasLineage
+
+  // Caminho explícito de salvar (AC1/AC2): um único PATCH com os 4 campos,
+  // espelhando RecurringTemplateManager.TemplateRow.handleSave. Só o sucesso
+  // fecha o painel (onSuccess: onClose) — fechar por X/Esc/backdrop descarta o
+  // rascunho sem persistir (lição da 11.6: separar sucesso de fechar/cancelar).
+  function handleSave() {
+    const trimmed = title.trim()
+    if (!trimmed) return
+    updateTask.mutate(
+      {
+        taskId: task.id,
+        title: trimmed,
+        description: description || null,
+        eisenhower: eisenhower || null,
+        category: category || null,
+      },
+      { onSuccess: onClose },
+    )
+  }
 
   return (
     <Drawer
@@ -80,42 +106,20 @@ export function TaskDetailPanel({ task, isSubtask, onClose }: TaskDetailPanelPro
           label="Título"
           value={title}
           onChange={(event) => setTitle(event.target.value)}
-          onBlur={() => {
-            const trimmed = title.trim()
-            // Título é obrigatório (AC1) — esvaziar e sair do campo não pode
-            // persistir um título vazio nem deixar o campo visualmente em
-            // branco enquanto o painel segue aberto; reverte para o valor salvo.
-            if (!trimmed) {
-              setTitle(task.title)
-              return
-            }
-            if (trimmed !== task.title) {
-              updateTask.mutate({ taskId: task.id, title: trimmed })
-            }
-            setTitle(trimmed)
-          }}
           fullWidth
         />
         <TextField
           label="Descrição"
-          value={description ?? ''}
+          value={description}
           onChange={(event) => setDescription(event.target.value)}
-          onBlur={() => {
-            if (description !== (task.description ?? '')) {
-              updateTask.mutate({ taskId: task.id, description: description || null })
-            }
-          }}
           multiline
           minRows={3}
           fullWidth
         />
         <Select
           displayEmpty
-          value={task.category ?? ''}
-          onChange={(event) => {
-            const value = event.target.value
-            updateTask.mutate({ taskId: task.id, category: value ? (value as TaskCategory) : null })
-          }}
+          value={category}
+          onChange={(event) => setCategory(event.target.value as TaskCategory | '')}
           inputProps={{ 'aria-label': 'Categoria' }}
         >
           <MenuItem value="">Nenhuma</MenuItem>
@@ -127,14 +131,8 @@ export function TaskDetailPanel({ task, isSubtask, onClose }: TaskDetailPanelPro
         </Select>
         <Select
           displayEmpty
-          value={task.eisenhower ?? ''}
-          onChange={(event) => {
-            const value = event.target.value
-            updateTask.mutate({
-              taskId: task.id,
-              eisenhower: value ? (value as TaskEisenhower) : null,
-            })
-          }}
+          value={eisenhower}
+          onChange={(event) => setEisenhower(event.target.value as TaskEisenhower | '')}
           inputProps={{ 'aria-label': 'Eisenhower' }}
         >
           <MenuItem value="">Nenhum</MenuItem>
@@ -174,6 +172,16 @@ export function TaskDetailPanel({ task, isSubtask, onClose }: TaskDetailPanelPro
           )}
         </Box>
 
+        {/* "Salvar" é a ação primária e aparece também para subtarefas (editar
+            campos de subtarefa é válido) — diferente de "Mover"/"Excluir", que
+            ficam fora para subtarefa. Desabilitado enquanto o título estiver
+            vazio/whitespace (guard de obrigatório, equivalente ao antigo revert
+            do onBlur). */}
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Button variant="contained" onClick={handleSave} disabled={!title.trim()}>
+            Salvar
+          </Button>
+        </Box>
         {!isSubtask && (
           <Box sx={{ display: 'flex', gap: 1 }}>
             <Button

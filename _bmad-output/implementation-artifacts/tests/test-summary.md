@@ -1631,3 +1631,86 @@ Um único ponto observado (não é gap de teste, é nota de comportamento): o te
 
 - Nenhum gap bloqueante identificado — a suíte gerada pelo dev-story já é a cobertura mínima e suficiente para as 4 ACs.
 - Reexecutar `move-task.spec.ts` isolado (`--workers=1`) na próxima passagem por E2E que já tenha a branch Neon `e2e` disponível, só para reconfirmar os 6/6 registrados no Dev Agent Record.
+
+---
+
+# Resumo de Automação de Testes — Story 11.7: Edição de tarefa persiste em Esta Semana / Este Mês
+
+**Data:** 2026-07-15
+**Story:** 11.7 — Edição de tarefa persiste em Esta Semana / Este Mês (botão "Salvar" explícito; fechar descarta)
+**Framework:** Vitest 4.1 + @testing-library/react + jest-axe (componente) · Playwright (E2E, branch Neon `e2e`). Backend não tocado nesta story.
+
+---
+
+## Contexto
+
+A story já chegou em `review` com os testes reescritos pelo próprio dev-story (Tasks 3/4): `TaskDetailPanel.test.tsx` migrado dos gatilhos implícitos (`onBlur`/`onChange`-mutate) para o fluxo explícito de "Salvar", e `weekly-monthly-task-crud.spec.ts` migrado de `.blur()` para clicar "Salvar". Esta rodada de QA revisou a suíte contra AC1/AC2/AC3 e o checklist de `bmad-qa-generate-e2e-tests`, procurando gaps reais para auto-aplicar. Encontrou **uma regressão crítica não coberta** + **duas lacunas de asserção**, todas aplicadas.
+
+## Gaps Descobertos e Auto-Aplicados
+
+| # | Gap | Arquivo | AC | Severidade |
+|---|-----|---------|-----|-----------|
+| 1 | E2E do Daily editava campos via o `TaskDetailPanel` **compartilhado** usando o `onBlur`/`onChange`-mutate **removido nesta story** e fechava por `Escape` (que agora descarta o rascunho) → 2 testes assertavam persistência sobre um valor nunca salvo | `daily-tasks.spec.ts` | AC3 | **Crítico** |
+| 2 | Fechar por **clique no backdrop** não tinha teste — AC2 enumera três caminhos (Fechar / Esc / backdrop); só os dois primeiros eram cobertos | `TaskDetailPanel.test.tsx` | AC2 | Médio |
+| 3 | O rascunho local de **categoria/eisenhower** (o coração da story) não tinha teste de inicialização a partir de uma tarefa já populada nem do caminho reverso (limpar valor definido → `null` no patch) | `TaskDetailPanel.test.tsx` | AC1 | Médio |
+
+**Sobre o gap #1 (o achado principal):** Story 11.7 removeu a persistência implícita do `TaskDetailPanel`, que é **compartilhado** por Daily/Semana/Mês. O dev migrou o E2E de Semana/Mês (`weekly-monthly-task-crud.spec.ts`), mas `daily-tasks.spec.ts` (Story 3.3, e explicitamente creditado como a cobertura do Daily no mesmo componente compartilhado na rodada de QA da 11.5) ficou intocado — ainda editava título/descrição por `.blur()`, selecionava categoria/eisenhower esperando `onChange`-mutate, e fechava por `Escape` antes de asserção de persistência e de `page.reload()`. Com o novo comportamento, o rascunho é descartado ao fechar sem "Salvar" → os dois testes falhariam. Passou despercebido porque o Debug Log da story registra reexecução **apenas** de `weekly-monthly-task-crud.spec.ts`, nunca da suíte E2E completa. Isso viola diretamente a AC3 ("Sem regressão no Daily Log"). **Corrigido:** `.blur()`/`Escape` → clicar "Salvar" (com `syncAfter` no refetch de `/logs/today/`); subtarefa adicionada **antes** de salvar (ação imediata própria, não depende de "Salvar", coerente com a Task 1.6 da story).
+
+## Testes Gerados/Estendidos
+
+### `frontend/e2e/daily-tasks.spec.ts` — 2 testes corrigidos (regressão AC3)
+
+- [x] `edita campos no painel de detalhe e adiciona subtarefa aninhada` — título/descrição/categoria/eisenhower + subtarefa, agora persistidos via **"Salvar"** (não mais `onBlur`/`Escape`); reabrir confirma persistência contra o backend real.
+- [x] `dados persistem após recarregar a página` — descrição persistida via **"Salvar"** antes do `page.reload()` real.
+
+### `frontend/src/features/bujo/components/TaskDetailPanel.test.tsx` — 2 testes novos
+
+- [x] `fechar o painel (clique no backdrop) sem salvar não persiste (AC2)` — clicar em `.MuiBackdrop-root` dispara `onClose` **sem** chamar `updateTask.mutate` (terceiro caminho de fechar do AC2).
+- [x] `abre com categoria/eisenhower já definidos e limpá-los para "Nenhum" envia null no "Salvar" (AC1)` — prova (a) que o rascunho dos dois campos novos inicializa a partir da tarefa (`Teal`/`Urgente` refletidos nos Selects) e (b) o mapeamento reverso "vazio → null" ao limpar um valor já definido.
+
+## Cobertura por AC
+
+| AC | Critério | Coberto por |
+|----|----------|-------------|
+| AC1 | Persistir os 4 campos via PATCH único (`useUpdateTaskMutation`); reaparecer após invalidação | `TaskDetailPanel.test.tsx` (patch combinado) + `weekly-monthly-task-crud.spec.ts` (E2E Semana/Mês, reaparece na lista) |
+| AC1 | Mapeamento "vazio → null", inclusive **limpando** um valor já definido; rascunho inicializado da tarefa | `TaskDetailPanel.test.tsx` ← **novo (init + clear-to-null)** |
+| AC2 | Caminho explícito de "Salvar"; `disabled` sem título | `TaskDetailPanel.test.tsx` |
+| AC2 | Fechar **não persiste** — Fechar / Esc / **backdrop** | `TaskDetailPanel.test.tsx` (Fechar + Esc pré-existentes; **backdrop novo**) |
+| AC3 | Sem regressão no Daily Log (componente compartilhado) | `daily-tasks.spec.ts` ← **corrigido (migrado para "Salvar")** |
+| AC3 | Mesmo padrão nas 3 superfícies; "Salvar" visível também em subtarefa | `TaskDetailPanel.test.tsx` + `daily-tasks.spec.ts` + `weekly-monthly-task-crud.spec.ts` |
+
+## Resultado da Execução
+
+```
+nvm use 22
+
+npx vitest run --no-file-parallelism
+  Test Files  45 passed (45)
+       Tests  478 passed (478)     ← baseline dev-story 476 → +2 testes de componente novos
+
+npx playwright test daily-tasks.spec.ts weekly-monthly-task-crud.spec.ts --workers=1 --reporter=list
+  11 passed (3.2m)                 ← 5 Daily (2 corrigidos) + 6 Semana/Mês; zero console.error
+
+npm run typecheck  → 0 erros
+npm run lint       → 0 erros/avisos
+```
+
+Rodado contra o stack real (`npm run dev` + `manage.py runserver` sob `config.settings.e2e`, branch Neon `e2e` — Story 11.1), `--workers=1` por cold-start (lição recorrente 11.2-11.6). Backend não foi tocado nesta story → suíte `pytest` não reexecutada (baseline 11.6: 360 passed, sem mudança esperada). Contrato intacto: `git diff` não inclui `schema.yaml`/`types.gen.ts`.
+
+## Checklist de Validação
+
+- [x] Testes E2E gerados/corrigidos (UI existe) — 2 testes de regressão E2E corrigidos + 2 testes de componente novos
+- [x] Usam APIs padrão do framework já adotado (Vitest/Testing Library, Playwright, fixtures `syncAfter`/`detailPanel`) — nenhuma ferramenta nova
+- [x] Cobrem happy path (editar + "Salvar" persiste nas 3 superfícies)
+- [x] Cobrem casos críticos (fechar por Fechar/Esc/backdrop não persiste; limpar campo → null; "Salvar" disabled sem título)
+- [x] Todos os testes rodam com sucesso (478 vitest + 11 e2e)
+- [x] Locators semânticos/acessíveis (`getByRole`, `getByLabel`, `getByTestId('task-row')`, `.MuiBackdrop-root` só para o caso de backdrop)
+- [x] Descrições claras em pt-BR, seguindo a convenção do arquivo
+- [x] Sem waits/sleeps artificiais (`syncAfter`/`waitForResponse` nos round-trips; `expect(...).not.toBeVisible()` no fechamento do painel)
+- [x] Testes independentes entre si (fixture cria usuário novo por teste; componente remonta por `key={openTaskId}`)
+- [x] Summary salvo em `_bmad-output/implementation-artifacts/tests/test-summary.md`
+
+## Próximos Passos
+
+- **Lição para guardrail:** ao alterar um componente **compartilhado** (`TaskDetailPanel` serve Daily/Semana/Mês), reexecutar a **suíte E2E inteira**, não só o `.spec.ts` da superfície-alvo — foi exatamente o que deixou a regressão do `daily-tasks.spec.ts` passar. Candidato a `persistent_fact`/guardrail em `_bmad/custom/bmad-dev-story.toml` (não aplicado aqui — decisão do Hugo, fora do escopo deste workflow de QA).
+- Nenhum outro gap bloqueante identificado.

@@ -272,7 +272,7 @@ Completa o **ciclo BuJo** — o marco de "abandono do caderno". Consome o agrega
 **Depende de:** Épicos 1, 3. **Standalone:** ciclo de planejamento e migração completo sobre as tarefas do Épico 3.
 
 ### Epic 11: Refinamento do Planner & Recorrentes *(refina o Épico 4 — roda antes do Épico 5)*
-Correções e melhorias identificadas em uso após o Épico 4: isola o banco de testes numa branch Neon dedicada; leva os Recorrentes para o Planner com abas/filtros; refina o placement (dedup + modal com calendário de densidade); torna anuais pendentes consultáveis/colocáveis no Future Log o ano todo; habilita CRUD de tarefas em Esta Semana/Este Mês; e permite mover/migrar qualquer tarefa (destino dia-ou-mês) de qualquer superfície. Número 11 é apenas identificador (épicos 5–10 já planejados não foram renumerados) — a execução é logo após o Épico 4.
+Correções e melhorias identificadas em uso após o Épico 4: isola o banco de testes numa branch Neon dedicada; leva os Recorrentes para o Planner com abas/filtros; refina o placement (dedup + modal com calendário de densidade); torna anuais pendentes consultáveis/colocáveis no Future Log o ano todo; habilita CRUD de tarefas em Esta Semana/Este Mês; permite mover/migrar qualquer tarefa (destino dia-ou-mês) de qualquer superfície; e, num 2º lote (reaberto pós-retro via Correct Course 2026-07-15), corrige bugs remanescentes (edição não persistia, placement sem infos), poli o visual dos cards, reformula o seletor de Mover (abas Hoje/Semana/Mês/Futuro, botão explícito) e habilita navegação/ação em logs passados não-fechados. Número 11 é apenas identificador (épicos 5–10 já planejados não foram renumerados) — a execução é logo após o Épico 4.
 **Origem:** lista de bugs/melhorias em `docs/futureIdeas.md` (pós-Épico 4).
 **Depende de:** Épico 4 (refina o que ele entregou). **Standalone:** melhorias incrementais sobre o ciclo BuJo já funcional.
 
@@ -754,7 +754,7 @@ So that eu tenha o histórico auditável que é o valor central do BuJo (FR-1.10
 
 ## Epic 11: Refinamento do Planner & Recorrentes
 
-Refinamentos identificados em uso após o Épico 4 (origem: `docs/futureIdeas.md`). Consome o que o Épico 4 entregou; não redesenha o ciclo BuJo. Histórias ordenadas por dependência: (1) isolamento de teste → (2) Recorrentes no Planner → (3) placement + calendário de densidade *(constrói o calendário compartilhado)* → (4) anuais no Future Log *(reusa o placement)* → (5) CRUD em Semana/Mês → (6) mover/migrar de qualquer lugar *(reusa o calendário da 11.3)*. Número 11 é só identificador; executa antes do Épico 5.
+Refinamentos identificados em uso após o Épico 4 (origem: `docs/futureIdeas.md`). Consome o que o Épico 4 entregou; não redesenha o ciclo BuJo. Histórias ordenadas por dependência: (1) isolamento de teste → (2) Recorrentes no Planner → (3) placement + calendário de densidade *(constrói o calendário compartilhado)* → (4) anuais no Future Log *(reusa o placement)* → (5) CRUD em Semana/Mês → (6) mover/migrar de qualquer lugar *(reusa o calendário da 11.3)*. **2º lote (Correct Course 2026-07-15, reabertura pós-retro): → (7) edição de tarefa persiste *(bug da 11.5)* → (8) infos da recorrência no modal de placement *(bug da 11.3)* → (9) polimento visual dos cards + grid da semana → (10) seletor Mover/Migrar completo *(abas Hoje/Semana/Mês/Futuro, botão explícito; reformula o da 11.6, reusa o calendário)* → (11) navegar/agir em logs passados não-fechados *(reusa as páginas por rota)*.** Número 11 é só identificador; executa antes do Épico 5.
 
 ### Story 11.1: Isolamento de teste via branch Neon dedicada
 
@@ -886,6 +886,123 @@ So that eu reorganize o "quando" de qualquer tarefa em qualquer direção, antec
 **Then** `migrate_task` passa a aceitar `scheduled_date` para destinos dentro de semana (hoje / dia específico), estendendo o serviço existente sem duplicá-lo.
 
 *Fora de escopo (registrado):* granularidade fina de "próxima semana" como bucket próprio; exibir o destino da migração (`migrated_to_task`) na UI — a contagem `↻ N×` já entregue basta por ora.
+
+---
+
+> **2º lote do Épico 11 — reabertura via Correct Course (2026-07-15).** As Stories 11.7–11.11 abaixo nascem de bugs/melhorias identificados em uso após o fechamento do 1º lote (11.1–11.6). Origem: `docs/futureIdeas.md` + feedback direto do Hugo. Ver `sprint-change-proposal-2026-07-15.md`. Decisões de spec correlatas (Mover para Hoje, balde de semana sem dia no seletor, botão explícito de Migrar, navegação de logs passados abertos) em **AD-16**.
+
+### Story 11.7: Edição de tarefa persiste em Esta Semana / Este Mês
+
+As a Hugo,
+I want que a edição de uma tarefa em Esta Semana/Este Mês seja de fato salva,
+So that as alterações não se percam ao fechar o painel (corrige bug da Story 11.5: edição não persiste, sem ação clara de salvar).
+
+**Acceptance Criteria:**
+
+**Given** uma tarefa em Esta Semana/Este Mês que eu edito (título, descrição, eisenhower, categoria, etc.),
+**When** confirmo a edição,
+**Then** a alteração é persistida via a mutação de update já existente (`PATCH`/`useUpdateTaskMutation`) e refletida na tela após a invalidação.
+
+**Given** o painel/formulário de edição,
+**Then** há um caminho explícito de salvar (botão "Salvar" ou salvamento no submit) — fechar o painel/aba **não** é o gatilho de persistência.
+
+**Given** o Daily Log (onde a edição já funcionava),
+**Then** não há regressão — o mesmo padrão de salvar vale para todas as superfícies.
+
+*Nota:* investigar se o gap é só de fiação no frontend (provável — o `PATCH` já existe desde a 11.5) antes de assumir mudança de backend/contrato.
+
+### Story 11.8: Infos da recorrência no modal de placement
+
+As a Hugo,
+I want ver as informações da recorrência (descrição, categoria, Eisenhower, `recurrence_text`) no modal de placement,
+So that eu decida o encaixe com contexto completo (corrige bug da Story 11.3: o modal não exibe esses campos).
+
+**Acceptance Criteria:**
+
+**Given** o modal de placement de um recorrente (`RecurringPlacementDialog`, Story 11.3),
+**When** ele abre,
+**Then** exibe descrição, categoria, etiqueta Eisenhower e `recurrence_text` do template, além do que já mostra (título + calendário de densidade).
+
+**Given** um template sem algum desses campos (nuláveis),
+**Then** o campo ausente simplesmente não aparece (sem placeholder ruidoso).
+
+### Story 11.9: Polimento visual dos cards de tarefa e grid da semana
+
+As a Hugo,
+I want cards de tarefa mais legíveis e uma semana menos apertada,
+So that o Planner fique mais claro no uso diário.
+
+**Acceptance Criteria:**
+
+**Given** um card de tarefa (`TaskRow`) com descrição — em qualquer superfície, **incluindo os recorrentes**,
+**Then** exibe a descrição (truncada, ex.: 1 linha) abaixo do título.
+
+**Given** a tela Esta Semana,
+**Then** os 7 dias são dispostos em **duas linhas** (não uma só apertada).
+
+**Given** um card de tarefa,
+**When** passo o mouse,
+**Then** há um estado de **hover** perceptível.
+
+**Given** cards largos que se estendem de lado a lado da tela,
+**Then** o conteúdo fica visualmente **coeso** — chips/ações mais próximos do título, com largura máxima/centralização evitando que os controles fiquem distantes do texto.
+
+*Nota:* mudanças de estilo/layout; sem mudança de dados/contrato.
+
+### Story 11.10: Seletor Mover/Migrar completo (abas Hoje / Semana / Mês / Futuro, botão explícito)
+
+As a Hugo,
+I want um seletor de mover/migrar com destinos claros e uma ação de confirmar,
+So that eu reorganize o "quando" de qualquer tarefa com controle — incluindo trazer para o **Daily Log de hoje** — sem disparos acidentais (reformula o seletor da Story 11.6, absorve o destino "Hoje" antes planejado, e corrige o bug de não funcionar em Esta Semana).
+
+**Acceptance Criteria:**
+
+**Given** o seletor de mover (`TaskDestinationDialog`) aberto para uma tarefa `pending`/`started`, com título **"Migrar Tarefa"** e as **informações da tarefa** (título, descrição, data/onde ela está hoje),
+**Then** apresenta quatro destinos:
+- **Hoje** → cria no **Daily Log de hoje** (container `log`, `destination='today'`; usa o destino que hoje só o ritual de fim-de-dia aciona — sem endpoint/coluna novos);
+- **Esta semana** → calendário de densidade do mês; posso escolher um **dia específico** (→ `scheduled_date`) **ou** alocar na **semana sem data certa** (→ `weekly_log` corrente, `scheduled_date` nulo — backend já suporta);
+- **Este mês** → um **dia específico** do mês **ou** o **mês sem data** (comportamento do `MigrationCard`);
+- **Futuro** → como já está (mês + dia opcional).
+
+**Given** qualquer destino,
+**Then** a ação **só dispara ao clicar em "Migrar"** — preencher/selecionar não migra sozinho (reverte o auto-fire da Story 11.6 **apenas para este seletor**; o `MigrationCard` de fim-de-dia mantém a confirmação automática dos pickers, UX-DR3 inalterado).
+
+**Given** o calendário de densidade dentro do seletor,
+**Then** destaca visualmente **o dia de hoje e a semana atual**, e **clicar num dia preenche o campo de data** (não migra imediatamente) — liga `onSelectDay`/`selectedDate` para seleção, não para submit.
+
+**Given** uma tarefa em **Esta Semana**,
+**Then** o seletor abre e funciona (corrige o bug da 11.6 nessa superfície).
+
+**Given** a movimentação confirmada,
+**Then** estado/linhagem se mantêm: destino dia/hoje → origem `migrated`; destino mês/futuro → origem `postponed`; alocar sem data segue a regra do destino; `migration_count` incrementa — sem mudança de contrato além do que a 11.6 já entregou. (Decisões de "Hoje", balde-sem-dia e botão explícito registradas em **AD-16**.)
+
+*Story mais parruda do lote — pode ser quebrada em subtarefas na dev-story.*
+
+### Story 11.11: Navegar e agir em logs passados não-fechados
+
+As a Hugo,
+I want navegar para semanas, meses e dias passados que **ainda não fecharam** e agir sobre suas pendências,
+So that pendências de períodos passados abertos não fiquem presas — hoje o Arquivo lista só fechados e não há navegação para alcançá-las; só os rituais de revisão/catch-up as expõem (item #9 e a "Aba de Histórico" do `futureIdeas.md`).
+
+**Acceptance Criteria:**
+
+**Given** as telas Esta Semana / Este Mês,
+**When** navego para trás (controle anterior/próximo ou seletor de data),
+**Then** vejo o período passado correspondente mesmo **não-fechado**, reusando as páginas que já renderizam período por rota (`weekStart`/`monthFirst`) — backend já serve via `week_start`/`month_first`, sem mudança.
+
+**Given** o Daily Log de um dia passado,
+**Then** também é navegável — **única adição de backend** desta story: uma leitura de daily log por data (hoje `TodayLogView` é fixo em "hoje"), sem novo modelo.
+
+**Given** um período passado **não-fechado** (tem `pending`/`started`),
+**Then** posso agir sobre suas tarefas — inclusive "Migrar" (Story 11.10) — normalmente; o guardrail `_check_container_open` (Story 11.5) só bloqueia períodos **fechados**, então passado aberto permanece acionável sem código de permissão novo.
+
+**Given** um período passado **fechado**,
+**Then** segue somente-leitura (Arquivo, Story 4.6) — sem regressão.
+
+**Given** a navegação para trás,
+**Then** há distinção visual entre período atual, passado aberto e fechado (read-only), e um caminho de volta ao hoje/período atual.
+
+*Fora de escopo (registrado):* a aba "Histórico" unificada completa (superfície única de navegação de todos os logs) — esta story entrega a navegação livre para trás; a superfície dedicada fica registrada para depois.
 
 ---
 

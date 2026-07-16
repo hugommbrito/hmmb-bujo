@@ -758,6 +758,24 @@ habit_day_entries (                    -- AD-06 + 2 campos
 
 ---
 
+### AD-16 — "Mover para Hoje" (destino explícito ao Daily Log), balde de semana sem dia no seletor de Mover, e navegação de logs passados não-fechados
+
+**Contexto:** em uso após o 1º lote do Épico 11 (Correct Course 2026-07-15), a Story 11.6 revelou três lacunas: (a) "mover para hoje" caía sempre em placement semanal (`weekly_log` + `scheduled_date`), nunca no Daily Log (`log_id`) — a superfície onde o dia é de fato executado (o `LogSerializer` só lê o container `log`); (b) o seletor de Mover não oferecia alocar "na semana sem dia" (decisão explícita da 11.6 de não ter esse balde) nem um passo de confirmação; (c) logs passados **não-fechados** eram inalcançáveis pela navegação (o Arquivo, Story 4.6, lista só ciclos fechados), prendendo suas pendências.
+
+**Decisões:**
+
+1. **"Hoje" é destino explícito ao Daily Log.** O seletor de Mover (`TaskDestinationDialog`) oferece "Hoje" → `destination='today'` (container `log`), distinto de escolher um dia no calendário (placement semanal, `scheduled_date`). **Sem agregação automática** de tarefas semanais/mensais no Daily Log — a fricção intencional do BuJo é preservada (consistente com AD-04, "sem auto-migração"). Trazer para hoje é ação explícita do usuário. Reusa o `destination='today'` já existente em `migrate_task` (hoje só acionado pelo Fluxo de Migração de fim-de-dia) — sem endpoint/serializer/coluna novos.
+
+2. **O balde de "semana/mês sem dia" volta a ser destino no seletor de Mover.** Revoga a decisão da Story 11.6 ("não há balde de semana sem dia"): o seletor passa a permitir alocar na semana corrente sem `scheduled_date` (o backend já suportava via `migrate_task(destination="week")` sem data) e, análogamente, no mês sem dia. A restrição da 11.6 era de UI, não de domínio.
+
+3. **Confirmação explícita no seletor de Mover.** O `TaskDestinationDialog` passa a exigir um botão "Migrar" (título "Migrar Tarefa"); preencher/selecionar não dispara sozinho, e clicar num dia do calendário **preenche o campo** em vez de mover imediatamente. **Escopo limitado a este seletor** — o Fluxo de Migração de fim-de-dia (`MigrationCard`) mantém a confirmação automática dos pickers (UX-DR3 inalterado; decisão do Hugo no Correct Course).
+
+4. **Passado aberto é navegável e acionável; passado fechado é read-only.** A navegação livre para trás (semanas/meses e Daily Log por data) reusa as leituras por período já existentes (`week_start`/`month_first`; para o Daily Log, uma leitura por data — única adição de backend). O `_check_container_open` (Story 11.5) segue como a **única** fronteira de escrita: período fechado = Arquivo (somente-leitura), período passado aberto permanece acionável sem código de permissão novo.
+
+**Impacto de schema:** nenhum. Referência: `sprint-change-proposal-2026-07-15.md`, Épico 11 Stories 11.10 e 11.11.
+
+---
+
 ## 4. Rastreador de Tópicos
 
 Registro de todos os tópicos arquiteturais identificados. **Resolvidos** apontam para a AD que os fechou; os **em aberto** ficam ao final, na ordem sugerida de retomada.

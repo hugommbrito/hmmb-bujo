@@ -42,11 +42,9 @@ test('edita campos no painel de detalhe e adiciona subtarefa aninhada', async ({
 
   const titleInput = panel.getByLabel('Título')
   await titleInput.fill('Planejar sprint 12')
-  await titleInput.blur()
 
   const descriptionInput = panel.getByLabel('Descrição')
   await descriptionInput.fill('Alinhar prioridades com o time')
-  await descriptionInput.blur()
 
   await panel.getByLabel('Categoria').click()
   await page.getByRole('option', { name: 'Purple' }).click()
@@ -54,11 +52,16 @@ test('edita campos no painel de detalhe e adiciona subtarefa aninhada', async ({
   await panel.getByLabel('Eisenhower').click()
   await page.getByRole('option', { name: 'Urgente + Importante' }).click()
 
+  // Subtarefa é ação imediata própria (não depende de "Salvar") — adicionar e
+  // confirmar na lista do painel antes de salvar/fechar.
   await panel.getByLabel('Nova subtarefa').fill('Revisar backlog')
   await syncAfter(page, () => panel.getByRole('button', { name: 'Nova subtarefa' }).click())
   await expect(panel.getByText('Revisar backlog')).toBeVisible()
 
-  await page.keyboard.press('Escape')
+  // Story 11.7: edição de campos no painel compartilhado só persiste via
+  // "Salvar" (não mais onBlur/onChange); o sucesso fecha o painel. Fechar por
+  // Esc, como antes, descartaria o rascunho — daí o "Salvar" explícito.
+  await syncAfter(page, () => panel.getByRole('button', { name: 'Salvar' }).click())
   await expect(panel).not.toBeVisible()
 
   // Título editado refletido na Task Row; subtarefa aparece aninhada, nunca
@@ -125,11 +128,13 @@ test('dados persistem após recarregar a página', async ({ page }) => {
 
   const panel = detailPanel(page)
   await panel.getByLabel('Descrição').fill('Não deve sumir ao recarregar')
-  await panel.getByLabel('Descrição').blur()
   await panel.getByLabel('Nova subtarefa').fill('Item filho persistente')
   await syncAfter(page, () => panel.getByRole('button', { name: 'Nova subtarefa' }).click())
   await expect(panel.getByText('Item filho persistente')).toBeVisible()
-  await page.keyboard.press('Escape')
+  // Story 11.7: persistir a descrição via "Salvar" (não mais onBlur); o sucesso
+  // fecha o painel. Só então o reload prova a persistência no backend.
+  await syncAfter(page, () => panel.getByRole('button', { name: 'Salvar' }).click())
+  await expect(panel).not.toBeVisible()
 
   await page.reload()
 
