@@ -14,7 +14,7 @@ BUGs Epico 4 (resolvidos no Épico 11 — ver `_bmad-output/implementation-artif
 - [x] Recorrentes: Remover de dentro de configurações (Criar aba "Recorrentes" dentro de "Planner") — Story 11.2
 - [x] Recorrentes: Filtros e abas (ativo, recorrência, etc.) — Story 11.2
 - [x] Recorrentes: Na aba este mês esta semana, o recorrente deve desaparecer ao ser definido o placemente (Filtro para exibir apenas os recorrentes que não estejam citados como ) — Story 11.3
-- [x] Recorrentes: Exibir no modal as informações daquela recorrência ao fazer o placement e mostrar um calendário do mês com indicador de quantas taks já tem previstas para aquele dia — Story 11.3 (calendário + descrição/recorrência); etiqueta Eisenhower — Story 11.8. *Categoria não incluída: `RecurringTaskTemplate` não tem esse campo (só `Task` tem) — questão aberta ao Hugo na Story 11.8 (AC4), viraria story própria (backend + migração + contrato).*
+- [x] Recorrentes: Exibir no modal as informações daquela recorrência ao fazer o placement e mostrar um calendário do mês com indicador de quantas taks já tem previstas para aquele dia — Story 11.3 (calendário + descrição/recorrência); etiqueta Eisenhower — Story 11.8; categoria — Story 11.12 (3º lote: `RecurringTaskTemplate` ganhou campo `category`, reusando `Task.Category`; exibida em `RecurringPlacementDialog` e `RecurringPlacementSection`, task colocada herda a cor do template).
 - [x] Recorrentes: Na aba Logs Futuros deve conter os Recorrentes anuais que ainda não foram "placed" nesse ano. — Story 11.4
 - [x] Este mês / Esta Semnana: Possibilidade de deletar / editar tasks. — Story 11.5 (deletar); edição agora persiste de fato — Story 11.7
 - [x] Esta Semana: Devo poder adicionar uma task em um dia desta semana. — Story 11.5
@@ -23,7 +23,7 @@ BUGs Epico 4 (resolvidos no Épico 11 — ver `_bmad-output/implementation-artif
 
 
 Bugs (resolvidos no Épico 11, 2º lote — ver `_bmad-output/implementation-artifacts/epic-11-retro-2026-07-16.md`):
-- [x] Story 11.3 (Falta exibir as informações da task no modal - descrição, categoria, eisenhower, etc.) — Story 11.8 (eisenhower; descrição/recorrência já vinham da 11.3; categoria = questão aberta, ver nota acima)
+- [x] Story 11.3 (Falta exibir as informações da task no modal - descrição, categoria, eisenhower, etc.) — Story 11.8 (eisenhower; descrição/recorrência já vinham da 11.3); categoria — Story 11.12, 3º lote (ver `_bmad-output/implementation-artifacts/epic-11-retro-2026-07-16-3a-passada.md`)
 - [x] Story 11.5 (Edição não está salvando). Não tem um botão de salvar e quanto fecho a aba, não está persistindo. — Story 11.7
 - [x] Story 11.6 O modal de migração não está funcionando em Esta Semana — Story 11.10 (causa raiz era um bug de backend em `_migrate_subtree` desde a 11.6, não um bug de frontend)
 - [x] Modal de mover tarefas deve ter as seguintes opções/abas: — Story 11.10
