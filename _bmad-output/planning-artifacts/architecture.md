@@ -700,7 +700,7 @@ habit_day_entries (                    -- AD-06 + 2 campos
 
 2. **TanStack Query (v5) como camada de dados do app** — fetch + cache em memória (por chave, client-side, por sessão) + mutações. T12 é o caso concreto que ancora esse padrão para todo o app (não só o Brain Dump).
 
-3. **Contagem via endpoint dedicado leve** `GET /brain-dump/count`, com chave `['brainDumpCount', userId]`. A query fica ativa no app inteiro (sidebar/FAB sempre montados); carga mínima.
+3. **Contagem via endpoint dedicado leve** `GET /brain-dump/count`, com chave `['brainDump', 'count', userId]`. A query fica ativa no app inteiro (sidebar/FAB sempre montados); carga mínima.
 
 4. **Mutações invalidam a chave** (capturar / processar / descartar) → o badge atualiza sozinho em qualquer superfície. Sem store manual, sem `+1/-1` espalhado.
 
@@ -715,7 +715,7 @@ habit_day_entries (                    -- AD-06 + 2 campos
 **Schema/API:** apenas um endpoint leve de contagem; nenhuma estrutura de banco nova.
 
 **Casos-âncora:**
-- *Captura no FAB:* badge sobe otimista na hora; mutação invalida `['brainDumpCount', userId]`; confirma com o servidor.
+- *Captura no FAB:* badge sobe otimista na hora; mutação invalida `['brainDump', 'count', userId]`; confirma com o servidor.
 - *Processar item no desktop:* invalida a mesma chave → badge cai no sidebar e no FAB.
 - *Dois usuários simultâneos:* caches separados em navegadores separados; invalidação de um nunca toca o outro; respostas já escopadas por AD-12.
 - *Desktop + mobile do mesmo usuário:* ao focar a aba do desktop, refetch corrige o badge.
@@ -812,7 +812,7 @@ Quando uma tarefa é migrada entre logs, o item pai "morre" e nasce um filho? Ou
 
 **T11 — Fronteira RLS vs Camada de Serviço / Django** → resolvido em **AD-12** (isolamento autoritativo na camada de aplicação via manager auto-escopado por `contextvar`; RLS não usado no MVP; acesso de operador/admin como caminho privilegiado explícito; falha segura na ausência de contexto; guardrail em CI; NFR-3 reinterpretado como isolamento na fronteira da aplicação).
 
-**T12 — Indicador Técnico do Brain Dump** → resolvido em **AD-13** (badge como server state derivado, não store de cliente; TanStack Query como camada de dados do app; endpoint de contagem leve com chave `['brainDumpCount', userId]`; mutações invalidam a chave; otimismo na captura; staleness multi-dispositivo via refetch-on-focus; isolamento garantido por auth + AD-12, não pelo cache).
+**T12 — Indicador Técnico do Brain Dump** → resolvido em **AD-13** (badge como server state derivado, não store de cliente; TanStack Query como camada de dados do app; endpoint de contagem leve com chave `['brainDump', 'count', userId]`; mutações invalidam a chave; otimismo na captura; staleness multi-dispositivo via refetch-on-focus; isolamento garantido por auth + AD-12, não pelo cache).
 
 **T13 — Complexidade Alta** → sem pendência (complexidade reclassificada de médio-alta para alta; registro apenas).
 

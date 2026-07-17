@@ -9,6 +9,12 @@ import { DJANGO_SETTINGS_MODULE } from './e2e/backendEnv'
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: true,
+  // Contenção da branch Neon `e2e` (locks órfãos + cold-start) tornava a suíte
+  // não-determinística sob execução paralela — diagnosticada e mitigada
+  // manualmente (`--workers=1`) em todo o Épico 11 e no Épico 5. Promovido a
+  // default aqui para parar de depender de lembrar a flag a cada rodada
+  // (retro Épico 4 #7 / Épico 11 #1, 4º ciclo — retro Épico 5 §7).
+  workers: 1,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   reporter: 'html',

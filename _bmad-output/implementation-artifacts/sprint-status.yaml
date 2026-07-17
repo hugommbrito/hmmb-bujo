@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-22
-last_updated: 2026-07-17  # Story 5.3 pronta para review
+last_updated: 2026-07-17  # Epic 5 fechado — retrospectiva concluída
 project: hmmb-bujo
 project_key: NOKEY
 tracking_system: file-system
@@ -94,11 +94,11 @@ development_status:
   epic-11-retrospective: done  # 3ª passada 2026-07-16 fecha o épico (11.1–11.12); retros anteriores mantidas como histórico
 
   # Epic 5: Brain Dump & Captura Rápida (Fase 1b)
-  epic-5: in-progress
+  epic-5: done  # 3/3 stories done (5.1–5.3); retrospectiva concluída em 2026-07-17
   5-1-caixa-de-entrada-do-brain-dump-e-processamento-manual: done
   5-2-indicador-persistente-como-server-state-derivado: done
   5-3-captura-rapida-no-mobile-via-fab-e-capture-sheet: done
-  epic-5-retrospective: optional
+  epic-5-retrospective: done
 
   # Epic 6: Sistema de Hábitos
   epic-6: backlog
