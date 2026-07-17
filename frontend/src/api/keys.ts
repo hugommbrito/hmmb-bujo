@@ -7,10 +7,10 @@ export const keys = {
     count: (userId: string) => ['brainDump', 'count', userId] as const,
     list: () => ['brainDump', 'list'] as const,
   },
-  // Sem userId (diferente de brainDump.count): não há hoje nenhum acessor de
-  // userId no frontend (AuthContext não decodifica o JWT) — ver Dev Notes da
-  // Story 3.2. `AuthProvider.logout()` já limpa o cache inteiro na troca de
-  // usuário, cobrindo o risco que o userId na chave mitigaria.
+  // Sem userId (diferente de brainDump.count): `useAuth().userId` já existe
+  // desde a Story 5.2, mas as chaves `bujo.*` continuam deliberadamente sem
+  // userId (YAGNI) — `AuthProvider.logout()` já limpa o cache inteiro na
+  // troca de usuário, cobrindo o risco que o userId na chave mitigaria.
   bujo: {
     todayLog: (logDate?: string) => ['bujo', 'dailyLog', logDate ?? 'today'] as const,
     weeklyLog: (weekStart?: string) => ['bujo', 'weeklyLog', weekStart ?? 'current'] as const,

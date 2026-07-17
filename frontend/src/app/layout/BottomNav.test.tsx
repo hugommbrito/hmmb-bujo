@@ -3,6 +3,11 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { axe } from 'jest-axe'
 import { MemoryRouter } from 'react-router-dom'
+
+vi.mock('../../features/braindump', () => ({
+  BrainDumpBadge: ({ children }: { children: React.ReactNode }) => children,
+}))
+
 import { BottomNav } from './BottomNav'
 
 const mockNavigate = vi.fn()

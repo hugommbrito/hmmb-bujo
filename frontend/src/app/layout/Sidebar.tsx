@@ -32,6 +32,8 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import MenuOpenIcon from '@mui/icons-material/MenuOpen'
 import MenuIcon from '@mui/icons-material/Menu'
 
+import { BrainDumpBadge } from '../../features/braindump'
+
 const DRAWER_WIDTH = 240
 const COLLAPSED_WIDTH = 56
 
@@ -65,7 +67,7 @@ const healthItems: NavItem[] = [
 const bottomItems: NavItem[] = [
   { label: 'Hábitos', path: '/habits', icon: <RepeatIcon /> },
   { label: 'Gratidão', path: '/gratitude', icon: <SentimentSatisfiedAltIcon /> },
-  { label: 'Brain Dump', path: '/brain-dump', icon: <InboxIcon /> },
+  { label: 'Brain Dump', path: '/brain-dump', icon: <BrainDumpBadge><InboxIcon /></BrainDumpBadge> },
   { label: 'Arquivo', path: '/archive', icon: <FolderOpenIcon /> },
 ]
 

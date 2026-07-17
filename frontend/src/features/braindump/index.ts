@@ -1,7 +1,9 @@
 export {
   useBrainDumpItemsQuery,
+  useBrainDumpCountQuery,
   useCreateBrainDumpItemMutation,
   useProcessBrainDumpItemMutation,
   useDiscardBrainDumpItemMutation,
 } from './api'
-export type { BrainDumpItem, BrainDumpTargetLog } from './types'
+export { BrainDumpBadge } from './components/BrainDumpBadge'
+export type { BrainDumpItem, BrainDumpTargetLog, BrainDumpCount } from './types'

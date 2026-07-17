@@ -1,5 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { getAccessToken, getRefreshToken, setTokens, clearTokens } from './tokenStorage'
+import {
+  getAccessToken,
+  getRefreshToken,
+  setTokens,
+  clearTokens,
+  getCurrentUserId,
+} from './tokenStorage'
 
 describe('tokenStorage', () => {
   beforeEach(() => {
@@ -55,6 +61,32 @@ describe('tokenStorage', () => {
 
     it('não lança erro quando tokens não existem', () => {
       expect(() => clearTokens()).not.toThrow()
+    })
+  })
+
+  describe('getCurrentUserId', () => {
+    it('retorna null quando não há access_token', () => {
+      expect(getCurrentUserId()).toBeNull()
+    })
+
+    it('retorna o user_id decodificado de um token JWT válido', () => {
+      const payload = btoa(JSON.stringify({ user_id: 'uuid-fake' }))
+      localStorage.setItem('access_token', `header.${payload}.signature`)
+
+      expect(getCurrentUserId()).toBe('uuid-fake')
+    })
+
+    it('retorna null para token malformado sem pontos', () => {
+      localStorage.setItem('access_token', 'tokeninvalidosempontos')
+
+      expect(getCurrentUserId()).toBeNull()
+    })
+
+    it('retorna null quando o payload não é JSON válido', () => {
+      const payload = btoa('isto nao e json')
+      localStorage.setItem('access_token', `header.${payload}.signature`)
+
+      expect(getCurrentUserId()).toBeNull()
     })
   })
 })

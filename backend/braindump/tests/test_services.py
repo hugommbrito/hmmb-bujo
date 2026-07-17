@@ -4,6 +4,7 @@ import pytest
 
 from braindump.models import BrainDumpItem
 from braindump.services import (
+    count_brain_dump_items,
     create_brain_dump_item,
     discard_brain_dump_item,
     list_brain_dump_items,
@@ -189,3 +190,28 @@ def test_discard_brain_dump_item_de_outro_tenant_levanta_does_not_exist(user, ot
     with tenant_context(other_user):
         with pytest.raises(BrainDumpItem.DoesNotExist):
             discard_brain_dump_item(user=other_user, item_id=item.id)
+
+
+@pytest.mark.django_db
+def test_count_brain_dump_items_vazio_para_usuario_novo(user):
+    with tenant_context(user):
+        assert count_brain_dump_items(user=user) == 0
+
+
+@pytest.mark.django_db
+def test_count_brain_dump_items_conta_apos_criar_n_itens(user):
+    with tenant_context(user):
+        BrainDumpItemFactory.create_batch(3, user=user)
+
+        assert count_brain_dump_items(user=user) == 3
+
+
+@pytest.mark.django_db
+def test_count_brain_dump_items_escopado_por_tenant(user, other_user):
+    with tenant_context(user):
+        BrainDumpItemFactory.create_batch(2, user=user)
+
+    with tenant_context(other_user):
+        BrainDumpItemFactory(user=other_user)
+
+        assert count_brain_dump_items(user=other_user) == 1

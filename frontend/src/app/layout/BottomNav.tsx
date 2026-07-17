@@ -7,6 +7,8 @@ import RepeatIcon from '@mui/icons-material/Repeat'
 import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder'
 import AddIcon from '@mui/icons-material/Add'
 
+import { BrainDumpBadge } from '../../features/braindump'
+
 const TAB_PATHS = ['/today', '/planner/week', '/habits', '/health/metrics']
 
 function getCurrentTab(pathname: string): number {
@@ -61,7 +63,9 @@ export function BottomNav() {
           height: 52,
         }}
       >
-        <AddIcon />
+        <BrainDumpBadge>
+          <AddIcon />
+        </BrainDumpBadge>
       </Fab>
     </>
   )

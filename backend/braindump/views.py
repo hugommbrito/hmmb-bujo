@@ -8,11 +8,13 @@ from rest_framework.views import APIView
 
 from braindump.models import BrainDumpItem
 from braindump.serializers import (
+    BrainDumpCountSerializer,
     BrainDumpItemCreateSerializer,
     BrainDumpItemProcessSerializer,
     BrainDumpItemSerializer,
 )
 from braindump.services import (
+    count_brain_dump_items,
     create_brain_dump_item,
     discard_brain_dump_item,
     list_brain_dump_items,
@@ -78,3 +80,10 @@ class BrainDumpItemProcessView(APIView):
         except BrainDumpItem.DoesNotExist:
             raise NotFound() from None
         return Response(TaskSerializer(task).data)
+
+
+class BrainDumpCountView(APIView):
+    @extend_schema(responses=BrainDumpCountSerializer)
+    def get(self, request):
+        count = count_brain_dump_items(user=request.user)
+        return Response(BrainDumpCountSerializer({"count": count}).data)

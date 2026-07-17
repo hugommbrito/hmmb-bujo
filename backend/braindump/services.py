@@ -21,6 +21,10 @@ def list_brain_dump_items(*, user):
     return BrainDumpItem.objects.all()
 
 
+def count_brain_dump_items(*, user) -> int:
+    return BrainDumpItem.objects.count()
+
+
 @transaction.atomic
 def create_brain_dump_item(*, user, title, description=None, target_log=None) -> BrainDumpItem:
     return BrainDumpItem.objects.create(

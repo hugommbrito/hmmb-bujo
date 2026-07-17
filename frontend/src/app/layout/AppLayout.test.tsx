@@ -8,9 +8,14 @@ vi.mock('../../shared/hooks/useAuth', () => ({
   useAuth: vi.fn(() => ({
     isAuthenticated: true,
     sessionExpired: false,
+    userId: 'user-1',
     login: vi.fn(),
     logout: vi.fn(),
   })),
+}))
+
+vi.mock('../../features/braindump', () => ({
+  BrainDumpBadge: ({ children }: { children: React.ReactNode }) => children,
 }))
 
 function mockMatchMedia(desktopMatch: boolean, mobileMatch: boolean, tabletMatch = false) {

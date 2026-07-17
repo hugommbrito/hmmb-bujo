@@ -16,7 +16,13 @@ import { loginApi } from '../api'
 import { useAuth } from '../../../shared/hooks/useAuth'
 
 const mockLogin = vi.fn()
-const mockAuth = { isAuthenticated: false, sessionExpired: false, login: mockLogin, logout: vi.fn() }
+const mockAuth = {
+  isAuthenticated: false,
+  sessionExpired: false,
+  userId: null,
+  login: mockLogin,
+  logout: vi.fn(),
+}
 
 describe('LoginPage', () => {
   beforeEach(() => {

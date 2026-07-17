@@ -6,6 +6,7 @@ import { QueryClient } from '@tanstack/react-query'
 vi.mock('../../features/auth/tokenStorage', () => ({
   getAccessToken: vi.fn(() => null),
   getRefreshToken: vi.fn(() => null),
+  getCurrentUserId: vi.fn(() => null),
   setTokens: vi.fn(),
   clearTokens: vi.fn(),
 }))
@@ -33,6 +34,7 @@ function TestConsumer() {
     <div>
       <span data-testid="is-authenticated">{String(auth.isAuthenticated)}</span>
       <span data-testid="session-expired">{String(auth.sessionExpired)}</span>
+      <span data-testid="user-id">{String(auth.userId)}</span>
       <button onClick={() => auth.login({ access: 'acc', refresh: 'ref' })}>login</button>
       <button onClick={() => auth.logout()}>logout</button>
     </div>
@@ -116,6 +118,58 @@ describe('AuthProvider', () => {
     expect(screen.getByTestId('is-authenticated').textContent).toBe('false')
   })
 
+  it('token existente → userId reflete o valor de getCurrentUserId no context', () => {
+    vi.mocked(tokenStorage.getAccessToken).mockReturnValue('existing-token')
+    vi.mocked(tokenStorage.getCurrentUserId).mockReturnValue('user-abc')
+
+    renderWithProviders(
+      <AuthProvider>
+        <TestConsumer />
+      </AuthProvider>
+    )
+
+    expect(screen.getByTestId('user-id').textContent).toBe('user-abc')
+  })
+
+  it('login() chama getCurrentUserId() de novo e atualiza userId', async () => {
+    vi.mocked(tokenStorage.getCurrentUserId).mockReturnValue(null)
+
+    renderWithProviders(
+      <AuthProvider>
+        <TestConsumer />
+      </AuthProvider>
+    )
+
+    expect(screen.getByTestId('user-id').textContent).toBe('null')
+
+    vi.mocked(tokenStorage.getCurrentUserId).mockReturnValue('user-novo')
+
+    await act(async () => {
+      screen.getByText('login').click()
+    })
+
+    expect(screen.getByTestId('user-id').textContent).toBe('user-novo')
+  })
+
+  it('logout() reseta userId para null', async () => {
+    vi.mocked(tokenStorage.getAccessToken).mockReturnValue('some-token')
+    vi.mocked(tokenStorage.getCurrentUserId).mockReturnValue('user-abc')
+
+    renderWithProviders(
+      <AuthProvider>
+        <TestConsumer />
+      </AuthProvider>
+    )
+
+    expect(screen.getByTestId('user-id').textContent).toBe('user-abc')
+
+    await act(async () => {
+      screen.getByText('logout').click()
+    })
+
+    expect(screen.getByTestId('user-id').textContent).toBe('null')
+  })
+
   it('registra logout handler no mount via registerLogoutHandler', () => {
     renderWithProviders(
       <AuthProvider>
@@ -126,8 +180,9 @@ describe('AuthProvider', () => {
     expect(registerLogoutHandler).toHaveBeenCalledWith(expect.any(Function))
   })
 
-  it('storage event de outra aba seta isAuthenticated = false e sessionExpired = true', async () => {
+  it('storage event de outra aba seta isAuthenticated = false, sessionExpired = true e userId = null', async () => {
     vi.mocked(tokenStorage.getAccessToken).mockReturnValue('some-token')
+    vi.mocked(tokenStorage.getCurrentUserId).mockReturnValue('user-abc')
 
     renderWithProviders(
       <AuthProvider>
@@ -136,6 +191,7 @@ describe('AuthProvider', () => {
     )
 
     expect(screen.getByTestId('is-authenticated').textContent).toBe('true')
+    expect(screen.getByTestId('user-id').textContent).toBe('user-abc')
 
     await act(async () => {
       window.dispatchEvent(
@@ -145,5 +201,6 @@ describe('AuthProvider', () => {
 
     expect(screen.getByTestId('is-authenticated').textContent).toBe('false')
     expect(screen.getByTestId('session-expired').textContent).toBe('true')
+    expect(screen.getByTestId('user-id').textContent).toBe('null')
   })
 })

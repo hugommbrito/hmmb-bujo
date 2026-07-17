@@ -1,6 +1,7 @@
 from django.urls import path
 
 from braindump.views import (
+    BrainDumpCountView,
     BrainDumpItemDetailView,
     BrainDumpItemListCreateView,
     BrainDumpItemProcessView,
@@ -14,4 +15,5 @@ urlpatterns = [
         BrainDumpItemProcessView.as_view(),
         name="braindump-item-process",
     ),
+    path("count/", BrainDumpCountView.as_view(), name="braindump-item-count"),
 ]

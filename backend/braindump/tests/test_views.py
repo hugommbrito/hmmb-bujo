@@ -189,3 +189,38 @@ def test_isolamento_fim_a_fim_item_de_um_user_nunca_aparece_para_outro(user, oth
 
     assert response.status_code == 200
     assert response.data == []
+
+
+@pytest.mark.django_db
+def test_get_count_vazio_retorna_200_com_count_zero(auth_client):
+    response = auth_client.get("/api/brain-dump/count/")
+
+    assert response.status_code == 200
+    assert response.data == {"count": 0}
+
+
+@pytest.mark.django_db
+def test_get_count_com_n_itens_retorna_200_com_count_n(auth_client, user):
+    with tenant_context(user):
+        BrainDumpItemFactory.create_batch(3, user=user)
+
+    response = auth_client.get("/api/brain-dump/count/")
+
+    assert response.status_code == 200
+    assert response.data == {"count": 3}
+
+
+@pytest.mark.django_db
+def test_get_count_isolamento_itens_de_outro_tenant_nao_afetam_a_contagem(
+    auth_client, user, other_user
+):
+    with tenant_context(user):
+        BrainDumpItemFactory(user=user)
+
+    with tenant_context(other_user):
+        BrainDumpItemFactory.create_batch(2, user=other_user)
+
+    response = auth_client.get("/api/brain-dump/count/")
+
+    assert response.status_code == 200
+    assert response.data == {"count": 1}

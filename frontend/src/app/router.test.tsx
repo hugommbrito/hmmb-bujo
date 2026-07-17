@@ -39,6 +39,12 @@ vi.mock('../features/bujo/components/TaskDetailPanel', () => ({
   TaskDetailPanel: () => null,
 }))
 
+// BrainDumpBadge (Sidebar/BottomNav, Story 5.2) usa TanStack Query direto —
+// mesmo motivo do mock de TaskDetailPanel acima, sem QueryClientProvider aqui.
+vi.mock('../features/braindump', () => ({
+  BrainDumpBadge: ({ children }: { children: React.ReactNode }) => children,
+}))
+
 // Mock useMediaQuery to avoid jsdom matchMedia issues
 vi.mock('@mui/material', async (importOriginal) => {
   const original = await importOriginal<typeof import('@mui/material')>()
@@ -49,7 +55,7 @@ import { useAuth } from '../shared/hooks/useAuth'
 import { loginApi } from '../features/auth/api'
 import { routeDefinitions } from './router'
 
-const mockAuthBase = { sessionExpired: false, login: vi.fn(), logout: vi.fn() }
+const mockAuthBase = { sessionExpired: false, userId: null, login: vi.fn(), logout: vi.fn() }
 
 function renderRouter(initialEntry: string) {
   const router = createMemoryRouter(routeDefinitions, { initialEntries: [initialEntry] })

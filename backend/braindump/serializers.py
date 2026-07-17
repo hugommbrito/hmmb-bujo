@@ -11,6 +11,10 @@ class BrainDumpItemSerializer(serializers.ModelSerializer):
         fields = ["id", "title", "description", "target_log", "created_at"]
 
 
+class BrainDumpCountSerializer(serializers.Serializer):
+    count = serializers.IntegerField()
+
+
 class BrainDumpItemCreateSerializer(serializers.Serializer):
     title = serializers.CharField(max_length=500)
     description = serializers.CharField(required=False, allow_null=True, allow_blank=True)

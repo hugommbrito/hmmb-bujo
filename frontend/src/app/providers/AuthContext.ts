@@ -4,6 +4,7 @@ import type { AuthTokens } from '../../features/auth/types'
 export interface AuthState {
   isAuthenticated: boolean
   sessionExpired: boolean
+  userId: string | null
   login: (tokens: AuthTokens) => void
   logout: () => void
 }

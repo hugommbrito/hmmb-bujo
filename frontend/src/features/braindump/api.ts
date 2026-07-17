@@ -1,7 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import client from '../../api/client'
 import { keys } from '../../api/keys'
-import type { BrainDumpItem, BrainDumpTargetLog } from './types'
+import { useAuth } from '../auth'
+import { useOptimisticMutation } from '../../shared/hooks/useOptimisticMutation'
+import type { BrainDumpCount, BrainDumpItem, BrainDumpTargetLog } from './types'
 
 async function fetchBrainDumpItems(): Promise<BrainDumpItem[]> {
   const response = await client.get<BrainDumpItem[]>('/api/brain-dump/items/')
@@ -10,6 +12,20 @@ async function fetchBrainDumpItems(): Promise<BrainDumpItem[]> {
 
 export function useBrainDumpItemsQuery() {
   return useQuery({ queryKey: keys.brainDump.list(), queryFn: fetchBrainDumpItems })
+}
+
+async function fetchBrainDumpCount(): Promise<BrainDumpCount> {
+  const response = await client.get<BrainDumpCount>('/api/brain-dump/count/')
+  return response.data
+}
+
+export function useBrainDumpCountQuery() {
+  const { userId } = useAuth()
+  return useQuery({
+    queryKey: keys.brainDump.count(userId ?? ''),
+    queryFn: fetchBrainDumpCount,
+    enabled: !!userId,
+  })
 }
 
 interface CreateBrainDumpItemVariables {
@@ -25,9 +41,14 @@ async function createBrainDumpItem(fields: CreateBrainDumpItemVariables): Promis
 
 export function useCreateBrainDumpItemMutation() {
   const queryClient = useQueryClient()
-  return useMutation({
+  const { userId } = useAuth()
+  return useOptimisticMutation<BrainDumpItem, unknown, CreateBrainDumpItemVariables, BrainDumpCount>({
     mutationFn: createBrainDumpItem,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.brainDump.list() }),
+    queryKey: keys.brainDump.count(userId ?? ''),
+    updater: (current) => ({ count: (current?.count ?? 0) + 1 }),
+    mutationOptions: {
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.brainDump.list() }),
+    },
   })
 }
 
@@ -45,10 +66,12 @@ async function processBrainDumpItem({ itemId, ...fields }: ProcessBrainDumpItemV
 
 export function useProcessBrainDumpItemMutation() {
   const queryClient = useQueryClient()
+  const { userId } = useAuth()
   return useMutation({
     mutationFn: processBrainDumpItem,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: keys.brainDump.list() })
+      queryClient.invalidateQueries({ queryKey: keys.brainDump.count(userId ?? '') })
       // Container de destino é escolhido em tempo de processamento (pode ser
       // qualquer um dos 3) — invalidação por prefixo nas 3 chaves de log,
       // mesmo padrão de useDeleteTaskMutation (features/bujo/api.ts).
@@ -70,8 +93,12 @@ async function discardBrainDumpItem({ itemId }: DiscardBrainDumpItemVariables): 
 
 export function useDiscardBrainDumpItemMutation() {
   const queryClient = useQueryClient()
+  const { userId } = useAuth()
   return useMutation({
     mutationFn: discardBrainDumpItem,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.brainDump.list() }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: keys.brainDump.list() })
+      queryClient.invalidateQueries({ queryKey: keys.brainDump.count(userId ?? '') })
+    },
   })
 }

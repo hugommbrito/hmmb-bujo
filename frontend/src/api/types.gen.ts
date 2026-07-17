@@ -60,6 +60,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/brain-dump/count/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["brain_dump_count_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/brain-dump/items/": {
         parameters: {
             query?: never;
@@ -440,6 +456,9 @@ export interface components {
         };
         /** @enum {unknown} */
         BlankEnum: "";
+        BrainDumpCount: {
+            count: number;
+        };
         BrainDumpItem: {
             /** Format: uuid */
             readonly id: string;
@@ -786,6 +805,25 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TokenRefresh"];
+                };
+            };
+        };
+    };
+    brain_dump_count_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrainDumpCount"];
                 };
             };
         };

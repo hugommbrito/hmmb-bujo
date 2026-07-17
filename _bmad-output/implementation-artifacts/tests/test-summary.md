@@ -1861,3 +1861,72 @@ Rodado contra o stack real (`npm run dev` + `manage.py runserver` sob `config.se
 ## Próximos Passos
 
 - Nenhum gap bloqueante identificado. Cobertura E2E da story 5.1 considerada completa para o escopo desta story (Badge/FAB/Capture Sheet mobile são Stories 5.2/5.3, fora de escopo).
+
+# Resumo de Automação de Testes — Story 5.2: Indicador persistente como server state derivado
+
+**Data:** 2026-07-17
+**Story:** 5.2 — Indicador persistente como server state derivado
+**Framework:** pytest + DRF `APIClient` (backend) · Vitest 4.1 + @testing-library/react (frontend) · Playwright (E2E de browser real, `config.settings.e2e`)
+
+## Contexto
+
+A story já chegou totalmente implementada pelo dev-story com cobertura própria extensa: 9 testes novos de backend (`test_services.py`/`test_serializers.py`/`test_views.py`, incluindo isolamento por tenant do endpoint de contagem), suíte completa de frontend (`api.test.tsx` com query/otimismo/rollback, `BrainDumpBadge.test.tsx` com `jest-axe`, `AuthProvider.test.tsx`/`tokenStorage.test.ts` para o novo `userId`) e 1 teste E2E novo no spec já existente (`brain-dump.spec.ts`) cobrindo captura → badge "1" na sidebar → descartar → badge some. Esta rodada de QA focou em identificar gaps na cobertura **E2E de browser real** — o único tipo de teste que este workflow gera — não fechados pelo spec já existente, cruzando contra as 3 ACs da story.
+
+## Gaps Descobertos e Auto-Aplicados
+
+| Gap | Descrição | AC |
+|-----|-----------|-----|
+| Badge no FAB mobile sem cobertura E2E | AC1 exige explicitamente "o badge aparece... no FAB mobile", mas o único teste E2E existente exercitava só a sidebar (viewport desktop padrão do projeto Playwright, `chromium`/Desktop Chrome). O próprio Debug Log da story registra essa checagem como só manual ("verificação manual... no FAB mobile", Task 12.3) — nunca automatizada. `AppLayout.tsx` troca `Sidebar`↔`BottomNav` por `useMediaQuery` de largura, então um viewport estreito no mesmo browser já exercita o `Fab`/`BrainDumpBadge` real | AC1 |
+| Isolamento de cache entre usuários sem cobertura E2E | AC3 exige "dois usuários em navegadores distintos têm caches isolados (a invalidação de um nunca afeta o outro)". O backend já cobre isolamento por tenant (`test_get_count_isolamento_itens_de_outro_tenant_nao_afetam_a_contagem`), mas nenhum teste de ponta a ponta simulava dois usuários reais em contextos de browser distintos — a story registra essa verificação como só manual (Task 12.3: "duas abas/perfis... contexto de navegador distinto"). `browser.newContext()` do Playwright reproduz exatamente esse cenário (cookies/localStorage isolados), automatizando o que só existia como passo manual | AC3 |
+
+## Testes Gerados
+
+### `frontend/e2e/brain-dump.spec.ts` — 2 testes novos (total do arquivo: 7)
+
+- [x] `capturar um item mostra o badge no FAB; o badge persiste ao navegar para outra página (AC1)` — `test.describe` com `test.use({ viewport: { width: 390, height: 844 } })` para forçar o layout mobile (`BottomNav`/`Fab`); badge nasce invisível, captura em `/brain-dump` faz o badge do FAB mostrar "1", e o badge persiste ao navegar de volta para `/today` (prova que é server state global, não local ao componente)
+- [x] `dois usuários em navegadores distintos têm badges isolados; a captura de um nunca aparece para o outro (AC3)` — usuário A (fixture padrão) captura um item, badge da sidebar mostra "1"; um segundo usuário, criado via `browser.newContext()` + `signUpAndLandOnToday` (exportada de `fixtures.ts` para este caso), abre o Brain Dump com badge invisível e lista vazia — confirma que a captura do usuário A nunca vaza para o cache/UI do usuário B
+
+### `frontend/e2e/fixtures.ts` — ajuste de suporte
+
+- [x] `signUpAndLandOnToday` exportada (antes privada ao módulo) — necessária para o teste de isolamento criar um segundo usuário num `browser.newContext()` separado, reaproveitando o mesmo fluxo de signup real via UI já usado pela fixture `page`
+
+## Cobertura por AC (E2E)
+
+| AC | Critério | Coberto por |
+|----|----------|-------------|
+| AC1 | Badge aparece na sidebar com a contagem certa; some quando vazio | `brain-dump.spec.ts` (pré-existente) |
+| AC1 | Badge aparece no FAB mobile; persiste entre navegações (server state global) | `brain-dump.spec.ts` ← **novo** |
+| AC2 | Captura otimista incrementa o badge; mutações invalidam a contagem | `api.test.tsx` (unitário, pré-existente) + `brain-dump.spec.ts` (fim-a-fim, pré-existente) |
+| AC3 | `aria-label` do badge atualizado com a contagem atual | `BrainDumpBadge.test.tsx` (unitário, pré-existente) |
+| AC3 | Isolamento de cache entre dois usuários em navegadores distintos | `brain-dump.spec.ts` ← **novo** |
+
+## Resultado da Execução
+
+```
+npx playwright test e2e/brain-dump.spec.ts --reporter=list
+  7 passed (41.3s)   ← 5 pré-existentes + 2 novos, 0 falhas
+
+npx vitest run --no-file-parallelism
+  Test Files  51 passed (51)
+  Tests  591 passed (591)   ← suíte completa do frontend, sem regressão
+```
+
+Rodado contra o stack real (`npm run dev` + `manage.py runserver` sob `config.settings.e2e`, branch Neon `e2e` dedicada — Story 11.1). Suíte de backend (`uv run pytest`) não reexecutada nesta rodada por instabilidade ambiental conhecida (conexões Neon presas no teardown em rodadas consecutivas, já documentada nesta mesma story/Story 5.1) — nenhum arquivo de backend foi tocado por esta rodada de QA (só `frontend/e2e/*`), então a baseline do dev-story (428 passed) segue válida sem mudança esperada.
+
+## Checklist de Validação
+
+- [x] Testes E2E gerados (UI existe) — 2 testes novos fechando os gaps de AC1 (FAB mobile) e AC3 (isolamento entre usuários)
+- [x] API tests: N/A nesta rodada — 9 testes de backend já cobrem o endpoint de contagem extensivamente (obra do dev-story, incluindo isolamento por tenant), sem gap identificado
+- [x] Usam APIs padrão do framework já adotado (Playwright + fixtures do projeto, `browser.newContext()` nativo) — nenhuma ferramenta nova
+- [x] Cobrem happy path (badge no FAB) + caso crítico de isolamento (dois usuários/dois navegadores)
+- [x] Todos os 7 testes do arquivo rodam com sucesso
+- [x] Locators semânticos/acessíveis (`getByRole`, texto visível, classe `MuiBadge-invisible` documentada como a forma correta de verificar "sumiu" — mesma técnica já usada no teste pré-existente)
+- [x] Descrições claras em pt-BR, seguindo a convenção do arquivo
+- [x] Sem waits/sleeps artificiais
+- [x] Testes independentes entre si (fixture cria usuário novo por teste; o segundo usuário do teste de isolamento usa um `browser.newContext()` próprio)
+- [x] Summary salvo em `_bmad-output/implementation-artifacts/tests/test-summary.md`
+
+## Próximos Passos
+
+- Nenhum gap bloqueante identificado. Cobertura E2E da story 5.2 considerada completa para o escopo desta story.
+- Rodar a suíte completa de backend (`uv run pytest`) numa janela sem contenção de conexões Neon, só para reconfirmar a baseline de 428 passed — não bloqueante (nenhum arquivo de backend foi alterado nesta rodada).

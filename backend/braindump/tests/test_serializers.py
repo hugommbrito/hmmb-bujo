@@ -8,6 +8,7 @@ from djangorestframework_camel_case.util import camelize
 
 from braindump.models import BrainDumpItem
 from braindump.serializers import (
+    BrainDumpCountSerializer,
     BrainDumpItemCreateSerializer,
     BrainDumpItemProcessSerializer,
     BrainDumpItemSerializer,
@@ -98,3 +99,7 @@ def test_brain_dump_item_process_serializer_future_aceita_scheduled_date_no_mes_
     )
 
     assert serializer.is_valid(), serializer.errors
+
+
+def test_brain_dump_count_serializer_expoe_count():
+    assert BrainDumpCountSerializer({"count": 3}).data == {"count": 3}
