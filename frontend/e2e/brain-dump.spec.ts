@@ -111,7 +111,7 @@ test.describe('badge no FAB mobile', () => {
   test('capturar um item mostra o badge no FAB; o badge persiste ao navegar para outra página (AC1)', async ({
     page,
   }) => {
-    const fab = page.getByRole('button', { name: 'Captura rápida (em breve)' })
+    const fab = page.getByRole('button', { name: 'Captura rápida' })
     const fabBadge = fab.locator('.MuiBadge-badge')
 
     await expect(fab).toBeVisible()
@@ -134,6 +134,97 @@ test.describe('badge no FAB mobile', () => {
     await page.getByRole('button', { name: 'Hoje' }).click()
     await expect(page).toHaveURL('/today')
     await expect(fab.getByText('1')).toBeVisible()
+  })
+
+  test('tocar o FAB abre o Capture Sheet; salvar cria um BrainDumpItem em qualquer destino e atualiza o badge (AC1)', async ({
+    page,
+  }) => {
+    const fab = page.getByRole('button', { name: 'Captura rápida' })
+    await fab.click()
+
+    // Título já em foco ao abrir (teclado aberto no dispositivo real).
+    const titulo = page.getByRole('textbox', { name: 'Título' })
+    await expect(titulo).toBeFocused()
+
+    await titulo.fill('Ideia capturada no FAB')
+    await page.getByRole('combobox', { name: 'Destino' }).click()
+    await page.getByRole('option', { name: 'Esta Semana' }).click()
+    await page.getByRole('button', { name: 'Salvar' }).click()
+
+    // Sheet fecha e o badge sobe para "1".
+    await expect(page.getByRole('dialog', { name: 'Captura rápida' })).toHaveCount(0)
+    await expect(fab.getByText('1')).toBeVisible()
+
+    // Prova de que qualquer destino ainda cria um BrainDumpItem (nunca uma Task
+    // direta): o item aparece na caixa do Brain Dump, pendente de processamento.
+    await page.goto('/brain-dump')
+    await expect(page.getByRole('main', { name: 'Brain Dump', exact: true })).toBeVisible()
+    await expect(page.getByText('Ideia capturada no FAB')).toBeVisible()
+  })
+
+  test('salvar via Enter no Título captura no destino default (Brain Dump) e atualiza o badge (AC1)', async ({
+    page,
+  }) => {
+    const fab = page.getByRole('button', { name: 'Captura rápida' })
+    await fab.click()
+
+    const titulo = page.getByRole('textbox', { name: 'Título' })
+    await expect(titulo).toBeFocused()
+
+    // "Enter no último campo" (AC1) sem escolher destino: o default é Brain Dump,
+    // então nenhum `targetLog` é enviado — ainda assim cria um BrainDumpItem.
+    await titulo.fill('Ideia salva com Enter')
+    await titulo.press('Enter')
+
+    await expect(page.getByRole('dialog', { name: 'Captura rápida' })).toHaveCount(0)
+    await expect(fab.getByText('1')).toBeVisible()
+
+    await page.goto('/brain-dump')
+    await expect(page.getByRole('main', { name: 'Brain Dump', exact: true })).toBeVisible()
+    await expect(page.getByText('Ideia salva com Enter')).toBeVisible()
+  })
+
+  test('Esc sem título fecha o Capture Sheet sem criar nada (AC2)', async ({ page }) => {
+    const fab = page.getByRole('button', { name: 'Captura rápida' })
+    const fabBadge = fab.locator('.MuiBadge-badge')
+
+    await fab.click()
+    await expect(page.getByRole('textbox', { name: 'Título' })).toBeFocused()
+
+    await page.keyboard.press('Escape')
+
+    await expect(page.getByRole('dialog', { name: 'Captura rápida' })).toHaveCount(0)
+    // Nada capturado — badge segue invisível.
+    await expect(fabBadge).toHaveClass(/MuiBadge-invisible/)
+  })
+
+  test('Esc com título mostra o diálogo "Descartar item?"; descartar fecha sem criar nada (AC2)', async ({
+    page,
+  }) => {
+    const fab = page.getByRole('button', { name: 'Captura rápida' })
+    const fabBadge = fab.locator('.MuiBadge-badge')
+
+    await fab.click()
+    await page.getByRole('textbox', { name: 'Título' }).fill('Rascunho a descartar')
+
+    await page.keyboard.press('Escape')
+
+    await expect(page.getByText('Descartar item?')).toBeVisible()
+    await page.getByRole('button', { name: 'Descartar' }).click()
+
+    await expect(page.getByRole('dialog', { name: 'Captura rápida' })).toHaveCount(0)
+    await expect(fabBadge).toHaveClass(/MuiBadge-invisible/)
+  })
+
+  test('offline desabilita o FAB; voltar a ficar online reabilita (AC3)', async ({ page }) => {
+    const fab = page.getByRole('button', { name: 'Captura rápida' })
+    await expect(fab).toBeEnabled()
+
+    await page.context().setOffline(true)
+    await expect(fab).toBeDisabled()
+
+    await page.context().setOffline(false)
+    await expect(fab).toBeEnabled()
   })
 })
 

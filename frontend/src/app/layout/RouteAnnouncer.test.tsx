@@ -40,6 +40,8 @@ vi.mock('../../features/bujo/components/TaskDetailPanel', () => ({
 // mesmo motivo do mock de TaskDetailPanel acima, sem QueryClientProvider aqui.
 vi.mock('../../features/braindump', () => ({
   BrainDumpBadge: ({ children }: { children: React.ReactNode }) => children,
+  BrainDumpCaptureSheet: ({ open }: { open: boolean }) =>
+    open ? <div>capture sheet aberto</div> : null,
 }))
 
 // Mock useMediaQuery to avoid jsdom matchMedia issues — força branch desktop/tablet (Sidebar visível)

@@ -16,6 +16,8 @@ vi.mock('../../shared/hooks/useAuth', () => ({
 
 vi.mock('../../features/braindump', () => ({
   BrainDumpBadge: ({ children }: { children: React.ReactNode }) => children,
+  BrainDumpCaptureSheet: ({ open }: { open: boolean }) =>
+    open ? <div>capture sheet aberto</div> : null,
 }))
 
 function mockMatchMedia(desktopMatch: boolean, mobileMatch: boolean, tabletMatch = false) {

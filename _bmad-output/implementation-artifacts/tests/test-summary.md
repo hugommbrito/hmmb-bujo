@@ -1930,3 +1930,96 @@ Rodado contra o stack real (`npm run dev` + `manage.py runserver` sob `config.se
 
 - Nenhum gap bloqueante identificado. Cobertura E2E da story 5.2 considerada completa para o escopo desta story.
 - Rodar a suíte completa de backend (`uv run pytest`) numa janela sem contenção de conexões Neon, só para reconfirmar a baseline de 428 passed — não bloqueante (nenhum arquivo de backend foi alterado nesta rodada).
+
+---
+
+# Resumo de Automação de Testes — Story 5.3: Captura rápida no mobile via FAB e Capture Sheet
+
+**Data:** 2026-07-17
+**Story:** 5.3 — Captura rápida no mobile via FAB e Capture Sheet
+**Framework:** Vitest 4.1 + @testing-library/react + jest-axe (unit) · Playwright 1.61 (E2E de browser real, `config.settings.e2e`) — nenhuma ferramenta nova.
+
+## Contexto
+
+Story **100% frontend** (zero arquivos `backend/`, coerente com a Decisão Crítica da story: toda captura do FAB cria um `BrainDumpItem` via a mutation já existente). Chegou em `review` com cobertura própria extensa: `useOnlineStatus.test.ts`, `BrainDumpCaptureSheet.test.tsx` (8 testes), `BottomNav.test.tsx`/`AppLayout.test.tsx`/`RouteAnnouncer.test.tsx` (mocks estendidos), e 6 testes E2E no `brain-dump.spec.ts` (FAB abre o sheet, salvar, `Esc` com/sem título, offline desabilita). Esta rodada de QA **complementou** a suíte, aplicando testes só para os gaps de comportamento mapeados contra os 3 ACs. Nenhum arquivo de produção foi tocado — só arquivos de teste.
+
+## Gaps Descobertos e Auto-Aplicados
+
+| Gap | Descrição | AC | Onde |
+|-----|-----------|-----|------|
+| **Enter no "último campo" não testado** | A AC #1 aceita salvar "por botão **ou Enter no último campo**"; só o caminho do botão estava coberto. Enter no Título (single-line) dispara o submit implícito do form | #1 | unit + e2e |
+| **Destino default (Brain Dump) sem cobertura** | Todos os testes de salvar escolhiam "Esta Semana" (`targetLog: 'week'`); o caminho mais comum (Fluxo 2 da UX — default "Brain Dump", payload **sem** `targetLog`) nunca era exercitado | #1 | unit + e2e |
+| **Botão "Fechar" (X) do cabeçalho sem cobertura** | Só o `Esc` exercitava o handler `requestClose` (confirmação condicional de descarte); o X do cabeçalho, que converge no mesmo handler, nunca era clicado | #2 | unit ×2 |
+| **Tooltip "Sem conexão" só via `aria-label`** | A AC #3 exige o tooltip "Sem conexão"; os testes verificavam só o `aria-label` "(sem conexão)", nunca o texto do próprio tooltip aparecendo no hover | #3 | unit |
+
+## Testes Gerados
+
+### `frontend/e2e/brain-dump.spec.ts` — 1 teste novo (total do arquivo: 12)
+
+- [x] `salvar via Enter no Título captura no destino default (Brain Dump) e atualiza o badge (AC1)` — no viewport mobile 390×844, toca o FAB → título focado → `fill` + `press('Enter')` **sem escolher destino** → sheet fecha, badge sobe para "1", e o item aparece na caixa do Brain Dump (prova de que o default cria um `BrainDumpItem`, nunca uma `Task` direta). Fecha os gaps #1 e #2 de ponta a ponta num único fluxo linear.
+
+### `frontend/src/features/braindump/components/BrainDumpCaptureSheet.test.tsx` — 4 testes novos (total: 12)
+
+- [x] `submeter com o destino default (Brain Dump) cria o item sem targetLog` — assert de que o payload de `POST /api/brain-dump/items/` traz `title` e **`targetLog` undefined** (gap #2).
+- [x] `Enter no campo Título submete o formulário (AC #1: "Enter no último campo")` — `type('...{Enter}')` dispara o submit e chama `onClose` no sucesso (gap #1).
+- [x] `botão "Fechar" (X) sem título fecha direto, sem diálogo de descarte (AC #2)` (gap #3).
+- [x] `botão "Fechar" (X) com título mostra o diálogo de descarte e não fecha ainda (AC #2)` (gap #3).
+
+### `frontend/src/app/layout/BottomNav.test.tsx` — 1 teste novo (total: 9)
+
+- [x] `test_tooltip_sem_conexao_aparece_no_hover_offline` — offline, hover no `<span>` wrapper (Fab disabled não dispara eventos — o wrapper é a recipe oficial do MUI) revela o `role="tooltip"` com o texto "Sem conexão" (gap #4).
+
+## Cobertura por AC (pós-run)
+
+| AC | Critério | Coberto por |
+|----|----------|-------------|
+| AC1 | FAB visível/habilitado abre o sheet com foco no título | `BottomNav.test.tsx`, `brain-dump.spec.ts` (pré-existentes) |
+| AC1 | Select de 5 destinos, default "Brain Dump" | `BrainDumpCaptureSheet.test.tsx` (pré-existente) |
+| AC1 | Salvar por **botão** | pré-existente (unit + e2e) |
+| AC1 | Salvar por **Enter no último campo** | `BrainDumpCaptureSheet.test.tsx` + `brain-dump.spec.ts` ← **novo** |
+| AC1 | Salvar no **destino default (Brain Dump)**, payload sem `targetLog` | `BrainDumpCaptureSheet.test.tsx` + `brain-dump.spec.ts` ← **novo** |
+| AC2 | Fechar por `Esc` (com/sem título) + confirmação condicional | pré-existente (unit + e2e) |
+| AC2 | Fechar pelo **botão X** (mesmo `requestClose`) | `BrainDumpCaptureSheet.test.tsx` ← **novo** |
+| AC2 | Swipe-down físico | só verificação manual (jsdom/Playwright não simulam o gesto — documentado na story) |
+| AC3 | FAB desabilita offline, reabilita ao voltar online | `BottomNav.test.tsx`, `useOnlineStatus.test.ts`, `brain-dump.spec.ts` (pré-existentes) |
+| AC3 | **Tooltip "Sem conexão"** aparece no hover offline | `BottomNav.test.tsx` ← **novo** |
+| AC3 | Falha de rede com o sheet aberto → erro inline, nada perdido | `BrainDumpCaptureSheet.test.tsx` (pré-existente) |
+
+## Resultado da Execução (Node 22.15.1)
+
+```
+npm run lint
+  ✔ limpo (0 erros)
+
+npx vitest run --no-file-parallelism        (suíte completa do frontend)
+  Test Files  53 passed (53)
+  Tests  609 passed (609)   ← baseline 604 + 5 novos unit, 0 regressão
+
+npx playwright test brain-dump.spec.ts --reporter=list
+  12 passed (50.8s)   ← baseline 11 + 1 novo e2e, 0 falhas
+```
+
+Rodado contra o stack real (`npm run dev` + `manage.py runserver` sob `config.settings.e2e`, branch Neon `e2e` dedicada). `--no-file-parallelism` é o modo determinístico já adotado nas Stories 5.1/5.2 (a rodada paralela sofre flakiness de timeout por carga de máquina, não por falha real). Backend não reexecutado — nenhum arquivo `backend/` foi tocado por esta rodada (só arquivos de teste do frontend).
+
+## Checklist de Validação
+
+- [x] Testes E2E gerados (UI existe) — 1 teste novo fechando Enter-submit + destino default (AC1)
+- [x] API tests: N/A — story 100% frontend; o endpoint `POST /api/brain-dump/items/` já é coberto pela suíte de backend das Stories 5.1/5.2, sem gap e sem mudança
+- [x] Usam APIs padrão do framework já adotado (Vitest + Testing Library + jest-axe + Playwright) — nenhuma ferramenta nova
+- [x] Cobrem happy path (Enter/botão, destino default) + casos de erro/borda já cobertos (falha de rede, offline)
+- [x] Todos os 609 testes unit + 12 e2e do arquivo passam
+- [x] Locators semânticos/acessíveis (`getByRole('textbox'/'button'/'combobox'/'option'/'tooltip'/'dialog')`, texto visível)
+- [x] Descrições claras em pt-BR, seguindo a convenção do arquivo (`test_*` no BottomNav; prosa nos demais)
+- [x] Sem waits/sleeps artificiais (`waitFor`/`findBy` só onde há assíncronia real)
+- [x] Testes independentes entre si (cada `it`/`test` re-renderiza/cria usuário novo do zero)
+- [x] Summary salvo em `_bmad-output/implementation-artifacts/tests/test-summary.md`
+
+## Limites de Cobertura (por design, não gaps)
+
+- **Gesto físico de swipe-down** do `SwipeableDrawer`: não simulável em jsdom nem em Playwright headless sem plugin de gestos. `Esc`/X/backdrop convergem no mesmo `requestClose`, então a lógica de negócio está 100% coberta; só o reconhecimento do toque fica para a verificação manual (Task 7.3 da story).
+- **Tamanho/posição do FAB (52×52, canto inferior direito)** e **ausência de scroll horizontal**: propriedades de layout CSS, fora do alcance útil de unit/e2e funcional — verificação manual/visual.
+
+## Próximos Passos
+
+- Nenhum gap bloqueante identificado. Cobertura da Story 5.3 considerada completa para o escopo desta story — encerra o Épico 5.
+- Se o uso real indicar necessidade de cobertura automatizada do swipe-down, avaliar um plugin de gestos para o Playwright (fora do escopo desta story).

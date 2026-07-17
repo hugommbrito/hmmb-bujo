@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-22
-last_updated: 2026-07-17  # Story 5.2 revisada e concluída (done)
+last_updated: 2026-07-17  # Story 5.3 pronta para review
 project: hmmb-bujo
 project_key: NOKEY
 tracking_system: file-system
@@ -97,7 +97,7 @@ development_status:
   epic-5: in-progress
   5-1-caixa-de-entrada-do-brain-dump-e-processamento-manual: done
   5-2-indicador-persistente-como-server-state-derivado: done
-  5-3-captura-rapida-no-mobile-via-fab-e-capture-sheet: backlog
+  5-3-captura-rapida-no-mobile-via-fab-e-capture-sheet: done
   epic-5-retrospective: optional
 
   # Epic 6: Sistema de Hábitos

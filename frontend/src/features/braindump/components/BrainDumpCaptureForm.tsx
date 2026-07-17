@@ -13,7 +13,11 @@ interface BrainDumpCaptureFormProps {
   onCapture: (fields: BrainDumpCaptureFormFields) => void
 }
 
-const TARGET_LOG_OPTIONS: Array<{ value: BrainDumpTargetLog | ''; label: string }> = [
+// Vocabulário de destino compartilhado com o BrainDumpCaptureSheet (Story 5.3)
+// — fonte única, sem duplicar a lista. Exportar um valor não-componente ao lado
+// de um componente dispara o aviso de fast-refresh (mesmo padrão de MigrationCard).
+// eslint-disable-next-line react-refresh/only-export-components
+export const TARGET_LOG_OPTIONS: Array<{ value: BrainDumpTargetLog | ''; label: string }> = [
   { value: '', label: 'Brain Dump' },
   { value: 'today', label: 'Hoje' },
   { value: 'week', label: 'Esta Semana' },
