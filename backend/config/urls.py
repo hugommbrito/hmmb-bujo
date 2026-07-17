@@ -11,6 +11,7 @@ urlpatterns = [
     path("api/health/", health, name="health"),
     path("api/accounts/", include("accounts.urls")),
     path("api/bujo/", include("bujo.urls")),
+    path("api/brain-dump/", include("braindump.urls")),
     # Schema endpoints (drf-spectacular)
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     path(

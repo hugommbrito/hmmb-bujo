@@ -40,6 +40,7 @@ function renderAppLayout() {
         children: [
           { index: true, element: <div>conteúdo</div> },
           { path: 'today', element: <div>conteúdo hoje</div> },
+          { path: 'brain-dump', element: <div>conteúdo brain dump</div> },
         ],
       },
     ],
@@ -110,6 +111,38 @@ describe('AppLayout', () => {
     // Sidebar ainda expandida — textos ainda visíveis
     expect(screen.getByText('Hoje')).toBeInTheDocument()
     document.body.removeChild(inputEl)
+  })
+
+  it('test_atalho_b_navega_para_brain_dump_no_desktop', () => {
+    mockMatchMedia(true, false)
+    renderAppLayout()
+
+    fireEvent.keyDown(window, { key: 'b' })
+
+    expect(screen.getByText('conteúdo brain dump')).toBeInTheDocument()
+  })
+
+  it('test_atalho_b_ignorado_em_input', () => {
+    mockMatchMedia(true, false)
+    renderAppLayout()
+
+    const inputEl = document.createElement('input')
+    document.body.appendChild(inputEl)
+    inputEl.focus()
+
+    fireEvent.keyDown(inputEl, { key: 'b' })
+
+    expect(screen.queryByText('conteúdo brain dump')).not.toBeInTheDocument()
+    document.body.removeChild(inputEl)
+  })
+
+  it('test_atalho_b_ignorado_no_mobile', () => {
+    mockMatchMedia(false, true)
+    renderAppLayout()
+
+    fireEvent.keyDown(window, { key: 'b' })
+
+    expect(screen.queryByText('conteúdo brain dump')).not.toBeInTheDocument()
   })
 
   it('test_sem_violacoes_de_acessibilidade (desktop)', async () => {

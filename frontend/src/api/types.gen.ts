@@ -60,6 +60,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/brain-dump/items/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["brain_dump_items_list"];
+        put?: never;
+        post: operations["brain_dump_items_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/brain-dump/items/{id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["brain_dump_items_destroy"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/brain-dump/items/{id}/process/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["brain_dump_items_process_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/bujo/archive/": {
         parameters: {
             query?: never;
@@ -392,6 +440,35 @@ export interface components {
         };
         /** @enum {unknown} */
         BlankEnum: "";
+        BrainDumpItem: {
+            /** Format: uuid */
+            readonly id: string;
+            title: string;
+            description?: string | null;
+            targetLog?: (components["schemas"]["TargetLogEnum"] | components["schemas"]["BlankEnum"] | components["schemas"]["NullEnum"]) | null;
+            /** Format: date-time */
+            readonly createdAt: string;
+        };
+        BrainDumpItemCreate: {
+            title: string;
+            description?: string | null;
+            targetLog?: (components["schemas"]["TargetLogEnum"] | components["schemas"]["NullEnum"]) | null;
+        };
+        BrainDumpItemProcess: {
+            destination: components["schemas"]["BrainDumpItemProcessDestinationEnum"];
+            /** Format: date */
+            monthFirst?: string;
+            /** Format: date */
+            scheduledDate?: string | null;
+        };
+        /**
+         * @description * `today` - today
+         *     * `week` - week
+         *     * `month` - month
+         *     * `future` - future
+         * @enum {string}
+         */
+        BrainDumpItemProcessDestinationEnum: "today" | "week" | "month" | "future";
         CatchUpQueue: {
             monthlyTasks: components["schemas"]["Task"][];
             weeklyTasks: components["schemas"]["Task"][];
@@ -407,15 +484,6 @@ export interface components {
          * @enum {string}
          */
         CategoryEnum: "teal" | "purple" | "pink" | "yellow" | "green" | "blue";
-        /**
-         * @description * `today` - today
-         *     * `week` - week
-         *     * `month` - month
-         *     * `future` - future
-         *     * `cancel` - cancel
-         * @enum {string}
-         */
-        DestinationEnum: "today" | "week" | "month" | "future" | "cancel";
         /**
          * @description * `ui` - Urgent Important
          *     * `u` - Urgent
@@ -533,6 +601,14 @@ export interface components {
          * @enum {string}
          */
         StatusEnum: "pending" | "started" | "completed" | "cancelled" | "migrated" | "postponed";
+        /**
+         * @description * `today` - Today
+         *     * `week` - Week
+         *     * `month` - Month
+         *     * `future` - Future
+         * @enum {string}
+         */
+        TargetLogEnum: "today" | "week" | "month" | "future";
         Task: {
             /** Format: uuid */
             readonly id: string;
@@ -565,12 +641,21 @@ export interface components {
             density: components["schemas"]["TaskDensityEntry"][];
         };
         TaskMigrate: {
-            destination: components["schemas"]["DestinationEnum"];
+            destination: components["schemas"]["TaskMigrateDestinationEnum"];
             /** Format: date */
             monthFirst?: string;
             /** Format: date */
             scheduledDate?: string | null;
         };
+        /**
+         * @description * `today` - today
+         *     * `week` - week
+         *     * `month` - month
+         *     * `future` - future
+         *     * `cancel` - cancel
+         * @enum {string}
+         */
+        TaskMigrateDestinationEnum: "today" | "week" | "month" | "future" | "cancel";
         TaskReorder: {
             /** Format: uuid */
             targetTaskId: string;
@@ -701,6 +786,93 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TokenRefresh"];
+                };
+            };
+        };
+    };
+    brain_dump_items_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrainDumpItem"][];
+                };
+            };
+        };
+    };
+    brain_dump_items_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BrainDumpItemCreate"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrainDumpItem"];
+                };
+            };
+        };
+    };
+    brain_dump_items_destroy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    brain_dump_items_process_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BrainDumpItemProcess"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
                 };
             };
         };

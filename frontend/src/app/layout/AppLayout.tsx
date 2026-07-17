@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Box, useMediaQuery } from '@mui/material'
-import { Outlet } from 'react-router-dom'
+import { Outlet, useNavigate } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 import { BottomNav } from './BottomNav'
 import { RouteAnnouncer } from './RouteAnnouncer'
@@ -11,6 +11,7 @@ export function AppLayout() {
   const isMobile = useMediaQuery('(max-width: 767px)')
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const navigate = useNavigate()
 
   // Tablet: sidebar começa colapsada
   useEffect(() => {
@@ -19,7 +20,8 @@ export function AppLayout() {
     }
   }, [isTablet])
 
-  // Atalho [ para toggle da sidebar no desktop
+  // Atalho [ para toggle da sidebar / B para o Brain Dump — ambos globais,
+  // só no desktop
   useEffect(() => {
     if (!isDesktop) return
 
@@ -33,12 +35,18 @@ export function AppLayout() {
 
       if (event.key === '[') {
         setSidebarCollapsed((prev) => !prev)
+      } else if (event.key === 'b' || event.key === 'B') {
+        // Sem o guard de ctrlKey/metaKey/altKey, Cmd+B/Ctrl+B (atalhos
+        // nativos do navegador/OS em algumas plataformas) seriam
+        // sequestrados — mesmo cuidado do atalho `N` em DailyPage.tsx.
+        if (event.ctrlKey || event.metaKey || event.altKey) return
+        navigate('/brain-dump')
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isDesktop])
+  }, [isDesktop, navigate])
 
   if (isMobile) {
     return (

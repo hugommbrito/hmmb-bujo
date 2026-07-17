@@ -1792,3 +1792,72 @@ Rodado contra o stack real (`npm run dev` + `manage.py runserver` sob `config.se
 
 - **Questão aberta da AC4 (decisão do Hugo, fora desta story):** templates recorrentes ganharem campo `category` como as tasks têm — puxaria backend + migração + contrato + CRUD + snapshot → story própria. Registrada em `11-8-*.md`.
 - Nenhum outro gap bloqueante identificado.
+
+---
+
+# Resumo de Automação de Testes — Story 5.1: Caixa de entrada do Brain Dump e processamento manual
+
+**Data:** 2026-07-17
+**Story:** 5.1 — Caixa de entrada do Brain Dump e processamento manual
+**Framework:** pytest + DRF `APIClient` (backend) · Vitest 4.1 + @testing-library/react (frontend) · Playwright (E2E de browser real, `config.settings.e2e`)
+
+## Contexto
+
+A story já chegou totalmente implementada pelo dev-story com cobertura extensa própria: 41 testes novos de backend (`braindump/tests/{test_models,test_serializers,test_services,test_views}.py`), suíte completa de componentes frontend (`api.test.tsx`, `BrainDumpCaptureForm.test.tsx`, `BrainDumpItemRow.test.tsx`, `ProcessItemDialog.test.tsx`, `BrainDumpPage.test.tsx`, extensão de `AppLayout.test.tsx`) e um spec Playwright novo (`frontend/e2e/brain-dump.spec.ts`, 2 testes) cobrindo o estado vazio (AC1) e o fluxo completo captura → processa para Hoje → descarta (AC1/AC2/AC3) contra o backend real. Esta rodada de QA focou em identificar gaps na cobertura **E2E de browser real** — o único tipo de teste que este workflow gera — não fechados pelo spec já existente.
+
+## Gaps Descobertos e Auto-Aplicados
+
+| Gap | Descrição | AC |
+|-----|-----------|-----|
+| Atalho global `B` sem cobertura E2E | AC3 exige explicitamente que "o atalho `B` **ou** o item da sidebar" abram o formulário — o spec existente só exercitava a entrada via clique na sidebar; a entrada via teclado (`AppLayout.tsx`, `useEffect` do atalho) nunca foi exercitada contra o browser real, só via unit test com router mockado (`AppLayout.test.tsx`) | AC3 |
+| Guard do atalho `B` dentro de campo editável sem cobertura E2E | O código tem um guard explícito (`isEditable`) para não sequestrar `b` digitado dentro de um `<input>`/`<textarea>` — mesma classe de bug já vista em produção no atalho `N` (regressão documentada em `daily-tasks.spec.ts`, "vazamento do caractere digitado para o campo"); sem teste de browser real, uma regressão equivalente no atalho `B` passaria despercebida | AC3 |
+| Caso de erro/validação ausente no spec E2E | Nenhum teste E2E cobria um caminho crítico de erro — o checklist do workflow exige 1-2 casos de erro cobertos; título vazio (campo `required`, botão `disabled={!title.trim()}`) nunca foi exercitado contra o DOM real | AC3 |
+
+## Testes Gerados
+
+### `frontend/e2e/brain-dump.spec.ts` — 2 testes novos (total do arquivo: 4)
+
+- [x] `abre o Brain Dump via atalho global 'B' (AC3); dentro de um campo editável, 'b' não navega` — fora de campo editável, `page.keyboard.press('b')` navega para `/brain-dump` e o formulário de captura fica visível; dentro do campo "Nova tarefa" em `/today`, digitar `b` não navega (fica em `/today`, caractere aparece no campo) — mesmo padrão de regressão do atalho `N` em `daily-tasks.spec.ts`
+- [x] `título vazio não captura nada — botão "Capturar" fica desabilitado (AC3)` — botão `Capturar` nasce desabilitado; preencher só a descrição (sem título) mantém desabilitado; "Brain Dump vazio." permanece visível
+
+## Cobertura por AC (E2E)
+
+| AC | Critério | Coberto por |
+|----|----------|-------------|
+| AC1 | Estado vazio "Brain Dump vazio." para usuário novo | `brain-dump.spec.ts` (pré-existente) |
+| AC1 | Item capturado aparece na lista; `target_log` é só dica (não muda captura) | `brain-dump.spec.ts` (pré-existente) |
+| AC2 | Processar para "Hoje" cria a `Task` no Daily Log real e remove o item da caixa | `brain-dump.spec.ts` (pré-existente) |
+| AC2 | Descartar remove sem criar nada | `brain-dump.spec.ts` (pré-existente) |
+| AC3 | Atalho `B` abre o formulário de captura (entrada via teclado) | `brain-dump.spec.ts` ← **novo** |
+| AC3 | Atalho `B` não sequestra digitação dentro de campo editável | `brain-dump.spec.ts` ← **novo** |
+| AC3 | Item da sidebar abre o formulário de captura | `brain-dump.spec.ts` (pré-existente) |
+| AC3 | Título vazio não captura (caso crítico de erro) | `brain-dump.spec.ts` ← **novo** |
+
+## Resultado da Execução
+
+```
+npx playwright test brain-dump.spec.ts --reporter=list
+  4 passed (35.2s)   ← 2 pré-existentes + 2 novos, 0 falhas
+
+npm run typecheck   → 0 erros
+npx eslint e2e/brain-dump.spec.ts → 0 erros/avisos
+```
+
+Rodado contra o stack real (`npm run dev` + `manage.py runserver` sob `config.settings.e2e`, branch Neon `e2e` dedicada — Story 11.1). Backend/component suites não tocados nesta rodada (só o spec E2E foi estendido) → não reexecutados; baseline do dev-story (419 backend / 577 frontend passed) segue válido, sem mudança esperada.
+
+## Checklist de Validação
+
+- [x] Testes E2E gerados (UI existe) — 2 testes novos fechando os gaps de AC3 (atalho `B`) e de caso de erro
+- [x] API tests: N/A nesta rodada — 41 testes de backend já cobrem a API extensivamente (obra do dev-story), sem gap identificado
+- [x] Usam APIs padrão do framework já adotado (Playwright + fixtures do projeto) — nenhuma ferramenta nova
+- [x] Cobrem happy path (atalho `B` navega) + caso crítico de regressão (guard do atalho) + caso crítico de erro (título vazio)
+- [x] Todos os 4 testes do arquivo rodam com sucesso
+- [x] Locators semânticos/acessíveis (`getByRole`, `getByLabel`, texto visível)
+- [x] Descrições claras em pt-BR, seguindo a convenção do arquivo
+- [x] Sem waits/sleeps artificiais
+- [x] Testes independentes entre si (fixture cria usuário novo por teste)
+- [x] Summary salvo em `_bmad-output/implementation-artifacts/tests/test-summary.md`
+
+## Próximos Passos
+
+- Nenhum gap bloqueante identificado. Cobertura E2E da story 5.1 considerada completa para o escopo desta story (Badge/FAB/Capture Sheet mobile são Stories 5.2/5.3, fora de escopo).

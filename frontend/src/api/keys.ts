@@ -5,6 +5,7 @@
 export const keys = {
   brainDump: {
     count: (userId: string) => ['brainDump', 'count', userId] as const,
+    list: () => ['brainDump', 'list'] as const,
   },
   // Sem userId (diferente de brainDump.count): não há hoje nenhum acessor de
   // userId no frontend (AuthContext não decodifica o JWT) — ver Dev Notes da

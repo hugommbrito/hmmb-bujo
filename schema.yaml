@@ -57,6 +57,85 @@ paths:
               schema:
                 $ref: '#/components/schemas/TokenRefresh'
           description: ''
+  /api/brain-dump/items/:
+    get:
+      operationId: brain_dump_items_list
+      tags:
+      - brain-dump
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BrainDumpItem'
+          description: ''
+    post:
+      operationId: brain_dump_items_create
+      tags:
+      - brain-dump
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BrainDumpItemCreate'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BrainDumpItem'
+          description: ''
+  /api/brain-dump/items/{id}/:
+    delete:
+      operationId: brain_dump_items_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - brain-dump
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/brain-dump/items/{id}/process/:
+    post:
+      operationId: brain_dump_items_process_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - brain-dump
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BrainDumpItemProcess'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+          description: ''
   /api/bujo/archive/:
     get:
       operationId: bujo_archive_list
@@ -543,6 +622,75 @@ components:
     BlankEnum:
       enum:
       - ''
+    BrainDumpItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        title:
+          type: string
+          maxLength: 500
+        description:
+          type: string
+          nullable: true
+        targetLog:
+          nullable: true
+          oneOf:
+          - $ref: '#/components/schemas/TargetLogEnum'
+          - $ref: '#/components/schemas/BlankEnum'
+          - $ref: '#/components/schemas/NullEnum'
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - createdAt
+      - id
+      - title
+    BrainDumpItemCreate:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 500
+        description:
+          type: string
+          nullable: true
+        targetLog:
+          nullable: true
+          oneOf:
+          - $ref: '#/components/schemas/TargetLogEnum'
+          - $ref: '#/components/schemas/NullEnum'
+      required:
+      - title
+    BrainDumpItemProcess:
+      type: object
+      properties:
+        destination:
+          $ref: '#/components/schemas/BrainDumpItemProcessDestinationEnum'
+        monthFirst:
+          type: string
+          format: date
+        scheduledDate:
+          type: string
+          format: date
+          nullable: true
+      required:
+      - destination
+    BrainDumpItemProcessDestinationEnum:
+      enum:
+      - today
+      - week
+      - month
+      - future
+      type: string
+      description: |-
+        * `today` - today
+        * `week` - week
+        * `month` - month
+        * `future` - future
     CatchUpQueue:
       type: object
       properties:
@@ -578,20 +726,6 @@ components:
         * `yellow` - Yellow
         * `green` - Green
         * `blue` - Blue
-    DestinationEnum:
-      enum:
-      - today
-      - week
-      - month
-      - future
-      - cancel
-      type: string
-      description: |-
-        * `today` - today
-        * `week` - week
-        * `month` - month
-        * `future` - future
-        * `cancel` - cancel
     EisenhowerEnum:
       enum:
       - ui
@@ -873,6 +1007,18 @@ components:
         * `cancelled` - Cancelled
         * `migrated` - Migrated
         * `postponed` - Postponed
+    TargetLogEnum:
+      enum:
+      - today
+      - week
+      - month
+      - future
+      type: string
+      description: |-
+        * `today` - Today
+        * `week` - Week
+        * `month` - Month
+        * `future` - Future
     Task:
       type: object
       properties:
@@ -970,7 +1116,7 @@ components:
       type: object
       properties:
         destination:
-          $ref: '#/components/schemas/DestinationEnum'
+          $ref: '#/components/schemas/TaskMigrateDestinationEnum'
         monthFirst:
           type: string
           format: date
@@ -980,6 +1126,20 @@ components:
           nullable: true
       required:
       - destination
+    TaskMigrateDestinationEnum:
+      enum:
+      - today
+      - week
+      - month
+      - future
+      - cancel
+      type: string
+      description: |-
+        * `today` - today
+        * `week` - week
+        * `month` - month
+        * `future` - future
+        * `cancel` - cancel
     TaskReorder:
       type: object
       properties:

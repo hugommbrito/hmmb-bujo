@@ -12,6 +12,7 @@ import { MonthlyPage } from '../pages/planner/MonthlyPage'
 import { FuturePage } from '../pages/planner/FuturePage'
 import { RecurringPage } from '../pages/planner/RecurringPage'
 import { ArchivePage } from '../pages/archive/ArchivePage'
+import { BrainDumpPage } from '../pages/braindump/BrainDumpPage'
 
 function LoginPageRoute() {
   const { isAuthenticated } = useAuth()
@@ -97,11 +98,7 @@ export const routeDefinitions: RouteObject[] = [
         element: <PlaceholderPage title="Diário de Gratidão" />,
         handle: { title: 'Diário de Gratidão' },
       },
-      {
-        path: 'brain-dump',
-        element: <PlaceholderPage title="Brain Dump" />,
-        handle: { title: 'Brain Dump' },
-      },
+      { path: 'brain-dump', element: <BrainDumpPage />, handle: { title: 'Brain Dump' } },
       { path: 'archive', element: <ArchivePage />, handle: { title: 'Arquivo' } },
       {
         path: 'archive/weekly/:weekStart',

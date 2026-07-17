@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     "core",
     "accounts",
     "bujo",
+    "braindump",
 ]
 
 MIDDLEWARE = [
