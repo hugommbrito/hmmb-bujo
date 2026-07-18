@@ -26,8 +26,14 @@ settingsFile: '{project-root}/.claude/settings.json'
 
 Use script to ensure the Stop hook exists:
 ```bash
+# NOTE: pass the script path and the `stop-hook` subcommand as SEPARATE args
+# (not the single string "{scripts} stop-hook"). When {scripts} contains a space
+# (e.g. a "Projetos Pessoais" path), the concatenated form makes the helper's
+# shlex.split mis-parse the path and write a corrupted Stop hook command
+# ("Unknown command" → monitor-session hangs). Separate args are re-quoted via
+# shlex.join and survive spaces in the path.
 result=$("{ensureStopHook}" ensure-stop-hook --settings "{settingsFile}" \
-  --command "{scripts} stop-hook" --timeout 10)
+  --command "{scripts}" stop-hook --timeout 10)
 ok=$(echo "$result" | jq -r '.ok')
 changed=$(echo "$result" | jq -r '.changed')
 verification_state=$(echo "$result" | jq -r '.verificationState // "verified"')
