@@ -616,6 +616,160 @@ paths:
               schema:
                 $ref: '#/components/schemas/WeeklyReviewQueue'
           description: ''
+  /api/habit-groups/:
+    get:
+      operationId: habit_groups_list
+      tags:
+      - habit-groups
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/HabitGroup'
+          description: ''
+    post:
+      operationId: habit_groups_create
+      tags:
+      - habit-groups
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HabitGroupCreate'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HabitGroup'
+          description: ''
+  /api/habit-groups/{id}/:
+    patch:
+      operationId: habit_groups_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - habit-groups
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedHabitGroupUpdate'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HabitGroup'
+          description: ''
+  /api/habits/:
+    get:
+      operationId: habits_list
+      parameters:
+      - in: query
+        name: includeInactive
+        schema:
+          type: boolean
+        description: Inclui hábitos cuja versão vigente hoje é active=false.
+      tags:
+      - habits
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Habit'
+          description: ''
+    post:
+      operationId: habits_create
+      tags:
+      - habits
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HabitCreate'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Habit'
+          description: ''
+  /api/habits/{id}/:
+    patch:
+      operationId: habits_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - habits
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedHabitUpdate'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Habit'
+          description: ''
+  /api/habits/{id}/versions/:
+    post:
+      operationId: habits_versions_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - habits
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HabitVersionCreate'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HabitVersion'
+          description: ''
 components:
   schemas:
     ArchiveEntry:
@@ -774,6 +928,183 @@ components:
       - month
       - tasks
       - year
+    Habit:
+      type: object
+      description: Hábito + campos da versão vigente hoje (``obj.current_version``).
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          maxLength: 200
+        emoticon:
+          type: string
+          maxLength: 16
+        group:
+          type: string
+          format: uuid
+        type:
+          $ref: '#/components/schemas/HabitTypeEnum'
+        weight:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,4}(?:\.\d{0,2})?$
+          readOnly: true
+        active:
+          type: boolean
+          readOnly: true
+        meta:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          readOnly: true
+          nullable: true
+        bonus:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,2})?$
+          readOnly: true
+          nullable: true
+        effectiveFrom:
+          type: string
+          format: date
+          readOnly: true
+      required:
+      - active
+      - bonus
+      - effectiveFrom
+      - group
+      - id
+      - meta
+      - name
+      - type
+      - weight
+    HabitCreate:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 200
+        emoticon:
+          type: string
+          default: ''
+          maxLength: 16
+        group:
+          type: string
+          format: uuid
+        type:
+          $ref: '#/components/schemas/HabitTypeEnum'
+        weight:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,4}(?:\.\d{0,2})?$
+        meta:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+        bonus:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,2})?$
+          nullable: true
+      required:
+      - group
+      - name
+      - type
+      - weight
+    HabitGroup:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          maxLength: 200
+        displayOrder:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+      required:
+      - id
+      - name
+    HabitGroupCreate:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 200
+      required:
+      - name
+    HabitTypeEnum:
+      enum:
+      - boolean
+      - numeric
+      type: string
+      description: |-
+        * `boolean` - Boolean
+        * `numeric` - Numeric
+    HabitVersion:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        habit:
+          type: string
+          format: uuid
+        weight:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,4}(?:\.\d{0,2})?$
+        active:
+          type: boolean
+        meta:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+        bonus:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,2})?$
+          nullable: true
+        effectiveFrom:
+          type: string
+          format: date
+      required:
+      - effectiveFrom
+      - habit
+      - id
+      - weight
+    HabitVersionCreate:
+      type: object
+      description: |-
+        Nova versão prospectiva: mudança de peso/meta/bonus e/ou desativar/reativar.
+
+        Todos os campos são opcionais — os não informados herdam da versão vigente.
+      properties:
+        weight:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,4}(?:\.\d{0,2})?$
+        meta:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+        bonus:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,2})?$
+          nullable: true
+        active:
+          type: boolean
     Log:
       type: object
       properties:
@@ -867,6 +1198,26 @@ components:
     NullEnum:
       enum:
       - null
+    PatchedHabitGroupUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 200
+    PatchedHabitUpdate:
+      type: object
+      description: Atualiza identidade. ``type`` é imutável — enviá-lo é rejeitado
+        (400).
+      properties:
+        name:
+          type: string
+          maxLength: 200
+        emoticon:
+          type: string
+          maxLength: 16
+        group:
+          type: string
+          format: uuid
     PatchedRecurringTaskTemplateUpdate:
       type: object
       properties:

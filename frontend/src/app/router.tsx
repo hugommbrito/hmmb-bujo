@@ -13,6 +13,8 @@ import { FuturePage } from '../pages/planner/FuturePage'
 import { RecurringPage } from '../pages/planner/RecurringPage'
 import { ArchivePage } from '../pages/archive/ArchivePage'
 import { BrainDumpPage } from '../pages/braindump/BrainDumpPage'
+import { SettingsPage } from '../pages/settings/SettingsPage'
+import { HabitsSettingsPage } from '../pages/settings/HabitsSettingsPage'
 
 function LoginPageRoute() {
   const { isAuthenticated } = useAuth()
@@ -112,8 +114,13 @@ export const routeDefinitions: RouteObject[] = [
       },
       {
         path: 'settings',
-        element: <PlaceholderPage title="Configurações" />,
+        element: <SettingsPage />,
         handle: { title: 'Configurações' },
+      },
+      {
+        path: 'settings/habits',
+        element: <HabitsSettingsPage />,
+        handle: { title: 'Configurações — Hábitos' },
       },
       { path: '*', element: <Navigate to="/today" replace /> },
     ],

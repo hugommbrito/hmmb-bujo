@@ -16,7 +16,12 @@ from core.tenant import tenant_context
 # Test-model modules whose import-time ``register_isolation_case`` calls feed the
 # shared isolation contract (see core/tests/registry.py). A new domain app adds
 # its ``<app>/tests/models.py`` here so the generic contract covers it too.
-_ISOLATION_TEST_MODULES = ["core.tests.models", "bujo.tests.factories", "braindump.tests.factories"]
+_ISOLATION_TEST_MODULES = [
+    "core.tests.models",
+    "bujo.tests.factories",
+    "braindump.tests.factories",
+    "habits.tests.factories",
+]
 
 
 @pytest.fixture(autouse=True)

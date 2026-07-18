@@ -29,7 +29,12 @@ export const keys = {
       ['bujo', 'taskDensity', monthFirst ?? 'current'] as const,
     archive: () => ['bujo', 'archive', 'list'] as const,
   },
+  // Sem userId (mesmo racional de bujo.*): logout limpa o cache inteiro.
+  habits: {
+    list: (params?: { includeInactive?: boolean }) =>
+      ['habits', 'list', params ?? {}] as const,
+    groups: () => ['habits', 'groups', 'list'] as const,
+  },
   // Adicionados nas stories:
-  // habits: { logs: { ... } }  → Story 6.x
   // health: { logs: { ... } }  → Story 7.x
 } as const

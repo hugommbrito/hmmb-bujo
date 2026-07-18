@@ -48,6 +48,7 @@ INSTALLED_APPS = [
     "accounts",
     "bujo",
     "braindump",
+    "habits",
 ]
 
 MIDDLEWARE = [
@@ -174,6 +175,17 @@ SPECTACULAR_SETTINGS = {
         "drf_spectacular.hooks.postprocess_schema_enums",
         "drf_spectacular.contrib.djangorestframework_camel_case.camelize_serializer_fields",
     ],
+    # Sem override, o campo `type` de hábitos (boolean/numeric) colide com o
+    # `type` (weekly/monthly) de bujo — ambos viram "TypeEnum" e o drf-spectacular
+    # os renomeia com hash instável, poluindo o contrato de um endpoint não-relacionado.
+    # Nomear o enum de hábitos explicitamente mantém o "TypeEnum" de bujo intacto.
+    "ENUM_NAME_OVERRIDES": {
+        "HabitTypeEnum": "habits.models.HabitType",
+        # Pin do enum weekly/monthly de `ArchiveEntrySerializer.type`: sem isso, a
+        # presença de um segundo campo `type` faz o drf-spectacular renomeá-lo para
+        # "ArchiveEntryTypeEnum", mudando o contrato de bujo sem motivo.
+        "TypeEnum": ["weekly", "monthly"],
+    },
 }
 
 # --- Exceção JSONB (§6.3, AD-01) -----------------------------------------------

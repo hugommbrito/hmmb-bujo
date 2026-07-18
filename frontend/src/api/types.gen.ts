@@ -443,6 +443,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/habit-groups/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["habit_groups_list"];
+        put?: never;
+        post: operations["habit_groups_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/habit-groups/{id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["habit_groups_partial_update"];
+        trace?: never;
+    };
+    "/api/habits/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["habits_list"];
+        put?: never;
+        post: operations["habits_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/habits/{id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["habits_partial_update"];
+        trace?: never;
+    };
+    "/api/habits/{id}/versions/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["habits_versions_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -516,6 +596,83 @@ export interface components {
             month: number;
             tasks: components["schemas"]["Task"][];
         };
+        /** @description Hábito + campos da versão vigente hoje (``obj.current_version``). */
+        Habit: {
+            /** Format: uuid */
+            readonly id: string;
+            name: string;
+            emoticon?: string;
+            /** Format: uuid */
+            group: string;
+            type: components["schemas"]["HabitTypeEnum"];
+            /** Format: decimal */
+            readonly weight: string;
+            readonly active: boolean;
+            /** Format: decimal */
+            readonly meta: string | null;
+            /** Format: decimal */
+            readonly bonus: string | null;
+            /** Format: date */
+            readonly effectiveFrom: string;
+        };
+        HabitCreate: {
+            name: string;
+            /** @default  */
+            emoticon: string;
+            /** Format: uuid */
+            group: string;
+            type: components["schemas"]["HabitTypeEnum"];
+            /** Format: decimal */
+            weight: string;
+            /** Format: decimal */
+            meta?: string | null;
+            /** Format: decimal */
+            bonus?: string | null;
+        };
+        HabitGroup: {
+            /** Format: uuid */
+            readonly id: string;
+            name: string;
+            displayOrder?: number;
+        };
+        HabitGroupCreate: {
+            name: string;
+        };
+        /**
+         * @description * `boolean` - Boolean
+         *     * `numeric` - Numeric
+         * @enum {string}
+         */
+        HabitTypeEnum: "boolean" | "numeric";
+        HabitVersion: {
+            /** Format: uuid */
+            readonly id: string;
+            /** Format: uuid */
+            habit: string;
+            /** Format: decimal */
+            weight: string;
+            active?: boolean;
+            /** Format: decimal */
+            meta?: string | null;
+            /** Format: decimal */
+            bonus?: string | null;
+            /** Format: date */
+            effectiveFrom: string;
+        };
+        /**
+         * @description Nova versão prospectiva: mudança de peso/meta/bonus e/ou desativar/reativar.
+         *
+         *     Todos os campos são opcionais — os não informados herdam da versão vigente.
+         */
+        HabitVersionCreate: {
+            /** Format: decimal */
+            weight?: string;
+            /** Format: decimal */
+            meta?: string | null;
+            /** Format: decimal */
+            bonus?: string | null;
+            active?: boolean;
+        };
         Log: {
             /** Format: uuid */
             readonly id: string;
@@ -551,6 +708,16 @@ export interface components {
         };
         /** @enum {unknown} */
         NullEnum: null;
+        PatchedHabitGroupUpdate: {
+            name?: string;
+        };
+        /** @description Atualiza identidade. ``type`` é imutável — enviá-lo é rejeitado (400). */
+        PatchedHabitUpdate: {
+            name?: string;
+            emoticon?: string;
+            /** Format: uuid */
+            group?: string;
+        };
         PatchedRecurringTaskTemplateUpdate: {
             title?: string;
             description?: string | null;
@@ -1417,6 +1584,168 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WeeklyReviewQueue"];
+                };
+            };
+        };
+    };
+    habit_groups_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HabitGroup"][];
+                };
+            };
+        };
+    };
+    habit_groups_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HabitGroupCreate"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HabitGroup"];
+                };
+            };
+        };
+    };
+    habit_groups_partial_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PatchedHabitGroupUpdate"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HabitGroup"];
+                };
+            };
+        };
+    };
+    habits_list: {
+        parameters: {
+            query?: {
+                /** @description Inclui hábitos cuja versão vigente hoje é active=false. */
+                includeInactive?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Habit"][];
+                };
+            };
+        };
+    };
+    habits_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HabitCreate"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Habit"];
+                };
+            };
+        };
+    };
+    habits_partial_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PatchedHabitUpdate"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Habit"];
+                };
+            };
+        };
+    };
+    habits_versions_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["HabitVersionCreate"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HabitVersion"];
                 };
             };
         };
