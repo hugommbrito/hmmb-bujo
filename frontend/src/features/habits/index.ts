@@ -11,9 +11,12 @@ export {
   useSetGroupMultipliersMutation,
   useSetHolidayMutation,
   useOverrideDayWorkdayMutation,
+  useHabitHistoryQuery,
+  useHabitSeriesQuery,
 } from './api'
 export { HabitsManager } from './components/HabitsManager'
 export { HabitTracker } from './components/HabitTracker'
+export { HabitHistory } from './components/HabitHistory'
 export type {
   Habit,
   HabitGroup,
@@ -27,4 +30,12 @@ export type {
   SetGroupMultipliers,
   SetHoliday,
   HolidayResult,
+  HabitHistoryRange,
+  HabitHistoryDay,
+  HabitSlim,
+  HabitSeries,
+  HabitSeriesPoint,
+  HabitVersionEvent,
+  HabitChange,
+  HabitDayType,
 } from './types'

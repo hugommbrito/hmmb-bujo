@@ -14,6 +14,7 @@ import { RecurringPage } from '../pages/planner/RecurringPage'
 import { ArchivePage } from '../pages/archive/ArchivePage'
 import { BrainDumpPage } from '../pages/braindump/BrainDumpPage'
 import { HabitsPage } from '../pages/habits/HabitsPage'
+import { HabitHistoryPage } from '../pages/habits/HabitHistoryPage'
 import { SettingsPage } from '../pages/settings/SettingsPage'
 import { HabitsSettingsPage } from '../pages/settings/HabitsSettingsPage'
 
@@ -86,6 +87,11 @@ export const routeDefinitions: RouteObject[] = [
         handle: { title: 'Recorrentes' },
       },
       { path: 'habits', element: <HabitsPage />, handle: { title: 'Hábitos' } },
+      {
+        path: 'habits/history',
+        element: <HabitHistoryPage />,
+        handle: { title: 'Hábitos — Histórico' },
+      },
       {
         path: 'health/metrics',
         element: <PlaceholderPage title="Métricas de Saúde" />,

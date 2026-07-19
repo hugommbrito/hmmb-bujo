@@ -84,3 +84,35 @@ def resolve_day_type(user, d: date) -> str:
     if d.weekday() >= 5:
         return "weekend"
     return "weekday"
+
+
+def resolve_day_types_range(user, start: date, end: date) -> dict[date, str]:
+    """Tipo de dia de **cada dia de calendário** em ``[start, end]`` (batch, read-only).
+
+    Espelha ``resolve_day_type`` — mesma precedência ``holiday > weekend > weekday``
+    sem acumular e as mesmas strings literais (``core`` não importa
+    ``habits.DayType``) — mas resolve o range inteiro com **uma** query em
+    ``user_holidays`` (evita N chamadas a ``resolve_day_type``). Usado pela camada de
+    leitura de histórico (Story 6.4) para sombrear fim de semana/feriado até em
+    dias-lacuna (sem linha materializada). ``start > end`` retorna ``{}`` (o chamador
+    valida o range antes). Import tardio de ``UserHoliday`` (``core → accounts``
+    permitido) e query auto-escopada por tenant, como ``resolve_day_type``.
+    """
+    from accounts.models import UserHoliday
+
+    holidays = set(
+        UserHoliday.objects.filter(date__range=(start, end)).values_list(
+            "date", flat=True
+        )
+    )
+    out: dict[date, str] = {}
+    d = start
+    while d <= end:
+        if d in holidays:
+            out[d] = "holiday"
+        elif d.weekday() >= 5:
+            out[d] = "weekend"
+        else:
+            out[d] = "weekday"
+        d += timedelta(days=1)
+    return out

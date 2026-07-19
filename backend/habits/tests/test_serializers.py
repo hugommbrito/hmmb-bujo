@@ -2,9 +2,14 @@
 
 import uuid
 
+from rest_framework import serializers as drf_serializers
+
 from habits.serializers import (
+    HabitChangeSerializer,
     HabitCreateSerializer,
     HabitDayEntryUpdateSerializer,
+    HabitHistoryDaySerializer,
+    HabitSeriesPointSerializer,
     HabitUpdateSerializer,
     HabitVersionCreateSerializer,
     SetGroupMultipliersSerializer,
@@ -113,3 +118,42 @@ def test_set_holiday_requires_date_and_flag():
     invalid = SetHolidaySerializer(data={"is_holiday": True})
     assert not invalid.is_valid()
     assert "date" in invalid.errors
+
+
+# --- Histórico read-only (Story 6.4) -------------------------------------------
+def test_change_serializer_field_is_charfield_not_choicefield():
+    """`field` é CharField (não ChoiceField) — não emite enum novo no contrato."""
+    field = HabitChangeSerializer().fields["field"]
+    assert isinstance(field, drf_serializers.CharField)
+    assert not isinstance(field, drf_serializers.ChoiceField)
+
+
+def test_change_serializer_accepts_created_and_before_after():
+    """Aceita `field='created'` (valor arbitrário) e serializa before/after."""
+    data = HabitChangeSerializer({"field": "created", "before": None, "after": None}).data
+    assert data == {"field": "created", "before": None, "after": None}
+    weight = HabitChangeSerializer({"field": "weight", "before": "3.00", "after": "4.00"}).data
+    assert weight == {"field": "weight", "before": "3.00", "after": "4.00"}
+
+
+def test_history_day_serializer_allows_null_total_completion():
+    """Dia-lacuna: total_completion=None serializa sem erro (allow_null)."""
+    data = HabitHistoryDaySerializer(
+        {"date": "2026-01-06", "day_type": "weekday", "total_completion": None,
+         "groups": [], "entries": []}
+    ).data
+    assert data["total_completion"] is None
+    assert data["groups"] == []
+
+
+def test_series_point_serializer_allows_null_value():
+    """Ponto sem value (não-feito) serializa value=None; effective_weight como string."""
+    from decimal import Decimal
+
+    data = HabitSeriesPointSerializer(
+        {"date": "2026-01-10", "value": None,
+         "effective_weight": Decimal("2.00"), "day_type": "weekend"}
+    ).data
+    assert data["value"] is None
+    assert data["effective_weight"] == "2.00"
+    assert data["day_type"] == "weekend"

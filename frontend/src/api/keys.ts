@@ -39,6 +39,11 @@ export const keys = {
     // habits.day(date) (via dayType), sem key nova.
     groupMultipliers: (groupId: string) =>
       ['habits', 'groupMultipliers', groupId] as const,
+    // Story 6.4 — histórico read-only (sem userId, como o resto de habits.*).
+    history: (range: { start: string; end: string }) =>
+      ['habits', 'history', range] as const,
+    series: (habitId: string, range: { start: string; end: string }) =>
+      ['habits', 'series', habitId, range] as const,
   },
   // Adicionados nas stories:
   // health: { logs: { ... } }  → Story 7.x

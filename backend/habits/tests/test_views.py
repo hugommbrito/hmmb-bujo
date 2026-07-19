@@ -414,3 +414,129 @@ def test_multipliers_other_tenant_returns_404(auth_client, user, other_user):
 
     response = auth_client.get(f"/api/habit-groups/{group.id}/multipliers/")
     assert response.status_code == 404
+
+
+# ==============================================================================
+# Story 6.4 — histórico read-only (GET history / GET series)
+# ==============================================================================
+
+_H_MON = date(2026, 1, 5)   # segunda
+_H_FRI = date(2026, 1, 9)   # sexta
+_H_SAT = date(2026, 1, 10)  # sábado
+_H_SUN = date(2026, 1, 11)  # domingo
+
+
+def test_get_history_range_returns_shape(auth_client, user):
+    """GET /api/habits/history/ → 200 com days (todos os dias) e habits; snake_case."""
+    with tenant_context(user):
+        group = HabitGroupFactory(user=user, name="Saúde")
+        habit = HabitFactory(user=user, group=group, type="boolean", name="Ler")
+        HabitDayEntryFactory(
+            user=user, habit=habit, date=_H_MON, value=Decimal("1"),
+            weight_at_time=Decimal("2"), day_type=DayType.WEEKDAY,
+        )
+
+    response = auth_client.get(
+        f"/api/habits/history/?start={_H_MON.isoformat()}&end={_H_SUN.isoformat()}"
+    )
+    assert response.status_code == 200, response.data
+    # response.data é snake_case (camelização só no renderer JSON).
+    assert response.data["start"] == _H_MON.isoformat()
+    assert response.data["end"] == _H_SUN.isoformat()
+    assert len(response.data["days"]) == 7
+    assert len(response.data["habits"]) == 1
+    days = {d["date"]: d for d in response.data["days"]}
+    # Segunda materializada: 100%; sábado (lacuna) None; sábado é weekend.
+    assert days[_H_MON.isoformat()]["total_completion"] == 100
+    assert days[_H_MON.isoformat()]["groups"][0]["completion"] == 100
+    assert days[_H_SAT.isoformat()]["total_completion"] is None
+    assert days[_H_SAT.isoformat()]["day_type"] == "weekend"
+
+
+def test_get_history_default_range_is_30_days(auth_client, user):
+    """Sem params: default end=hoje, start=hoje-29 → 30 dias inclusive."""
+    response = auth_client.get("/api/habits/history/")
+    assert response.status_code == 200, response.data
+    assert len(response.data["days"]) == 30
+    assert response.data["end"] == today_for(user).isoformat()
+
+
+def test_get_history_does_not_seed(auth_client, user):
+    """Consultar histórico NUNCA materializa linhas (AC1)."""
+    with tenant_context(user):
+        group = HabitGroupFactory(user=user)
+        habit = HabitFactory(user=user, group=group, type="boolean")
+        HabitDayEntryFactory(
+            user=user, habit=habit, date=_H_MON, value=Decimal("1"),
+            weight_at_time=Decimal("1"),
+        )
+        before = HabitDayEntry.objects.count()
+
+    auth_client.get(
+        f"/api/habits/history/?start={_H_MON.isoformat()}&end={_H_SUN.isoformat()}"
+    )
+    with tenant_context(user):
+        assert HabitDayEntry.objects.count() == before == 1
+
+
+def test_get_history_invalid_date_returns_400(auth_client):
+    response = auth_client.get("/api/habits/history/?start=2026-13-99&end=2026-01-01")
+    assert response.status_code == 400
+    assert "start" in response.data.get("fields", {})
+
+
+def test_get_history_range_too_large_returns_400(auth_client):
+    response = auth_client.get("/api/habits/history/?start=2026-01-01&end=2026-06-01")
+    assert response.status_code == 400
+    assert "exceder" in response.data["detail"]
+
+
+def test_get_series_returns_shape(auth_client, user):
+    """GET /api/habits/<pk>/series/ → 200 com points/events/day_types; snake_case."""
+    with tenant_context(user):
+        group = HabitGroupFactory(user=user)
+        habit = HabitFactory(user=user, group=group, type="boolean", name="Ler")
+        HabitVersionFactory(user=user, habit=habit, weight=Decimal("3"), active=True,
+                            effective_from=date(2025, 12, 1))
+        HabitVersionFactory(user=user, habit=habit, weight=Decimal("4"), active=True,
+                            effective_from=_H_MON)  # peso 3→4 no range
+        HabitDayEntryFactory(
+            user=user, habit=habit, date=_H_MON, value=Decimal("1"),
+            weight_at_time=Decimal("4"), multiplier_at_time=Decimal("1.00"),
+        )
+
+    response = auth_client.get(
+        f"/api/habits/{habit.id}/series/?start={_H_MON.isoformat()}&end={_H_SUN.isoformat()}"
+    )
+    assert response.status_code == 200, response.data
+    assert response.data["habit"]["name"] == "Ler"
+    assert len(response.data["points"]) == 1
+    assert response.data["points"][0]["value"] == "1.00"
+    assert response.data["points"][0]["effective_weight"] == "4.00"
+    # evento de mudança de peso, com before/after (nunca from/to)
+    assert len(response.data["events"]) == 1
+    change = response.data["events"][0]["changes"][0]
+    assert change == {"field": "weight", "before": "3.00", "after": "4.00"}
+    assert len(response.data["day_types"]) == 7
+
+
+def test_get_series_cross_tenant_returns_404(auth_client, other_user):
+    """Série de um hábito de outro tenant → 404 (auto-scope + DoesNotExist)."""
+    with tenant_context(other_user):
+        group = HabitGroupFactory(user=other_user)
+        alheio = HabitFactory(user=other_user, group=group, type="boolean")
+    response = auth_client.get(f"/api/habits/{alheio.id}/series/")
+    assert response.status_code == 404
+
+
+def test_get_series_range_too_large_returns_400(auth_client, user):
+    with tenant_context(user):
+        group = HabitGroupFactory(user=user)
+        habit = HabitFactory(user=user, group=group, type="boolean")
+        HabitVersionFactory(user=user, habit=habit, weight=Decimal("1"), active=True,
+                            effective_from=date(2025, 1, 1))
+    response = auth_client.get(
+        f"/api/habits/{habit.id}/series/?start=2026-01-01&end=2026-06-01"
+    )
+    assert response.status_code == 400
+    assert "exceder" in response.data["detail"]

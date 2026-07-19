@@ -8,6 +8,8 @@ import type {
   HabitDay,
   HabitDayEntry,
   HabitGroup,
+  HabitHistoryRange,
+  HabitSeries,
   HabitType,
   HabitVersion,
   HolidayResult,
@@ -52,6 +54,48 @@ export function useHabitDayQuery(date?: string) {
   return useQuery({
     queryKey: keys.habits.day(date),
     queryFn: () => fetchHabitDay(date),
+  })
+}
+
+// --- Histórico read-only (Story 6.4) -----------------------------------------
+// `useQuery` puro: a superfície é read-only, sem otimismo/prefetch (AD-14 não
+// impõe NFR ao modo de revisão histórica).
+
+interface HistoryRange {
+  start: string
+  end: string
+}
+
+async function fetchHabitHistory({ start, end }: HistoryRange): Promise<HabitHistoryRange> {
+  const response = await client.get<HabitHistoryRange>('/api/habits/history/', {
+    params: { start, end },
+  })
+  return response.data
+}
+
+export function useHabitHistoryQuery(range: HistoryRange) {
+  return useQuery({
+    queryKey: keys.habits.history(range),
+    queryFn: () => fetchHabitHistory(range),
+  })
+}
+
+async function fetchHabitSeries(
+  habitId: string,
+  { start, end }: HistoryRange,
+): Promise<HabitSeries> {
+  const response = await client.get<HabitSeries>(`/api/habits/${habitId}/series/`, {
+    params: { start, end },
+  })
+  return response.data
+}
+
+export function useHabitSeriesQuery(habitId: string, range: HistoryRange) {
+  return useQuery({
+    queryKey: keys.habits.series(habitId, range),
+    queryFn: () => fetchHabitSeries(habitId, range),
+    // Só busca quando há um hábito selecionado (o seletor pode iniciar vazio).
+    enabled: habitId !== '',
   })
 }
 

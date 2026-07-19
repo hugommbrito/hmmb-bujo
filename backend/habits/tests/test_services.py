@@ -15,7 +15,13 @@ import pytest
 from core.calendar import today_for
 from core.exceptions import DomainError
 from core.tenant import tenant_context
-from habits.models import DayType, HabitDayEntry, HabitGroupDayMultiplier, HabitVersion
+from habits.models import (
+    DayType,
+    Habit,
+    HabitDayEntry,
+    HabitGroupDayMultiplier,
+    HabitVersion,
+)
 from habits.services import (
     add_habit_version,
     compute_day_completeness,
@@ -23,6 +29,8 @@ from habits.services import (
     create_habit_group,
     current_multipliers_of,
     current_version_of,
+    get_habit_history_range,
+    get_habit_series,
     list_habit_groups,
     list_habits,
     multiplier_for,
@@ -817,3 +825,239 @@ def test_override_multiplier_at_time_changes_only_that_row(user):
         e2.refresh_from_db()
         assert e1.multiplier_at_time == Decimal("1.00")
         assert e2.multiplier_at_time == Decimal("0.20")  # vizinho intacto
+
+
+# --- Histórico read-only (Story 6.4, AC1/AC2/AC4) ------------------------------
+# Datas fixas ancoradas na mesma semana da 6.3: _SAT=10/01 (sáb), _SUN=11/01,
+# _MON=12/01. A semana 05–11/01/2026 começa numa segunda (05/01).
+_HIST_MON = date(2026, 1, 5)   # segunda
+_HIST_FRI = date(2026, 1, 9)   # sexta
+_HIST_SAT = date(2026, 1, 10)  # sábado
+_HIST_SUN = date(2026, 1, 11)  # domingo
+
+
+def test_history_range_dia_materializado_retorna_pct(user):
+    """Dia com linha booleana marcada → total_completion e groups com % (reusa a
+    autoridade _completeness_pct)."""
+    with tenant_context(user):
+        group = HabitGroupFactory(user=user, name="Saúde")
+        habit = HabitFactory(user=user, group=group, type="boolean", name="Ler")
+        HabitDayEntryFactory(
+            user=user, habit=habit, date=_HIST_MON, value=Decimal("1"),
+            weight_at_time=Decimal("2"), day_type=DayType.WEEKDAY,
+            multiplier_at_time=Decimal("1.00"),
+        )
+        result = get_habit_history_range(user=user, start=_HIST_MON, end=_HIST_MON)
+
+    day = result["days"][0]
+    assert day["date"] == _HIST_MON
+    assert day["total_completion"] == 100
+    assert day["groups"] == [{"id": group.id, "name": "Saúde", "completion": 100}]
+    assert len(day["entries"]) == 1
+    assert len(result["habits"]) == 1
+    assert result["habits"][0].id == habit.id
+
+
+def test_history_range_dia_sem_linha_e_lacuna_honesta(user):
+    """Dia sem linha materializada → total_completion=None, groups=[], entries=[]
+    (lacuna honesta, NUNCA 0% fabricado)."""
+    with tenant_context(user):
+        group = HabitGroupFactory(user=user)
+        habit = HabitFactory(user=user, group=group, type="boolean")
+        HabitDayEntryFactory(
+            user=user, habit=habit, date=_HIST_MON, value=Decimal("1"),
+            weight_at_time=Decimal("1"),
+        )
+        result = get_habit_history_range(user=user, start=_HIST_MON, end=_HIST_SUN)
+
+    days_by_date = {d["date"]: d for d in result["days"]}
+    # Range inteiro presente (segunda a domingo).
+    assert len(result["days"]) == 7
+    # Terça (sem linha) → lacuna.
+    gap = days_by_date[date(2026, 1, 6)]
+    assert gap["total_completion"] is None
+    assert gap["groups"] == []
+    assert gap["entries"] == []
+    # Segunda → materializado, não é lacuna.
+    assert days_by_date[_HIST_MON]["total_completion"] == 100
+
+
+def test_history_range_nao_semeia_dias_passados(user):
+    """A leitura NUNCA materializa: consultar dias nunca abertos (incl. um sábado)
+    não cria nenhuma linha em habit_day_entries (AC1)."""
+    with tenant_context(user):
+        group = HabitGroupFactory(user=user)
+        habit = HabitFactory(user=user, group=group, type="boolean")
+        HabitVersionFactory(
+            user=user, habit=habit, weight=Decimal("2"),
+            active=True, effective_from=date(2025, 1, 1),
+        )
+        # Só um dia materializado; o resto do range nunca foi aberto.
+        HabitDayEntryFactory(
+            user=user, habit=habit, date=_HIST_MON, value=Decimal("1"),
+            weight_at_time=Decimal("2"),
+        )
+        before = HabitDayEntry.objects.count()
+        get_habit_history_range(user=user, start=_HIST_MON, end=_HIST_SUN)
+        after = HabitDayEntry.objects.count()
+
+    assert before == after == 1  # zero linhas criadas
+
+
+def test_history_range_ordena_habits_por_grupo(user):
+    """habits ordenados por (group.display_order, group.name, habit.name)."""
+    with tenant_context(user):
+        g_b = HabitGroupFactory(user=user, name="B-Grupo", display_order=1)
+        g_a = HabitGroupFactory(user=user, name="A-Grupo", display_order=0)
+        h_b = HabitFactory(user=user, group=g_b, type="boolean", name="Zeta")
+        h_a = HabitFactory(user=user, group=g_a, type="boolean", name="Alfa")
+        HabitDayEntryFactory(user=user, habit=h_b, date=_HIST_MON, weight_at_time=Decimal("1"))
+        HabitDayEntryFactory(user=user, habit=h_a, date=_HIST_MON, weight_at_time=Decimal("1"))
+        result = get_habit_history_range(user=user, start=_HIST_MON, end=_HIST_MON)
+
+    # display_order 0 (A-Grupo/Alfa) vem antes de display_order 1 (B-Grupo/Zeta).
+    assert [h.id for h in result["habits"]] == [h_a.id, h_b.id]
+
+
+def test_history_range_maior_que_92_dias_domainerror(user):
+    with tenant_context(user), pytest.raises(DomainError):
+        get_habit_history_range(
+            user=user, start=date(2026, 1, 1), end=date(2026, 1, 1) + timedelta(days=93)
+        )
+
+
+def test_history_range_start_depois_de_end_domainerror(user):
+    with tenant_context(user), pytest.raises(DomainError):
+        get_habit_history_range(user=user, start=_HIST_SUN, end=_HIST_MON)
+
+
+def test_history_range_sombreia_dias_lacuna_com_day_type(user):
+    """day_type resolve para TODO dia de calendário, inclusive lacunas (para o
+    sombreamento de fim de semana/feriado no gráfico)."""
+    with tenant_context(user):
+        # Nenhuma linha materializada em todo o range → tudo lacuna, mas day_type resolve.
+        result = get_habit_history_range(user=user, start=_HIST_FRI, end=_HIST_SUN)
+
+    by_date = {d["date"]: d for d in result["days"]}
+    assert by_date[_HIST_FRI]["day_type"] == "weekday"
+    assert by_date[_HIST_SAT]["day_type"] == "weekend"
+    assert by_date[_HIST_SUN]["day_type"] == "weekend"
+    # Todas lacunas, sem hábitos que apareçam.
+    assert result["habits"] == []
+
+
+# --- get_habit_series ----------------------------------------------------------
+
+
+def test_series_points_value_effective_weight_daytype_e_lacunas(user):
+    """points trazem value/effective_weight/day_type; dias sem linha são omitidos."""
+    with tenant_context(user):
+        group = HabitGroupFactory(user=user)
+        habit = HabitFactory(user=user, group=group, type="boolean")
+        HabitVersionFactory(
+            user=user, habit=habit, weight=Decimal("4"),
+            active=True, effective_from=date(2025, 1, 1),
+        )
+        HabitDayEntryFactory(
+            user=user, habit=habit, date=_HIST_MON, value=Decimal("1"),
+            weight_at_time=Decimal("4"), multiplier_at_time=Decimal("1.00"),
+            day_type=DayType.WEEKDAY,
+        )
+        # Sábado: multiplicador 0.5 → effective_weight = 4 × 0.5 = 2.00.
+        HabitDayEntryFactory(
+            user=user, habit=habit, date=_HIST_SAT, value=None,
+            weight_at_time=Decimal("4"), multiplier_at_time=Decimal("0.50"),
+            day_type=DayType.WEEKEND,
+        )
+        result = get_habit_series(user=user, habit_id=habit.id, start=_HIST_MON, end=_HIST_SUN)
+
+    points = result["points"]
+    # Segunda e sábado têm linha; os outros dias do range são omitidos (lacuna).
+    assert [p["date"] for p in points] == [_HIST_MON, _HIST_SAT]
+    assert points[0]["value"] == Decimal("1")
+    assert points[0]["effective_weight"] == Decimal("4.00")
+    assert points[0]["day_type"] == DayType.WEEKDAY
+    assert points[1]["value"] is None
+    assert points[1]["effective_weight"] == Decimal("2.00")
+    assert points[1]["day_type"] == DayType.WEEKEND
+    # day_types cobre o range inteiro (7 dias) para o sombreamento.
+    assert len(result["day_types"]) == 7
+    assert result["habit"].id == habit.id
+
+
+def test_series_events_derivados_de_versoes_consecutivas(user):
+    """events = diff de versões consecutivas (peso 3→4; ativar/desativar); só
+    effective_from no range; before/after (nunca from/to)."""
+    with tenant_context(user):
+        group = HabitGroupFactory(user=user)
+        habit = HabitFactory(user=user, group=group, type="boolean")
+        # v1 fora do range (created não entra); v2/v3/v4 no range.
+        HabitVersionFactory(user=user, habit=habit, weight=Decimal("3"), active=True,
+                            effective_from=date(2025, 12, 1))
+        HabitVersionFactory(user=user, habit=habit, weight=Decimal("4"), active=True,
+                            effective_from=_HIST_MON)          # peso 3→4
+        HabitVersionFactory(user=user, habit=habit, weight=Decimal("4"), active=False,
+                            effective_from=_HIST_FRI)          # desativado
+        HabitVersionFactory(user=user, habit=habit, weight=Decimal("4"), active=True,
+                            effective_from=_HIST_SAT)          # reativado
+        result = get_habit_series(user=user, habit_id=habit.id, start=_HIST_MON, end=_HIST_SUN)
+
+    events = result["events"]
+    assert [e["effective_from"] for e in events] == [_HIST_MON, _HIST_FRI, _HIST_SAT]
+    # peso 3 → 4
+    assert events[0]["changes"] == [{"field": "weight", "before": "3.00", "after": "4.00"}]
+    # desativado (active true → false)
+    assert events[1]["changes"] == [{"field": "active", "before": "true", "after": "false"}]
+    # reativado (active false → true)
+    assert events[2]["changes"] == [{"field": "active", "before": "false", "after": "true"}]
+    # nenhuma chave 'from'/'to' nas mudanças
+    for e in events:
+        for change in e["changes"]:
+            assert set(change.keys()) == {"field", "before", "after"}
+
+
+def test_series_primeira_versao_created_so_se_no_range(user):
+    """A primeira versão (created) só vira marcador se seu effective_from cair no range."""
+    with tenant_context(user):
+        group = HabitGroupFactory(user=user)
+        habit = HabitFactory(user=user, group=group, type="boolean")
+        HabitVersionFactory(user=user, habit=habit, weight=Decimal("2"), active=True,
+                            effective_from=_HIST_MON)  # criada dentro do range
+        result = get_habit_series(user=user, habit_id=habit.id, start=_HIST_MON, end=_HIST_SUN)
+
+    assert len(result["events"]) == 1
+    assert result["events"][0]["effective_from"] == _HIST_MON
+    assert result["events"][0]["changes"] == [{"field": "created", "before": None, "after": None}]
+
+
+def test_series_cross_tenant_habit_id_raises_does_not_exist(user, other_user):
+    """habit_id de outro tenant → DoesNotExist (a view traduz para 404)."""
+    with tenant_context(other_user):
+        group = HabitGroupFactory(user=other_user)
+        alheio = HabitFactory(user=other_user, group=group, type="boolean")
+    with tenant_context(user), pytest.raises(Habit.DoesNotExist):
+        get_habit_series(user=user, habit_id=alheio.id, start=_HIST_MON, end=_HIST_SUN)
+
+
+def test_series_range_maior_que_92_domainerror(user):
+    with tenant_context(user):
+        group = HabitGroupFactory(user=user)
+        habit = HabitFactory(user=user, group=group, type="boolean")
+    with tenant_context(user), pytest.raises(DomainError):
+        get_habit_series(
+            user=user, habit_id=habit.id,
+            start=date(2026, 1, 1), end=date(2026, 1, 1) + timedelta(days=93),
+        )
+
+
+def test_series_nao_semeia(user):
+    """get_habit_series NUNCA materializa (mesmo sobre dias nunca abertos)."""
+    with tenant_context(user):
+        group = HabitGroupFactory(user=user)
+        habit = HabitFactory(user=user, group=group, type="boolean")
+        HabitVersionFactory(user=user, habit=habit, weight=Decimal("2"), active=True,
+                            effective_from=date(2025, 1, 1))
+        before = HabitDayEntry.objects.count()
+        get_habit_series(user=user, habit_id=habit.id, start=_HIST_MON, end=_HIST_SUN)
+        after = HabitDayEntry.objects.count()
+    assert before == after == 0

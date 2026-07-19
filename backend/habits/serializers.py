@@ -249,3 +249,95 @@ class HolidayResultSerializer(serializers.Serializer):
 
     date = serializers.DateField()
     day_type = serializers.ChoiceField(choices=DayType.choices)
+
+
+# --- Histórico read-only (Story 6.4, AD-11/AD-14) -----------------------------
+# Tudo read-only (sem validate/write). Decimais como string no wire (padrão do
+# projeto). `field` do diff é CharField (NÃO ChoiceField) — não emite enum novo
+# no contrato (evita a colisão de *Enum do drf-spectacular; ver Dev Notes).
+
+
+class HabitSlimSerializer(serializers.ModelSerializer):
+    """Identidade do hábito para history/series — **sem** ``current_version``.
+
+    Os serviços de histórico derivam identidade de ``entry.habit``/``habit`` (Habit
+    puro, sem ``current_version`` anexada). ``HabitSerializer`` estouraria
+    ``AttributeError`` (lê ``current_version.weight`` etc.), por isso este slim.
+    ``type`` reusa ``HabitTypeEnum`` (já pinado); nenhum enum novo.
+    """
+
+    group = serializers.UUIDField(source="group_id", read_only=True)
+    type = serializers.ChoiceField(
+        choices=Habit.Type.choices, read_only=True
+    )
+
+    class Meta:
+        model = Habit
+        fields = ["id", "name", "emoticon", "type", "unit", "group"]
+
+
+class HabitHistoryDaySerializer(serializers.Serializer):
+    """Um dia no range de histórico. ``total_completion`` **allow_null** = lacuna
+    honesta (dia nunca aberto); ``groups`` traz o % ponderado POR GRUPO (AC1)."""
+
+    date = serializers.DateField()
+    day_type = serializers.ChoiceField(choices=DayType.choices)
+    total_completion = serializers.IntegerField(allow_null=True)
+    groups = HabitDayGroupSerializer(many=True)
+    entries = HabitDayEntrySerializer(many=True)
+
+
+class HabitHistoryRangeSerializer(serializers.Serializer):
+    """Payload do intervalo: alimenta a grade hábitos × dias e o detalhe por-data."""
+
+    start = serializers.DateField()
+    end = serializers.DateField()
+    habits = HabitSlimSerializer(many=True)
+    days = HabitHistoryDaySerializer(many=True)
+
+
+class HabitChangeSerializer(serializers.Serializer):
+    """Uma mudança real de config no diff de versões. ``field`` = **CharField**
+    (weight/meta/bonus/active/created) — NÃO ChoiceField, para não emitir enum novo.
+    ``before``/``after`` — **NUNCA** ``from``/``to`` (``from`` é reservada em Python);
+    string (allow_null) por serem valores heterogêneos (decimais/booleanos)."""
+
+    field = serializers.CharField()
+    before = serializers.CharField(allow_null=True)
+    after = serializers.CharField(allow_null=True)
+
+
+class HabitSeriesPointSerializer(serializers.Serializer):
+    """Um ponto diário da série: ``value`` (allow_null), ``effective_weight`` e o
+    ``day_type`` congelado da linha (reusa ``DayTypeEnum``)."""
+
+    date = serializers.DateField()
+    value = serializers.DecimalField(
+        max_digits=10, decimal_places=2, allow_null=True
+    )
+    effective_weight = serializers.DecimalField(max_digits=12, decimal_places=2)
+    day_type = serializers.ChoiceField(choices=DayType.choices)
+
+
+class HabitVersionEventSerializer(serializers.Serializer):
+    """Um marcador datado de mudança real (uma transição de versão)."""
+
+    effective_from = serializers.DateField()
+    changes = HabitChangeSerializer(many=True)
+
+
+class HabitDayTypeSerializer(serializers.Serializer):
+    """Tipo de dia de um dia de calendário do range (para o sombreamento de ritmo,
+    inclusive em dias-lacuna). Reusa ``DayTypeEnum``."""
+
+    date = serializers.DateField()
+    day_type = serializers.ChoiceField(choices=DayType.choices)
+
+
+class HabitSeriesSerializer(serializers.Serializer):
+    """Série + eventos + ritmo de UM hábito no range."""
+
+    habit = HabitSlimSerializer()
+    points = HabitSeriesPointSerializer(many=True)
+    events = HabitVersionEventSerializer(many=True)
+    day_types = HabitDayTypeSerializer(many=True, required=False)

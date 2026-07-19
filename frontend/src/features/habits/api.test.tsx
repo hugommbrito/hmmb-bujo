@@ -16,13 +16,22 @@ import {
   useGroupMultipliersQuery,
   useHabitDayQuery,
   useHabitGroupsQuery,
+  useHabitHistoryQuery,
+  useHabitSeriesQuery,
   useHabitsQuery,
   useMarkHabitEntryMutation,
   useSetGroupMultipliersMutation,
   useSetHolidayMutation,
   useUpdateHabitIdentityMutation,
 } from './api'
-import type { Habit, HabitDay, HabitDayEntry, HabitGroup } from './types'
+import type {
+  Habit,
+  HabitDay,
+  HabitDayEntry,
+  HabitGroup,
+  HabitHistoryRange,
+  HabitSeries,
+} from './types'
 
 const mockGet = client.get as ReturnType<typeof vi.fn>
 const mockPost = client.post as ReturnType<typeof vi.fn>
@@ -367,5 +376,82 @@ describe('useSetHolidayMutation', () => {
     await waitFor(() => expect(result.current.isError).toBe(true))
     const cached = qc.getQueryData<HabitDay>(keys.habits.day())
     expect(cached?.dayType).toBe('weekday')
+  })
+})
+
+// --- Story 6.4 — histórico read-only -----------------------------------------
+
+const HISTORY: HabitHistoryRange = {
+  start: '2026-01-05',
+  end: '2026-01-11',
+  habits: [{ id: 'habit-1', name: 'Ler', emoticon: '📖', type: 'boolean', unit: '', group: 'group-1' }],
+  days: [
+    {
+      date: '2026-01-05',
+      dayType: 'weekday',
+      totalCompletion: 100,
+      groups: [{ id: 'group-1', name: 'Saúde', completion: 100 }],
+      entries: [ENTRY],
+    },
+    {
+      date: '2026-01-06',
+      dayType: 'weekday',
+      totalCompletion: null,
+      groups: [],
+      entries: [],
+    },
+  ],
+}
+
+const SERIES: HabitSeries = {
+  habit: { id: 'habit-1', name: 'Ler', emoticon: '📖', type: 'boolean', unit: '', group: 'group-1' },
+  points: [{ date: '2026-01-05', value: '1.00', effectiveWeight: '2.00', dayType: 'weekday' }],
+  events: [{ effectiveFrom: '2026-01-05', changes: [{ field: 'created', before: null, after: null }] }],
+  dayTypes: [
+    { date: '2026-01-05', dayType: 'weekday' },
+    { date: '2026-01-06', dayType: 'weekday' },
+  ],
+}
+
+describe('useHabitHistoryQuery', () => {
+  beforeEach(() => vi.resetAllMocks())
+
+  it('busca o histórico com start/end e usa a key correta', async () => {
+    const { qc, wrapper } = makeWrapper()
+    mockGet.mockResolvedValueOnce({ data: HISTORY })
+
+    const range = { start: '2026-01-05', end: '2026-01-11' }
+    const { result } = renderHook(() => useHabitHistoryQuery(range), { wrapper })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(mockGet).toHaveBeenCalledWith('/api/habits/history/', { params: range })
+    expect(result.current.data).toEqual(HISTORY)
+    expect(qc.getQueryData(keys.habits.history(range))).toEqual(HISTORY)
+  })
+})
+
+describe('useHabitSeriesQuery', () => {
+  beforeEach(() => vi.resetAllMocks())
+
+  it('busca a série de um hábito com a key correta', async () => {
+    const { wrapper } = makeWrapper()
+    mockGet.mockResolvedValueOnce({ data: SERIES })
+
+    const range = { start: '2026-01-05', end: '2026-01-11' }
+    const { result } = renderHook(() => useHabitSeriesQuery('habit-1', range), { wrapper })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(mockGet).toHaveBeenCalledWith('/api/habits/habit-1/series/', { params: range })
+    expect(result.current.data).toEqual(SERIES)
+  })
+
+  it('não busca quando nenhum hábito está selecionado (enabled=false)', async () => {
+    const { wrapper } = makeWrapper()
+    const range = { start: '2026-01-05', end: '2026-01-11' }
+    const { result } = renderHook(() => useHabitSeriesQuery('', range), { wrapper })
+
+    // enabled=false → fica pending sem disparar request.
+    expect(result.current.fetchStatus).toBe('idle')
+    expect(mockGet).not.toHaveBeenCalled()
   })
 })

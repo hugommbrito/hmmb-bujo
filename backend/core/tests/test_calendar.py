@@ -9,6 +9,7 @@ from core.calendar import (
     is_workday,
     months_of_week,
     resolve_day_type,
+    resolve_day_types_range,
     today_for,
     week_start_of,
     weeks_of_month,
@@ -254,3 +255,63 @@ def test_resolve_day_type_holiday_is_tenant_scoped(user, other_user):
         UserHoliday.objects.create(date=d)
     with tenant_context(user):
         assert resolve_day_type(user, d) == "weekday"
+
+
+# --- resolve_day_types_range (Story 6.4, AC2) ----------------------------------
+
+def test_resolve_day_types_range_cobre_todos_os_dias(user):
+    """O mapa retorna uma entrada para CADA dia de calendário no range (inclusive)."""
+    start = date(2026, 1, 5)  # segunda
+    end = date(2026, 1, 11)  # domingo (7 dias)
+    with tenant_context(user):
+        mapa = resolve_day_types_range(user, start, end)
+    esperado = {start + timedelta(days=i) for i in range(7)}
+    assert set(mapa.keys()) == esperado
+
+
+def test_resolve_day_types_range_sabado_domingo_weekend(user):
+    """Sáb/dom sem feriado → 'weekend'; seg–sex → 'weekday'."""
+    start = date(2026, 1, 5)  # segunda
+    end = date(2026, 1, 11)  # domingo
+    with tenant_context(user):
+        mapa = resolve_day_types_range(user, start, end)
+    assert mapa[date(2026, 1, 5)] == "weekday"  # segunda
+    assert mapa[date(2026, 1, 9)] == "weekday"  # sexta
+    assert mapa[date(2026, 1, 10)] == "weekend"  # sábado
+    assert mapa[date(2026, 1, 11)] == "weekend"  # domingo
+
+
+def test_resolve_day_types_range_feriado_marcado_precede_weekend(user):
+    """Feriado marcado (mesmo num sábado) → 'holiday' (precedência sobre weekend)."""
+    from accounts.models import UserHoliday
+
+    start = date(2026, 1, 5)  # segunda
+    end = date(2026, 1, 11)  # domingo
+    dia_util_feriado = date(2026, 1, 6)  # terça
+    sabado_feriado = date(2026, 1, 10)  # sábado
+    with tenant_context(user):
+        UserHoliday.objects.create(date=dia_util_feriado)
+        UserHoliday.objects.create(date=sabado_feriado)
+        mapa = resolve_day_types_range(user, start, end)
+    assert mapa[dia_util_feriado] == "holiday"
+    assert mapa[sabado_feriado] == "holiday"  # precede weekend
+
+
+def test_resolve_day_types_range_e_tenant_scoped(user, other_user):
+    """Feriado de other_user não vaza para o mapa de user."""
+    from accounts.models import UserHoliday
+
+    d = date(2026, 1, 6)  # terça
+    with tenant_context(other_user):
+        UserHoliday.objects.create(date=d)
+    with tenant_context(user):
+        mapa = resolve_day_types_range(user, date(2026, 1, 5), date(2026, 1, 9))
+    assert mapa[d] == "weekday"
+
+
+def test_resolve_day_types_range_um_unico_dia(user):
+    """Range de 1 dia (start == end) retorna exatamente esse dia."""
+    d = date(2026, 1, 10)  # sábado
+    with tenant_context(user):
+        mapa = resolve_day_types_range(user, d, d)
+    assert mapa == {d: "weekend"}

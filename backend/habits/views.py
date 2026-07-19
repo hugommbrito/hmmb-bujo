@@ -1,6 +1,7 @@
 """Views finas do Sistema de Hábitos (§6.2): validam → chamam o serviço → serializam."""
 
 from datetime import date as date_cls
+from datetime import timedelta
 
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import serializers, status
@@ -20,7 +21,9 @@ from habits.serializers import (
     HabitGroupCreateSerializer,
     HabitGroupSerializer,
     HabitGroupUpdateSerializer,
+    HabitHistoryRangeSerializer,
     HabitSerializer,
+    HabitSeriesSerializer,
     HabitUpdateSerializer,
     HabitVersionCreateSerializer,
     HabitVersionSerializer,
@@ -34,6 +37,8 @@ from habits.services import (
     create_habit,
     create_habit_group,
     current_multipliers_of,
+    get_habit_history_range,
+    get_habit_series,
     list_habit_groups,
     list_habits,
     seed_habit_day,
@@ -42,6 +47,45 @@ from habits.services import (
     update_habit_day_entry,
     update_habit_identity,
 )
+
+# --- Parse de range de datas (histórico read-only, Story 6.4) -----------------
+# Default: end = hoje do usuário; start = end - 29 dias (últimos 30 dias, inclusivo).
+# NUNCA date.today() cru (autoridade temporal = today_for).
+
+_HISTORY_DEFAULT_SPAN = timedelta(days=29)
+
+
+def _parse_date_param(raw, field):
+    try:
+        return date_cls.fromisoformat(raw)
+    except ValueError:
+        raise serializers.ValidationError(
+            {field: "Data inválida. Use o formato YYYY-MM-DD."}
+        ) from None
+
+
+def _resolve_history_range(request):
+    end_raw = request.query_params.get("end")
+    start_raw = request.query_params.get("start")
+    end = _parse_date_param(end_raw, "end") if end_raw else today_for(request.user)
+    start = (
+        _parse_date_param(start_raw, "start")
+        if start_raw
+        else end - _HISTORY_DEFAULT_SPAN
+    )
+    return start, end
+
+
+_HISTORY_RANGE_PARAMS = [
+    OpenApiParameter(
+        name="start", type=str, required=False,
+        description="Início do intervalo (YYYY-MM-DD). Default = fim − 29 dias.",
+    ),
+    OpenApiParameter(
+        name="end", type=str, required=False,
+        description="Fim do intervalo (YYYY-MM-DD). Default = hoje do usuário.",
+    ),
+]
 
 
 class HabitGroupListCreateView(APIView):
@@ -254,3 +298,45 @@ class HabitHolidayView(APIView):
         return Response(HolidayResultSerializer(result).data)
 
     patch = post
+
+
+class HabitHistoryRangeView(APIView):
+    """Histórico por-data no intervalo (Story 6.4) — GET puro, read-only, não-semeador.
+
+    Alimenta a grade hábitos × dias **e** o detalhe por-data (fatia do mesmo payload).
+    **Nunca** materializa (não chama ``seed_habit_day``): dias nunca abertos são
+    lacunas honestas (``totalCompletion=null``), não 0% fabricado (AC1).
+    """
+
+    @extend_schema(
+        parameters=_HISTORY_RANGE_PARAMS, responses=HabitHistoryRangeSerializer
+    )
+    def get(self, request):
+        start, end = _resolve_history_range(request)
+        try:
+            data = get_habit_history_range(user=request.user, start=start, end=end)
+        except DomainError as exc:
+            raise serializers.ValidationError({"detail": str(exc)}) from None
+        return Response(HabitHistoryRangeSerializer(data).data)
+
+
+class HabitSeriesView(APIView):
+    """Série de evolução + eventos de mudança de UM hábito (Story 6.4) — GET read-only.
+
+    Série diária derivada on-read de ``habit_day_entries``; eventos derivados do stream
+    de ``habit_versions``; ritmo (day_type) para o sombreamento. ``Habit.DoesNotExist``
+    (inclusive cross-tenant) → 404, como as views existentes.
+    """
+
+    @extend_schema(parameters=_HISTORY_RANGE_PARAMS, responses=HabitSeriesSerializer)
+    def get(self, request, pk):
+        start, end = _resolve_history_range(request)
+        try:
+            data = get_habit_series(
+                user=request.user, habit_id=pk, start=start, end=end
+            )
+        except Habit.DoesNotExist:
+            raise NotFound() from None
+        except DomainError as exc:
+            raise serializers.ValidationError({"detail": str(exc)}) from None
+        return Response(HabitSeriesSerializer(data).data)

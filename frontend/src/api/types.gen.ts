@@ -537,6 +537,29 @@ export interface paths {
         patch: operations["habits_partial_update"];
         trace?: never;
     };
+    "/api/habits/{id}/series/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description Série de evolução + eventos de mudança de UM hábito (Story 6.4) — GET read-only.
+         *
+         *     Série diária derivada on-read de ``habit_day_entries``; eventos derivados do stream
+         *     de ``habit_versions``; ritmo (day_type) para o sombreamento. ``Habit.DoesNotExist``
+         *     (inclusive cross-tenant) → 404, como as views existentes.
+         */
+        get: operations["habits_series_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/habits/{id}/versions/": {
         parameters: {
             query?: never;
@@ -590,6 +613,29 @@ export interface paths {
         head?: never;
         /** @description Marcação e correção avulsa de uma linha do dia (UPDATE só naquela linha). */
         patch: operations["habits_days_partial_update"];
+        trace?: never;
+    };
+    "/api/habits/history/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description Histórico por-data no intervalo (Story 6.4) — GET puro, read-only, não-semeador.
+         *
+         *     Alimenta a grade hábitos × dias **e** o detalhe por-data (fatia do mesmo payload).
+         *     **Nunca** materializa (não chama ``seed_habit_day``): dias nunca abertos são
+         *     lacunas honestas (``totalCompletion=null``), não 0% fabricado (AC1).
+         */
+        get: operations["habits_history_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/habits/holidays/": {
@@ -728,6 +774,17 @@ export interface components {
             /** Format: date */
             readonly effectiveFrom: string;
         };
+        /**
+         * @description Uma mudança real de config no diff de versões. ``field`` = **CharField**
+         *     (weight/meta/bonus/active/created) — NÃO ChoiceField, para não emitir enum novo.
+         *     ``before``/``after`` — **NUNCA** ``from``/``to`` (``from`` é reservada em Python);
+         *     string (allow_null) por serem valores heterogêneos (decimais/booleanos).
+         */
+        HabitChange: {
+            field: string;
+            before: string | null;
+            after: string | null;
+        };
         HabitCreate: {
             name: string;
             /** @default  */
@@ -790,6 +847,15 @@ export interface components {
             name: string;
             completion: number;
         };
+        /**
+         * @description Tipo de dia de um dia de calendário do range (para o sombreamento de ritmo,
+         *     inclusive em dias-lacuna). Reusa ``DayTypeEnum``.
+         */
+        HabitDayType: {
+            /** Format: date */
+            date: string;
+            dayType: components["schemas"]["DayTypeEnum"];
+        };
         HabitGroup: {
             /** Format: uuid */
             readonly id: string;
@@ -798,6 +864,65 @@ export interface components {
         };
         HabitGroupCreate: {
             name: string;
+        };
+        /**
+         * @description Um dia no range de histórico. ``total_completion`` **allow_null** = lacuna
+         *     honesta (dia nunca aberto); ``groups`` traz o % ponderado POR GRUPO (AC1).
+         */
+        HabitHistoryDay: {
+            /** Format: date */
+            date: string;
+            dayType: components["schemas"]["DayTypeEnum"];
+            totalCompletion: number | null;
+            groups: components["schemas"]["HabitDayGroup"][];
+            entries: components["schemas"]["HabitDayEntry"][];
+        };
+        /** @description Payload do intervalo: alimenta a grade hábitos × dias e o detalhe por-data. */
+        HabitHistoryRange: {
+            /** Format: date */
+            start: string;
+            /** Format: date */
+            end: string;
+            habits: components["schemas"]["HabitSlim"][];
+            days: components["schemas"]["HabitHistoryDay"][];
+        };
+        /** @description Série + eventos + ritmo de UM hábito no range. */
+        HabitSeries: {
+            habit: components["schemas"]["HabitSlim"];
+            points: components["schemas"]["HabitSeriesPoint"][];
+            events: components["schemas"]["HabitVersionEvent"][];
+            dayTypes?: components["schemas"]["HabitDayType"][];
+        };
+        /**
+         * @description Um ponto diário da série: ``value`` (allow_null), ``effective_weight`` e o
+         *     ``day_type`` congelado da linha (reusa ``DayTypeEnum``).
+         */
+        HabitSeriesPoint: {
+            /** Format: date */
+            date: string;
+            /** Format: decimal */
+            value: string | null;
+            /** Format: decimal */
+            effectiveWeight: string;
+            dayType: components["schemas"]["DayTypeEnum"];
+        };
+        /**
+         * @description Identidade do hábito para history/series — **sem** ``current_version``.
+         *
+         *     Os serviços de histórico derivam identidade de ``entry.habit``/``habit`` (Habit
+         *     puro, sem ``current_version`` anexada). ``HabitSerializer`` estouraria
+         *     ``AttributeError`` (lê ``current_version.weight`` etc.), por isso este slim.
+         *     ``type`` reusa ``HabitTypeEnum`` (já pinado); nenhum enum novo.
+         */
+        HabitSlim: {
+            /** Format: uuid */
+            readonly id: string;
+            name: string;
+            emoticon?: string;
+            readonly type: components["schemas"]["HabitTypeEnum"];
+            unit?: string;
+            /** Format: uuid */
+            readonly group: string;
         };
         /**
          * @description * `boolean` - Boolean
@@ -833,6 +958,12 @@ export interface components {
             /** Format: decimal */
             bonus?: string | null;
             active?: boolean;
+        };
+        /** @description Um marcador datado de mudança real (uma transição de versão). */
+        HabitVersionEvent: {
+            /** Format: date */
+            effectiveFrom: string;
+            changes: components["schemas"]["HabitChange"][];
         };
         /** @description Resultado do toggle de feriado: a data + o tipo de dia re-resolvido. */
         HolidayResult: {
@@ -1980,6 +2111,32 @@ export interface operations {
             };
         };
     };
+    habits_series_retrieve: {
+        parameters: {
+            query?: {
+                /** @description Fim do intervalo (YYYY-MM-DD). Default = hoje do usuário. */
+                end?: string;
+                /** @description Início do intervalo (YYYY-MM-DD). Default = fim − 29 dias. */
+                start?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HabitSeries"];
+                };
+            };
+        };
+    };
     habits_versions_create: {
         parameters: {
             query?: never;
@@ -2048,6 +2205,30 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HabitDayEntry"];
+                };
+            };
+        };
+    };
+    habits_history_retrieve: {
+        parameters: {
+            query?: {
+                /** @description Fim do intervalo (YYYY-MM-DD). Default = hoje do usuário. */
+                end?: string;
+                /** @description Início do intervalo (YYYY-MM-DD). Default = fim − 29 dias. */
+                start?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HabitHistoryRange"];
                 };
             };
         };

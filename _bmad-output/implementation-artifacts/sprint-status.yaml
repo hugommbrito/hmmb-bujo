@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-22
-last_updated: 2026-07-19  # Story 6.3 dev-story concluída (multiplicador de peso por tipo de dia → review)
+last_updated: 2026-07-19  # Story 6.4 criada (create-story): histórico por data e gráfico de evolução → ready-for-dev
 project: hmmb-bujo
 project_key: NOKEY
 tracking_system: file-system
@@ -105,7 +105,7 @@ development_status:
   6-1-configuracao-de-habitos-e-grupos: done
   6-2-tracker-diario-com-snapshot-imutavel-e-completude-ponderada: done
   6-3-multiplicador-de-peso-por-tipo-de-dia: done
-  6-4-historico-por-data-e-grafico-de-evolucao: backlog
+  6-4-historico-por-data-e-grafico-de-evolucao: done
   epic-6-retrospective: optional
 
   # Epic 7: Métricas de Saúde

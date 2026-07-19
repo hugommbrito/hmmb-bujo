@@ -8,11 +8,12 @@ kwarg keyword-only; toda escrita é ``@transaction.atomic``; scoping implícito 
 ``type`` é imutável.
 """
 
+from datetime import timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
 from django.db import transaction
 
-from core.calendar import resolve_day_type, today_for
+from core.calendar import resolve_day_type, resolve_day_types_range, today_for
 from core.exceptions import DomainError
 from habits.models import (
     DayType,
@@ -319,15 +320,14 @@ def _completeness_pct(entries) -> int:
     return int(ratio.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
 
-def compute_day_completeness(*, user, date) -> dict:
-    """Completude ponderada do dia ``date`` — total e por grupo (FR-2.4, AD-06 4-6).
+def _grouped_completeness(entries) -> list[dict]:
+    """% ponderada POR GRUPO das ``entries`` do dia, na ordem canônica de ``HabitGroup``.
 
-    Fonte única: as linhas de ``habit_day_entries`` do dia (sem fallback para versão).
-    Grupos preservam a ordem canônica de ``HabitGroup`` (``display_order``, ``name``).
+    Agrupa as linhas por grupo e chama ``_completeness_pct`` por grupo (autoridade
+    única do cálculo). Preserva ``display_order``/``name``. Extraído de
+    ``compute_day_completeness`` para o histórico (Story 6.4) reusar a MESMA mecânica
+    sem reimplementar (AC1 exige o % por grupo no detalhe por-data).
     """
-    entries = list(
-        HabitDayEntry.objects.filter(date=date).select_related("habit", "habit__group")
-    )
     by_group: dict = {}
     for entry in entries:
         group = entry.habit.group
@@ -338,16 +338,28 @@ def compute_day_completeness(*, user, date) -> dict:
         by_group.values(),
         key=lambda item: (item["group"].display_order, item["group"].name),
     )
+    return [
+        {
+            "id": item["group"].id,
+            "name": item["group"].name,
+            "completion": _completeness_pct(item["entries"]),
+        }
+        for item in ordered
+    ]
+
+
+def compute_day_completeness(*, user, date) -> dict:
+    """Completude ponderada do dia ``date`` — total e por grupo (FR-2.4, AD-06 4-6).
+
+    Fonte única: as linhas de ``habit_day_entries`` do dia (sem fallback para versão).
+    Grupos preservam a ordem canônica de ``HabitGroup`` (``display_order``, ``name``).
+    """
+    entries = list(
+        HabitDayEntry.objects.filter(date=date).select_related("habit", "habit__group")
+    )
     return {
         "total": _completeness_pct(entries),
-        "groups": [
-            {
-                "id": item["group"].id,
-                "name": item["group"].name,
-                "completion": _completeness_pct(item["entries"]),
-            }
-            for item in ordered
-        ],
+        "groups": _grouped_completeness(entries),
     }
 
 
@@ -414,3 +426,180 @@ def update_habit_day_entry(
     if updated:
         entry.save(update_fields=updated)
     return entry
+
+
+# --- Camada de LEITURA de histórico (Story 6.4, AD-11/AD-14) ------------------
+# Derivada on-read de `habit_day_entries` (série) + `habit_versions` (eventos) +
+# day_type (ritmo). Sem schema/série materializada nova, sem `@transaction.atomic`
+# (só leitura), e — crítico (AC1) — NUNCA chama `seed_habit_day`: dias nunca
+# abertos são lacunas honestas, não 0% fabricado.
+
+_MAX_RANGE_DAYS = 92
+
+
+def _validate_range(start, end) -> None:
+    """Guarda comum das leituras de histórico: ``start <= end`` e range ≤ 92 dias."""
+    if start > end:
+        raise DomainError("A data inicial deve ser anterior ou igual à data final.")
+    if (end - start).days > _MAX_RANGE_DAYS:
+        raise DomainError(
+            f"O intervalo não pode exceder {_MAX_RANGE_DAYS} dias."
+        )
+
+
+def get_habit_history_range(*, user, start, end) -> dict:
+    """Histórico por-data no range ``[start, end]`` — read-only, não-semeador (AC1).
+
+    **Uma** query em ``habit_day_entries`` (``select_related('habit__group')``,
+    auto-escopada) + **uma** query de feriados via ``resolve_day_types_range`` — agrupa
+    em Python (sem N+1). Retorna ``habits`` (identidade dos hábitos que aparecem no
+    range, ordenados por grupo ``display_order``/``name``, depois nome) e ``days`` =
+    **todos** os dias de calendário em ``[start, end]``. Cada dia materializado traz
+    ``total_completion``/``groups`` (% ponderado, mesma mecânica de
+    ``compute_day_completeness`` via ``_grouped_completeness``) e as ``entries``; um dia
+    **sem linha** (nunca aberto/pulado) é **lacuna honesta**: ``total_completion=None``,
+    ``groups=[]``, ``entries=[]`` — nunca 0% fabricado, e **nada é materializado**.
+    """
+    _validate_range(start, end)
+
+    entries = list(
+        HabitDayEntry.objects.filter(date__range=(start, end)).select_related(
+            "habit", "habit__group"
+        )
+    )
+    dtypes = resolve_day_types_range(user, start, end)
+
+    by_date: dict = {}
+    habits_seen: dict = {}
+    for entry in entries:
+        by_date.setdefault(entry.date, []).append(entry)
+        habits_seen.setdefault(entry.habit_id, entry.habit)
+
+    habits_ordered = sorted(
+        habits_seen.values(),
+        key=lambda h: (h.group.display_order, h.group.name, h.name),
+    )
+
+    days = []
+    d = start
+    while d <= end:
+        day_entries = by_date.get(d, [])
+        if day_entries:
+            total = _completeness_pct(day_entries)
+            groups = _grouped_completeness(day_entries)
+        else:
+            # Lacuna honesta: distinguir explicitamente de 0% (_completeness_pct([])==0).
+            total = None
+            groups = []
+        days.append(
+            {
+                "date": d,
+                "day_type": dtypes[d],
+                "total_completion": total,
+                "groups": groups,
+                "entries": day_entries,
+            }
+        )
+        d += timedelta(days=1)
+
+    return {"start": start, "end": end, "habits": habits_ordered, "days": days}
+
+
+def _decimal_str(value):
+    """Serializa um ``Decimal``/``None`` como string estável (ou ``None``) para o diff."""
+    return None if value is None else str(value)
+
+
+def _bool_str(value) -> str:
+    """Serializa ``active`` (bool) como string estável ('true'/'false') no diff."""
+    return "true" if value else "false"
+
+
+def _diff_versions(prev, curr) -> list[dict]:
+    """Mudanças entre duas versões consecutivas → ``[{field, before, after}]`` (AC2).
+
+    ``prev is None`` (primeira versão) = criação → ``[{field: 'created'}]``. Só campos
+    versionados que mudaram (``weight``/``meta``/``bonus``/``active``). Chaves
+    ``before``/``after`` — **NUNCA** ``from``/``to`` (``from`` é palavra reservada em
+    Python). ``active`` false→true / true→false vira o marcador Reativado/Desativado no
+    front (FR-2.7/2.8). Valores heterogêneos como string estável.
+    """
+    if prev is None:
+        return [{"field": "created", "before": None, "after": None}]
+
+    changes = []
+    if curr.weight != prev.weight:
+        changes.append({
+            "field": "weight",
+            "before": _decimal_str(prev.weight),
+            "after": _decimal_str(curr.weight),
+        })
+    if curr.meta != prev.meta:
+        changes.append({
+            "field": "meta",
+            "before": _decimal_str(prev.meta),
+            "after": _decimal_str(curr.meta),
+        })
+    if curr.bonus != prev.bonus:
+        changes.append({
+            "field": "bonus",
+            "before": _decimal_str(prev.bonus),
+            "after": _decimal_str(curr.bonus),
+        })
+    if curr.active != prev.active:
+        changes.append({
+            "field": "active",
+            "before": _bool_str(prev.active),
+            "after": _bool_str(curr.active),
+        })
+    return changes
+
+
+def get_habit_series(*, user, habit_id, start, end) -> dict:
+    """Série + eventos de mudança de UM hábito no range — read-only, não-semeador (AC2).
+
+    ``Habit.objects.get(id=habit_id)`` deixa o ``DoesNotExist`` subir para a view virar
+    404 (cross-tenant também = 404, via auto-scope). ``points`` = uma query em
+    ``habit_day_entries`` (por dia ``{date, value, effective_weight, day_type}``); dias
+    sem linha são **omitidos** (o eixo X é o range; a ausência = lacuna no gráfico).
+    ``events`` = diff das ``habit_versions`` consecutivas em ordem **ascendente** por
+    ``effective_from`` (o ``Meta.ordering`` do model é descendente — o ``order_by``
+    explícito é obrigatório), cada transição = marcador datado; só entram eventos cujo
+    ``effective_from`` cai no range (a primeira versão = 'created' só aparece se seu
+    ``effective_from`` estiver no range). ``day_types`` do range inteiro (para o
+    sombreamento até em dias-lacuna). O multiplicador **nunca** vira evento (AD-11).
+    """
+    _validate_range(start, end)
+
+    habit = Habit.objects.select_related("group").get(id=habit_id)
+
+    point_rows = HabitDayEntry.objects.filter(
+        habit_id=habit_id, date__range=(start, end)
+    ).order_by("date")
+    points = [
+        {
+            "date": e.date,
+            "value": e.value,
+            "effective_weight": _effective_weight(e),
+            "day_type": e.day_type,
+        }
+        for e in point_rows
+    ]
+
+    versions = list(
+        HabitVersion.objects.filter(habit_id=habit_id).order_by(
+            "effective_from", "created_at"
+        )
+    )
+    events = []
+    prev = None
+    for version in versions:
+        changes = _diff_versions(prev, version)
+        if changes and start <= version.effective_from <= end:
+            events.append({"effective_from": version.effective_from, "changes": changes})
+        prev = version
+
+    dtypes = resolve_day_types_range(user, start, end)
+    day_types = [{"date": d, "day_type": dtypes[d]} for d in sorted(dtypes)]
+
+    return {"habit": habit, "points": points, "events": events, "day_types": day_types}

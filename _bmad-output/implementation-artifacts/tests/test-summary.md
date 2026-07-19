@@ -2210,3 +2210,109 @@ Rodado contra o stack real (`npm run dev` na 5173 + `manage.py runserver` sob `c
 ## Próximos Passos
 
 - Nenhum gap bloqueante identificado para a Story 6.3. Quando a Story 6.4 entregar a navegação por datas + gráfico, estender a suíte E2E para exercitar o multiplicador como "ritmo/sombreamento" no histórico e a não-retroação da config prospectiva de forma navegável (hoje só em unit de backend).
+
+---
+
+# Resumo de Automação de Testes — Story 6.4
+
+**Data:** 2026-07-19
+**Story:** 6.4 — Histórico por data e gráfico de evolução
+**Framework:** Playwright 1.61 (E2E de browser real contra Django + Neon branch `e2e`, sem mocks de rede)
+
+## Contexto
+
+A Story 6.4 é a **camada de LEITURA** de AD-11/AD-14 empilhada sobre tudo que a 6.1/6.2/6.3 materializaram: config prospectiva (`habit_versions`), snapshot realizado por dia (`habit_day_entries`) e ritmo de tipo de dia congelado (`day_type`/`multiplier_at_time`). É **read-only e não-semeadora** — tudo derivado on-read, sem schema/série materializada nova. Introduz a superfície `/habits/history` (aba dentro de Hábitos): navegação por data read-only, gráfico de evolução por hábito (série + marcadores de mudança + sombreamento de ritmo) e a grade densa hábitos × dias que serve como tabela acessível equivalente. O código já vinha com forte cobertura **unitária/de componente** (backend `test_services.py`/`test_serializers.py`/`test_views.py`/`test_calendar.py`; frontend `api.test.tsx` + `HabitHistory.test.tsx`/`HabitEvolutionChart.test.tsx`/`HabitHistoryGrid.test.tsx`, todos **mockando** a rede).
+
+**Gap encontrado:** **zero cobertura E2E** da 6.4. Os specs E2E de hábitos existentes (`habit-tracker.spec.ts` 6.2; `habit-multiplier.spec.ts` 6.3) só exercitam o tracker de HOJE — nenhum abria a superfície de histórico, nem navegava por data no passado, nem lia o gráfico/grade contra o backend real. Gap fechado neste ciclo (specs/helpers E2E apenas; nenhum arquivo `backend/`, `src/` ou de contrato foi tocado).
+
+## Testes Gerados
+
+### Testes E2E — `frontend/e2e/habit-history.spec.ts` (novo)
+
+| Teste | AC Cobertos |
+|-------|-------------|
+| sem hábitos: o histórico mostra período vazio honesto e é alcançado por aba | AC1, AC3, AC4 |
+| navegação por data read-only: dia com registro mostra %/valores; dia-lacuna é honesto | AC1, AC3, AC4 |
+| gráfico de evolução: série on-read + marcador de mudança real + sombreamento de ritmo | AC2, AC3 |
+| grade acessível hábitos × dias: tabela com feriado rotulado e lacuna honesta | AC1, AC3, UX-DR4 |
+
+**Total: 1 arquivo · 4 testes · 4 passando**
+
+### Helper de seed — `frontend/e2e/seedHabitHistory.ts` (novo)
+
+A superfície de histórico é read-only e **não semeia** — só há dados se dias passados já tiverem sido materializados. Como o tracker (6.2) só materializa HOJE, um histórico determinístico exige linhas passadas seedadas direto pela camada de dados (mesma técnica de `seedPastDailyTask.ts`). Semeia: grupo **"Saúde"** + "Meditar" (booleano, peso 1) + "Passos" (numérico, peso 2, meta 5000, bonus 20, unidade "passos") via a camada de serviço (6.1); uma **mudança real** de peso de "Meditar" (1 → 2) num dia dentro da janela de 30 dias (marcador "Peso 1 → 2") com a versão "Criado" backdatada **para fora** da janela; linhas de `habit_day_entries` em `today-6/-5/-3/-2` deixando `today-4` como **lacuna honesta**; e um **feriado real** (`UserHoliday` em `today-6`) → tipo de dia determinístico (precedência `holiday > weekend > weekday`, independente do dia da execução). O dia âncora (`today-2`) reproduz a matemática de completude das 6.2/6.3 → **60%**. Todas as datas são relativas a `today_for(user)` (nunca `date.today()` cru).
+
+## Detalhe dos Testes
+
+**Teste 1 — estado vazio + navegação por aba (AC1, AC3, AC4):** usuário recém-criado (sem hábitos) chega ao histórico pela **aba "Histórico"** dentro de Hábitos (Decisão 2 — não item de Sidebar/BottomNav, evitando a armadilha dos 3 testes compartilhados da casca); confirma `/habits` → `/habits/history`. Verifica os estados vazios informativos ("Sem registro neste dia.", "Nenhum registro no período.", "Selecione um hábito para ver o gráfico de evolução.") — sem 0% fabricado, sem gamificação (UX-DR13). Prova **read-only**: `getByRole('checkbox')`/`getByRole('spinbutton')` → count 0.
+
+**Teste 2 — navegação por data read-only (AC1, AC3, AC4):** com o cenário semeado, preenche o controle de data (aria-label dinâmico "Data selecionada: DD/MM/AAAA", localizado por prefixo) com o **dia âncora** → detalhe read-only agrupado: **"Completude do dia: 60%"**, **"Saúde · 60%"**, **"Meditar: feito"**, **"Passos: 2.500 / 5.000 passos"** (booleano = "feito"; numérico = "valor / meta unidade", nenhum controle editável). Preenche com o **dia-lacuna** (`today-4`, nunca aberto dentro da janela) → **"Sem registro neste dia."** e assere **ausência** de "Completude do dia: 0%" (lacuna honesta, nunca 0% fabricado — AC1). Reconfirma read-only (0 checkbox / 0 spinbutton).
+
+**Teste 3 — gráfico de evolução (AC2, AC3):** seleciona "Meditar" no seletor de hábito (MUI `combobox`, localizador inequívoco pois `<main>`/tablist têm "Hábitos" no nome mas não são comboboxes) → o gráfico monta. Verifica o **resumo textual acessível** (`role="img"` + aria-label "Evolução de Meditar…", independente do SVG); a **mudança real** de config anotada como marcador datado com o diff no texto (**"Peso 1 → 2"** na lista "Mudanças no período" — cor nunca sozinha, AC3), com o "Criado" backdatado ficando fora da janela; e a **legenda de ritmo** ("Fim de semana e feriados aparecem sombreados.") — o multiplicador/tipo de dia é sombreamento, **nunca** marcador (AD-11). Guarda de regressão: `consoleErrors == []`.
+
+**Teste 4 — grade acessível hábitos × dias (AC1, AC3, UX-DR4):** verifica a `<table>` semântica (a tabela equivalente que o Accessibility Floor exige para o gráfico): headers programáticos de hábito (`rowheader` "Meditar"/"Passos"), a coluna de **feriado rotulada por texto** (`columnheader` "Feriado" — determinística via seed; fim de semana diz "Fim de semana", só o feriado semeado diz "Feriado"), uma célula com valor real anunciando estado + unidade ("Passos … 2.500 passos") e uma **célula-lacuna** "—" honesta (aria "sem registro") — texto e não só cor.
+
+## Cobertura por AC (pós-run)
+
+| AC | Critério | Coberto por |
+|----|----------|-------------|
+| AC1 | Histórico por data read-only mostra o snapshot do dia (agrupado, % por grupo + % total) | `habit-history.spec.ts` (T2, âncora 60% / "Saúde · 60%") + unit `test_services.py`/`test_views.py` |
+| AC1 | Dia sem linha = lacuna honesta ("Sem registro neste dia."), nunca 0% fabricado, sem semear | `habit-history.spec.ts` (T2, dia-lacuna) + unit backend (assert `count` inalterado) |
+| AC2 | Série derivada on-read de `habit_day_entries`; lacunas = quebras | `habit-history.spec.ts` (T3) + `HabitEvolutionChart.test.tsx` (pré-existente) |
+| AC2 | Mudança real de config = marcador datado com diff no texto ("Peso 1 → 2") | `habit-history.spec.ts` (T3) + unit backend (diff de `habit_versions`) |
+| AC2 | Multiplicador/tipo de dia = ritmo/sombreamento, nunca marcador | `habit-history.spec.ts` (T3, legenda de sombreamento) + unit backend |
+| AC3 | Gráfico com resumo textual (`role="img"`/aria-label) | `habit-history.spec.ts` (T3) + `HabitEvolutionChart.test.tsx` |
+| AC3 | Tabela/grade equivalente hábitos × dias com headers programáticos; feriado por texto; lacuna "—" | `habit-history.spec.ts` (T4) + `HabitHistoryGrid.test.tsx` (a11y/axe) |
+| AC3 | Cor nunca sozinha; voz pt-BR factual; estados vazios informativos | `habit-history.spec.ts` (T1/T3/T4) |
+| AC4 | Superfície read-only aditiva (aba dentro de Hábitos, não Sidebar/BottomNav); 100% GET | `habit-history.spec.ts` (T1 aba + T1/T2 read-only) + contrato aditivo (unit/CI) |
+
+## Resultado da Execução (Node 22.15.1)
+
+```
+npx eslint e2e/habit-history.spec.ts e2e/seedHabitHistory.ts
+  ✔ limpo (exit 0)
+
+npx tsc --noEmit -p tsconfig.json
+  ✔ limpo (exit 0)
+
+npx playwright test habit-history.spec.ts --reporter=list
+  ✓ sem hábitos: o histórico mostra período vazio honesto e é alcançado por aba (AC1, AC3, AC4)
+  ✓ navegação por data read-only: dia com registro mostra %/valores; dia-lacuna é honesto (AC1, AC3, AC4)
+  ✓ gráfico de evolução: série on-read + marcador de mudança real + sombreamento de ritmo (AC2, AC3)
+  ✓ grade acessível hábitos × dias: tabela com feriado rotulado e lacuna honesta (AC1, AC3, UX-DR4)
+  4 passed (53.5s)   — o teste de gráfico também reconfirmado isolado após ajuste de localizador
+```
+
+Rodado contra o stack real (`npm run dev` na 5173 + `manage.py runserver` sob `config.settings.e2e`, branch Neon `e2e` dedicada — **sem migrations nesta story**, schema corrente). Logs do servidor confirmaram os endpoints read-only de fato exercitados: `GET /api/habits/history/?start=&end=` (grade + detalhe por-data, mesma query key) e `GET /api/habits/{id}/series/?start=&end=` (série + eventos). Backend **não** reexecutado — nenhum arquivo `backend/` foi tocado por este ciclo de QA (só specs/helpers E2E).
+
+## Notas de Determinismo (armadilhas resolvidas durante o ciclo)
+
+- **Localizador do seletor de hábito por `role="combobox"`, não `getByLabel('Hábito')`:** `getByLabel` faz match por substring e o `<main aria-label="Hábitos">` + o tablist "Seções de Hábitos" continham "Hábito" → violação de strict mode. Só o MUI select é `combobox` → `getByRole('combobox', { name: 'Hábito' })` é inequívoco.
+- **Feriado real como alavanca de determinismo:** a grade/gráfico colorem fim de semana/feriado a partir do tipo de dia real (varia com o dia da execução). Semear um `UserHoliday` (precedência `holiday > weekend > weekday`) garante uma coluna/sombreamento "Feriado" estável em qualquer dia — mesma técnica que a 6.3 usa com o toggle de feriado.
+- **Datas de asserção vindas do seed (relativas a `today_for(user)`):** o spec nunca reproduz aritmética de calendário; preenche o `input[type=date]` com a ISO devolvida pelo seed (âncora/lacuna) — robusto contra o dia da execução.
+- **"Criado" backdatado para fora da janela:** garante que o único marcador de mudança no período seja a mudança de peso real ("Peso 1 → 2"), sem ruído do evento de criação.
+- **Resumo textual do gráfico (`role="img"`/aria-label) independe do SVG:** a asserção principal do gráfico é DOM próprio (a11y), então não depende da renderização do recharts nem de mocks de dimensão (que só seriam necessários em jsdom — aqui é browser real).
+
+## Checklist de Validação
+
+- [x] Testes E2E gerados (UI existe) — 4 testes novos fechando o gap total da 6.4 (AC1/AC2/AC3/AC4)
+- [x] API tests: N/A como arquivo novo — o contrato (`GET /api/habits/history/`, `GET /api/habits/{id}/series/`) já é coberto pela suíte de backend da 6.4 (`test_views.py`/`test_services.py`) e é exercitado de verdade por estes E2E (sem mock)
+- [x] Usam APIs padrão do framework já adotado (Playwright + fixtures/seed do projeto) — nenhuma ferramenta nova
+- [x] Cobrem happy path (navegação por data, detalhe read-only, gráfico, grade) + casos de borda críticos (dia-lacuna honesto; estado vazio sem hábitos)
+- [x] Todos os testes passam (4 passed), contra o backend real
+- [x] Locators semânticos/acessíveis (`getByRole('tab'/'heading'/'img'/'table'/'rowheader'/'columnheader'/'cell'/'combobox'/'option'/'button')`, `getByLabel` por prefixo estável, texto visível) — sem seletores frágeis de CSS
+- [x] Descrições claras em pt-BR, seguindo a convenção de prosa dos `.spec.ts` do projeto
+- [x] Sem waits/sleeps artificiais — web-first assertions com auto-retry
+- [x] Testes independentes (cada teste cria um usuário novo via signup e semeia seu próprio histórico)
+- [x] Summary salvo em `_bmad-output/implementation-artifacts/tests/test-summary.md`
+
+## Limites de Cobertura (por design, não gaps)
+
+- **Não-semeadura no read-path (AC1):** a garantia de que consultar um dia passado **não** cria linha (`HabitDayEntry.objects.count()` inalterado) é asserção de nível de banco → coberta por unit de backend (`test_services.py`), não observável no browser. O E2E cobre a manifestação de UI (lacuna honesta).
+- **Contrato aditivo / nenhum enum novo (AC4):** validado pelo gate de diff do CI (`schema.yaml`/`types.gen.ts`) e por `test_serializers.py`, não por E2E.
+- **Alternativa de lista no mobile (UX-DR18):** a grade troca para lista por dia em `<768px`; o E2E roda no viewport Desktop Chrome (tabela). A variante mobile é coberta por `HabitHistoryGrid.test.tsx` (component, com `useMediaQuery` mockado).
+- **Matemática de completude por peso efetivo / diff de versões:** a correção numérica (ROUND_HALF_UP, `active` → Reativado/Desativado, meta/bonus) é coberta por unit de backend; o E2E confirma a manifestação visível (60%, "Peso 1 → 2").
+
+## Próximos Passos
+
+- Nenhum gap bloqueante identificado para a Story 6.4 — encerra o Épico 6 (Sistema de Hábitos) com cobertura E2E ponta-a-ponta das quatro superfícies (tracker, config/multiplicador, histórico/gráfico). A infraestrutura de charting (recharts) e o padrão de seed de dias passados ficam prontos para reuso nos gráficos de Saúde (Épico 7, FR-3.3).
