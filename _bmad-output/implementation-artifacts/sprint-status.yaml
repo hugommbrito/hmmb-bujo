@@ -101,12 +101,12 @@ development_status:
   epic-5-retrospective: done
 
   # Epic 6: Sistema de Hábitos
-  epic-6: in-progress
+  epic-6: done
   6-1-configuracao-de-habitos-e-grupos: done
   6-2-tracker-diario-com-snapshot-imutavel-e-completude-ponderada: done
   6-3-multiplicador-de-peso-por-tipo-de-dia: done
   6-4-historico-por-data-e-grafico-de-evolucao: done
-  epic-6-retrospective: optional
+  epic-6-retrospective: done
 
   # Epic 7: Métricas de Saúde
   epic-7: backlog
