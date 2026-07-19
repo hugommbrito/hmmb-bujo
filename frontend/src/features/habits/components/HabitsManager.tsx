@@ -19,8 +19,10 @@ import {
   useAddHabitVersionMutation,
   useCreateHabitGroupMutation,
   useCreateHabitMutation,
+  useGroupMultipliersQuery,
   useHabitGroupsQuery,
   useHabitsQuery,
+  useSetGroupMultipliersMutation,
   useUpdateHabitIdentityMutation,
 } from '../api'
 import type { Habit, HabitGroup, HabitType } from '../types'
@@ -160,6 +162,90 @@ function HabitRow({ habit }: HabitRowProps) {
   )
 }
 
+// Config do multiplicador por grupo (AC1) — primeira edição por-grupo. Dois campos
+// numéricos ("Fim de semana ×", "Feriado ×") preenchidos pela config vigente e
+// salvos prospectivamente (INSERT com effective_from=hoje; dias congelados intactos).
+interface GroupMultiplierConfigProps {
+  groupId: string
+}
+
+function GroupMultiplierConfig({ groupId }: GroupMultiplierConfigProps) {
+  const query = useGroupMultipliersQuery(groupId)
+  // Só monta o formulário depois de carregar a config → estado inicializa uma vez
+  // a partir dos valores vigentes (sem corrida de prefill). `key` remonta ao trocar
+  // de grupo/config.
+  if (!query.data) return null
+  return (
+    <GroupMultiplierForm
+      key={`${groupId}:${query.data.weekend}:${query.data.holiday}`}
+      groupId={groupId}
+      initialWeekend={query.data.weekend}
+      initialHoliday={query.data.holiday}
+    />
+  )
+}
+
+interface GroupMultiplierFormProps {
+  groupId: string
+  initialWeekend: string
+  initialHoliday: string
+}
+
+function GroupMultiplierForm({
+  groupId,
+  initialWeekend,
+  initialHoliday,
+}: GroupMultiplierFormProps) {
+  const save = useSetGroupMultipliersMutation()
+  const [weekend, setWeekend] = useState(initialWeekend)
+  const [holiday, setHoliday] = useState(initialHoliday)
+
+  function handleSave() {
+    save.mutate({
+      groupId,
+      weekend: weekend.trim() === '' ? null : weekend.trim(),
+      holiday: holiday.trim() === '' ? null : holiday.trim(),
+    })
+  }
+
+  return (
+    <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-end', px: 1, pb: 1, flexWrap: 'wrap' }}>
+      {/* Tooltip nos campos (não no botão): assim o botão mantém o nome acessível
+          "Salvar multiplicadores" e o input mantém seu aria-label (padrão da 6.1). */}
+      <Tooltip title={PROSPECTIVE_CHANGE_TOOLTIP}>
+        <TextField
+          label="Fim de semana ×"
+          type="number"
+          size="small"
+          value={weekend}
+          onChange={(event) => setWeekend(event.target.value)}
+          inputProps={{ 'aria-label': `Multiplicador de fim de semana de ${groupId}`, step: '0.1' }}
+          sx={{ width: 150 }}
+        />
+      </Tooltip>
+      <Tooltip title={PROSPECTIVE_CHANGE_TOOLTIP}>
+        <TextField
+          label="Feriado ×"
+          type="number"
+          size="small"
+          value={holiday}
+          onChange={(event) => setHoliday(event.target.value)}
+          inputProps={{ 'aria-label': `Multiplicador de feriado de ${groupId}`, step: '0.1' }}
+          sx={{ width: 150 }}
+        />
+      </Tooltip>
+      <Button size="small" onClick={handleSave} disabled={save.isPending}>
+        Salvar multiplicadores
+      </Button>
+      {save.isError && (
+        <Typography variant="caption" color="error" role="alert">
+          {SAVE_ERROR}
+        </Typography>
+      )}
+    </Box>
+  )
+}
+
 interface GroupSectionProps {
   group: HabitGroup
   habits: Habit[]
@@ -172,6 +258,7 @@ function GroupSection({ group, habits }: GroupSectionProps) {
       <Typography variant="subtitle2" component="h3" sx={{ px: 1, py: 0.5 }}>
         {group.name}
       </Typography>
+      <GroupMultiplierConfig groupId={group.id} />
       {groupHabits.length === 0 ? (
         <Typography variant="body2" color="text.secondary" sx={{ px: 1 }}>
           Nenhum hábito neste grupo.

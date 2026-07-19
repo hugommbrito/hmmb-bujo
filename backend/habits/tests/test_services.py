@@ -15,22 +15,27 @@ import pytest
 from core.calendar import today_for
 from core.exceptions import DomainError
 from core.tenant import tenant_context
-from habits.models import HabitDayEntry, HabitVersion
+from habits.models import DayType, HabitDayEntry, HabitGroupDayMultiplier, HabitVersion
 from habits.services import (
     add_habit_version,
     compute_day_completeness,
     create_habit,
     create_habit_group,
+    current_multipliers_of,
     current_version_of,
     list_habit_groups,
     list_habits,
+    multiplier_for,
     seed_habit_day,
+    set_group_day_multiplier,
+    set_holiday,
     update_habit_day_entry,
     update_habit_identity,
 )
 from habits.tests.factories import (
     HabitDayEntryFactory,
     HabitFactory,
+    HabitGroupDayMultiplierFactory,
     HabitGroupFactory,
     HabitVersionFactory,
 )
@@ -466,3 +471,349 @@ def test_update_can_unmark_value_to_null(user):
         update_habit_day_entry(user=user, entry_id=entry.id, value=None)
         entry.refresh_from_db()
         assert entry.value is None
+
+
+# ==============================================================================
+# Story 6.3 — multiplicador de peso por tipo de dia
+# ==============================================================================
+
+# Sábado/domingo/segunda fixos (2026-01: 01=qui). 10=sáb, 11=dom, 12=seg.
+# _EARLY é anterior a todos eles → config/versão vigente nos dias de teste.
+_EARLY = date(2026, 1, 1)
+_SAT = date(2026, 1, 10)
+_MON = date(2026, 1, 12)
+
+
+# --- multiplier_for (AC1) ------------------------------------------------------
+def test_multiplier_for_weekday_is_always_one(user):
+    with tenant_context(user):
+        group = HabitGroupFactory(user=user)
+        # Mesmo com config de weekend/holiday, weekday é sempre 1.00.
+        HabitGroupDayMultiplierFactory(
+            user=user, group=group, day_type=DayType.WEEKEND,
+            multiplier=Decimal("0.20"), effective_from=_EARLY,
+        )
+        assert multiplier_for(group, DayType.WEEKDAY, _SAT) == Decimal("1.00")
+
+
+def test_multiplier_for_uses_config_when_present(user):
+    with tenant_context(user):
+        group = HabitGroupFactory(user=user)
+        HabitGroupDayMultiplierFactory(
+            user=user, group=group, day_type=DayType.WEEKEND,
+            multiplier=Decimal("0.20"), effective_from=_EARLY,
+        )
+        assert multiplier_for(group, DayType.WEEKEND, _SAT) == Decimal("0.20")
+
+
+def test_multiplier_for_defaults_to_one_without_config(user):
+    with tenant_context(user):
+        group = HabitGroupFactory(user=user)
+        assert multiplier_for(group, DayType.WEEKEND, _SAT) == Decimal("1.00")
+        assert multiplier_for(group, DayType.HOLIDAY, _SAT) == Decimal("1.00")
+
+
+def test_multiplier_for_resolves_max_effective_from_le_date(user):
+    """Mesma mecânica de current_version_of: vigente = maior effective_from <= D."""
+    with tenant_context(user):
+        group = HabitGroupFactory(user=user)
+        HabitGroupDayMultiplierFactory(
+            user=user, group=group, day_type=DayType.WEEKEND,
+            multiplier=Decimal("0.50"), effective_from=date(2026, 1, 1),
+        )
+        HabitGroupDayMultiplierFactory(
+            user=user, group=group, day_type=DayType.WEEKEND,
+            multiplier=Decimal("0.20"), effective_from=date(2026, 1, 8),
+        )
+        # Antes da 2ª versão → 0.50; depois → 0.20.
+        assert multiplier_for(group, DayType.WEEKEND, date(2026, 1, 5)) == Decimal("0.50")
+        assert multiplier_for(group, DayType.WEEKEND, _SAT) == Decimal("0.20")
+
+
+# --- seed congela day_type + multiplier (AC2) ----------------------------------
+def test_seed_freezes_weekend_day_type_and_group_multiplier(user):
+    with tenant_context(user):
+        group = HabitGroupFactory(user=user)
+        habit = HabitFactory(user=user, group=group, type="boolean")
+        HabitVersionFactory(user=user, habit=habit, weight=Decimal("2"), effective_from=_EARLY)
+        HabitGroupDayMultiplierFactory(
+            user=user, group=group, day_type=DayType.WEEKEND,
+            multiplier=Decimal("0.20"), effective_from=_EARLY,
+        )
+
+        seed_habit_day(user=user, date=_SAT)  # _SAT é sábado
+
+        entry = HabitDayEntry.objects.get(date=_SAT, habit=habit)
+        assert entry.day_type == DayType.WEEKEND
+        assert entry.multiplier_at_time == Decimal("0.20")
+        assert entry.weight_at_time == Decimal("2")  # base separada do multiplicador
+
+
+def test_seed_holiday_precedence_over_weekend(user):
+    """Sábado marcado feriado → day_type=holiday e multiplicador de holiday."""
+    from accounts.models import UserHoliday
+
+    with tenant_context(user):
+        group = HabitGroupFactory(user=user)
+        habit = HabitFactory(user=user, group=group, type="boolean")
+        HabitVersionFactory(user=user, habit=habit, weight=Decimal("1"), effective_from=_EARLY)
+        HabitGroupDayMultiplierFactory(
+            user=user, group=group, day_type=DayType.WEEKEND,
+            multiplier=Decimal("0.20"), effective_from=_EARLY,
+        )
+        HabitGroupDayMultiplierFactory(
+            user=user, group=group, day_type=DayType.HOLIDAY,
+            multiplier=Decimal("0.00"), effective_from=_EARLY,
+        )
+        UserHoliday.objects.create(date=_SAT)  # sábado vira feriado
+
+        seed_habit_day(user=user, date=_SAT)
+
+        entry = HabitDayEntry.objects.get(date=_SAT, habit=habit)
+        assert entry.day_type == DayType.HOLIDAY
+        assert entry.multiplier_at_time == Decimal("0.00")
+
+
+def test_seed_weekday_freezes_neutral_multiplier(user):
+    with tenant_context(user):
+        group = HabitGroupFactory(user=user)
+        habit = HabitFactory(user=user, group=group, type="boolean")
+        HabitVersionFactory(user=user, habit=habit, weight=Decimal("1"), effective_from=_EARLY)
+
+        seed_habit_day(user=user, date=_MON)  # segunda
+
+        entry = HabitDayEntry.objects.get(date=_MON, habit=habit)
+        assert entry.day_type == DayType.WEEKDAY
+        assert entry.multiplier_at_time == Decimal("1.00")
+
+
+def test_seed_group_without_config_freezes_one(user):
+    """Fim de semana, mas grupo sem config → multiplicador 1.00."""
+    with tenant_context(user):
+        group = HabitGroupFactory(user=user)
+        habit = HabitFactory(user=user, group=group, type="boolean")
+        HabitVersionFactory(user=user, habit=habit, weight=Decimal("3"), effective_from=_EARLY)
+
+        seed_habit_day(user=user, date=_SAT)
+
+        entry = HabitDayEntry.objects.get(date=_SAT, habit=habit)
+        assert entry.day_type == DayType.WEEKEND
+        assert entry.multiplier_at_time == Decimal("1.00")
+
+
+# --- completude por peso efetivo (AC2, matemática) -----------------------------
+def test_completeness_effective_weight_full_within_weekend_group(user):
+    """Âncora: sábado, weekend=0.2, dois booleanos feitos → 100% (peso escala junto)."""
+    with tenant_context(user):
+        group = HabitGroupFactory(user=user, name="Profissional")
+        h1 = HabitFactory(user=user, group=group, type="boolean")
+        HabitDayEntryFactory(
+            user=user, habit=h1, date=_SAT, value=Decimal("1"),
+            weight_at_time=Decimal("2"), day_type=DayType.WEEKEND,
+            multiplier_at_time=Decimal("0.20"),
+        )
+        h2 = HabitFactory(user=user, group=group, type="boolean")
+        HabitDayEntryFactory(
+            user=user, habit=h2, date=_SAT, value=Decimal("1"),
+            weight_at_time=Decimal("1"), day_type=DayType.WEEKEND,
+            multiplier_at_time=Decimal("0.20"),
+        )
+        result = compute_day_completeness(user=user, date=_SAT)
+        assert result["total"] == 100
+
+
+def test_completeness_effective_weight_mixed_groups_anchor(user):
+    """Âncora da Dev Notes: (0.4+0.2+0)/(0.4+0.2+1.0) = 0.6/1.6 = 37,5% → 38%."""
+    with tenant_context(user):
+        g_prof = HabitGroupFactory(user=user, name="Profissional")
+        h1 = HabitFactory(user=user, group=g_prof, type="boolean")
+        HabitDayEntryFactory(
+            user=user, habit=h1, date=_SAT, value=Decimal("1"),
+            weight_at_time=Decimal("2"), day_type=DayType.WEEKEND,
+            multiplier_at_time=Decimal("0.20"),
+        )
+        h2 = HabitFactory(user=user, group=g_prof, type="boolean")
+        HabitDayEntryFactory(
+            user=user, habit=h2, date=_SAT, value=Decimal("1"),
+            weight_at_time=Decimal("1"), day_type=DayType.WEEKEND,
+            multiplier_at_time=Decimal("0.20"),
+        )
+        g_other = HabitGroupFactory(user=user, name="Outro")
+        h3 = HabitFactory(user=user, group=g_other, type="boolean")
+        HabitDayEntryFactory(
+            user=user, habit=h3, date=_SAT, value=None,
+            weight_at_time=Decimal("1"), day_type=DayType.WEEKEND,
+            multiplier_at_time=Decimal("1.00"),
+        )
+        result = compute_day_completeness(user=user, date=_SAT)
+        assert result["total"] == 38
+
+
+def test_completeness_multiplier_zero_removes_group_from_num_and_den(user):
+    """Feriado com holiday=0.0 → peso_efetivo=0: hábito sai de num E den."""
+    with tenant_context(user):
+        # Grupo A com multiplicador 0 (não conta), grupo B normal e não-feito.
+        g_zero = HabitGroupFactory(user=user, name="Zerado")
+        h_zero = HabitFactory(user=user, group=g_zero, type="boolean")
+        HabitDayEntryFactory(
+            user=user, habit=h_zero, date=_SAT, value=None,
+            weight_at_time=Decimal("5"), day_type=DayType.HOLIDAY,
+            multiplier_at_time=Decimal("0.00"),
+        )
+        g_norm = HabitGroupFactory(user=user, name="Normal")
+        h_norm = HabitFactory(user=user, group=g_norm, type="boolean")
+        HabitDayEntryFactory(
+            user=user, habit=h_norm, date=_SAT, value=Decimal("1"),
+            weight_at_time=Decimal("1"), day_type=DayType.HOLIDAY,
+            multiplier_at_time=Decimal("1.00"),
+        )
+        result = compute_day_completeness(user=user, date=_SAT)
+        # Só h_norm conta: feito, peso 1 → 100%. h_zero não entra no denominador.
+        assert result["total"] == 100
+        by_name = {g["name"]: g["completion"] for g in result["groups"]}
+        assert by_name["Zerado"] == 0  # Σ peso_efetivo == 0 → 0 (guarda)
+
+
+# --- set_group_day_multiplier prospectivo não sangra (AC3) ---------------------
+def test_set_group_multiplier_is_prospective_from_today(user):
+    with tenant_context(user):
+        group = HabitGroupFactory(user=user)
+        row = set_group_day_multiplier(
+            user=user, group_id=group.id, day_type="weekend", multiplier=Decimal("0.30")
+        )
+        assert row.effective_from == today_for(user)
+        assert row.multiplier == Decimal("0.30")
+        assert row.day_type == DayType.WEEKEND
+
+
+def test_set_group_multiplier_rejects_weekday(user):
+    with tenant_context(user):
+        group = HabitGroupFactory(user=user)
+        with pytest.raises(DomainError):
+            set_group_day_multiplier(
+                user=user, group_id=group.id, day_type="weekday", multiplier=Decimal("2")
+            )
+
+
+def test_set_group_multiplier_does_not_bleed_frozen_entries(user):
+    """Alterar o multiplicador hoje não muda linhas de dias já congelados."""
+    with tenant_context(user):
+        group = HabitGroupFactory(user=user)
+        habit = HabitFactory(user=user, group=group, type="boolean")
+        frozen = HabitDayEntryFactory(
+            user=user, habit=habit, date=_SAT, weight_at_time=Decimal("1"),
+            day_type=DayType.WEEKEND, multiplier_at_time=Decimal("0.20"),
+        )
+        set_group_day_multiplier(
+            user=user, group_id=group.id, day_type="weekend", multiplier=Decimal("0.90")
+        )
+        frozen.refresh_from_db()
+        assert frozen.multiplier_at_time == Decimal("0.20")  # dia congelado intacto
+
+
+def test_set_group_multiplier_same_day_updates(user):
+    """Duas escritas no mesmo dia → UPDATE (uma linha por (grupo, day_type, dia))."""
+    with tenant_context(user):
+        group = HabitGroupFactory(user=user)
+        set_group_day_multiplier(
+            user=user, group_id=group.id, day_type="weekend", multiplier=Decimal("0.30")
+        )
+        set_group_day_multiplier(
+            user=user, group_id=group.id, day_type="weekend", multiplier=Decimal("0.50")
+        )
+        rows = HabitGroupDayMultiplier.objects.filter(group=group, day_type=DayType.WEEKEND)
+        assert rows.count() == 1
+        assert rows.get().multiplier == Decimal("0.50")
+
+
+def test_current_multipliers_of_reports_both_types(user):
+    with tenant_context(user):
+        group = HabitGroupFactory(user=user)
+        HabitGroupDayMultiplierFactory(
+            user=user, group=group, day_type=DayType.WEEKEND,
+            multiplier=Decimal("0.20"), effective_from=_EARLY,
+        )
+        result = current_multipliers_of(group, _SAT)
+        assert result == {"weekend": Decimal("0.20"), "holiday": Decimal("1.00")}
+
+
+# --- set_holiday recalcula só o dia (AC3) --------------------------------------
+def test_set_holiday_recalculates_only_that_day_preserving_value(user):
+    from accounts.models import UserHoliday
+
+    with tenant_context(user):
+        group = HabitGroupFactory(user=user)
+        HabitGroupDayMultiplierFactory(
+            user=user, group=group, day_type=DayType.HOLIDAY,
+            multiplier=Decimal("0.00"), effective_from=_EARLY,
+        )
+        habit = HabitFactory(user=user, group=group, type="boolean")
+        version = HabitVersionFactory(
+            user=user, habit=habit, weight=Decimal("1"), effective_from=_EARLY
+        )
+        # Dia D (segunda) já semeado como weekday, value marcado; vizinho intacto.
+        d_entry = HabitDayEntryFactory(
+            user=user, habit=habit, date=_MON, value=Decimal("1"),
+            weight_at_time=Decimal("1"), day_type=DayType.WEEKDAY,
+            multiplier_at_time=Decimal("1.00"),
+        )
+        neighbor = HabitDayEntryFactory(
+            user=user, habit=habit, date=_MON + timedelta(days=1),
+            weight_at_time=Decimal("1"), day_type=DayType.WEEKDAY,
+            multiplier_at_time=Decimal("1.00"),
+        )
+
+        set_holiday(user=user, date=_MON, is_holiday=True)
+
+        d_entry.refresh_from_db()
+        neighbor.refresh_from_db()
+        version.refresh_from_db()
+        assert UserHoliday.objects.filter(date=_MON).exists()
+        assert d_entry.day_type == DayType.HOLIDAY
+        assert d_entry.multiplier_at_time == Decimal("0.00")
+        assert d_entry.value == Decimal("1")  # value preservado
+        assert neighbor.day_type == DayType.WEEKDAY  # vizinho intacto
+        assert neighbor.multiplier_at_time == Decimal("1.00")
+        assert HabitVersion.objects.filter(habit=habit).count() == 1  # versões intactas
+        assert version.weight == Decimal("1")
+
+
+def test_unset_holiday_reresolves_day_type_back(user):
+    from accounts.models import UserHoliday
+
+    with tenant_context(user):
+        group = HabitGroupFactory(user=user)
+        habit = HabitFactory(user=user, group=group, type="boolean")
+        UserHoliday.objects.create(date=_MON)
+        entry = HabitDayEntryFactory(
+            user=user, habit=habit, date=_MON, weight_at_time=Decimal("1"),
+            day_type=DayType.HOLIDAY, multiplier_at_time=Decimal("0.00"),
+        )
+
+        set_holiday(user=user, date=_MON, is_holiday=False)
+
+        entry.refresh_from_db()
+        assert not UserHoliday.objects.filter(date=_MON).exists()
+        assert entry.day_type == DayType.WEEKDAY  # segunda volta a dia útil
+        assert entry.multiplier_at_time == Decimal("1.00")
+
+
+# --- override avulso de multiplier_at_time (AC3) -------------------------------
+def test_override_multiplier_at_time_changes_only_that_row(user):
+    """"Nesse sábado eu trabalhei": UPDATE só naquela linha, sem sangrar."""
+    with tenant_context(user):
+        habit = HabitFactory(user=user, type="boolean")
+        e1 = HabitDayEntryFactory(
+            user=user, habit=habit, date=_SAT, weight_at_time=Decimal("2"),
+            day_type=DayType.WEEKEND, multiplier_at_time=Decimal("0.20"),
+        )
+        e2 = HabitDayEntryFactory(
+            user=user, habit=habit, date=_SAT + timedelta(days=1),
+            weight_at_time=Decimal("2"), day_type=DayType.WEEKEND,
+            multiplier_at_time=Decimal("0.20"),
+        )
+        update_habit_day_entry(user=user, entry_id=e1.id, multiplier_at_time=Decimal("1.00"))
+        e1.refresh_from_db()
+        e2.refresh_from_db()
+        assert e1.multiplier_at_time == Decimal("1.00")
+        assert e2.multiplier_at_time == Decimal("0.20")  # vizinho intacto

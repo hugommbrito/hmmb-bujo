@@ -185,6 +185,11 @@ SPECTACULAR_SETTINGS = {
         # presença de um segundo campo `type` faz o drf-spectacular renomeá-lo para
         # "ArchiveEntryTypeEnum", mudando o contrato de bujo sem motivo.
         "TypeEnum": ["weekly", "monthly"],
+        # Pin do enum de `day_type` (weekday/weekend/holiday) de HabitDayEntry/HabitDay
+        # (Story 6.3). A config de multiplicador NÃO emite enum day_type (usa chaves
+        # weekend/holiday), então não há colisão a resolver — este pin só estabiliza
+        # o nome do único enum de 3 valores.
+        "DayTypeEnum": "habits.models.DayType",
     },
 }
 

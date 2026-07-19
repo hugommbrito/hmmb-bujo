@@ -2,7 +2,13 @@
 
 from django.contrib import admin
 
-from habits.models import Habit, HabitDayEntry, HabitGroup, HabitVersion
+from habits.models import (
+    Habit,
+    HabitDayEntry,
+    HabitGroup,
+    HabitGroupDayMultiplier,
+    HabitVersion,
+)
 
 
 @admin.register(HabitGroup)
@@ -36,9 +42,22 @@ class HabitVersionAdmin(admin.ModelAdmin):
 
 @admin.register(HabitDayEntry)
 class HabitDayEntryAdmin(admin.ModelAdmin):
-    list_display = ("id", "user_id", "habit_id", "date", "value", "weight_at_time")
-    list_filter = ("date",)
+    list_display = (
+        "id", "user_id", "habit_id", "date", "value",
+        "weight_at_time", "day_type", "multiplier_at_time",
+    )
+    list_filter = ("date", "day_type")
     search_fields = ("id", "user_id", "habit_id")
 
     def get_queryset(self, request):
         return HabitDayEntry.all_objects.all()
+
+
+@admin.register(HabitGroupDayMultiplier)
+class HabitGroupDayMultiplierAdmin(admin.ModelAdmin):
+    list_display = ("id", "user_id", "group_id", "day_type", "multiplier", "effective_from")
+    list_filter = ("day_type",)
+    search_fields = ("id", "user_id", "group_id")
+
+    def get_queryset(self, request):
+        return HabitGroupDayMultiplier.all_objects.all()

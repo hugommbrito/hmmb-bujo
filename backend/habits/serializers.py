@@ -10,7 +10,7 @@ pela camada de serviço.
 
 from rest_framework import serializers
 
-from habits.models import Habit, HabitDayEntry, HabitGroup, HabitVersion
+from habits.models import DayType, Habit, HabitDayEntry, HabitGroup, HabitVersion
 
 
 class HabitGroupSerializer(serializers.ModelSerializer):
@@ -135,12 +135,15 @@ class HabitDayEntrySerializer(serializers.ModelSerializer):
         choices=Habit.Type.choices, source="habit.type", read_only=True
     )
     group = serializers.UUIDField(source="habit.group_id", read_only=True)
+    # Camada de ritmo (6.3): tipo de dia + multiplicador congelados (read).
+    day_type = serializers.ChoiceField(choices=DayType.choices, read_only=True)
 
     class Meta:
         model = HabitDayEntry
         fields = [
             "id", "habit_id", "name", "emoticon", "type", "group", "unit",
             "value", "weight_at_time", "meta_at_time", "bonus_at_time",
+            "day_type", "multiplier_at_time",
         ]
 
 
@@ -153,10 +156,13 @@ class HabitDayGroupSerializer(serializers.Serializer):
 
 
 class HabitDaySerializer(serializers.Serializer):
-    """Payload do tracker do dia: % total, % por grupo e as linhas."""
+    """Payload do tracker do dia: % total, % por grupo, tipo do dia e as linhas."""
 
     date = serializers.DateField()
     total_completion = serializers.IntegerField()
+    # Tipo do dia (nível-dia, para o toggle de feriado / legenda). Mesmos 3 valores
+    # de HabitDayEntry.day_type → mesmo DayTypeEnum (sem colisão).
+    day_type = serializers.ChoiceField(choices=DayType.choices)
     groups = HabitDayGroupSerializer(many=True)
     entries = HabitDayEntrySerializer(many=True)
 
@@ -183,6 +189,11 @@ class HabitDayEntryUpdateSerializer(serializers.Serializer):
     bonus_at_time = serializers.DecimalField(
         max_digits=5, decimal_places=2, required=False, allow_null=True
     )
+    # Override avulso do multiplicador de uma linha ("nesse sábado eu trabalhei",
+    # Story 6.3). Sem allow_null: default é 1.0, não há caso de "desmarcar".
+    multiplier_at_time = serializers.DecimalField(
+        max_digits=4, decimal_places=2, required=False
+    )
 
     def validate(self, attrs):
         offending = [f for f in self._IMMUTABLE if f in self.initial_data]
@@ -191,3 +202,50 @@ class HabitDayEntryUpdateSerializer(serializers.Serializer):
                 {offending[0]: "Campo imutável do snapshot; não pode ser alterado."}
             )
         return attrs
+
+
+# --- Config de multiplicador por grupo × tipo de dia + feriado (Story 6.3) ----
+
+
+class GroupMultipliersSerializer(serializers.Serializer):
+    """Config vigente do grupo (read): chaves nomeadas ``weekend``/``holiday``.
+
+    Sem enum ``day_type`` no wire (evita colisão de ``DayTypeEnum`` — ver Dev Notes
+    da story). ``weekday`` nunca aparece (= 1.0 implícito).
+    """
+
+    weekend = serializers.DecimalField(max_digits=4, decimal_places=2)
+    holiday = serializers.DecimalField(max_digits=4, decimal_places=2)
+
+
+class SetGroupMultipliersSerializer(serializers.Serializer):
+    """Escrita prospectiva da config (write). Só as chaves enviadas (não-null) são
+    aplicadas; ambas opcionais."""
+
+    weekend = serializers.DecimalField(
+        max_digits=4, decimal_places=2, required=False, allow_null=True
+    )
+    holiday = serializers.DecimalField(
+        max_digits=4, decimal_places=2, required=False, allow_null=True
+    )
+
+    def validate(self, attrs):
+        if attrs.get("weekend") is None and attrs.get("holiday") is None:
+            raise serializers.ValidationError(
+                "Informe ao menos um multiplicador (weekend e/ou holiday)."
+            )
+        return attrs
+
+
+class SetHolidaySerializer(serializers.Serializer):
+    """Marca/desmarca um dia como feriado por data (write)."""
+
+    date = serializers.DateField()
+    is_holiday = serializers.BooleanField()
+
+
+class HolidayResultSerializer(serializers.Serializer):
+    """Resultado do toggle de feriado: a data + o tipo de dia re-resolvido."""
+
+    date = serializers.DateField()
+    day_type = serializers.ChoiceField(choices=DayType.choices)

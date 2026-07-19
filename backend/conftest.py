@@ -18,6 +18,7 @@ from core.tenant import tenant_context
 # its ``<app>/tests/models.py`` here so the generic contract covers it too.
 _ISOLATION_TEST_MODULES = [
     "core.tests.models",
+    "accounts.tests.factories",
     "bujo.tests.factories",
     "braindump.tests.factories",
     "habits.tests.factories",

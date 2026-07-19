@@ -3,12 +3,14 @@ import client from '../../api/client'
 import { keys } from '../../api/keys'
 import { useOptimisticMutation } from '../../shared/hooks/useOptimisticMutation'
 import type {
+  GroupMultipliers,
   Habit,
   HabitDay,
   HabitDayEntry,
   HabitGroup,
   HabitType,
   HabitVersion,
+  HolidayResult,
 } from './types'
 
 // --- Queries -----------------------------------------------------------------
@@ -176,5 +178,94 @@ export function useMarkHabitEntryMutation(date?: string) {
         ),
       }
     },
+  })
+}
+
+// --- Story 6.3 — multiplicador por tipo de dia + feriado ---------------------
+
+async function fetchGroupMultipliers(groupId: string): Promise<GroupMultipliers> {
+  const response = await client.get<GroupMultipliers>(
+    `/api/habit-groups/${groupId}/multipliers/`,
+  )
+  return response.data
+}
+
+export function useGroupMultipliersQuery(groupId: string) {
+  return useQuery({
+    queryKey: keys.habits.groupMultipliers(groupId),
+    queryFn: () => fetchGroupMultipliers(groupId),
+  })
+}
+
+interface SetGroupMultipliersVariables {
+  groupId: string
+  weekend?: string | null
+  holiday?: string | null
+}
+
+async function setGroupMultipliers({
+  groupId,
+  ...fields
+}: SetGroupMultipliersVariables): Promise<GroupMultipliers> {
+  const response = await client.put<GroupMultipliers>(
+    `/api/habit-groups/${groupId}/multipliers/`,
+    fields,
+  )
+  return response.data
+}
+
+// Config prospectiva (AC1). Invalida ['habits'] no sucesso — cobre a query de
+// config e o tracker (os % recalculam no backend só para dias abertos daqui em diante).
+export function useSetGroupMultipliersMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: setGroupMultipliers,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['habits'] }),
+  })
+}
+
+// Toggle de feriado otimista (AC1/AC3): flipa `dayType` do dia na hora; os %
+// e os multiplierAtTime das linhas reconciliam no onSettled (invalidate → refetch).
+interface SetHolidayVariables {
+  date: string
+  isHoliday: boolean
+}
+
+async function setHoliday({ date, isHoliday }: SetHolidayVariables): Promise<HolidayResult> {
+  const response = await client.post<HolidayResult>('/api/habits/holidays/', {
+    date,
+    isHoliday,
+  })
+  return response.data
+}
+
+export function useSetHolidayMutation(date?: string) {
+  return useOptimisticMutation<HolidayResult, unknown, SetHolidayVariables, HabitDay>({
+    mutationFn: setHoliday,
+    queryKey: keys.habits.day(date),
+    updater: (current, { isHoliday }) => {
+      if (!current) return current as unknown as HabitDay
+      return { ...current, dayType: isHoliday ? 'holiday' : 'weekday' }
+    },
+  })
+}
+
+// Override avulso de dia (AC3): "tratar este dia como dia útil (peso cheio)" —
+// seta multiplierAtTime = 1.0 em cada linha do dia. Primitivo de backend é
+// por-linha; o controle de dia itera via o PATCH de entry existente.
+async function overrideDayWorkday(entryIds: string[]): Promise<void> {
+  await Promise.all(
+    entryIds.map((id) =>
+      client.patch(`/api/habits/days/${id}/`, { multiplierAtTime: '1.00' }),
+    ),
+  )
+}
+
+export function useOverrideDayWorkdayMutation(date?: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: overrideDayWorkday,
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: keys.habits.day(date) }),
   })
 }

@@ -8,10 +8,12 @@ import pytest
 from core.calendar import (
     is_workday,
     months_of_week,
+    resolve_day_type,
     today_for,
     week_start_of,
     weeks_of_month,
 )
+from core.tenant import tenant_context
 
 
 @pytest.fixture
@@ -202,3 +204,53 @@ def test_months_of_week_semana_fim_de_mes_sem_cruzar():
     """Semana 25/12/2023 (Seg) até 31/12/2023 (Dom) — inteiramente em dezembro."""
     resultado = months_of_week(date(2023, 12, 25))
     assert resultado == {(2023, 12)}
+
+
+# --- resolve_day_type (Story 6.3, AC2) -----------------------------------------
+
+def test_resolve_day_type_weekday(user):
+    """Seg–sex sem feriado → 'weekday'."""
+    with tenant_context(user):
+        for offset in range(5):  # 06/01/2026 é uma terça; cobre seg–sex
+            d = date(2026, 1, 5) + timedelta(days=offset)  # 05/01 = segunda
+            assert resolve_day_type(user, d) == "weekday", d
+
+
+def test_resolve_day_type_weekend(user):
+    """Sáb/dom sem feriado → 'weekend' (semana começa na segunda, AD-05)."""
+    with tenant_context(user):
+        sabado = date(2026, 1, 10)  # sábado
+        domingo = date(2026, 1, 11)  # domingo
+        assert resolve_day_type(user, sabado) == "weekend"
+        assert resolve_day_type(user, domingo) == "weekend"
+
+
+def test_resolve_day_type_holiday(user):
+    """Linha em user_holidays (num dia útil) → 'holiday'."""
+    from accounts.models import UserHoliday
+
+    d = date(2026, 1, 5)  # segunda (dia útil)
+    with tenant_context(user):
+        UserHoliday.objects.create(date=d)
+        assert resolve_day_type(user, d) == "holiday"
+
+
+def test_resolve_day_type_holiday_precede_weekend(user):
+    """Precedência sem acumular: sábado marcado feriado → 'holiday', não 'weekend'."""
+    from accounts.models import UserHoliday
+
+    sabado = date(2026, 1, 10)  # sábado
+    with tenant_context(user):
+        UserHoliday.objects.create(date=sabado)
+        assert resolve_day_type(user, sabado) == "holiday"
+
+
+def test_resolve_day_type_holiday_is_tenant_scoped(user, other_user):
+    """Feriado é por usuário: o de other_user não vira feriado para user."""
+    from accounts.models import UserHoliday
+
+    d = date(2026, 1, 5)  # segunda
+    with tenant_context(other_user):
+        UserHoliday.objects.create(date=d)
+    with tenant_context(user):
+        assert resolve_day_type(user, d) == "weekday"

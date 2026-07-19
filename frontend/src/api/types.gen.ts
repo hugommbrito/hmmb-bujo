@@ -475,6 +475,36 @@ export interface paths {
         patch: operations["habit_groups_partial_update"];
         trace?: never;
     };
+    "/api/habit-groups/{id}/multipliers/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description Config prospectiva do multiplicador por grupo × tipo de dia (Story 6.3).
+         *
+         *     ``GET`` → config vigente hoje (``{weekend, holiday}``). ``PUT`` → aplica as
+         *     chaves enviadas (prospectivo, não sangra dias congelados) e devolve a config
+         *     vigente resultante.
+         */
+        get: operations["habit_groups_multipliers_retrieve"];
+        /**
+         * @description Config prospectiva do multiplicador por grupo × tipo de dia (Story 6.3).
+         *
+         *     ``GET`` → config vigente hoje (``{weekend, holiday}``). ``PUT`` → aplica as
+         *     chaves enviadas (prospectivo, não sangra dias congelados) e devolve a config
+         *     vigente resultante.
+         */
+        put: operations["habit_groups_multipliers_update"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/habits/": {
         parameters: {
             query?: never;
@@ -562,6 +592,30 @@ export interface paths {
         patch: operations["habits_days_partial_update"];
         trace?: never;
     };
+    "/api/habits/holidays/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description Marca/desmarca um dia como feriado (Story 6.3): escreve ``accounts.UserHoliday``
+         *     e recalcula (bounded) só aquele dia. ``POST``/``PATCH`` são equivalentes.
+         */
+        post: operations["habits_holidays_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * @description Marca/desmarca um dia como feriado (Story 6.3): escreve ``accounts.UserHoliday``
+         *     e recalcula (bounded) só aquele dia. ``POST``/``PATCH`` são equivalentes.
+         */
+        patch: operations["habits_holidays_partial_update"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -623,6 +677,13 @@ export interface components {
          */
         CategoryEnum: "teal" | "purple" | "pink" | "yellow" | "green" | "blue";
         /**
+         * @description * `weekday` - Weekday
+         *     * `weekend` - Weekend
+         *     * `holiday` - Holiday
+         * @enum {string}
+         */
+        DayTypeEnum: "weekday" | "weekend" | "holiday";
+        /**
          * @description * `ui` - Urgent Important
          *     * `u` - Urgent
          *     * `i` - Important
@@ -634,6 +695,18 @@ export interface components {
             year: number;
             month: number;
             tasks: components["schemas"]["Task"][];
+        };
+        /**
+         * @description Config vigente do grupo (read): chaves nomeadas ``weekend``/``holiday``.
+         *
+         *     Sem enum ``day_type`` no wire (evita colisão de ``DayTypeEnum`` — ver Dev Notes
+         *     da story). ``weekday`` nunca aparece (= 1.0 implícito).
+         */
+        GroupMultipliers: {
+            /** Format: decimal */
+            weekend: string;
+            /** Format: decimal */
+            holiday: string;
         };
         /** @description Hábito + campos da versão vigente hoje (``obj.current_version``). */
         Habit: {
@@ -671,11 +744,12 @@ export interface components {
             /** Format: decimal */
             bonus?: string | null;
         };
-        /** @description Payload do tracker do dia: % total, % por grupo e as linhas. */
+        /** @description Payload do tracker do dia: % total, % por grupo, tipo do dia e as linhas. */
         HabitDay: {
             /** Format: date */
             date: string;
             totalCompletion: number;
+            dayType: components["schemas"]["DayTypeEnum"];
             groups: components["schemas"]["HabitDayGroup"][];
             entries: components["schemas"]["HabitDayEntry"][];
         };
@@ -705,6 +779,9 @@ export interface components {
             metaAtTime?: string | null;
             /** Format: decimal */
             bonusAtTime?: string | null;
+            readonly dayType: components["schemas"]["DayTypeEnum"];
+            /** Format: decimal */
+            multiplierAtTime?: string;
         };
         /** @description Cabeçalho de grupo do tracker: nome + % ponderado do grupo. */
         HabitDayGroup: {
@@ -757,6 +834,12 @@ export interface components {
             bonus?: string | null;
             active?: boolean;
         };
+        /** @description Resultado do toggle de feriado: a data + o tipo de dia re-resolvido. */
+        HolidayResult: {
+            /** Format: date */
+            date: string;
+            dayType: components["schemas"]["DayTypeEnum"];
+        };
         Log: {
             /** Format: uuid */
             readonly id: string;
@@ -808,6 +891,8 @@ export interface components {
             metaAtTime?: string | null;
             /** Format: decimal */
             bonusAtTime?: string | null;
+            /** Format: decimal */
+            multiplierAtTime?: string;
         };
         PatchedHabitGroupUpdate: {
             name?: string;
@@ -828,6 +913,12 @@ export interface components {
             recurrenceGroup?: components["schemas"]["RecurrenceGroupEnum"];
             recurrenceText?: string;
             active?: boolean;
+        };
+        /** @description Marca/desmarca um dia como feriado por data (write). */
+        PatchedSetHoliday: {
+            /** Format: date */
+            date?: string;
+            isHoliday?: boolean;
         };
         PatchedTaskUpdate: {
             title?: string;
@@ -878,6 +969,22 @@ export interface components {
             monthFirst?: string;
             /** Format: date */
             scheduledDate?: string | null;
+        };
+        /**
+         * @description Escrita prospectiva da config (write). Só as chaves enviadas (não-null) são
+         *     aplicadas; ambas opcionais.
+         */
+        SetGroupMultipliers: {
+            /** Format: decimal */
+            weekend?: string | null;
+            /** Format: decimal */
+            holiday?: string | null;
+        };
+        /** @description Marca/desmarca um dia como feriado por data (write). */
+        SetHoliday: {
+            /** Format: date */
+            date: string;
+            isHoliday: boolean;
         };
         /**
          * @description * `pending` - Pending
@@ -1757,6 +1864,52 @@ export interface operations {
             };
         };
     };
+    habit_groups_multipliers_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupMultipliers"];
+                };
+            };
+        };
+    };
+    habit_groups_multipliers_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["SetGroupMultipliers"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupMultipliers"];
+                };
+            };
+        };
+    };
     habits_list: {
         parameters: {
             query?: {
@@ -1895,6 +2048,52 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HabitDayEntry"];
+                };
+            };
+        };
+    };
+    habits_holidays_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetHoliday"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HolidayResult"];
+                };
+            };
+        };
+    };
+    habits_holidays_partial_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PatchedSetHoliday"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HolidayResult"];
                 };
             };
         };

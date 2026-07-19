@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { axe } from 'jest-axe'
 
 vi.mock('../../../api/client', () => ({
-  default: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() },
+  default: { get: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn(), delete: vi.fn() },
 }))
 
 import client from '../../../api/client'
@@ -14,6 +14,7 @@ import type { Habit, HabitGroup } from '../types'
 
 const mockGet = client.get as ReturnType<typeof vi.fn>
 const mockPost = client.post as ReturnType<typeof vi.fn>
+const mockPut = client.put as ReturnType<typeof vi.fn>
 
 const GROUPS: HabitGroup[] = [
   { id: 'g-saude', name: 'Saúde', displayOrder: 0 },
@@ -33,8 +34,13 @@ const HABIT_LER: Habit = {
   effectiveFrom: '2026-07-17',
 }
 
-function setGet(groups: HabitGroup[], habits: Habit[]) {
+function setGet(
+  groups: HabitGroup[],
+  habits: Habit[],
+  multipliers: { weekend: string; holiday: string } = { weekend: '1.00', holiday: '1.00' },
+) {
   mockGet.mockImplementation((url: string) => {
+    if (url.includes('/multipliers/')) return Promise.resolve({ data: multipliers })
     if (url.startsWith('/api/habit-groups')) return Promise.resolve({ data: groups })
     if (url.startsWith('/api/habits')) return Promise.resolve({ data: habits })
     return Promise.resolve({ data: [] })
@@ -156,5 +162,43 @@ describe('HabitsManager', () => {
     await screen.findByText(/Ler/)
 
     expect(await axe(container)).toHaveNoViolations()
+  })
+
+  // --- Story 6.3 — config de multiplicador por grupo -------------------------
+
+  it('renderiza os campos de multiplicador por grupo (fim de semana / feriado)', async () => {
+    setGet(GROUPS, [HABIT_LER], { weekend: '0.20', holiday: '0.00' })
+    renderManager()
+
+    expect(
+      await screen.findByLabelText('Multiplicador de fim de semana de g-saude'),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByLabelText('Multiplicador de feriado de g-saude'),
+    ).toBeInTheDocument()
+  })
+
+  it('salva o multiplicador do grupo com PUT no endpoint certo', async () => {
+    setGet(GROUPS, [HABIT_LER], { weekend: '1.00', holiday: '1.00' })
+    mockPut.mockResolvedValueOnce({ data: { weekend: '0.20', holiday: '1.00' } })
+    const user = userEvent.setup()
+    renderManager()
+
+    const weekendField = await screen.findByLabelText(
+      'Multiplicador de fim de semana de g-saude',
+    )
+    // fireEvent.change seta o valor direto (userEvent.clear/type não funciona em
+    // input type=number no jsdom — sem suporte a seleção).
+    fireEvent.change(weekendField, { target: { value: '0.2' } })
+
+    // Saúde é o primeiro grupo → primeiro botão "Salvar multiplicadores".
+    await user.click(screen.getAllByRole('button', { name: 'Salvar multiplicadores' })[0])
+
+    await waitFor(() =>
+      expect(mockPut).toHaveBeenCalledWith(
+        '/api/habit-groups/g-saude/multipliers/',
+        expect.objectContaining({ weekend: '0.2', holiday: '1.00' }),
+      ),
+    )
   })
 })

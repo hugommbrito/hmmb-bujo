@@ -57,3 +57,30 @@ def is_workday(user, d: date) -> bool:
     # TODO (Story 2.1+): integrar user_holidays de accounts.models.UserHoliday
     """
     return d.weekday() < 5  # 0=seg … 4=sex; 5=sab, 6=dom
+
+
+def resolve_day_type(user, d: date) -> str:
+    """Tipo do dia ``d`` para ``user`` — nova autoridade de tipo de dia (AD-10, Story 6.3).
+
+    Retorna a **string literal** ``"holiday"`` / ``"weekend"`` / ``"weekday"``
+    (``core`` não pode importar ``habits.models.DayType`` — regra de porta; ``habits``
+    valida/mapeia a string). Precedência ``holiday > weekend > weekday`` **sem
+    acumular** (um sábado marcado feriado → ``"holiday"``, não ``"weekend"``):
+
+    - ``holiday``: presença de linha em ``user_holidays`` para ``(user, d)``.
+    - ``weekend``: ``d.weekday() >= 5`` (sáb/dom; semana começa na segunda — AD-05).
+    - ``weekday``: o resto.
+
+    Import tardio de ``UserHoliday`` (``core → accounts`` permitido pelo import-linter;
+    ``accounts`` é ``root_package``, não app de domínio): blinda contra ordem de
+    carregamento, já que ``calendar`` é importado amplamente. A query é auto-escopada
+    por tenant (``TenantManager`` lê ``current_user_id`` do contexto do request;
+    fail-closed sem contexto).
+    """
+    from accounts.models import UserHoliday
+
+    if UserHoliday.objects.filter(date=d).exists():
+        return "holiday"
+    if d.weekday() >= 5:
+        return "weekend"
+    return "weekday"

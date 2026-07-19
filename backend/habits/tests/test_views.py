@@ -5,11 +5,12 @@ from decimal import Decimal
 
 from core.calendar import today_for
 from core.tenant import tenant_context
-from habits.models import HabitDayEntry, HabitVersion
+from habits.models import DayType, HabitDayEntry, HabitGroupDayMultiplier, HabitVersion
 from habits.services import create_habit
 from habits.tests.factories import (
     HabitDayEntryFactory,
     HabitFactory,
+    HabitGroupDayMultiplierFactory,
     HabitGroupFactory,
     HabitVersionFactory,
 )
@@ -276,4 +277,140 @@ def test_patch_entry_other_tenant_returns_404(auth_client, user, other_user):
     response = auth_client.patch(
         f"/api/habits/days/{entry.id}/", {"value": "1"}, format="json"
     )
+    assert response.status_code == 404
+
+
+# ==============================================================================
+# Story 6.3 — multiplicador por tipo de dia + feriado (API)
+# ==============================================================================
+
+# 2026-01: 01=qui; 10=sáb, 12=seg.
+_SAT_6_3 = date(2026, 1, 10)
+_MON_6_3 = date(2026, 1, 12)
+
+
+def test_get_day_includes_day_type_and_frozen_multiplier(auth_client, user):
+    """GET days expõe day_type (nível-dia) e day_type/multiplier_at_time nas linhas."""
+    with tenant_context(user):
+        group = HabitGroupFactory(user=user)
+        HabitGroupDayMultiplierFactory(
+            user=user, group=group, day_type=DayType.WEEKEND,
+            multiplier=Decimal("0.20"), effective_from=date(2026, 1, 1),
+        )
+        # Versão vigente antes do sábado consultado (create_habit nasceria hoje).
+        habit = HabitFactory(user=user, group=group, type="boolean", name="Ler")
+        HabitVersionFactory(
+            user=user, habit=habit, weight=Decimal("2"), effective_from=date(2026, 1, 1)
+        )
+
+    response = auth_client.get(f"/api/habits/days/?date={_SAT_6_3.isoformat()}")
+    assert response.status_code == 200, response.data
+    # response.data é snake_case (camelização só no renderer JSON).
+    assert response.data["day_type"] == "weekend"
+    entry = response.data["entries"][0]
+    assert entry["day_type"] == "weekend"
+    assert entry["multiplier_at_time"] == "0.20"
+
+
+def test_get_multipliers_returns_current_config(auth_client, user):
+    with tenant_context(user):
+        group = HabitGroupFactory(user=user)
+        HabitGroupDayMultiplierFactory(
+            user=user, group=group, day_type=DayType.WEEKEND,
+            multiplier=Decimal("0.20"), effective_from=date(2026, 1, 1),
+        )
+
+    response = auth_client.get(f"/api/habit-groups/{group.id}/multipliers/")
+    assert response.status_code == 200, response.data
+    assert Decimal(response.data["weekend"]) == Decimal("0.20")
+    assert Decimal(response.data["holiday"]) == Decimal("1.00")
+
+
+def test_put_multipliers_sets_prospectively(auth_client, user):
+    with tenant_context(user):
+        group = HabitGroupFactory(user=user)
+
+    response = auth_client.put(
+        f"/api/habit-groups/{group.id}/multipliers/",
+        {"weekend": "0.20", "holiday": "0.00"},
+        format="json",
+    )
+    assert response.status_code == 200, response.data
+    assert Decimal(response.data["weekend"]) == Decimal("0.20")
+    assert Decimal(response.data["holiday"]) == Decimal("0.00")
+    with tenant_context(user):
+        rows = HabitGroupDayMultiplier.objects.filter(group=group)
+        assert rows.count() == 2
+        assert all(r.effective_from == today_for(user) for r in rows)
+
+
+def test_put_multipliers_empty_returns_400(auth_client, user):
+    with tenant_context(user):
+        group = HabitGroupFactory(user=user)
+    response = auth_client.put(
+        f"/api/habit-groups/{group.id}/multipliers/", {}, format="json"
+    )
+    assert response.status_code == 400
+
+
+def test_get_multipliers_missing_group_returns_404(auth_client):
+    import uuid
+
+    response = auth_client.get(f"/api/habit-groups/{uuid.uuid4()}/multipliers/")
+    assert response.status_code == 404
+
+
+def test_post_holiday_marks_and_recalculates_the_day(auth_client, user):
+    """POST holiday escreve UserHoliday e recalcula só aquele dia (bounded)."""
+    from accounts.models import UserHoliday
+
+    with tenant_context(user):
+        group = HabitGroupFactory(user=user)
+        HabitGroupDayMultiplierFactory(
+            user=user, group=group, day_type=DayType.HOLIDAY,
+            multiplier=Decimal("0.00"), effective_from=date(2026, 1, 1),
+        )
+        habit = HabitFactory(user=user, group=group, type="boolean")
+        entry = HabitDayEntryFactory(
+            user=user, habit=habit, date=_MON_6_3, value=Decimal("1"),
+            weight_at_time=Decimal("1"), day_type=DayType.WEEKDAY,
+            multiplier_at_time=Decimal("1.00"),
+        )
+
+    response = auth_client.post(
+        "/api/habits/holidays/",
+        {"date": _MON_6_3.isoformat(), "isHoliday": True},
+        format="json",
+    )
+    assert response.status_code == 200, response.data
+    assert response.data["day_type"] == "holiday"
+    with tenant_context(user):
+        assert UserHoliday.objects.filter(date=_MON_6_3).exists()
+        entry.refresh_from_db()
+        assert entry.day_type == DayType.HOLIDAY
+        assert entry.multiplier_at_time == Decimal("0.00")
+        assert entry.value == Decimal("1")  # value preservado
+
+
+def test_patch_entry_override_multiplier(auth_client, user):
+    """Override avulso via PATCH: multiplier_at_time de uma linha (AC3)."""
+    with tenant_context(user):
+        habit = HabitFactory(user=user, type="boolean")
+        entry = HabitDayEntryFactory(
+            user=user, habit=habit, date=_SAT_6_3, weight_at_time=Decimal("2"),
+            day_type=DayType.WEEKEND, multiplier_at_time=Decimal("0.20"),
+        )
+
+    response = auth_client.patch(
+        f"/api/habits/days/{entry.id}/", {"multiplierAtTime": "1.00"}, format="json"
+    )
+    assert response.status_code == 200, response.data
+    assert Decimal(response.data["multiplier_at_time"]) == Decimal("1.00")
+
+
+def test_multipliers_other_tenant_returns_404(auth_client, user, other_user):
+    with tenant_context(other_user):
+        group = HabitGroupFactory(user=other_user)
+
+    response = auth_client.get(f"/api/habit-groups/{group.id}/multipliers/")
     assert response.status_code == 404

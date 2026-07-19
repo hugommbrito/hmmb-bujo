@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 
 vi.mock('../../api/client', () => ({
-  default: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() },
+  default: { get: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn(), delete: vi.fn() },
 }))
 
 import client from '../../api/client'
@@ -13,16 +13,20 @@ import {
   useAddHabitVersionMutation,
   useCreateHabitGroupMutation,
   useCreateHabitMutation,
+  useGroupMultipliersQuery,
   useHabitDayQuery,
   useHabitGroupsQuery,
   useHabitsQuery,
   useMarkHabitEntryMutation,
+  useSetGroupMultipliersMutation,
+  useSetHolidayMutation,
   useUpdateHabitIdentityMutation,
 } from './api'
 import type { Habit, HabitDay, HabitDayEntry, HabitGroup } from './types'
 
 const mockGet = client.get as ReturnType<typeof vi.fn>
 const mockPost = client.post as ReturnType<typeof vi.fn>
+const mockPut = client.put as ReturnType<typeof vi.fn>
 const mockPatch = client.patch as ReturnType<typeof vi.fn>
 
 function makeWrapper() {
@@ -64,11 +68,14 @@ const ENTRY: HabitDayEntry = {
   weightAtTime: '1.00',
   metaAtTime: null,
   bonusAtTime: null,
+  dayType: 'weekday',
+  multiplierAtTime: '1.00',
 }
 
 const HABIT_DAY: HabitDay = {
   date: '2026-07-17',
   totalCompletion: 0,
+  dayType: 'weekday',
   groups: [{ id: 'group-1', name: 'Saúde', completion: 0 }],
   entries: [ENTRY],
 }
@@ -280,5 +287,85 @@ describe('useMarkHabitEntryMutation', () => {
     await waitFor(() => expect(result.current.isError).toBe(true))
     const cached = qc.getQueryData<HabitDay>(keys.habits.day())
     expect(cached?.entries[0].value).toBeNull()
+  })
+})
+
+// --- Story 6.3 — multiplicador + feriado -------------------------------------
+
+describe('useGroupMultipliersQuery', () => {
+  beforeEach(() => vi.resetAllMocks())
+
+  it('busca a config de multiplicador do grupo', async () => {
+    const { wrapper } = makeWrapper()
+    mockGet.mockResolvedValueOnce({ data: { weekend: '0.20', holiday: '0.00' } })
+
+    const { result } = renderHook(() => useGroupMultipliersQuery('group-1'), { wrapper })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(mockGet).toHaveBeenCalledWith('/api/habit-groups/group-1/multipliers/')
+    expect(result.current.data).toEqual({ weekend: '0.20', holiday: '0.00' })
+  })
+})
+
+describe('useSetGroupMultipliersMutation', () => {
+  beforeEach(() => vi.resetAllMocks())
+
+  it('faz PUT dos multiplicadores e invalida o prefixo habits', async () => {
+    const { qc, wrapper } = makeWrapper()
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+    mockPut.mockResolvedValueOnce({ data: { weekend: '0.20', holiday: '0.00' } })
+
+    const { result } = renderHook(() => useSetGroupMultipliersMutation(), { wrapper })
+    result.current.mutate({ groupId: 'group-1', weekend: '0.20', holiday: '0.00' })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(mockPut).toHaveBeenCalledWith('/api/habit-groups/group-1/multipliers/', {
+      weekend: '0.20',
+      holiday: '0.00',
+    })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['habits'] })
+  })
+})
+
+describe('useSetHolidayMutation', () => {
+  beforeEach(() => vi.resetAllMocks())
+
+  it('flipa dayType otimisticamente antes da resposta do servidor', async () => {
+    const { qc, wrapper } = makeWrapper()
+    qc.setQueryData(keys.habits.day(), HABIT_DAY)
+    let resolvePost: (value: { data: unknown }) => void = () => {}
+    mockPost.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolvePost = resolve
+      }),
+    )
+
+    const { result } = renderHook(() => useSetHolidayMutation(), { wrapper })
+    result.current.mutate({ date: '2026-07-17', isHoliday: true })
+
+    await waitFor(() => {
+      const cached = qc.getQueryData<HabitDay>(keys.habits.day())
+      expect(cached?.dayType).toBe('holiday')
+    })
+
+    resolvePost({ data: { date: '2026-07-17', dayType: 'holiday' } })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(mockPost).toHaveBeenCalledWith('/api/habits/holidays/', {
+      date: '2026-07-17',
+      isHoliday: true,
+    })
+  })
+
+  it('reverte o dayType otimista em caso de erro (rollback)', async () => {
+    const { qc, wrapper } = makeWrapper()
+    qc.setQueryData(keys.habits.day(), HABIT_DAY)
+    mockPost.mockRejectedValueOnce(new Error('falha de rede'))
+
+    const { result } = renderHook(() => useSetHolidayMutation(), { wrapper })
+    result.current.mutate({ date: '2026-07-17', isHoliday: true })
+
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    const cached = qc.getQueryData<HabitDay>(keys.habits.day())
+    expect(cached?.dayType).toBe('weekday')
   })
 })

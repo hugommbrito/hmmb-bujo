@@ -2108,3 +2108,105 @@ Rodado contra o stack real (`npm run dev` na 5173 + `manage.py runserver` sob `c
 ## Próximos Passos
 
 - Nenhum gap bloqueante identificado para a Story 6.2. Quando a Story 6.4 entregar a navegação por datas, estender `habit-tracker.spec.ts` (ou criar `habit-history.spec.ts`) para exercitar E2E o "dia pulado" e a edição avulsa de um dia passado — hoje só cobertos por unit de backend.
+
+---
+
+# Resumo de Automação de Testes — Story 6.3
+
+**Data:** 2026-07-19
+**Story:** 6.3 — Multiplicador de peso por tipo de dia
+**Framework:** Playwright 1.61 (E2E de browser real contra Django + Neon branch `e2e`, sem mocks de rede)
+
+## Contexto
+
+A Story 6.3 é a **camada de ritmo** de AD-10 empilhada sobre o snapshot da 6.2: um multiplicador prospectivo por **grupo × tipo de dia** (`weekend`/`holiday`), feriados manuais por data, congelamento de `day_type`+`multiplier_at_time` na materialização e **completude por peso efetivo** (`weight_at_time × multiplier_at_time` em numerador **e** denominador). O código já vinha com forte cobertura **unitária/de componente** (backend 538 passed; frontend 648 passed, incl. `HabitTracker.test.tsx`/`HabitsManager.test.tsx`/`api.test.tsx` que **mockam** a rede).
+
+**Gap encontrado:** **zero cobertura E2E** da 6.3. O único spec E2E de hábitos (`habit-tracker.spec.ts`) cobre só a 6.2 — nenhum exercitava, ponta-a-ponta contra o backend real, a config de multiplicador por grupo, o toggle de feriado, a legenda de peso efetivo, o recálculo de completude por peso efetivo, nem o override avulso de dia. Gap fechado neste ciclo.
+
+## Testes Gerados
+
+### Testes E2E — `frontend/e2e/habit-multiplier.spec.ts` (novo)
+
+| Teste | AC Cobertos |
+|-------|-------------|
+| config prospectiva do multiplicador de grupo persiste | AC1 (config UI em Settings › Hábitos) |
+| feriado congela peso efetivo, exibe legenda factual e o override não sangra | AC1, AC2, AC3 |
+| feriado com multiplicador zero remove o grupo do numerador e do denominador | AC2, AC3 (borda: `multiplier=0`) |
+
+**Total: 1 arquivo · 3 testes · 3 passando**
+
+### Helper de seed — `frontend/e2e/seedMultiplierScenario.ts` (novo)
+
+Semeia, pela camada de serviço (`create_habit_group`/`create_habit`/`set_group_day_multiplier`, `effective_from = hoje`), o cenário âncora: grupo **"Profissional"** (Emails peso 2 + Relatório peso 1) e **"Pessoal"** (Ler peso 1), com opção de definir o multiplicador de **feriado** de "Profissional" e de semear só um grupo (para os localizadores por-grupo da UI de config ficarem inequívocos). Mesma técnica de `seedHabits.ts`/`seedPastDailyTask.ts`.
+
+## Detalhe dos Testes
+
+**Teste 1 — config prospectiva persiste (AC1):** um grupo, vai a `/settings/habits`, edita o campo "Feriado ×" para `0.2` na primeira afordância de edição por-grupo e salva. Espera o **PUT concluir antes de recarregar** (recarregar com o PUT em voo cancelaria a escrita), recarrega e verifica que a config vigente vinda do servidor reidrata o form (`0.20`, DecimalField de 2 casas). Prova a persistência prospectiva (INSERT com `effective_from = hoje`).
+
+**Teste 2 — peso efetivo + legenda + override + desmarcar (AC1, AC2, AC3):** cenário "Profissional ×0,2 feriado" + "Pessoal ×1,0". Em sequência real contra o backend:
+- **Baseline (×1,0):** marca Emails → **50%**; + Relatório → **75%**; sem legenda de peso (multiplicador ×1,0).
+- **AC2 (feriado ON):** marca "Feriado" → `set_holiday` re-resolve só as linhas de hoje; completude por peso efetivo = `(1×0,4 + 1×0,2 + 0×1,0)/(0,4+0,2+1,0) = 0,6/1,6 = 37,5% → **38%**` (exemplo âncora, ROUND_HALF_UP); legenda factual **"Feriado · peso ×0,2"** só em "Profissional" (texto + ícone, UX-DR13); "Profissional · 100%", "Pessoal · 0%".
+- **AC3 (override):** "Tratar este dia como dia útil (peso cheio)" → `multiplier_at_time = 1,0` só nas linhas de hoje → volta a **75%** e a legenda some, sem tocar config/vizinhos.
+- **AC3 (feriado OFF):** desmarca "Feriado" → re-resolve só hoje ao tipo real do dia (×1,0) → **75%**, toggle desligado, sem legenda.
+- **Guarda de regressão:** `consoleErrors == []`.
+
+**Teste 3 — feriado com multiplicador zero (AC2, AC3):** "Profissional" com feriado **×0** (semântico: hábitos do grupo não contam nesse feriado). Baseline: marca só "Ler" → **25%**. Marca "Feriado" → "Profissional" passa a peso efetivo 0 e **sai de numerador E denominador** (guarda `Σ peso_efetivo == 0 → 0%` no grupo); a completude do dia sobe para **100%** (só "Pessoal", 100% feito) — **porque o grupo incompleto foi inteiramente removido, não porque algo foi concluído**; legenda "Feriado · peso ×0". Desmarca → "Profissional" volta ao denominador → **25%** (bounded, sem sangramento).
+
+## Cobertura por AC (pós-run)
+
+| AC | Critério | Coberto por |
+|----|----------|-------------|
+| AC1 | Config prospectiva do multiplicador por grupo × tipo de dia (UI + persistência) | `habit-multiplier.spec.ts` (T1) + unit backend `test_services.py`/`test_views.py` |
+| AC1 | Feriado manual por data (toggle) muda o tipo do dia | `habit-multiplier.spec.ts` (T2/T3, toggle "Feriado") |
+| AC2 | Materialização congela `day_type`+`multiplier_at_time`; completude por peso efetivo | `habit-multiplier.spec.ts` (T2, âncora 38%) + unit backend |
+| AC2 | Transparência factual do multiplicador na UI (legenda "Feriado · peso ×N", sem gamificação) | `habit-multiplier.spec.ts` (T2/T3) + `HabitTracker.test.tsx` (pré-existente) |
+| AC2 | `multiplier=0` remove o grupo de numerador **e** denominador | `habit-multiplier.spec.ts` (T3) + unit backend |
+| AC3 | Alterar multiplicador é prospectivo (não sangra dias congelados) | unit backend `test_services.py` (não navegável na UI de hoje — 6.4) + T1 (INSERT `effective_from=hoje`) |
+| AC3 | Marcar/desmarcar feriado re-resolve **só aquele dia** (bounded), preserva `value` | `habit-multiplier.spec.ts` (T2/T3, ON→OFF volta ao baseline) + unit backend |
+| AC3 | Override avulso de dia ("tratar como dia útil") = só as linhas daquele dia | `habit-multiplier.spec.ts` (T2) + unit backend |
+
+## Resultado da Execução (Node 22.15.1)
+
+```
+npx eslint e2e/habit-multiplier.spec.ts e2e/seedMultiplierScenario.ts
+  ✔ limpo (exit 0)
+
+npx playwright test habit-multiplier.spec.ts --reporter=line
+  ✓ config prospectiva do multiplicador de grupo persiste (AC1)
+  ✓ feriado congela peso efetivo, exibe legenda factual e o override não sangra (AC1, AC2, AC3)
+  ✓ feriado com multiplicador zero remove o grupo do numerador e do denominador (AC2, AC3)
+  3 passed (1.5m)   — confirmado em 2 rodadas consecutivas (estável, sem flaky)
+```
+
+Rodado contra o stack real (`npm run dev` na 5173 + `manage.py runserver` sob `config.settings.e2e`, branch Neon `e2e` dedicada — migrations `accounts.0002`/`habits.0003` já aplicadas). Logs do servidor confirmaram o fluxo real: `GET /api/habits/days/` (materialização/leitura), `PUT /api/habit-groups/{id}/multipliers/` (config), `POST /api/habits/holidays/` (toggle + recálculo bounded), `PATCH /api/habits/days/{id}/` (override avulso) e os refetches de reconciliação. Backend **não** reexecutado — nenhum arquivo `backend/` foi tocado por este ciclo de QA (só specs/helpers E2E).
+
+## Notas de Determinismo (armadilhas resolvidas durante o ciclo)
+
+- **`.click()` em vez de `.check()`/`.uncheck()`** nos controles otimistas: `check()` verifica o estado intermediário e falha no pisca-pisca otimista→refetch; `.click()` + web-first assertion do resultado (completude/`toBeChecked`) é robusto.
+- **Serializar interações** com uma asserção de completude (server-side) após cada ação — sem isso, marcações em sequência disparam tempestade de refetch (a completude ficava presa em 0%).
+- **Esperar o PUT concluir antes de `page.reload()`** (T1): recarregar com o PUT em voo cancela a escrita.
+- **Alavanca de feriado, nunca fim de semana:** como o tracker mostra HOJE e o dia real varia (a suíte pode rodar num fim de semana — a data de dev era um domingo), o toggle de feriado (precedência `holiday > weekend`) torna as asserções independentes do dia da execução.
+- **Timeout de reconciliação (20s)** nas asserções que dependem de POST→recálculo→GET, para absorver a latência de cold-start da branch Neon `e2e` (config de ambiente, ver `playwright.config.ts`; não é sleep artificial).
+
+## Checklist de Validação
+
+- [x] Testes E2E gerados (UI existe) — 3 testes novos fechando o gap total da 6.3 (AC1/AC2/AC3)
+- [x] API tests: N/A como arquivo novo — o contrato (`PUT /multipliers/`, `POST /holidays/`, `GET/PATCH /days/`) já é coberto pela suíte de backend da 6.3 (538 passed) e é exercitado de verdade por estes E2E (sem mock)
+- [x] Usam APIs padrão do framework já adotado (Playwright + fixtures/seed do projeto) — nenhuma ferramenta nova
+- [x] Cobrem happy path (config, feriado, peso efetivo, override) + caso de borda crítico (`multiplier=0` remove o grupo)
+- [x] Todos os testes passam (3 passed), estável em 2 rodadas, contra o backend real
+- [x] Locators semânticos/acessíveis (`getByRole('main'/'heading'/'checkbox'/'spinbutton'/'button')`, texto visível) — sem seletores frágeis de CSS
+- [x] Descrições claras em pt-BR, seguindo a convenção de prosa dos `.spec.ts` do projeto
+- [x] Sem waits/sleeps artificiais — web-first assertions com auto-retry + `waitForResponse` do PUT; o timeout de 20s é config de ambiente (latência Neon)
+- [x] Testes independentes (cada teste cria um usuário novo via signup e semeia sua própria config)
+- [x] Summary salvo em `_bmad-output/implementation-artifacts/tests/test-summary.md`
+
+## Limites de Cobertura (por design, não gaps)
+
+- **Config prospectiva "não sangra" dias congelados na UI:** a UI da 6.3 mostra só **hoje**; a garantia de que alterar o multiplicador não altera dias já congelados é coberta por unit de backend (`test_services.py`) — não há UI de navegação de datas até a 6.4.
+- **"Ritmo/sombreamento" do multiplicador no gráfico/histórico:** é a Story 6.4 (AD-11). A 6.3 congela o dado (`day_type`/`multiplier_at_time`); a UI que o lê como ritmo é da 6.4.
+- **Isolamento multi-tenant / fail-closed de `UserHoliday`/`HabitGroupDayMultiplier`:** coberto pelo gate de isolamento parametrizado (backend), não por E2E.
+
+## Próximos Passos
+
+- Nenhum gap bloqueante identificado para a Story 6.3. Quando a Story 6.4 entregar a navegação por datas + gráfico, estender a suíte E2E para exercitar o multiplicador como "ritmo/sombreamento" no histórico e a não-retroação da config prospectiva de forma navegável (hoje só em unit de backend).

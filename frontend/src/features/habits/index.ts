@@ -7,6 +7,10 @@ export {
   useCreateHabitGroupMutation,
   useHabitDayQuery,
   useMarkHabitEntryMutation,
+  useGroupMultipliersQuery,
+  useSetGroupMultipliersMutation,
+  useSetHolidayMutation,
+  useOverrideDayWorkdayMutation,
 } from './api'
 export { HabitsManager } from './components/HabitsManager'
 export { HabitTracker } from './components/HabitTracker'
@@ -18,4 +22,9 @@ export type {
   HabitDay,
   HabitDayEntry,
   HabitDayGroup,
+  DayType,
+  GroupMultipliers,
+  SetGroupMultipliers,
+  SetHoliday,
+  HolidayResult,
 } from './types'

@@ -7,6 +7,8 @@ from habits.serializers import (
     HabitDayEntryUpdateSerializer,
     HabitUpdateSerializer,
     HabitVersionCreateSerializer,
+    SetGroupMultipliersSerializer,
+    SetHolidaySerializer,
 )
 
 _GROUP = str(uuid.uuid4())
@@ -83,3 +85,31 @@ def test_day_entry_update_rejects_habit_mutation():
     serializer = HabitDayEntryUpdateSerializer(data={"habit": str(uuid.uuid4())})
     assert not serializer.is_valid()
     assert "habit" in serializer.errors
+
+
+# --- Story 6.3 — config de multiplicador + feriado -----------------------------
+def test_day_entry_update_accepts_multiplier_at_time():
+    """Override avulso do multiplicador de uma linha é aceito (write)."""
+    serializer = HabitDayEntryUpdateSerializer(data={"multiplier_at_time": "1.00"})
+    assert serializer.is_valid(), serializer.errors
+
+
+def test_set_group_multipliers_accepts_partial():
+    """Só uma chave enviada é válido."""
+    serializer = SetGroupMultipliersSerializer(data={"weekend": "0.20"})
+    assert serializer.is_valid(), serializer.errors
+
+
+def test_set_group_multipliers_rejects_empty():
+    """Nenhuma chave → 400 (informe ao menos um multiplicador)."""
+    serializer = SetGroupMultipliersSerializer(data={})
+    assert not serializer.is_valid()
+
+
+def test_set_holiday_requires_date_and_flag():
+    serializer = SetHolidaySerializer(data={"date": "2026-01-10", "is_holiday": True})
+    assert serializer.is_valid(), serializer.errors
+
+    invalid = SetHolidaySerializer(data={"is_holiday": True})
+    assert not invalid.is_valid()
+    assert "date" in invalid.errors

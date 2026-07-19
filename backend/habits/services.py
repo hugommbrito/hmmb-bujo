@@ -12,15 +12,25 @@ from decimal import ROUND_HALF_UP, Decimal
 
 from django.db import transaction
 
-from core.calendar import today_for
+from core.calendar import resolve_day_type, today_for
 from core.exceptions import DomainError
-from habits.models import Habit, HabitDayEntry, HabitGroup, HabitVersion
+from habits.models import (
+    DayType,
+    Habit,
+    HabitDayEntry,
+    HabitGroup,
+    HabitGroupDayMultiplier,
+    HabitVersion,
+)
 
 # Campos de identidade (UPDATE direto no `habits`, não versionados).
 _IDENTITY_FIELDS = ("name", "emoticon", "group_id", "unit")
 
 # Sentinela para distinguir "não passou value" de "passou value=None (desmarcar)".
 _UNSET = object()
+
+# Multiplicador neutro (weekday, ou grupo sem config para o tipo do dia).
+_NEUTRAL_MULTIPLIER = Decimal("1.00")
 
 
 def current_version_of(habit, on_date):
@@ -33,6 +43,27 @@ def current_version_of(habit, on_date):
         .order_by("-effective_from")
         .first()
     )
+
+
+def multiplier_for(group, day_type, on_date) -> Decimal:
+    """Multiplicador vigente do ``group`` para ``day_type`` em ``on_date`` (AD-10).
+
+    ``weekday`` é sempre ``1.00`` (nunca armazenado). Para ``weekend``/``holiday``,
+    a linha vigente é a de maior ``effective_from <= on_date`` (mesma mecânica de
+    ``current_version_of``); sem linha → ``1.00`` (grupo sem config para esse tipo).
+    Auto-escopado por tenant (``TenantManager``), sem ``user`` (como
+    ``current_version_of``).
+    """
+    if day_type == DayType.WEEKDAY:
+        return _NEUTRAL_MULTIPLIER
+    row = (
+        HabitGroupDayMultiplier.objects.filter(
+            group=group, day_type=day_type, effective_from__lte=on_date
+        )
+        .order_by("-effective_from")
+        .first()
+    )
+    return row.multiplier if row is not None else _NEUTRAL_MULTIPLIER
 
 
 def create_habit_group(*, user, name) -> HabitGroup:
@@ -154,6 +185,44 @@ def add_habit_version(
     return version
 
 
+# --- Camada de ritmo: multiplicador por grupo × tipo de dia (Story 6.3) -------
+
+
+@transaction.atomic
+def set_group_day_multiplier(
+    *, user, group_id, day_type, multiplier
+) -> HabitGroupDayMultiplier:
+    """Define (prospectivo) o multiplicador do grupo para ``day_type`` a partir de hoje.
+
+    Espelha ``add_habit_version``: INSERT com ``effective_from = today_for(user)``
+    (ou UPDATE se já houver uma linha de hoje). **Não** toca dias congelados —
+    dias abertos daqui em diante herdam o novo valor. Só ``weekend``/``holiday``
+    são válidos (``weekday`` é 1.0 implícito); outro valor levanta ``DomainError``.
+    """
+    if day_type not in (DayType.WEEKEND, DayType.HOLIDAY):
+        raise DomainError("Multiplicador só se aplica a fim de semana ou feriado.")
+    group = HabitGroup.objects.get(id=group_id)
+    row, _created = HabitGroupDayMultiplier.objects.update_or_create(
+        group=group,
+        day_type=day_type,
+        effective_from=today_for(user),
+        defaults={"multiplier": multiplier},
+    )
+    return row
+
+
+def current_multipliers_of(group, on_date) -> dict:
+    """Config vigente do grupo em ``on_date`` — ``{"weekend": Decimal, "holiday": Decimal}``.
+
+    Cada valor é o multiplicador vigente (``multiplier_for``); grupo sem config para
+    o tipo → ``1.00``. Auto-escopado por tenant (via ``multiplier_for``).
+    """
+    return {
+        "weekend": multiplier_for(group, DayType.WEEKEND, on_date),
+        "holiday": multiplier_for(group, DayType.HOLIDAY, on_date),
+    }
+
+
 # --- Camada de snapshot realizado (Story 6.2, AD-06) --------------------------
 
 
@@ -172,16 +241,23 @@ def seed_habit_day(*, user, date) -> None:
     (2) reativação só entra no denominador de dias abertos a partir dela; (3) dias
     pulados abertos depois usam a versão vigente **naquele dia**, nunca a de hoje.
     ``date`` já vem resolvido pelo chamador (a view usa ``today_for(user)``).
+
+    Camada de ritmo (6.3): resolve ``day_type(date)`` **uma vez** e congela, por
+    linha nova, ``day_type`` + ``multiplier_at_time`` (multiplicador do grupo
+    vigente em ``date`` para aquele tipo de dia, default ``1.00``) — dias pulados
+    recebem o tipo/multiplicador **daquele dia**, nunca os de hoje.
     """
     existentes = set(
         HabitDayEntry.objects.filter(date=date).values_list("habit_id", flat=True)
     )
+    day_type = resolve_day_type(user, date)
     for habit in Habit.objects.select_related("group"):
         if habit.id in existentes:
             continue
         version = current_version_of(habit, date)
         if version is None or not version.active:
             continue
+        multiplier = multiplier_for(habit.group, day_type, date)
         HabitDayEntry.objects.create(
             habit=habit,
             date=date,
@@ -189,6 +265,8 @@ def seed_habit_day(*, user, date) -> None:
             weight_at_time=version.weight,
             meta_at_time=version.meta,
             bonus_at_time=version.bonus,
+            day_type=day_type,
+            multiplier_at_time=multiplier,
         )
 
 
@@ -213,19 +291,29 @@ def _contribution(entry) -> Decimal:
     return (value / meta) * (Decimal(1) - bonus / Decimal(100))
 
 
-def _completeness_pct(entries) -> int:
-    """% ponderada inteira sobre ``entries``: ``Σ(contrib × w) / Σ(w)``.
+def _effective_weight(entry) -> Decimal:
+    """Peso efetivo da linha (AD-10): ``weight_at_time × multiplier_at_time``.
 
-    Denominador = todos os pesos das linhas (booleano não-marcado conta com 0 no
-    numerador mas o peso conta no denominador). Guarda ``Σw == 0`` → 0 (nunca
-    divide por zero). ``weight_at_time`` é isolado — a 6.3 multiplicará por
-    ``multiplier_at_time`` sem reescrever esta fórmula.
+    Fatores congelados separados no snapshot; o produto é o peso que entra na
+    completude. ``multiplier_at_time = 0`` (ex.: feriado com ``holiday=0.0``) zera
+    o peso efetivo — o hábito sai de numerador **e** denominador.
     """
-    total_weight = sum((e.weight_at_time for e in entries), Decimal(0))
+    return entry.weight_at_time * entry.multiplier_at_time
+
+
+def _completeness_pct(entries) -> int:
+    """% ponderada inteira sobre ``entries``: ``Σ(contrib × peso_efetivo) / Σ(peso_efetivo)``.
+
+    Peso = ``peso_efetivo = weight_at_time × multiplier_at_time`` (AD-10). Denominador
+    = soma dos pesos efetivos das linhas (booleano não-marcado conta 0 no numerador,
+    mas o peso conta no denominador). Guarda ``Σ peso_efetivo == 0`` → 0 (nunca divide
+    por zero — cobre também ``multiplier=0`` em todas as linhas).
+    """
+    total_weight = sum((_effective_weight(e) for e in entries), Decimal(0))
     if total_weight == 0:
         return 0
     numerator = sum(
-        (_contribution(e) * e.weight_at_time for e in entries), Decimal(0)
+        (_contribution(e) * _effective_weight(e) for e in entries), Decimal(0)
     )
     ratio = (numerator / total_weight) * Decimal(100)
     return int(ratio.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
@@ -264,17 +352,47 @@ def compute_day_completeness(*, user, date) -> dict:
 
 
 @transaction.atomic
+def set_holiday(*, user, date, is_holiday) -> None:
+    """Marca/desmarca ``date`` como feriado e recalcula **só aquele dia** (AD-10 item 6).
+
+    Escreve ``accounts.UserHoliday`` (``habits → accounts`` permitido; import tardio):
+    ``is_holiday`` → ``get_or_create``; caso contrário → ``delete``. **Depois**,
+    re-resolve ``day_type`` + ``multiplier_at_time`` de **todas as linhas do dia D**
+    (bounded — vizinhos intactos, ``value`` preservado, ``habit_versions`` e
+    ``weight_at_time`` base nunca tocados). O recálculo re-deriva da config vigente:
+    um override avulso anterior daquele dia é re-derivado (comportamento esperado —
+    togglar feriado reconstrói o ritmo do dia a partir da config).
+    """
+    from accounts.models import UserHoliday
+
+    if is_holiday:
+        UserHoliday.objects.get_or_create(date=date)
+    else:
+        UserHoliday.objects.filter(date=date).delete()
+
+    day_type = resolve_day_type(user, date)
+    entries = HabitDayEntry.objects.filter(date=date).select_related("habit__group")
+    for entry in entries:
+        entry.day_type = day_type
+        entry.multiplier_at_time = multiplier_for(entry.habit.group, day_type, date)
+        entry.save(update_fields=["day_type", "multiplier_at_time"])
+
+
+@transaction.atomic
 def update_habit_day_entry(
-    *, user, entry_id, value=_UNSET, weight_at_time=None, meta_at_time=None, bonus_at_time=None
+    *, user, entry_id, value=_UNSET, weight_at_time=None, meta_at_time=None,
+    bonus_at_time=None, multiplier_at_time=None,
 ) -> HabitDayEntry:
     """UPDATE **só naquela linha** de ``habit_day_entries`` (AD-06 item 6).
 
-    Marcar/desmarcar ``value`` (booleano → 1/None; numérico → registrar) e correção
-    avulsa de ``weight_at_time``/``meta_at_time``/``bonus_at_time`` de um dia passado.
-    **Não sangra**: não toca ``habit_versions`` nem outras linhas; só aquele dia
-    recalcula. ``value`` usa sentinela (``_UNSET``) para distinguir "não enviado" de
-    "enviado como None" (desmarcar). A identidade do snapshot (``habit``/``date``) é
-    imutável — o serializer não aceita esses campos (400), então não os tratamos aqui.
+    Marcar/desmarcar ``value`` (booleano → 1/None; numérico → registrar), correção
+    avulsa de ``weight_at_time``/``meta_at_time``/``bonus_at_time`` e override avulso
+    de ``multiplier_at_time`` ("nesse sábado eu trabalhei", Story 6.3). **Não sangra**:
+    não toca ``habit_versions`` nem outras linhas; só aquele dia recalcula. ``value``
+    usa sentinela (``_UNSET``) para distinguir "não enviado" de "enviado como None"
+    (desmarcar); ``multiplier_at_time`` usa ``None`` = "não informado" (não há caso de
+    "desmarcar multiplicador"; default é ``1.0``, não null). A identidade do snapshot
+    (``habit``/``date``) é imutável — o serializer a rejeita (400).
     """
     entry = HabitDayEntry.objects.get(id=entry_id)
     updated = []
@@ -290,6 +408,9 @@ def update_habit_day_entry(
     if bonus_at_time is not None:
         entry.bonus_at_time = bonus_at_time
         updated.append("bonus_at_time")
+    if multiplier_at_time is not None:
+        entry.multiplier_at_time = multiplier_at_time
+        updated.append("multiplier_at_time")
     if updated:
         entry.save(update_fields=updated)
     return entry

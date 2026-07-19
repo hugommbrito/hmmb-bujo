@@ -14,7 +14,14 @@ from factory.django import DjangoModelFactory
 
 from accounts.tests.factories import UserFactory
 from core.tests.registry import register_isolation_case
-from habits.models import Habit, HabitDayEntry, HabitGroup, HabitVersion
+from habits.models import (
+    DayType,
+    Habit,
+    HabitDayEntry,
+    HabitGroup,
+    HabitGroupDayMultiplier,
+    HabitVersion,
+)
 
 
 class HabitGroupFactory(DjangoModelFactory):
@@ -69,6 +76,23 @@ class HabitDayEntryFactory(DjangoModelFactory):
     date = factory.Sequence(lambda n: date(2026, 3, 1) + timedelta(days=n))
     value = None
     weight_at_time = Decimal("1.00")
+    # Defaults novos (6.3): sem multiplicador. Overrides só onde o teste precisar.
+    day_type = DayType.WEEKDAY
+    multiplier_at_time = Decimal("1.00")
+
+
+class HabitGroupDayMultiplierFactory(DjangoModelFactory):
+    class Meta:
+        model = HabitGroupDayMultiplier
+
+    class Params:
+        user = factory.SubFactory(UserFactory)
+
+    user_id = factory.SelfAttribute("user.id")
+    group = factory.LazyAttribute(lambda o: HabitGroupFactory(user=o.user))
+    day_type = DayType.WEEKEND
+    multiplier = Decimal("0.20")
+    effective_from = factory.Sequence(lambda n: date(2026, 1, 1) + timedelta(days=n))
 
 
 register_isolation_case(
@@ -109,5 +133,15 @@ register_isolation_case(
         ),
         "date": date(2026, 3, 1),
         "weight_at_time": Decimal("1.00"),
+    },
+)
+register_isolation_case(
+    id="habits.HabitGroupDayMultiplier",
+    model=HabitGroupDayMultiplier,
+    make=lambda: {
+        "group": HabitGroup.objects.create(name="Grupo iso m"),
+        "day_type": DayType.WEEKEND,
+        "multiplier": Decimal("0.20"),
+        "effective_from": date(2026, 1, 1),
     },
 )

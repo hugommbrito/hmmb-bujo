@@ -677,6 +677,64 @@ paths:
               schema:
                 $ref: '#/components/schemas/HabitGroup'
           description: ''
+  /api/habit-groups/{id}/multipliers/:
+    get:
+      operationId: habit_groups_multipliers_retrieve
+      description: |-
+        Config prospectiva do multiplicador por grupo × tipo de dia (Story 6.3).
+
+        ``GET`` → config vigente hoje (``{weekend, holiday}``). ``PUT`` → aplica as
+        chaves enviadas (prospectivo, não sangra dias congelados) e devolve a config
+        vigente resultante.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - habit-groups
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupMultipliers'
+          description: ''
+    put:
+      operationId: habit_groups_multipliers_update
+      description: |-
+        Config prospectiva do multiplicador por grupo × tipo de dia (Story 6.3).
+
+        ``GET`` → config vigente hoje (``{weekend, holiday}``). ``PUT`` → aplica as
+        chaves enviadas (prospectivo, não sangra dias congelados) e devolve a config
+        vigente resultante.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - habit-groups
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetGroupMultipliers'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupMultipliers'
+          description: ''
   /api/habits/:
     get:
       operationId: habits_list
@@ -823,6 +881,50 @@ paths:
               schema:
                 $ref: '#/components/schemas/HabitDayEntry'
           description: ''
+  /api/habits/holidays/:
+    post:
+      operationId: habits_holidays_create
+      description: |-
+        Marca/desmarca um dia como feriado (Story 6.3): escreve ``accounts.UserHoliday``
+        e recalcula (bounded) só aquele dia. ``POST``/``PATCH`` são equivalentes.
+      tags:
+      - habits
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetHoliday'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HolidayResult'
+          description: ''
+    patch:
+      operationId: habits_holidays_partial_update
+      description: |-
+        Marca/desmarca um dia como feriado (Story 6.3): escreve ``accounts.UserHoliday``
+        e recalcula (bounded) só aquele dia. ``POST``/``PATCH`` são equivalentes.
+      tags:
+      - habits
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedSetHoliday'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HolidayResult'
+          description: ''
 components:
   schemas:
     ArchiveEntry:
@@ -954,6 +1056,16 @@ components:
         * `yellow` - Yellow
         * `green` - Green
         * `blue` - Blue
+    DayTypeEnum:
+      enum:
+      - weekday
+      - weekend
+      - holiday
+      type: string
+      description: |-
+        * `weekday` - Weekday
+        * `weekend` - Weekend
+        * `holiday` - Holiday
     EisenhowerEnum:
       enum:
       - ui
@@ -981,6 +1093,25 @@ components:
       - month
       - tasks
       - year
+    GroupMultipliers:
+      type: object
+      description: |-
+        Config vigente do grupo (read): chaves nomeadas ``weekend``/``holiday``.
+
+        Sem enum ``day_type`` no wire (evita colisão de ``DayTypeEnum`` — ver Dev Notes
+        da story). ``weekday`` nunca aparece (= 1.0 implícito).
+      properties:
+        weekend:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,2}(?:\.\d{0,2})?$
+        holiday:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,2}(?:\.\d{0,2})?$
+      required:
+      - holiday
+      - weekend
     Habit:
       type: object
       description: Hábito + campos da versão vigente hoje (``obj.current_version``).
@@ -1077,13 +1208,16 @@ components:
       - weight
     HabitDay:
       type: object
-      description: 'Payload do tracker do dia: % total, % por grupo e as linhas.'
+      description: 'Payload do tracker do dia: % total, % por grupo, tipo do dia e
+        as linhas.'
       properties:
         date:
           type: string
           format: date
         totalCompletion:
           type: integer
+        dayType:
+          $ref: '#/components/schemas/DayTypeEnum'
         groups:
           type: array
           items:
@@ -1094,6 +1228,7 @@ components:
             $ref: '#/components/schemas/HabitDayEntry'
       required:
       - date
+      - dayType
       - entries
       - groups
       - totalCompletion
@@ -1150,7 +1285,16 @@ components:
           format: decimal
           pattern: ^-?\d{0,3}(?:\.\d{0,2})?$
           nullable: true
+        dayType:
+          allOf:
+          - $ref: '#/components/schemas/DayTypeEnum'
+          readOnly: true
+        multiplierAtTime:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,2}(?:\.\d{0,2})?$
       required:
+      - dayType
       - emoticon
       - group
       - habitId
@@ -1264,6 +1408,18 @@ components:
           nullable: true
         active:
           type: boolean
+    HolidayResult:
+      type: object
+      description: 'Resultado do toggle de feriado: a data + o tipo de dia re-resolvido.'
+      properties:
+        date:
+          type: string
+          format: date
+        dayType:
+          $ref: '#/components/schemas/DayTypeEnum'
+      required:
+      - date
+      - dayType
     Log:
       type: object
       properties:
@@ -1385,6 +1541,10 @@ components:
           format: decimal
           pattern: ^-?\d{0,3}(?:\.\d{0,2})?$
           nullable: true
+        multiplierAtTime:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,2}(?:\.\d{0,2})?$
     PatchedHabitGroupUpdate:
       type: object
       properties:
@@ -1432,6 +1592,15 @@ components:
         recurrenceText:
           type: string
         active:
+          type: boolean
+    PatchedSetHoliday:
+      type: object
+      description: Marca/desmarca um dia como feriado por data (write).
+      properties:
+        date:
+          type: string
+          format: date
+        isHoliday:
           type: boolean
     PatchedTaskUpdate:
       type: object
@@ -1553,6 +1722,34 @@ components:
           type: string
           format: date
           nullable: true
+    SetGroupMultipliers:
+      type: object
+      description: |-
+        Escrita prospectiva da config (write). Só as chaves enviadas (não-null) são
+        aplicadas; ambas opcionais.
+      properties:
+        weekend:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,2}(?:\.\d{0,2})?$
+          nullable: true
+        holiday:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,2}(?:\.\d{0,2})?$
+          nullable: true
+    SetHoliday:
+      type: object
+      description: Marca/desmarca um dia como feriado por data (write).
+      properties:
+        date:
+          type: string
+          format: date
+        isHoliday:
+          type: boolean
+      required:
+      - date
+      - isHoliday
     StatusEnum:
       enum:
       - pending

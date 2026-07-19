@@ -1,13 +1,28 @@
 import { useState } from 'react'
 import {
   Box,
+  Button,
   Checkbox,
   FormControlLabel,
+  Switch,
   TextField,
   Typography,
 } from '@mui/material'
-import { useHabitDayQuery, useMarkHabitEntryMutation } from '../api'
-import type { HabitDayEntry, HabitDayGroup } from '../types'
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined'
+import {
+  useHabitDayQuery,
+  useMarkHabitEntryMutation,
+  useOverrideDayWorkdayMutation,
+  useSetHolidayMutation,
+} from '../api'
+import type { DayType, HabitDayEntry, HabitDayGroup } from '../types'
+
+// Rótulos factuais e neutros do tipo de dia (UX-DR13: sem gamificação).
+const DAY_TYPE_LABEL: Record<DayType, string> = {
+  weekday: 'Dia útil',
+  weekend: 'Fim de semana',
+  holiday: 'Feriado',
+}
 
 // String EXATA da AC2 (mesma constante de HabitsManager) — verificada em teste.
 const SAVE_ERROR = 'Não foi possível salvar. Tente novamente.'
@@ -144,11 +159,25 @@ interface GroupSectionProps {
 function GroupSection({ group, entries, date }: GroupSectionProps) {
   const groupEntries = entries.filter((entry) => entry.group === group.id)
   if (groupEntries.length === 0) return null
+  // Multiplicador do grupo no dia (todas as linhas do grupo compartilham o mesmo,
+  // exceto após override avulso). Legenda factual quando ≠ 1 (AD-10 transparência).
+  const dayType = groupEntries[0].dayType
+  const multiplier = groupEntries[0].multiplierAtTime
+  const showLegend =
+    dayType !== 'weekday' && multiplier != null && Number(multiplier) !== 1
   return (
     <Box sx={{ mb: 2 }}>
       <Typography variant="subtitle2" component="h3" sx={{ px: 1, py: 0.5 }}>
         {group.name} · {group.completion}%
       </Typography>
+      {showLegend && (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, px: 1, pb: 0.5 }}>
+          <InfoOutlinedIcon fontSize="small" color="action" aria-hidden />
+          <Typography variant="caption" color="text.secondary" component="div">
+            {DAY_TYPE_LABEL[dayType]} · peso ×{formatNumber(multiplier)}
+          </Typography>
+        </Box>
+      )}
       {groupEntries.map((entry) => (
         <HabitEntryRow key={entry.id} entry={entry} date={date} />
       ))}
@@ -162,6 +191,8 @@ export interface HabitTrackerProps {
 
 export function HabitTracker({ date }: HabitTrackerProps) {
   const habitDay = useHabitDayQuery(date)
+  const setHoliday = useSetHolidayMutation(date)
+  const overrideDay = useOverrideDayWorkdayMutation(date)
 
   if (habitDay.isPending) {
     return (
@@ -179,7 +210,7 @@ export function HabitTracker({ date }: HabitTrackerProps) {
     )
   }
 
-  const { totalCompletion, groups, entries } = habitDay.data
+  const { date: day, totalCompletion, dayType, groups, entries } = habitDay.data
 
   return (
     <Box>
@@ -190,6 +221,33 @@ export function HabitTracker({ date }: HabitTrackerProps) {
         <Typography variant="body2" color="text.secondary" component="div">
           Completude do dia: {totalCompletion}%
         </Typography>
+        <FormControlLabel
+          sx={{ minHeight: 44 }}
+          control={
+            <Switch
+              checked={dayType === 'holiday'}
+              onChange={(event) =>
+                setHoliday.mutate({ date: day, isHoliday: event.target.checked })
+              }
+            />
+          }
+          label="Feriado"
+        />
+        {/* Override avulso de dia (AC3): só quando o dia não é útil. Neutro, factual. */}
+        {dayType !== 'weekday' && (
+          <Button
+            size="small"
+            onClick={() => overrideDay.mutate(entries.map((entry) => entry.id))}
+            disabled={overrideDay.isPending || entries.length === 0}
+          >
+            Tratar este dia como dia útil (peso cheio)
+          </Button>
+        )}
+        {(setHoliday.isError || overrideDay.isError) && (
+          <Typography variant="caption" color="error" role="alert" component="div">
+            {SAVE_ERROR}
+          </Typography>
+        )}
       </Box>
       {entries.length === 0 ? (
         <Typography variant="body2" color="text.secondary" sx={{ px: 1 }}>

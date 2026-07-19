@@ -10,6 +10,8 @@ de um hábito no dia D é a ``HabitVersion`` com ``max(effective_from) <= D``. P
 versionado). ``type`` é imutável após a criação.
 """
 
+from decimal import Decimal
+
 from django.db import models
 
 from core.models import TenantModel
@@ -24,6 +26,20 @@ class HabitType(models.TextChoices):
 
     BOOLEAN = "boolean"
     NUMERIC = "numeric"
+
+
+class DayType(models.TextChoices):
+    """Tipo de dia congelado no snapshot (AD-10, Story 6.3). No nível do módulo
+    (como ``HabitType``) para ser visível ao ``CheckConstraint`` de ``Meta``.
+
+    Três valores para ``HabitDayEntry.day_type``; a config de multiplicador
+    (``HabitGroupDayMultiplier``) só usa ``WEEKEND``/``HOLIDAY`` (``WEEKDAY`` é
+    1.0 implícito, nunca armazenado).
+    """
+
+    WEEKDAY = "weekday"
+    WEEKEND = "weekend"
+    HOLIDAY = "holiday"
 
 
 class HabitGroup(TenantModel):
@@ -94,6 +110,46 @@ class HabitVersion(TenantModel):
         ]
 
 
+class HabitGroupDayMultiplier(TenantModel):
+    """Config prospectiva do multiplicador de peso por ``(grupo, tipo de dia)``
+    (AD-10, Story 6.3). Espelha ``HabitVersion``: cada mudança é um INSERT com
+    ``effective_from = hoje``; o multiplicador vigente em D é a linha com
+    ``max(effective_from) <= D`` para aquele ``(grupo, day_type)``.
+
+    Só ``weekend``/``holiday`` são armazenados (``weekday`` = 1.0 implícito).
+    Grupo sem config para o tipo do dia = 1.0. Herda ``TenantModel`` (UUID PK +
+    ``user_id`` denormalizado + auto-scope + gate de isolamento).
+    """
+
+    group = models.ForeignKey(
+        HabitGroup, on_delete=models.CASCADE, related_name="day_multipliers"
+    )
+    day_type = models.CharField(
+        max_length=8,
+        choices=[
+            (DayType.WEEKEND, DayType.WEEKEND.label),
+            (DayType.HOLIDAY, DayType.HOLIDAY.label),
+        ],
+    )
+    multiplier = models.DecimalField(max_digits=4, decimal_places=2)
+    effective_from = models.DateField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "habit_group_day_multipliers"
+        ordering = ["group", "day_type", "-effective_from"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["group", "day_type", "effective_from"],
+                name="uniq_group_day_multiplier_per_day",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(day_type__in=[DayType.WEEKEND, DayType.HOLIDAY]),
+                name="group_multiplier_day_type_valid",
+            ),
+        ]
+
+
 class HabitDayEntry(TenantModel):
     """Snapshot realizado, congelado e editável por dia (AD-06 — camada da 6.2).
 
@@ -112,10 +168,12 @@ class HabitDayEntry(TenantModel):
     unicidade vira ``UniqueConstraint(habit, date)`` — mesma reconciliação que a
     6.1 fez para ``habit_versions``.
 
-    Projetar para 6.3: a 6.3 acrescentará ``day_type`` + ``multiplier_at_time``
-    (nova migration 0003) para ``peso_efetivo = weight_at_time × multiplier_at_time``.
-    Não criar essas colunas agora; o cálculo de completude isola ``weight_at_time``
-    de forma que a 6.3 possa multiplicá-lo sem reescrever a fórmula.
+    Camada de ritmo (6.3, AD-10): ``day_type`` + ``multiplier_at_time`` são
+    congelados **separados** do ``weight_at_time`` base na 1ª abertura. A completude
+    usa ``peso_efetivo = weight_at_time × multiplier_at_time``; manter os fatores
+    separados habilita transparência na UI, a distinção evento-vs-ritmo (AD-11) e o
+    override avulso de um dia. Os defaults (``weekday``/``1.00``) backfillam as
+    linhas materializadas na 6.2 com a semântica correta ("sem multiplicador").
     """
 
     habit = models.ForeignKey(Habit, on_delete=models.CASCADE, related_name="day_entries")
@@ -126,6 +184,14 @@ class HabitDayEntry(TenantModel):
     # meta/bonus só se aplicam a hábitos numéricos (null para booleanos).
     meta_at_time = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     bonus_at_time = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    # Camada de ritmo (6.3): tipo de dia + multiplicador do grupo vigente em D,
+    # congelados separados do weight_at_time base. peso_efetivo = weight × multiplier.
+    day_type = models.CharField(
+        max_length=8, choices=DayType.choices, default=DayType.WEEKDAY
+    )
+    multiplier_at_time = models.DecimalField(
+        max_digits=4, decimal_places=2, default=Decimal("1.00")
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

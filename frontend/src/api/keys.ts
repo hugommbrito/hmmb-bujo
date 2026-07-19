@@ -35,6 +35,10 @@ export const keys = {
       ['habits', 'list', params ?? {}] as const,
     groups: () => ['habits', 'groups', 'list'] as const,
     day: (date?: string) => ['habits', 'day', date ?? 'today'] as const,
+    // Story 6.3 — config de multiplicador por grupo. O estado de feriado vem no
+    // habits.day(date) (via dayType), sem key nova.
+    groupMultipliers: (groupId: string) =>
+      ['habits', 'groupMultipliers', groupId] as const,
   },
   // Adicionados nas stories:
   // health: { logs: { ... } }  → Story 7.x
