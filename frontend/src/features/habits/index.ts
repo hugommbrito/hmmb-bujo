@@ -5,6 +5,17 @@ export {
   useUpdateHabitIdentityMutation,
   useAddHabitVersionMutation,
   useCreateHabitGroupMutation,
+  useHabitDayQuery,
+  useMarkHabitEntryMutation,
 } from './api'
 export { HabitsManager } from './components/HabitsManager'
-export type { Habit, HabitGroup, HabitVersion, HabitType } from './types'
+export { HabitTracker } from './components/HabitTracker'
+export type {
+  Habit,
+  HabitGroup,
+  HabitVersion,
+  HabitType,
+  HabitDay,
+  HabitDayEntry,
+  HabitDayGroup,
+} from './types'

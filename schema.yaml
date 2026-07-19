@@ -770,6 +770,59 @@ paths:
               schema:
                 $ref: '#/components/schemas/HabitVersion'
           description: ''
+  /api/habits/days/:
+    get:
+      operationId: habits_days_retrieve
+      description: |-
+        Tracker do dia (snapshot realizado, Story 6.2).
+
+        ``GET`` materializa (idempotente) as linhas do dia via ``seed_habit_day`` e
+        retorna ``{date, totalCompletion, groups, entries}`` (default = hoje).
+      parameters:
+      - in: query
+        name: date
+        schema:
+          type: string
+        description: Dia do tracker (YYYY-MM-DD). Default = hoje do usuário.
+      tags:
+      - habits
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HabitDay'
+          description: ''
+  /api/habits/days/{id}/:
+    patch:
+      operationId: habits_days_partial_update
+      description: Marcação e correção avulsa de uma linha do dia (UPDATE só naquela
+        linha).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - habits
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedHabitDayEntryUpdate'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HabitDayEntry'
+          description: ''
 components:
   schemas:
     ArchiveEntry:
@@ -947,6 +1000,9 @@ components:
           format: uuid
         type:
           $ref: '#/components/schemas/HabitTypeEnum'
+        unit:
+          type: string
+          maxLength: 32
         weight:
           type: string
           format: decimal
@@ -991,6 +1047,10 @@ components:
           type: string
           default: ''
           maxLength: 16
+        unit:
+          type: string
+          default: ''
+          maxLength: 32
         group:
           type: string
           format: uuid
@@ -1015,6 +1075,105 @@ components:
       - name
       - type
       - weight
+    HabitDay:
+      type: object
+      description: 'Payload do tracker do dia: % total, % por grupo e as linhas.'
+      properties:
+        date:
+          type: string
+          format: date
+        totalCompletion:
+          type: integer
+        groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/HabitDayGroup'
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/HabitDayEntry'
+      required:
+      - date
+      - entries
+      - groups
+      - totalCompletion
+    HabitDayEntry:
+      type: object
+      description: |-
+        Uma linha do tracker do dia: identidade do hábito + snapshot congelado.
+
+        Expõe a identidade do hábito (``name``/``emoticon``/``type``/``group``/``unit``)
+        junto do estado do dia (``value``/``*_at_time``). ``type`` reusa ``HabitTypeEnum``
+        via ``ChoiceField`` (mesmo override de enum da 6.1).
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        habitId:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          readOnly: true
+        emoticon:
+          type: string
+          readOnly: true
+        type:
+          allOf:
+          - $ref: '#/components/schemas/HabitTypeEnum'
+          readOnly: true
+        group:
+          type: string
+          format: uuid
+          readOnly: true
+        unit:
+          type: string
+          readOnly: true
+        value:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+        weightAtTime:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,4}(?:\.\d{0,2})?$
+        metaAtTime:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+        bonusAtTime:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,2})?$
+          nullable: true
+      required:
+      - emoticon
+      - group
+      - habitId
+      - id
+      - name
+      - type
+      - unit
+      - weightAtTime
+    HabitDayGroup:
+      type: object
+      description: 'Cabeçalho de grupo do tracker: nome + % ponderado do grupo.'
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        completion:
+          type: integer
+      required:
+      - completion
+      - id
+      - name
     HabitGroup:
       type: object
       properties:
@@ -1198,6 +1357,34 @@ components:
     NullEnum:
       enum:
       - null
+    PatchedHabitDayEntryUpdate:
+      type: object
+      description: |-
+        PATCH de uma linha: marcar/desmarcar ``value`` e/ou correção avulsa.
+
+        ``value`` ``allow_null`` (desmarcar booleano → None). ``weightAtTime``/
+        ``metaAtTime``/``bonusAtTime`` opcionais (correção de dia passado). ``habit``/
+        ``date`` são identidade imutável do snapshot — enviá-los é rejeitado (400).
+      properties:
+        value:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+        weightAtTime:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,4}(?:\.\d{0,2})?$
+        metaAtTime:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+        bonusAtTime:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,2})?$
+          nullable: true
     PatchedHabitGroupUpdate:
       type: object
       properties:
@@ -1215,6 +1402,9 @@ components:
         emoticon:
           type: string
           maxLength: 16
+        unit:
+          type: string
+          maxLength: 32
         group:
           type: string
           format: uuid

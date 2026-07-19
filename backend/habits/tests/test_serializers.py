@@ -4,6 +4,7 @@ import uuid
 
 from habits.serializers import (
     HabitCreateSerializer,
+    HabitDayEntryUpdateSerializer,
     HabitUpdateSerializer,
     HabitVersionCreateSerializer,
 )
@@ -58,3 +59,27 @@ def test_update_without_type_is_valid():
 def test_version_create_all_fields_optional():
     serializer = HabitVersionCreateSerializer(data={})
     assert serializer.is_valid(), serializer.errors
+
+
+# --- HabitDayEntryUpdateSerializer (Story 6.2) ---------------------------------
+def test_day_entry_update_accepts_value_null():
+    """Desmarcar booleano: value=None é válido (allow_null)."""
+    serializer = HabitDayEntryUpdateSerializer(data={"value": None})
+    assert serializer.is_valid(), serializer.errors
+
+
+def test_day_entry_update_empty_is_valid():
+    serializer = HabitDayEntryUpdateSerializer(data={})
+    assert serializer.is_valid(), serializer.errors
+
+
+def test_day_entry_update_rejects_date_mutation():
+    serializer = HabitDayEntryUpdateSerializer(data={"date": "2026-03-02"})
+    assert not serializer.is_valid()
+    assert "date" in serializer.errors
+
+
+def test_day_entry_update_rejects_habit_mutation():
+    serializer = HabitDayEntryUpdateSerializer(data={"habit": str(uuid.uuid4())})
+    assert not serializer.is_valid()
+    assert "habit" in serializer.errors

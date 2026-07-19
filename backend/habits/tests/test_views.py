@@ -1,12 +1,18 @@
 """Testes de view/API de hábitos (AC1–AC4 + isolamento §6.7)."""
 
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 
 from core.calendar import today_for
 from core.tenant import tenant_context
-from habits.models import HabitVersion
-from habits.tests.factories import HabitFactory, HabitGroupFactory, HabitVersionFactory
+from habits.models import HabitDayEntry, HabitVersion
+from habits.services import create_habit
+from habits.tests.factories import (
+    HabitDayEntryFactory,
+    HabitFactory,
+    HabitGroupFactory,
+    HabitVersionFactory,
+)
 
 
 # --- grupos (AC4) --------------------------------------------------------------
@@ -151,3 +157,123 @@ def test_habits_are_tenant_scoped(auth_client, user, other_user):
         f"/api/habits/{other_habit.id}/", {"name": "Invadido"}, format="json"
     )
     assert patch.status_code == 404
+
+
+# ==============================================================================
+# Story 6.2 — tracker do dia (GET days / PATCH entry)
+# ==============================================================================
+
+
+def test_get_day_seeds_and_returns_tracker_payload(auth_client, user):
+    """GET default=hoje materializa (idempotente) e retorna o payload completo."""
+    with tenant_context(user):
+        group = HabitGroupFactory(user=user)
+        create_habit(
+            user=user, name="Água", group_id=group.id, type="boolean", weight=Decimal("1")
+        )
+
+    # response.data é snake_case (a camelização é feita só no renderer JSON).
+    response = auth_client.get("/api/habits/days/")
+    assert response.status_code == 200, response.data
+    assert response.data["date"] == today_for(user).isoformat()
+    assert response.data["total_completion"] == 0  # nada marcado ainda
+    assert len(response.data["entries"]) == 1
+    entry = response.data["entries"][0]
+    assert entry["name"] == "Água"
+    assert entry["value"] is None
+    assert entry["weight_at_time"] == "1.00"
+    assert len(response.data["groups"]) == 1
+
+    # Idempotência via HTTP: 2ª chamada não duplica linhas.
+    auth_client.get("/api/habits/days/")
+    with tenant_context(user):
+        assert HabitDayEntry.objects.filter(date=today_for(user)).count() == 1
+
+
+def test_get_day_weighted_completion(auth_client, user):
+    """Âncora ponderada exposta pela API: (1×1 + 0.4×2)/3 = 60%."""
+    day = date(2026, 3, 1)
+    with tenant_context(user):
+        group = HabitGroupFactory(user=user)
+        boolean = HabitFactory(user=user, group=group, type="boolean")
+        HabitDayEntryFactory(
+            user=user, habit=boolean, date=day, value=Decimal("1"),
+            weight_at_time=Decimal("1"),
+        )
+        numeric = HabitFactory(user=user, group=group, type="numeric")
+        HabitDayEntryFactory(
+            user=user, habit=numeric, date=day, value=Decimal("2500"),
+            weight_at_time=Decimal("2"), meta_at_time=Decimal("5000"),
+            bonus_at_time=Decimal("20"),
+        )
+
+    response = auth_client.get(f"/api/habits/days/?date={day.isoformat()}")
+    assert response.status_code == 200
+    assert response.data["total_completion"] == 60
+
+
+def test_get_day_invalid_date_returns_400(auth_client):
+    response = auth_client.get("/api/habits/days/?date=2026-13-99")
+    assert response.status_code == 400
+    assert "date" in response.data.get("fields", {})
+
+
+def test_patch_entry_marks_value(auth_client, user):
+    day = date(2026, 3, 1)
+    with tenant_context(user):
+        habit = HabitFactory(user=user, type="boolean")
+        entry = HabitDayEntryFactory(
+            user=user, habit=habit, date=day, value=None, weight_at_time=Decimal("1"),
+        )
+
+    response = auth_client.patch(
+        f"/api/habits/days/{entry.id}/", {"value": "1"}, format="json"
+    )
+    assert response.status_code == 200, response.data
+    assert Decimal(response.data["value"]) == Decimal("1")
+
+
+def test_patch_entry_corrects_weight_at_time(auth_client, user):
+    day = date(2026, 3, 1)
+    with tenant_context(user):
+        habit = HabitFactory(user=user, type="boolean")
+        entry = HabitDayEntryFactory(
+            user=user, habit=habit, date=day, weight_at_time=Decimal("1"),
+        )
+
+    # Envio camelCase (o parser aceita e converte para snake_case); resposta
+    # em response.data é snake_case.
+    response = auth_client.patch(
+        f"/api/habits/days/{entry.id}/", {"weightAtTime": "5"}, format="json"
+    )
+    assert response.status_code == 200
+    assert Decimal(response.data["weight_at_time"]) == Decimal("5")
+
+
+def test_patch_entry_rejects_identity_mutation(auth_client, user):
+    """Trocar habit/date de uma linha materializada é rejeitado (400)."""
+    day = date(2026, 3, 1)
+    with tenant_context(user):
+        habit = HabitFactory(user=user, type="boolean")
+        entry = HabitDayEntryFactory(
+            user=user, habit=habit, date=day, weight_at_time=Decimal("1"),
+        )
+
+    response = auth_client.patch(
+        f"/api/habits/days/{entry.id}/", {"date": "2026-03-02"}, format="json"
+    )
+    assert response.status_code == 400
+
+
+def test_patch_entry_other_tenant_returns_404(auth_client, user, other_user):
+    day = date(2026, 3, 1)
+    with tenant_context(other_user):
+        habit = HabitFactory(user=other_user, type="boolean")
+        entry = HabitDayEntryFactory(
+            user=other_user, habit=habit, date=day, weight_at_time=Decimal("1"),
+        )
+
+    response = auth_client.patch(
+        f"/api/habits/days/{entry.id}/", {"value": "1"}, format="json"
+    )
+    assert response.status_code == 404

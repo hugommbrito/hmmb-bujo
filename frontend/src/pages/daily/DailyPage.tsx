@@ -16,6 +16,7 @@ import { TaskDetailPanel } from '../../features/bujo/components/TaskDetailPanel'
 import { TaskRow } from '../../features/bujo/components/TaskRow'
 import { DailyLogSkeleton } from '../../features/bujo/components/DailyLogSkeleton'
 import { findTaskById } from '../../features/bujo/taskTree'
+import { HabitTracker } from '../../features/habits'
 import { useDailyData } from './useDailyData'
 
 export function DailyPage() {
@@ -90,6 +91,9 @@ export function DailyPage() {
           <WeeklyReviewBanner />
           <MonthlyReviewBanner />
           <CatchUpBanner />
+          {/* Fluxo da manhã (Épico 6): tracker de hábitos de hoje. Só no today
+              view — navegar dias passados de hábitos é 6.4. */}
+          <HabitTracker />
         </>
       )}
       <DayHeader logDate={logDate} pendingCount={pendingCount}>

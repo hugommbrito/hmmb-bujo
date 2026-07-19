@@ -14,7 +14,7 @@ from factory.django import DjangoModelFactory
 
 from accounts.tests.factories import UserFactory
 from core.tests.registry import register_isolation_case
-from habits.models import Habit, HabitGroup, HabitVersion
+from habits.models import Habit, HabitDayEntry, HabitGroup, HabitVersion
 
 
 class HabitGroupFactory(DjangoModelFactory):
@@ -56,6 +56,21 @@ class HabitVersionFactory(DjangoModelFactory):
     effective_from = factory.Sequence(lambda n: date(2026, 1, 1) + timedelta(days=n))
 
 
+class HabitDayEntryFactory(DjangoModelFactory):
+    class Meta:
+        model = HabitDayEntry
+
+    class Params:
+        user = factory.SubFactory(UserFactory)
+
+    user_id = factory.SelfAttribute("user.id")
+    habit = factory.LazyAttribute(lambda o: HabitFactory(user=o.user))
+    # Datas fixas + timedelta (guardrail AST proíbe date.today() neste arquivo).
+    date = factory.Sequence(lambda n: date(2026, 3, 1) + timedelta(days=n))
+    value = None
+    weight_at_time = Decimal("1.00")
+
+
 register_isolation_case(
     id="habits.HabitGroup",
     model=HabitGroup,
@@ -81,5 +96,18 @@ register_isolation_case(
         ),
         "weight": Decimal("1.00"),
         "effective_from": date(2026, 1, 1),
+    },
+)
+register_isolation_case(
+    id="habits.HabitDayEntry",
+    model=HabitDayEntry,
+    make=lambda: {
+        "habit": Habit.objects.create(
+            name="Hábito iso d",
+            type=Habit.Type.BOOLEAN,
+            group=HabitGroup.objects.create(name="Grupo iso d"),
+        ),
+        "date": date(2026, 3, 1),
+        "weight_at_time": Decimal("1.00"),
     },
 )

@@ -34,6 +34,7 @@ export const keys = {
     list: (params?: { includeInactive?: boolean }) =>
       ['habits', 'list', params ?? {}] as const,
     groups: () => ['habits', 'groups', 'list'] as const,
+    day: (date?: string) => ['habits', 'day', date ?? 'today'] as const,
   },
   // Adicionados nas stories:
   // health: { logs: { ... } }  → Story 7.x

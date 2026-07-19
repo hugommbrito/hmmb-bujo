@@ -59,6 +59,8 @@ const GET_DEFAULTS: Record<string, unknown> = {
   '/api/bujo/weekly-review/queue/': { weekStart: '2026-06-08', tasks: [] },
   '/api/bujo/monthly-review/queue/': { monthFirst: '2026-06-01', tasks: [] },
   '/api/bujo/catch-up/queue/': { monthlyTasks: [], weeklyTasks: [], dailyTasks: [] },
+  // HabitTracker do fluxo da manhã (Story 6.2) — dia vazio por padrão.
+  '/api/habits/days/': { date: '2026-06-15', totalCompletion: 0, groups: [], entries: [] },
 }
 let getPersistent: Record<string, unknown> = {}
 let getOnceQueues: Record<string, unknown[]> = {}

@@ -2023,3 +2023,88 @@ Rodado contra o stack real (`npm run dev` + `manage.py runserver` sob `config.se
 
 - Nenhum gap bloqueante identificado. Cobertura da Story 5.3 considerada completa para o escopo desta story — encerra o Épico 5.
 - Se o uso real indicar necessidade de cobertura automatizada do swipe-down, avaliar um plugin de gestos para o Playwright (fora do escopo desta story).
+
+---
+
+# Resumo de Automação de Testes — Story 6.2
+
+**Data:** 2026-07-19
+**Story:** 6.2 — Tracker diário com snapshot imutável e completude ponderada
+**Framework:** Playwright 1.x (E2E de browser real contra `npm run dev` + Django `config.settings.e2e`, branch Neon `e2e`) — sem mocks de rede
+
+## Contexto / Gap Identificado
+
+O tracker de hábitos (fluxo da manhã em `/today` + superfície `/habits`) entregue pela Story 6.2 **não tinha nenhuma cobertura E2E** — nem a 6.1 nem a 6.2 haviam criado um `.spec.ts` de hábitos. A suíte unitária de backend (`habits/tests/*`, 496 testes) e os testes de componente/hook de frontend (`HabitTracker.test.tsx`, `api.test.tsx`, que **mockam** a API) já cobriam a lógica isolada, mas faltava exercitar a cadeia real: **config prospectiva (6.1) → materialização do snapshot no GET → marcação otimista gravada → completude ponderada calculada no backend → persistência entre recarregamentos, sem sangramento**.
+
+Gap fechado: **1 arquivo de spec novo (2 testes) + 1 seed helper novo**, cobrindo AC1/AC2/AC3 ponta-a-ponta contra o Neon real.
+
+## Testes Gerados
+
+### Testes E2E — Playwright (browser real, sem mocks)
+
+| Arquivo | Testes | AC Cobertos |
+|---------|--------|-------------|
+| `frontend/e2e/habit-tracker.spec.ts` | 2 | AC1, AC2, AC3 |
+| `frontend/e2e/seedHabits.ts` (helper) | — | seed de config via `create_habit_group`/`create_habit` (camada de serviço, `effective_from = hoje`) |
+
+**Teste 1 — estado vazio (AC2):** usuário recém-criado (sem hábitos) vê o tracker do fluxo da manhã em `/today` com o header "Hábitos", "Completude do dia: 0%" e o empty state honesto "Nenhum hábito ativo hoje." (sem gamificação); a superfície `/habits` mostra o mesmo tracker.
+
+**Teste 2 — materialização, marcação, completude ponderada e persistência (AC1, AC2, AC3):** semeia o **exemplo âncora das Dev Notes** (grupo "Saúde" + booleano "Meditar" peso 1 + numérico "Passos" peso 2, meta 5000, bonus 20%, unidade "passos") e verifica, em sequência real:
+- **AC1** — a 1ª abertura do dia materializa uma linha por hábito ativo com `value` nulo (linha numérica exibe "0 / 5.000 passos" sem %).
+- **AC2** — booleano = checkbox; marcar grava `value=1` (otimista); numérico = campo + registrar 2500 mostra **"2.500 / 5.000 passos (50%)"**; atingir a meta (5000) mostra **"Meta atingida"**; cabeçalho de grupo com % ponderado + total no topo.
+- **AC3** — completude ponderada `Σ(contrib×peso)/Σ(peso)` visível e correta: **33%** (só booleano), **60%** (âncora: `(1×1 + 0,4×2)/3`), **100%** (meta batida). Edição avulsa (desmarcar em `/habits`) recalcula **só aquele dia** → **67%**. O mesmo snapshot aparece em `/today` e `/habits` (server state único).
+- **AC1 (persistência/idempotência)** — voltar para `/today` e **recarregar** mantém 67% e "Meta atingida": o 2º `seed_habit_day` da reabertura **não recria nem sobrescreve** as linhas já materializadas.
+- **Guarda de regressão:** `consoleErrors == []` (sem erros de console/página durante todo o fluxo).
+
+## Cobertura por AC (pós-run)
+
+| AC | Critério | Coberto por |
+|----|----------|-------------|
+| AC1 | Materialização ansiosa por dia (`seed_habit_day` no GET), 1 linha por ativo, `value` nulo | `habit-tracker.spec.ts` (T2, linha "0 / 5.000 passos") + unit backend `test_services.py` |
+| AC1 | Idempotência: reabrir o dia não recria/sobrescreve valores editados | `habit-tracker.spec.ts` (T2, reload mantém 67% + "Meta atingida") + unit backend |
+| AC1 | Dia pulado usa a versão daquele dia (não a de hoje) | unit backend `test_services.py` (não navegável na UI de 6.2 — histórico é 6.4) |
+| AC2 | Linhas agrupadas por grupo, % do grupo + total no topo | `habit-tracker.spec.ts` (T2, heading `Saúde · X%` + "Completude do dia: X%") |
+| AC2 | Booleano = checkbox; numérico = campo + unidade + "% da meta"/"Meta atingida" | `habit-tracker.spec.ts` (T2) + componente `HabitTracker.test.tsx` (pré-existente) |
+| AC2 | Marcação com resposta otimista gravada em `value` | `habit-tracker.spec.ts` (T2, PATCH + reconciliação) + `api.test.tsx` (rollback, pré-existente) |
+| AC2 | Empty state honesto (sem hábitos ativos) | `habit-tracker.spec.ts` (T1) |
+| AC3 | Completude ponderada correta (exemplo âncora = 60%) | `habit-tracker.spec.ts` (T2) + unit backend `test_services.py` |
+| AC3 | Edição avulsa (desmarcar) recalcula só aquele dia, não sangra | `habit-tracker.spec.ts` (T2, 67% + persistência) + unit backend (`habit_versions` intacto) |
+| AC3 | Widget acoplado ao fluxo da manhã do Daily Log + superfície `/habits` | `habit-tracker.spec.ts` (T1 e T2, mesmo snapshot em `/today` e `/habits`) |
+
+## Resultado da Execução (Node 22.15.1)
+
+```
+npx eslint e2e/habit-tracker.spec.ts e2e/seedHabits.ts
+  ✔ limpo (exit 0)
+
+npx playwright test habit-tracker.spec.ts --reporter=list
+  ✓ tracker de um usuário sem hábitos mostra o estado vazio em /today e /habits (AC2)   (5.9s)
+  ✓ materializa, marca e calcula a completude ponderada; o snapshot persiste e
+    não sangra (AC1, AC2, AC3)                                                           (31.5s)
+  2 passed (43.3s)
+```
+
+Rodado contra o stack real (`npm run dev` na 5173 + `manage.py runserver` sob `config.settings.e2e`, branch Neon `e2e` dedicada — migration `habits.0002` já aplicada). Logs do servidor confirmaram o fluxo real: `GET /api/habits/days/` (materialização/leitura), `PATCH /api/habits/days/{id}/` (marcação), e o refetch de reconciliação da completude. Backend **não** reexecutado — nenhum arquivo `backend/` foi tocado por este ciclo de QA (só specs/helpers E2E).
+
+## Checklist de Validação
+
+- [x] Testes E2E gerados (UI existe) — 2 testes novos fechando o gap total do tracker de hábitos (AC1/AC2/AC3)
+- [x] API tests: N/A como arquivo novo — o contrato `GET/PATCH /api/habits/days/` já é coberto pela suíte de backend da 6.2 (`test_views.py`/`test_services.py`, 496 testes) e é exercitado de verdade por estes E2E (sem mock)
+- [x] Usam APIs padrão do framework já adotado (Playwright + fixtures/seed do projeto) — nenhuma ferramenta nova
+- [x] Cobrem happy path (marcar, registrar numérico, meta atingida) + casos de borda (estado vazio, desmarcar/edição avulsa, persistência entre reloads)
+- [x] Ambos os testes passam (2 passed) contra o backend real
+- [x] Locators semânticos/acessíveis (`getByRole('heading'/'checkbox'/'spinbutton'/'button')`, texto visível) — sem seletores frágeis de CSS
+- [x] Descrições claras em pt-BR, seguindo a convenção de prosa dos `.spec.ts` do projeto
+- [x] Sem waits/sleeps artificiais — só web-first assertions (`expect(...).toBeVisible/toBeChecked/toContainText`) com auto-retry aguardando o round-trip real
+- [x] Testes independentes (cada teste cria um usuário novo via signup; T2 semeia sua própria config)
+- [x] Summary salvo em `_bmad-output/implementation-artifacts/tests/test-summary.md`
+
+## Limites de Cobertura (por design, não gaps)
+
+- **Navegação por histórico / dias passados / dia pulado na UI:** é a Story 6.4 (a 6.2 mostra só hoje). A regra "dia pulado usa a versão daquele dia" e "UPDATE avulso de um dia passado não sangra para vizinhos" fica coberta pela suíte **unitária** de backend, não por E2E (não há UI de navegação de datas em 6.2).
+- **Multiplicador por tipo de dia (peso efetivo):** Story 6.3 — fora do escopo; a completude de 6.2 usa só `weight_at_time`.
+- **Assert "otimista antes do servidor" com Promise deferida:** é responsabilidade do teste de hook (`api.test.tsx`, pré-existente); o E2E valida o resultado observável (marca → grava → completude reconciliada), não o timing interno.
+
+## Próximos Passos
+
+- Nenhum gap bloqueante identificado para a Story 6.2. Quando a Story 6.4 entregar a navegação por datas, estender `habit-tracker.spec.ts` (ou criar `habit-history.spec.ts`) para exercitar E2E o "dia pulado" e a edição avulsa de um dia passado — hoje só cobertos por unit de backend.

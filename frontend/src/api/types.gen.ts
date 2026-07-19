@@ -523,6 +523,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/habits/days/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description Tracker do dia (snapshot realizado, Story 6.2).
+         *
+         *     ``GET`` materializa (idempotente) as linhas do dia via ``seed_habit_day`` e
+         *     retorna ``{date, totalCompletion, groups, entries}`` (default = hoje).
+         */
+        get: operations["habits_days_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/habits/days/{id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** @description Marcação e correção avulsa de uma linha do dia (UPDATE só naquela linha). */
+        patch: operations["habits_days_partial_update"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -605,6 +644,7 @@ export interface components {
             /** Format: uuid */
             group: string;
             type: components["schemas"]["HabitTypeEnum"];
+            unit?: string;
             /** Format: decimal */
             readonly weight: string;
             readonly active: boolean;
@@ -619,6 +659,8 @@ export interface components {
             name: string;
             /** @default  */
             emoticon: string;
+            /** @default  */
+            unit: string;
             /** Format: uuid */
             group: string;
             type: components["schemas"]["HabitTypeEnum"];
@@ -628,6 +670,48 @@ export interface components {
             meta?: string | null;
             /** Format: decimal */
             bonus?: string | null;
+        };
+        /** @description Payload do tracker do dia: % total, % por grupo e as linhas. */
+        HabitDay: {
+            /** Format: date */
+            date: string;
+            totalCompletion: number;
+            groups: components["schemas"]["HabitDayGroup"][];
+            entries: components["schemas"]["HabitDayEntry"][];
+        };
+        /**
+         * @description Uma linha do tracker do dia: identidade do hábito + snapshot congelado.
+         *
+         *     Expõe a identidade do hábito (``name``/``emoticon``/``type``/``group``/``unit``)
+         *     junto do estado do dia (``value``/``*_at_time``). ``type`` reusa ``HabitTypeEnum``
+         *     via ``ChoiceField`` (mesmo override de enum da 6.1).
+         */
+        HabitDayEntry: {
+            /** Format: uuid */
+            readonly id: string;
+            /** Format: uuid */
+            readonly habitId: string;
+            readonly name: string;
+            readonly emoticon: string;
+            readonly type: components["schemas"]["HabitTypeEnum"];
+            /** Format: uuid */
+            readonly group: string;
+            readonly unit: string;
+            /** Format: decimal */
+            value?: string | null;
+            /** Format: decimal */
+            weightAtTime: string;
+            /** Format: decimal */
+            metaAtTime?: string | null;
+            /** Format: decimal */
+            bonusAtTime?: string | null;
+        };
+        /** @description Cabeçalho de grupo do tracker: nome + % ponderado do grupo. */
+        HabitDayGroup: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            completion: number;
         };
         HabitGroup: {
             /** Format: uuid */
@@ -708,6 +792,23 @@ export interface components {
         };
         /** @enum {unknown} */
         NullEnum: null;
+        /**
+         * @description PATCH de uma linha: marcar/desmarcar ``value`` e/ou correção avulsa.
+         *
+         *     ``value`` ``allow_null`` (desmarcar booleano → None). ``weightAtTime``/
+         *     ``metaAtTime``/``bonusAtTime`` opcionais (correção de dia passado). ``habit``/
+         *     ``date`` são identidade imutável do snapshot — enviá-los é rejeitado (400).
+         */
+        PatchedHabitDayEntryUpdate: {
+            /** Format: decimal */
+            value?: string | null;
+            /** Format: decimal */
+            weightAtTime?: string;
+            /** Format: decimal */
+            metaAtTime?: string | null;
+            /** Format: decimal */
+            bonusAtTime?: string | null;
+        };
         PatchedHabitGroupUpdate: {
             name?: string;
         };
@@ -715,6 +816,7 @@ export interface components {
         PatchedHabitUpdate: {
             name?: string;
             emoticon?: string;
+            unit?: string;
             /** Format: uuid */
             group?: string;
         };
@@ -1746,6 +1848,53 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HabitVersion"];
+                };
+            };
+        };
+    };
+    habits_days_retrieve: {
+        parameters: {
+            query?: {
+                /** @description Dia do tracker (YYYY-MM-DD). Default = hoje do usuário. */
+                date?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HabitDay"];
+                };
+            };
+        };
+    };
+    habits_days_partial_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PatchedHabitDayEntryUpdate"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HabitDayEntry"];
                 };
             };
         };

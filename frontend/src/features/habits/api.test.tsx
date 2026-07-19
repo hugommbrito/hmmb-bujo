@@ -8,15 +8,18 @@ vi.mock('../../api/client', () => ({
 }))
 
 import client from '../../api/client'
+import { keys } from '../../api/keys'
 import {
   useAddHabitVersionMutation,
   useCreateHabitGroupMutation,
   useCreateHabitMutation,
+  useHabitDayQuery,
   useHabitGroupsQuery,
   useHabitsQuery,
+  useMarkHabitEntryMutation,
   useUpdateHabitIdentityMutation,
 } from './api'
-import type { Habit, HabitGroup } from './types'
+import type { Habit, HabitDay, HabitDayEntry, HabitGroup } from './types'
 
 const mockGet = client.get as ReturnType<typeof vi.fn>
 const mockPost = client.post as ReturnType<typeof vi.fn>
@@ -48,6 +51,27 @@ const HABIT: Habit = {
 }
 
 const GROUP: HabitGroup = { id: 'group-1', name: 'Saúde', displayOrder: 0 }
+
+const ENTRY: HabitDayEntry = {
+  id: 'entry-1',
+  habitId: 'habit-1',
+  name: 'Ler',
+  emoticon: '📖',
+  type: 'boolean',
+  group: 'group-1',
+  unit: '',
+  value: null,
+  weightAtTime: '1.00',
+  metaAtTime: null,
+  bonusAtTime: null,
+}
+
+const HABIT_DAY: HabitDay = {
+  date: '2026-07-17',
+  totalCompletion: 0,
+  groups: [{ id: 'group-1', name: 'Saúde', completion: 0 }],
+  entries: [ENTRY],
+}
 
 describe('useHabitsQuery', () => {
   beforeEach(() => vi.resetAllMocks())
@@ -174,5 +198,87 @@ describe('useCreateHabitGroupMutation', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
     expect(mockPost).toHaveBeenCalledWith('/api/habit-groups/', { name: 'Saúde' })
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['habits'] })
+  })
+})
+
+// --- Story 6.2 — tracker do dia ----------------------------------------------
+
+describe('useHabitDayQuery', () => {
+  beforeEach(() => vi.resetAllMocks())
+
+  it('busca o tracker de hoje (sem params)', async () => {
+    const { qc, wrapper } = makeWrapper()
+    mockGet.mockResolvedValueOnce({ data: HABIT_DAY })
+
+    const { result } = renderHook(() => useHabitDayQuery(), { wrapper })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(mockGet).toHaveBeenCalledWith('/api/habits/days/', { params: undefined })
+    expect(result.current.data).toEqual(HABIT_DAY)
+    expect(qc.getQueryData(keys.habits.day())).toEqual(HABIT_DAY)
+  })
+
+  it('passa a data como query param quando informada', async () => {
+    const { wrapper } = makeWrapper()
+    mockGet.mockResolvedValueOnce({ data: HABIT_DAY })
+
+    const { result } = renderHook(() => useHabitDayQuery('2026-03-01'), { wrapper })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(mockGet).toHaveBeenCalledWith('/api/habits/days/', {
+      params: { date: '2026-03-01' },
+    })
+  })
+})
+
+describe('useMarkHabitEntryMutation', () => {
+  beforeEach(() => vi.resetAllMocks())
+
+  it('faz PATCH do value e invalida a chave do dia no settled', async () => {
+    const { qc, wrapper } = makeWrapper()
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+    mockPatch.mockResolvedValueOnce({ data: { ...ENTRY, value: '1' } })
+
+    const { result } = renderHook(() => useMarkHabitEntryMutation(), { wrapper })
+    result.current.mutate({ entryId: 'entry-1', value: '1' })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(mockPatch).toHaveBeenCalledWith('/api/habits/days/entry-1/', { value: '1' })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.habits.day() })
+  })
+
+  it('atualiza o value da linha otimisticamente antes da resposta do servidor', async () => {
+    const { qc, wrapper } = makeWrapper()
+    qc.setQueryData(keys.habits.day(), HABIT_DAY)
+    let resolvePatch: (value: { data: HabitDayEntry }) => void = () => {}
+    mockPatch.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolvePatch = resolve
+      }),
+    )
+
+    const { result } = renderHook(() => useMarkHabitEntryMutation(), { wrapper })
+    result.current.mutate({ entryId: 'entry-1', value: '1' })
+
+    await waitFor(() => {
+      const cached = qc.getQueryData<HabitDay>(keys.habits.day())
+      expect(cached?.entries[0].value).toBe('1')
+    })
+
+    resolvePatch({ data: { ...ENTRY, value: '1' } })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+  })
+
+  it('reverte o value otimista em caso de erro (rollback)', async () => {
+    const { qc, wrapper } = makeWrapper()
+    qc.setQueryData(keys.habits.day(), HABIT_DAY)
+    mockPatch.mockRejectedValueOnce(new Error('falha de rede'))
+
+    const { result } = renderHook(() => useMarkHabitEntryMutation(), { wrapper })
+    result.current.mutate({ entryId: 'entry-1', value: '1' })
+
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    const cached = qc.getQueryData<HabitDay>(keys.habits.day())
+    expect(cached?.entries[0].value).toBeNull()
   })
 })

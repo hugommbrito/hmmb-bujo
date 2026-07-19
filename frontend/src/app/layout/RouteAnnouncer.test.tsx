@@ -44,6 +44,13 @@ vi.mock('../../features/braindump', () => ({
     open ? <div>capture sheet aberto</div> : null,
 }))
 
+// HabitTracker (DailyPage, Story 6.2) e useHabitDayQuery (via useDailyData) usam
+// TanStack Query direto — mesmo motivo dos mocks acima, sem QueryClientProvider aqui.
+vi.mock('../../features/habits', () => ({
+  useHabitDayQuery: () => ({ isPending: false, data: undefined }),
+  HabitTracker: () => null,
+}))
+
 // Mock useMediaQuery to avoid jsdom matchMedia issues — força branch desktop/tablet (Sidebar visível)
 vi.mock('@mui/material', async (importOriginal) => {
   const original = await importOriginal<typeof import('@mui/material')>()

@@ -47,6 +47,10 @@ class Habit(TenantModel):
     emoticon = models.CharField(max_length=16, blank=True)
     group = models.ForeignKey(HabitGroup, on_delete=models.PROTECT, related_name="habits")
     type = models.CharField(max_length=8, choices=HabitType.choices)
+    # Unidade de exibição do hábito numérico (ex.: "passos", "min"). Identidade
+    # (não versionada, cosmético como name/emoticon) — só numéricos a usam, mas
+    # o campo mora em Habit por ser identidade. Story 6.2, decisão da unit.
+    unit = models.CharField(max_length=32, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -86,5 +90,50 @@ class HabitVersion(TenantModel):
             models.UniqueConstraint(
                 fields=["habit", "effective_from"],
                 name="uniq_habit_version_per_day",
+            ),
+        ]
+
+
+class HabitDayEntry(TenantModel):
+    """Snapshot realizado, congelado e editável por dia (AD-06 — camada da 6.2).
+
+    Uma linha por hábito ativo por dia, materializada na 1ª abertura do dia via
+    ``seed_habit_day`` (gap-fill idempotente), semeando ``*_at_time`` da versão
+    vigente naquele dia (``current_version_of``). ``value`` nulo = não-feito;
+    booleano marcado = ``1``. Espelha exatamente as escalas de ``HabitVersion``.
+
+    Distinção crítica (AD-06 item 6): mudar config = INSERT de ``HabitVersion``
+    (prospectivo, não sangra); corrigir um dia passado = UPDATE **só nesta linha**
+    (avulso, não toca ``habit_versions``, só aquele dia recalcula).
+
+    Também herda ``TenantModel`` (UUID PK + ``user_id`` denormalizado + auto-scope):
+    a AD-06 desenha PK composta ``(user_id, habit_id, date)``, mas o projeto exige
+    UUID PK + ``user_id`` indexado em toda tabela tenant (§6.1/AD-12), então a
+    unicidade vira ``UniqueConstraint(habit, date)`` — mesma reconciliação que a
+    6.1 fez para ``habit_versions``.
+
+    Projetar para 6.3: a 6.3 acrescentará ``day_type`` + ``multiplier_at_time``
+    (nova migration 0003) para ``peso_efetivo = weight_at_time × multiplier_at_time``.
+    Não criar essas colunas agora; o cálculo de completude isola ``weight_at_time``
+    de forma que a 6.3 possa multiplicá-lo sem reescrever a fórmula.
+    """
+
+    habit = models.ForeignKey(Habit, on_delete=models.CASCADE, related_name="day_entries")
+    date = models.DateField()
+    # nulo = não-feito; booleano marcado = 1. Espelha as escalas de HabitVersion.
+    value = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    weight_at_time = models.DecimalField(max_digits=6, decimal_places=2)
+    # meta/bonus só se aplicam a hábitos numéricos (null para booleanos).
+    meta_at_time = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    bonus_at_time = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "habit_day_entries"
+        ordering = ["date", "habit"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["habit", "date"],
+                name="uniq_habit_day_entry_per_day",
             ),
         ]

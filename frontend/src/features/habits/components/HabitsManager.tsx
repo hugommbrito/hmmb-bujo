@@ -21,6 +21,7 @@ import {
   useCreateHabitMutation,
   useHabitGroupsQuery,
   useHabitsQuery,
+  useUpdateHabitIdentityMutation,
 } from '../api'
 import type { Habit, HabitGroup, HabitType } from '../types'
 
@@ -42,10 +43,12 @@ interface HabitRowProps {
 // nova versão prospectiva (AC2). O toggle Desativar/Ativar também insere versão (AC3).
 function HabitRow({ habit }: HabitRowProps) {
   const addVersion = useAddHabitVersionMutation()
+  const updateIdentity = useUpdateHabitIdentityMutation()
   const [editing, setEditing] = useState(false)
   const [weight, setWeight] = useState(habit.weight)
   const [meta, setMeta] = useState(habit.meta ?? '')
   const [bonus, setBonus] = useState(habit.bonus ?? '')
+  const [unit, setUnit] = useState(habit.unit ?? '')
   const isNumeric = habit.type === 'numeric'
 
   function handleSave() {
@@ -59,6 +62,10 @@ function HabitRow({ habit }: HabitRowProps) {
       },
       { onSuccess: () => setEditing(false) },
     )
+    // Unidade é identidade (não versionada) → UPDATE direto, mutation separada.
+    if (isNumeric && unit.trim() !== (habit.unit ?? '')) {
+      updateIdentity.mutate({ habitId: habit.id, unit: unit.trim() })
+    }
   }
 
   function handleToggleActive() {
@@ -113,6 +120,14 @@ function HabitRow({ habit }: HabitRowProps) {
                   onChange={(event) => setBonus(event.target.value)}
                   InputProps={{ endAdornment: <InputAdornment position="end">%</InputAdornment> }}
                   inputProps={{ 'aria-label': `Bonus de ${habit.name}` }}
+                />
+                <TextField
+                  label="Unidade"
+                  size="small"
+                  value={unit}
+                  onChange={(event) => setUnit(event.target.value)}
+                  inputProps={{ 'aria-label': `Unidade de ${habit.name}` }}
+                  sx={{ width: 120 }}
                 />
               </>
             )}
@@ -184,6 +199,7 @@ export function HabitsManager() {
   const [weight, setWeight] = useState('')
   const [meta, setMeta] = useState('')
   const [bonus, setBonus] = useState('')
+  const [unit, setUnit] = useState('')
 
   const groups = groupsQuery.data ?? []
   const habits = habitsQuery.data ?? []
@@ -208,7 +224,11 @@ export function HabitsManager() {
         type,
         weight: weight.trim(),
         ...(type === 'numeric'
-          ? { meta: meta === '' ? null : meta, bonus: bonus === '' ? null : bonus }
+          ? {
+              meta: meta === '' ? null : meta,
+              bonus: bonus === '' ? null : bonus,
+              unit: unit.trim(),
+            }
           : {}),
       },
       {
@@ -218,6 +238,7 @@ export function HabitsManager() {
           setWeight('')
           setMeta('')
           setBonus('')
+          setUnit('')
           setType('boolean')
         },
       },
@@ -349,6 +370,14 @@ export function HabitsManager() {
               value={bonus}
               onChange={(event) => setBonus(event.target.value)}
               InputProps={{ endAdornment: <InputAdornment position="end">%</InputAdornment> }}
+              sx={{ width: 120 }}
+            />
+            <TextField
+              label="Unidade"
+              size="small"
+              value={unit}
+              onChange={(event) => setUnit(event.target.value)}
+              placeholder="passos, min…"
               sx={{ width: 120 }}
             />
           </>

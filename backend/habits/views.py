@@ -1,14 +1,20 @@
 """Views finas do Sistema de Hábitos (§6.2): validam → chamam o serviço → serializam."""
 
+from datetime import date as date_cls
+
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import serializers, status
 from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from habits.models import Habit, HabitGroup
+from core.calendar import today_for
+from habits.models import Habit, HabitDayEntry, HabitGroup
 from habits.serializers import (
     HabitCreateSerializer,
+    HabitDayEntrySerializer,
+    HabitDayEntryUpdateSerializer,
+    HabitDaySerializer,
     HabitGroupCreateSerializer,
     HabitGroupSerializer,
     HabitGroupUpdateSerializer,
@@ -19,10 +25,13 @@ from habits.serializers import (
 )
 from habits.services import (
     add_habit_version,
+    compute_day_completeness,
     create_habit,
     create_habit_group,
     list_habit_groups,
     list_habits,
+    seed_habit_day,
+    update_habit_day_entry,
     update_habit_identity,
 )
 
@@ -120,3 +129,63 @@ class HabitVersionCreateView(APIView):
         return Response(
             HabitVersionSerializer(version).data, status=status.HTTP_201_CREATED
         )
+
+
+class HabitDayView(APIView):
+    """Tracker do dia (snapshot realizado, Story 6.2).
+
+    ``GET`` materializa (idempotente) as linhas do dia via ``seed_habit_day`` e
+    retorna ``{date, totalCompletion, groups, entries}`` (default = hoje).
+    """
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="date", type=str, required=False,
+                description="Dia do tracker (YYYY-MM-DD). Default = hoje do usuário.",
+            )
+        ],
+        responses=HabitDaySerializer,
+    )
+    def get(self, request):
+        raw = request.query_params.get("date")
+        if raw:
+            try:
+                day = date_cls.fromisoformat(raw)
+            except ValueError:
+                raise serializers.ValidationError(
+                    {"date": "Data inválida. Use o formato YYYY-MM-DD."}
+                ) from None
+        else:
+            day = today_for(request.user)
+
+        seed_habit_day(user=request.user, date=day)
+        completeness = compute_day_completeness(user=request.user, date=day)
+        entries = HabitDayEntry.objects.filter(date=day).select_related(
+            "habit", "habit__group"
+        )
+        payload = {
+            "date": day,
+            "total_completion": completeness["total"],
+            "groups": completeness["groups"],
+            "entries": entries,
+        }
+        return Response(HabitDaySerializer(payload).data)
+
+
+class HabitDayEntryDetailView(APIView):
+    """Marcação e correção avulsa de uma linha do dia (UPDATE só naquela linha)."""
+
+    @extend_schema(
+        request=HabitDayEntryUpdateSerializer, responses=HabitDayEntrySerializer
+    )
+    def patch(self, request, pk):
+        body = HabitDayEntryUpdateSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        try:
+            entry = update_habit_day_entry(
+                user=request.user, entry_id=pk, **body.validated_data
+            )
+        except HabitDayEntry.DoesNotExist:
+            raise NotFound() from None
+        return Response(HabitDayEntrySerializer(entry).data)
