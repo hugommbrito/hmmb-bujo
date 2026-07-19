@@ -700,6 +700,54 @@ export interface paths {
         patch: operations["health_field_definitions_partial_update"];
         trace?: never;
     };
+    "/api/health-logs/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * @description Upsert-merge validado do dia (Story 7.2, AC1/AC4): ``PUT /api/health-logs/``.
+         *
+         *     Body ``{date, values}`` → grava só se **todos** os valores forem válidos
+         *     (validação atômica na camada de serviço contra as definições ativas). Merge:
+         *     preserva chaves não submetidas (inclusive de campos inativos — AC4). ``DomainError``
+         *     da validação de conteúdo vira 409 (``custom_exception_handler``).
+         */
+        put: operations["health_logs_update"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/health-logs/daily/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description Read-model do ritual matinal (Story 7.2, AC3): ``GET /api/health-logs/daily/``.
+         *
+         *     Retorna ``{yesterday, today, fields}`` — **ontem no topo, hoje abaixo**. As datas
+         *     são resolvidas pela autoridade temporal do servidor (``today_for``, fuso do
+         *     usuário); o frontend nunca calcula "ontem". Espelha o precedente ``HabitDayView``
+         *     (GET read-model resolvendo o dia; escrita separada).
+         */
+        get: operations["health_logs_daily_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1003,6 +1051,28 @@ export interface components {
             effectiveFrom: string;
             changes: components["schemas"]["HabitChange"][];
         };
+        /**
+         * @description Read-model do ritual matinal (AC3): ``{yesterday, today, fields}``.
+         *
+         *     ``yesterday``/``today`` são ``{date, values}`` (datas resolvidas pelo servidor via
+         *     ``today_for``); ``fields`` são as definições **ativas** (reuso do serializer de
+         *     7.1). ``fields`` é um nome de field declarado — o ``SerializerMetaclass`` o move
+         *     para ``_declared_fields`` (``attrs.pop``), então não colide com a property
+         *     ``Serializer.fields``.
+         */
+        HealthDaily: {
+            yesterday: components["schemas"]["HealthDaySection"];
+            today: components["schemas"]["HealthDaySection"];
+            fields: components["schemas"]["HealthFieldDefinition"][];
+        };
+        /** @description Uma seção do ritual (``yesterday``/``today``): a data + os valores do dia. */
+        HealthDaySection: {
+            /** Format: date */
+            date: string;
+            values: {
+                [key: string]: number | boolean | string;
+            };
+        };
         /** @description Entrada de criação (AC1, AC3). Valida a regra enum⇔opções (→ 400). */
         HealthFieldCreate: {
             name: string;
@@ -1029,6 +1099,29 @@ export interface components {
          * @enum {string}
          */
         HealthFieldTypeEnum: "integer" | "decimal" | "boolean" | "enum" | "text";
+        /** @description Saída de uma linha upsertada (resposta do ``PUT``): ``{id, date, values}``. */
+        HealthLog: {
+            /** Format: uuid */
+            readonly id: string;
+            /** Format: date */
+            date: string;
+            values: {
+                [key: string]: number | boolean | string;
+            };
+        };
+        /**
+         * @description Entrada do ``PUT`` (AC1): ``{date, values}``. Só valida **forma**.
+         *
+         *     O conteúdo de ``values`` (tipo por campo, UUID ativo, atomicidade) é validado na
+         *     camada de serviço (``upsert_health_log``) contra as definições do tenant (§6.4).
+         */
+        HealthLogWrite: {
+            /** Format: date */
+            date: string;
+            values: {
+                [key: string]: number | boolean | string;
+            };
+        };
         /** @description Resultado do toggle de feriado: a data + o tipo de dia re-resolvido. */
         HolidayResult: {
             /** Format: date */
@@ -2421,6 +2514,48 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthFieldDefinition"];
+                };
+            };
+        };
+    };
+    health_logs_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HealthLogWrite"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthLog"];
+                };
+            };
+        };
+    };
+    health_logs_daily_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthDaily"];
                 };
             };
         };

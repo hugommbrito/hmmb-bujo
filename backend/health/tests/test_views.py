@@ -5,13 +5,18 @@ O wire é camelCase: os bodies enviam ``fieldType``/``enumOptions``/``displayOrd
 só acontece no renderer JSON).
 """
 
+import json
 import uuid
+from datetime import timedelta
 
+from core.calendar import today_for
 from core.tenant import tenant_context
-from health.models import HealthFieldDefinition, HealthFieldType
+from health.models import HealthFieldDefinition, HealthFieldType, HealthLog
 from health.tests.factories import HealthFieldDefinitionFactory
 
 _URL = "/api/health-field-definitions/"
+_LOGS_URL = "/api/health-logs/"
+_DAILY_URL = "/api/health-logs/daily/"
 
 
 # --- lista ---------------------------------------------------------------------
@@ -153,3 +158,112 @@ def test_fields_are_tenant_scoped(auth_client, user, other_user):
         f"{_URL}{alheio.id}/", {"name": "Invadido"}, format="json"
     )
     assert patch.status_code == 404
+
+
+# ===============================================================================
+# Story 7.2 — /api/health-logs/ (PUT upsert) e /daily/ (GET read-model)
+# ===============================================================================
+
+
+# --- PUT upsert (AC1) ----------------------------------------------------------
+def test_put_upserts_and_get_daily_reflects(auth_client, user):
+    with tenant_context(user):
+        field = HealthFieldDefinitionFactory(user=user, field_type=HealthFieldType.DECIMAL)
+        today = today_for(user)
+
+    resp = auth_client.put(
+        _LOGS_URL,
+        {"date": today.isoformat(), "values": {str(field.id): 88.5}},
+        format="json",
+    )
+    assert resp.status_code == 200, resp.data
+    # response.data é snake_case e o dict `values` mantém a chave UUID crua.
+    assert resp.data["values"] == {str(field.id): 88.5}
+
+    daily = auth_client.get(_DAILY_URL)
+    assert daily.status_code == 200
+    body = json.loads(daily.content)  # JSON renderizado (camelCase na borda)
+    assert body["today"]["values"][str(field.id)] == 88.5
+
+
+def test_put_missing_date_returns_400(auth_client):
+    resp = auth_client.put(_LOGS_URL, {"values": {}}, format="json")
+    assert resp.status_code == 400
+    assert "date" in resp.data.get("fields", {})
+
+
+def test_put_invalid_value_type_returns_409(auth_client, user):
+    """Tipo incompatível é rejeitado no serviço (DomainError → 409)."""
+    with tenant_context(user):
+        field = HealthFieldDefinitionFactory(user=user, field_type=HealthFieldType.INTEGER)
+        today = today_for(user)
+    resp = auth_client.put(
+        _LOGS_URL,
+        {"date": today.isoformat(), "values": {str(field.id): 1.5}},
+        format="json",
+    )
+    assert resp.status_code == 409
+
+
+def test_put_unknown_field_returns_409(auth_client, user):
+    with tenant_context(user):
+        today = today_for(user)
+    resp = auth_client.put(
+        _LOGS_URL,
+        {"date": today.isoformat(), "values": {str(uuid.uuid4()): 5}},
+        format="json",
+    )
+    assert resp.status_code == 409
+
+
+# --- GET /daily/ (AC3) ---------------------------------------------------------
+def test_get_daily_returns_shape(auth_client, user):
+    with tenant_context(user):
+        HealthFieldDefinitionFactory(user=user, active=True)
+    resp = auth_client.get(_DAILY_URL)
+    assert resp.status_code == 200
+    assert set(resp.data.keys()) == {"yesterday", "today", "fields"}
+    assert set(resp.data["yesterday"].keys()) == {"date", "values"}
+    assert set(resp.data["today"].keys()) == {"date", "values"}
+    assert len(resp.data["fields"]) == 1
+
+
+def test_get_daily_is_tenant_scoped(auth_client, user, other_user):
+    with tenant_context(other_user):
+        HealthFieldDefinitionFactory(user=other_user, active=True)
+    resp = auth_client.get(_DAILY_URL)
+    assert resp.status_code == 200
+    # Não vê definições nem logs do outro tenant.
+    assert resp.data["fields"] == []
+    assert resp.data["yesterday"]["values"] == {}
+    assert resp.data["today"]["values"] == {}
+
+
+# --- AC2: round-trip camelCase idempotente (chaves dinâmicas de `values`) -------
+def test_daily_values_dynamic_keys_survive_camelcase_roundtrip(auth_client, user):
+    """As chaves DINÂMICAS dentro de `values` NÃO são camelizadas na borda (§6.3, AD-01).
+
+    Prova ponta-a-ponta pela API real (renderer de produção): uma chave com
+    underscore (`blood_pressure`) e um UUID sobrevivem intactos no JSON renderido —
+    a proteção é o `ignore_fields=("values",)` (base.py), não a forma das chaves.
+    Inspeciona `response.content` (JSON renderizado), não `response.data` (pré-render).
+    """
+    with tenant_context(user):
+        yesterday = today_for(user) - timedelta(days=1)
+        # Cria a linha direto no ORM (o write valida contra definições; aqui o alvo
+        # é o caminho de LEITURA/render de chaves arbitrárias já persistidas).
+        HealthLog.objects.create(
+            date=yesterday,
+            values={"blood_pressure": 120, "a1b2c3d4-ef56-7890": 88.5},
+        )
+
+    resp = auth_client.get(_DAILY_URL)
+    assert resp.status_code == 200
+    body = json.loads(resp.content)
+    values = body["yesterday"]["values"]
+    # Chave com underscore preservada (NÃO virou bloodPressure).
+    assert "blood_pressure" in values
+    assert "bloodPressure" not in values
+    assert values["blood_pressure"] == 120
+    # UUID intacto.
+    assert values["a1b2c3d4-ef56-7890"] == 88.5

@@ -10,14 +10,17 @@ vi.mock('../../api/client', () => ({
 import client from '../../api/client'
 import {
   useCreateHealthFieldMutation,
+  useHealthDailyQuery,
   useHealthFieldDefinitionsQuery,
   useUpdateHealthFieldMutation,
+  useUpsertHealthLogMutation,
 } from './api'
-import type { HealthFieldDefinition } from './types'
+import type { HealthDaily, HealthFieldDefinition } from './types'
 
 const mockGet = client.get as ReturnType<typeof vi.fn>
 const mockPost = client.post as ReturnType<typeof vi.fn>
 const mockPatch = client.patch as ReturnType<typeof vi.fn>
+const mockPut = client.put as ReturnType<typeof vi.fn>
 
 function makeWrapper() {
   const qc = new QueryClient({
@@ -135,6 +138,68 @@ describe('useUpdateHealthFieldMutation', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
     expect(mockPatch).toHaveBeenCalledWith('/api/health-field-definitions/field-1/', {
       active: false,
+    })
+  })
+})
+
+// --- Story 7.2: log diário (daily query + upsert mutation) --------------------
+
+const DAILY: HealthDaily = {
+  yesterday: { date: '2026-07-18', values: { 'f-peso': 88.5 } },
+  today: { date: '2026-07-19', values: {} },
+  fields: [FIELD],
+}
+
+describe('useHealthDailyQuery', () => {
+  beforeEach(() => vi.resetAllMocks())
+
+  it('busca o read-model do ritual em /daily/', async () => {
+    const { wrapper } = makeWrapper()
+    mockGet.mockResolvedValueOnce({ data: DAILY })
+
+    const { result } = renderHook(() => useHealthDailyQuery(), { wrapper })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(mockGet).toHaveBeenCalledWith('/api/health-logs/daily/')
+    expect(result.current.data).toEqual(DAILY)
+  })
+})
+
+describe('useUpsertHealthLogMutation', () => {
+  beforeEach(() => vi.resetAllMocks())
+
+  it('faz PUT {date, values} e invalida o prefixo health no sucesso', async () => {
+    const { qc, wrapper } = makeWrapper()
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+    mockPut.mockResolvedValueOnce({
+      data: { id: 'log-1', date: '2026-07-19', values: { 'f-peso': 88.5 } },
+    })
+
+    const { result } = renderHook(() => useUpsertHealthLogMutation(), { wrapper })
+    result.current.mutate({ date: '2026-07-19', values: { 'f-peso': 88.5 } })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    // Chaves dinâmicas (UUID) preservadas no body — sem camelização.
+    expect(mockPut).toHaveBeenCalledWith('/api/health-logs/', {
+      date: '2026-07-19',
+      values: { 'f-peso': 88.5 },
+    })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['health'] })
+  })
+
+  it('envia null para limpar uma chave', async () => {
+    const { wrapper } = makeWrapper()
+    mockPut.mockResolvedValueOnce({
+      data: { id: 'log-1', date: '2026-07-19', values: {} },
+    })
+
+    const { result } = renderHook(() => useUpsertHealthLogMutation(), { wrapper })
+    result.current.mutate({ date: '2026-07-19', values: { 'f-peso': null } })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(mockPut).toHaveBeenCalledWith('/api/health-logs/', {
+      date: '2026-07-19',
+      values: { 'f-peso': null },
     })
   })
 })

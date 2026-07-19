@@ -1,18 +1,25 @@
 """Testes da camada de serviço das Métricas de Saúde (AD-01, AC1–AC4)."""
 
 import uuid
+from datetime import date, timedelta
 
 import pytest
 
+from core.calendar import today_for
 from core.exceptions import DomainError
 from core.tenant import tenant_context
-from health.models import HealthFieldDefinition, HealthFieldType
+from health.models import HealthFieldDefinition, HealthFieldType, HealthLog
 from health.services import (
     create_health_field,
+    get_health_daily,
     list_health_fields,
     update_health_field,
+    upsert_health_log,
 )
 from health.tests.factories import HealthFieldDefinitionFactory
+
+# Data fixa de log (guardrail: nunca ``date.today()``; os testes de ritual usam ``today_for``).
+_D = date(2026, 3, 10)
 
 
 # --- create_health_field (AC1, AC3) --------------------------------------------
@@ -193,3 +200,199 @@ def test_update_cross_tenant_raises_does_not_exist(user, other_user):
         alheio = HealthFieldDefinitionFactory(user=other_user)
     with tenant_context(user), pytest.raises(HealthFieldDefinition.DoesNotExist):
         update_health_field(user=user, field_id=alheio.id, name="Invadido")
+
+
+# ===============================================================================
+# Story 7.2 — upsert_health_log + get_health_daily (AC1, AC3, AC4)
+# ===============================================================================
+
+
+# --- (a) grava valores válidos -------------------------------------------------
+def test_upsert_persists_valid_values(user):
+    with tenant_context(user):
+        weight = HealthFieldDefinitionFactory(user=user, field_type=HealthFieldType.DECIMAL)
+        sleep = HealthFieldDefinitionFactory(user=user, field_type=HealthFieldType.INTEGER)
+        row = upsert_health_log(
+            user=user, log_date=_D, values={str(weight.id): 88.2, str(sleep.id): 7}
+        )
+        assert row.values == {str(weight.id): 88.2, str(sleep.id): 7}
+        assert HealthLog.objects.filter(date=_D).count() == 1
+
+
+# --- (b) grava só se TUDO válido (submissão atômica) ---------------------------
+def test_upsert_all_or_nothing_creates_no_row_when_invalid(user):
+    with tenant_context(user):
+        weight = HealthFieldDefinitionFactory(user=user, field_type=HealthFieldType.DECIMAL)
+        sleep = HealthFieldDefinitionFactory(user=user, field_type=HealthFieldType.INTEGER)
+        with pytest.raises(DomainError):
+            upsert_health_log(
+                user=user,
+                log_date=_D,
+                # 1.5 é inválido para integer → o lote inteiro falha, nada persiste.
+                values={str(weight.id): 88.2, str(sleep.id): 1.5},
+            )
+        assert HealthLog.objects.filter(date=_D).exists() is False
+
+
+def test_upsert_invalid_batch_leaves_existing_row_unchanged(user):
+    with tenant_context(user):
+        weight = HealthFieldDefinitionFactory(user=user, field_type=HealthFieldType.DECIMAL)
+        sleep = HealthFieldDefinitionFactory(user=user, field_type=HealthFieldType.INTEGER)
+        upsert_health_log(user=user, log_date=_D, values={str(weight.id): 80})
+        with pytest.raises(DomainError):
+            upsert_health_log(
+                user=user,
+                log_date=_D,
+                values={str(weight.id): 90, str(sleep.id): 1.5},  # 1.5 inválido
+            )
+        # O 90 NÃO foi aplicado — a validação de tudo acontece antes de qualquer write.
+        row = HealthLog.objects.get(date=_D)
+        assert row.values == {str(weight.id): 80}
+
+
+# --- (c) validação por tipo ----------------------------------------------------
+def test_upsert_integer_rejects_fraction_and_string(user):
+    with tenant_context(user):
+        f = HealthFieldDefinitionFactory(user=user, field_type=HealthFieldType.INTEGER)
+        upsert_health_log(user=user, log_date=_D, values={str(f.id): 5})
+        with pytest.raises(DomainError):
+            upsert_health_log(user=user, log_date=_D, values={str(f.id): 1.5})
+        with pytest.raises(DomainError):
+            upsert_health_log(user=user, log_date=_D, values={str(f.id): "x"})
+
+
+def test_upsert_integer_accepts_whole_float(user):
+    with tenant_context(user):
+        f = HealthFieldDefinitionFactory(user=user, field_type=HealthFieldType.INTEGER)
+        row = upsert_health_log(user=user, log_date=_D, values={str(f.id): 5.0})
+        assert row.values[str(f.id)] == 5
+        assert isinstance(row.values[str(f.id)], int)
+
+
+def test_upsert_decimal_accepts_float(user):
+    with tenant_context(user):
+        f = HealthFieldDefinitionFactory(user=user, field_type=HealthFieldType.DECIMAL)
+        row = upsert_health_log(user=user, log_date=_D, values={str(f.id): 88.2})
+        assert row.values[str(f.id)] == 88.2
+
+
+def test_upsert_boolean_is_strict(user):
+    with tenant_context(user):
+        f = HealthFieldDefinitionFactory(user=user, field_type=HealthFieldType.BOOLEAN)
+        row = upsert_health_log(user=user, log_date=_D, values={str(f.id): True})
+        assert row.values[str(f.id)] is True
+        with pytest.raises(DomainError):
+            upsert_health_log(user=user, log_date=_D, values={str(f.id): "true"})
+        with pytest.raises(DomainError):
+            upsert_health_log(user=user, log_date=_D, values={str(f.id): 1})
+
+
+def test_upsert_enum_only_accepts_options(user):
+    with tenant_context(user):
+        f = HealthFieldDefinitionFactory(
+            user=user, field_type=HealthFieldType.ENUM, enum_options=["Bom", "Ruim"]
+        )
+        row = upsert_health_log(user=user, log_date=_D, values={str(f.id): "Bom"})
+        assert row.values[str(f.id)] == "Bom"
+        with pytest.raises(DomainError):
+            upsert_health_log(user=user, log_date=_D, values={str(f.id): "Outro"})
+
+
+def test_upsert_text_requires_string(user):
+    with tenant_context(user):
+        f = HealthFieldDefinitionFactory(user=user, field_type=HealthFieldType.TEXT)
+        row = upsert_health_log(user=user, log_date=_D, values={str(f.id): "anotação"})
+        assert row.values[str(f.id)] == "anotação"
+        with pytest.raises(DomainError):
+            upsert_health_log(user=user, log_date=_D, values={str(f.id): 123})
+
+
+# --- (d) UUID inexistente / inativo --------------------------------------------
+def test_upsert_rejects_unknown_uuid(user):
+    with tenant_context(user), pytest.raises(DomainError):
+        upsert_health_log(user=user, log_date=_D, values={str(uuid.uuid4()): 5})
+
+
+def test_upsert_rejects_inactive_field(user):
+    with tenant_context(user):
+        inactive = HealthFieldDefinitionFactory(
+            user=user, field_type=HealthFieldType.INTEGER, active=False
+        )
+        with pytest.raises(DomainError):
+            upsert_health_log(user=user, log_date=_D, values={str(inactive.id): 5})
+
+
+# --- (e) merge preserva chave de campo hoje inativo (AC4) ----------------------
+def test_upsert_merge_preserves_inactive_field_key(user):
+    with tenant_context(user):
+        weight = HealthFieldDefinitionFactory(user=user, field_type=HealthFieldType.DECIMAL)
+        old = HealthFieldDefinitionFactory(user=user, field_type=HealthFieldType.INTEGER)
+        # Histórico: `old` tinha valor gravado.
+        upsert_health_log(
+            user=user, log_date=_D, values={str(old.id): 5, str(weight.id): 80}
+        )
+        # `old` é desativado depois.
+        old.active = False
+        old.save(update_fields=["active"])
+        # Regravar SÓ weight não pode apagar a chave histórica de `old`.
+        upsert_health_log(user=user, log_date=_D, values={str(weight.id): 81})
+        row = HealthLog.objects.get(date=_D)
+        assert row.values[str(old.id)] == 5  # preservada (AC4)
+        assert row.values[str(weight.id)] == 81
+
+
+# --- (f) null/vazio remove a chave ---------------------------------------------
+def test_upsert_null_removes_key(user):
+    with tenant_context(user):
+        f = HealthFieldDefinitionFactory(user=user, field_type=HealthFieldType.DECIMAL)
+        upsert_health_log(user=user, log_date=_D, values={str(f.id): 80})
+        upsert_health_log(user=user, log_date=_D, values={str(f.id): None})
+        assert str(f.id) not in HealthLog.objects.get(date=_D).values
+
+
+def test_upsert_empty_string_removes_key(user):
+    with tenant_context(user):
+        f = HealthFieldDefinitionFactory(user=user, field_type=HealthFieldType.TEXT)
+        upsert_health_log(user=user, log_date=_D, values={str(f.id): "nota"})
+        upsert_health_log(user=user, log_date=_D, values={str(f.id): ""})
+        assert str(f.id) not in HealthLog.objects.get(date=_D).values
+
+
+# --- (g) regravar o mesmo dia = upsert (1 linha) -------------------------------
+def test_upsert_same_day_is_single_row(user):
+    with tenant_context(user):
+        f = HealthFieldDefinitionFactory(user=user, field_type=HealthFieldType.INTEGER)
+        upsert_health_log(user=user, log_date=_D, values={str(f.id): 1})
+        upsert_health_log(user=user, log_date=_D, values={str(f.id): 2})
+        assert HealthLog.objects.filter(date=_D).count() == 1
+        assert HealthLog.objects.get(date=_D).values[str(f.id)] == 2
+
+
+# --- (h) get_health_daily: ontem/hoje/fields via today_for, só ativos ----------
+def test_get_health_daily_shape_dates_and_active_only(user):
+    with tenant_context(user):
+        today = today_for(user)
+        yesterday = today - timedelta(days=1)
+        active = HealthFieldDefinitionFactory(user=user, active=True)
+        HealthFieldDefinitionFactory(user=user, active=False)  # não deve aparecer
+        upsert_health_log(user=user, log_date=yesterday, values={str(active.id): 3})
+
+        daily = get_health_daily(user=user)
+        assert daily["yesterday"]["date"] == yesterday
+        assert daily["today"]["date"] == today
+        assert daily["yesterday"]["values"] == {str(active.id): 3}
+        assert daily["today"]["values"] == {}  # dia sem linha → {}
+        assert [f.id for f in daily["fields"]] == [active.id]
+
+
+def test_get_health_daily_cross_tenant_isolated(user, other_user):
+    """O read-model de `user` nunca enxerga logs/definições de `other_user`."""
+    with tenant_context(other_user):
+        alheio = HealthFieldDefinitionFactory(user=other_user, active=True)
+        y = today_for(other_user) - timedelta(days=1)
+        upsert_health_log(user=other_user, log_date=y, values={str(alheio.id): 9})
+    with tenant_context(user):
+        daily = get_health_daily(user=user)
+        assert daily["fields"] == []
+        assert daily["yesterday"]["values"] == {}
+        assert daily["today"]["values"] == {}

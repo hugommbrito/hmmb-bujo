@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-22
-last_updated: 2026-07-19  # Story 7.1 revisão sênior (AI) concluída: campos de saúde dinâmicos → done
+last_updated: 2026-07-19  # Story 7.2 implementada (dev-story): log diário de saúde → review
 project: hmmb-bujo
 project_key: NOKEY
 tracking_system: file-system
@@ -111,7 +111,7 @@ development_status:
   # Epic 7: Métricas de Saúde
   epic-7: in-progress
   7-1-campos-de-saude-dinamicos: done
-  7-2-log-diario-de-saude: backlog
+  7-2-log-diario-de-saude: review
   7-3-historico-de-saude-em-tres-visualizacoes: backlog
   epic-7-retrospective: optional
 

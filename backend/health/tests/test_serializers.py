@@ -1,9 +1,11 @@
 """Testes de serializer das Métricas de Saúde: validação de forma (§6.4)."""
 
 from health.serializers import (
+    HealthDailySerializer,
     HealthFieldCreateSerializer,
     HealthFieldDefinitionSerializer,
     HealthFieldUpdateSerializer,
+    HealthLogWriteSerializer,
 )
 
 
@@ -102,3 +104,31 @@ def test_read_serializer_exposes_expected_fields():
     assert set(serializer.fields) == {
         "id", "name", "field_type", "enum_options", "active", "display_order",
     }
+
+
+# --- log write serializer (Story 7.2, AC1: só valida forma) --------------------
+def test_log_write_requires_date():
+    serializer = HealthLogWriteSerializer(data={"values": {}})
+    assert not serializer.is_valid()
+    assert "date" in serializer.errors
+
+
+def test_log_write_rejects_non_dict_values():
+    serializer = HealthLogWriteSerializer(data={"date": "2026-03-10", "values": [1, 2]})
+    assert not serializer.is_valid()
+    assert "values" in serializer.errors
+
+
+def test_log_write_valid_shape_passes():
+    serializer = HealthLogWriteSerializer(
+        data={"date": "2026-03-10", "values": {"any-uuid": 1}}
+    )
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["values"] == {"any-uuid": 1}
+
+
+def test_daily_serializer_declares_expected_fields():
+    """`fields` é um field declarado (movido para _declared_fields) — não colide com
+    a property Serializer.fields."""
+    serializer = HealthDailySerializer()
+    assert set(serializer.fields) == {"yesterday", "today", "fields"}

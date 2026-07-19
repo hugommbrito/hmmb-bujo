@@ -67,3 +67,50 @@ class HealthFieldDefinition(TenantModel):
                 name="health_field_type_valid",
             ),
         ]
+
+
+class HealthLog(TenantModel):
+    """Valores de saúde de um dia — **uma linha por (usuário, dia)** (AD-01, Story 7.2).
+
+    A segunda metade da AD-01 (7.1 entregou o catálogo de definições; esta story
+    entrega o **armazenamento e a captura de valores**). ``values`` é um blob JSONB
+    **indexado pelo UUID** de cada ``HealthFieldDefinition`` — ex.
+    ``{"uuid-peso": 88.2, "uuid-sono": 4, "uuid-atividade": true}``. **Não há FK**
+    para ``HealthFieldDefinition``: o vínculo é o UUID dentro das chaves de
+    ``values`` (AD-01); a definição **viva** (não um snapshot) tipa/valida/renderiza.
+
+    Divergência-chave vs. Hábitos (AD-01): Saúde **não** versiona e **não** tem
+    completude ponderada — não há ``effective_from``/snapshots/``*_at_time``. O valor
+    é gravado cru no JSONB e a validação-contra-definições vive na camada de serviço
+    (``upsert_health_log``), não no serializer (§6.4).
+
+    ⚠️ **Regra de ouro do JSONB:** o campo **DEVE** se chamar exatamente ``values``.
+    O ``djangorestframework-camel-case`` está configurado com
+    ``JSON_CAMEL_CASE['JSON_UNDERSCOREIZE']['ignore_fields'] = ('values',)``
+    (``config/settings/base.py``) desde o Épico 1 — isso preserva as chaves internas
+    (UUIDs, ``blood_pressure``…) em ambas as direções (parser e renderer). Renomear o
+    campo quebra a idempotência do round-trip camelCase (§6.3, AD-01).
+
+    Herda ``TenantModel`` → UUID PK ``id`` + ``user_id`` indexado + managers
+    auto-escopados. A unicidade é ``(user_id, date)`` (um blob por dia; sem ``habit``,
+    ao contrário de ``HabitDayEntry.(habit, date)``). Índice GIN em ``values``:
+    **deferido** para 7.3 (AD-14 reserva a latitude de índice; o cast analítico
+    ``(values->>'uuid')::numeric`` de 7.3 é range on-expression, não usa GIN — GIN
+    serve containment ``@>``).
+    """
+
+    date = models.DateField()
+    # JSONB indexado pelo UUID da definição. DEVE se chamar `values` — o
+    # ignore_fields=("values",) (base.py) protege as chaves internas na camelização.
+    values = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "health_logs"
+        ordering = ["-date"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user_id", "date"],
+                name="uniq_health_log_per_day",
+            ),
+        ]

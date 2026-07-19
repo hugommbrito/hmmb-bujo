@@ -1,7 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import client from '../../api/client'
 import { keys } from '../../api/keys'
-import type { HealthFieldDefinition, HealthFieldType } from './types'
+import type {
+  HealthDaily,
+  HealthFieldDefinition,
+  HealthFieldType,
+  HealthLog,
+  HealthValue,
+} from './types'
 
 // --- Queries -----------------------------------------------------------------
 
@@ -77,6 +83,48 @@ export function useUpdateHealthFieldMutation() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: updateHealthField,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['health'] }),
+  })
+}
+
+// --- Log diário do ritual (Story 7.2) ----------------------------------------
+// Read-model ontem/hoje (GET) + upsert-merge por dia (PUT). Sem otimismo: o log
+// tem save explícito por seção + confirmação inline "Dados de [ontem/hoje] salvos."
+// (não é toggle de alta frequência como o tracker de hábitos).
+
+async function fetchHealthDaily(): Promise<HealthDaily> {
+  const response = await client.get<HealthDaily>('/api/health-logs/daily/')
+  return response.data
+}
+
+export function useHealthDailyQuery() {
+  return useQuery({
+    queryKey: keys.health.daily(),
+    queryFn: fetchHealthDaily,
+  })
+}
+
+interface UpsertHealthLogVariables {
+  date: string
+  // `null` limpa a chave daquele campo no blob (o backend remove a chave; não grava
+  // null). Por isso o valor é `HealthValue | null`, mais largo que `HealthValues`.
+  values: Record<string, HealthValue | null>
+}
+
+async function upsertHealthLog({
+  date,
+  values,
+}: UpsertHealthLogVariables): Promise<HealthLog> {
+  // Body camelCase {date, values}; as chaves DINÂMICAS dentro de `values` (UUIDs)
+  // NÃO são camelizadas (ignore_fields no backend + parser preserva o round-trip).
+  const response = await client.put<HealthLog>('/api/health-logs/', { date, values })
+  return response.data
+}
+
+export function useUpsertHealthLogMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: upsertHealthLog,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['health'] }),
   })
 }

@@ -1,13 +1,14 @@
 """Testes de model das Métricas de Saúde: constraints de banco e defaults (AD-01)."""
 
 import uuid
+from datetime import date
 
 import pytest
 from django.db import IntegrityError, transaction
 
 from core.tenant import tenant_context
-from health.models import HealthFieldDefinition, HealthFieldType
-from health.tests.factories import HealthFieldDefinitionFactory
+from health.models import HealthFieldDefinition, HealthFieldType, HealthLog
+from health.tests.factories import HealthFieldDefinitionFactory, HealthLogFactory
 
 
 def test_field_type_check_constraint_rejects_invalid_type(user):
@@ -64,3 +65,34 @@ def test_ordering_is_display_order_then_name(user):
         names = [f.name for f in HealthFieldDefinition.objects.all()]
         # display_order 0 primeiro (Alfa, Beta por nome), depois display_order 1 (Zeta).
         assert names == ["Alfa", "Beta", "Zeta"]
+
+
+# --- HealthLog (Story 7.2, AC1/AC4) --------------------------------------------
+def test_health_log_unique_per_user_and_date(user):
+    """Uma única linha por (user_id, date): segundo insert do mesmo dia → IntegrityError."""
+    with tenant_context(user):
+        HealthLog.objects.create(date=date(2026, 1, 20), values={})
+        with pytest.raises(IntegrityError), transaction.atomic():
+            HealthLog.objects.create(date=date(2026, 1, 20), values={})
+
+
+def test_health_log_same_date_different_users_ok(user, other_user):
+    """A unicidade é por (user_id, date): usuários distintos podem ter o mesmo dia."""
+    with tenant_context(user):
+        HealthLog.objects.create(date=date(2026, 1, 20), values={})
+    with tenant_context(other_user):
+        # Não colide — user_id diferente faz parte da chave única.
+        HealthLog.objects.create(date=date(2026, 1, 20), values={})
+
+
+def test_health_log_values_default_empty_dict(user):
+    with tenant_context(user):
+        row = HealthLog.objects.create(date=date(2026, 1, 21))
+        assert row.values == {}
+
+
+def test_health_log_id_is_uuid_and_created_at_set(user):
+    with tenant_context(user):
+        row = HealthLogFactory(user=user)
+        assert isinstance(row.id, uuid.UUID)
+        assert row.created_at is not None

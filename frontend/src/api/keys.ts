@@ -49,7 +49,9 @@ export const keys = {
   health: {
     fieldDefinitions: (params?: { includeInactive?: boolean }) =>
       ['health', 'fieldDefinitions', 'list', params ?? {}] as const,
-    // Adicionado nas próximas stories:
-    // logs: { ... }  → Story 7.2
+    // Story 7.2 — read-model do ritual (ontem/hoje). Sem params: o backend resolve
+    // as datas via today_for (autoridade temporal do servidor). A mutação de escrita
+    // invalida pelo prefixo ['health'] (cobre fieldDefinitions e daily).
+    daily: () => ['health', 'logs', 'daily'] as const,
   },
 } as const

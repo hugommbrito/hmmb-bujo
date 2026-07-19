@@ -7,12 +7,18 @@ temporal: este arquivo não é ``test_*.py``/``conftest.py``, mas o scanner que 
 ``created_at`` auto).
 """
 
+from datetime import date
+
 import factory
 from factory.django import DjangoModelFactory
 
 from accounts.tests.factories import UserFactory
 from core.tests.registry import register_isolation_case
-from health.models import HealthFieldDefinition, HealthFieldType
+from health.models import HealthFieldDefinition, HealthFieldType, HealthLog
+
+# Data fixa para as factories/isolation (guardrail temporal: nunca ``date.today()``,
+# mesmo em factories — os testes de serviço que precisam de "hoje" usam ``today_for``).
+_FIXED_DATE = date(2026, 1, 15)
 
 
 class HealthFieldDefinitionFactory(DjangoModelFactory):
@@ -30,8 +36,26 @@ class HealthFieldDefinitionFactory(DjangoModelFactory):
     display_order = factory.Sequence(lambda n: n)
 
 
+class HealthLogFactory(DjangoModelFactory):
+    class Meta:
+        model = HealthLog
+
+    class Params:
+        user = factory.SubFactory(UserFactory)
+
+    user_id = factory.SelfAttribute("user.id")
+    date = _FIXED_DATE
+    values = factory.Dict({})
+
+
 register_isolation_case(
     id="health.HealthFieldDefinition",
     model=HealthFieldDefinition,
     make=lambda: {"name": "Campo de isolamento", "field_type": HealthFieldType.INTEGER},
+)
+
+register_isolation_case(
+    id="health.HealthLog",
+    model=HealthLog,
+    make=lambda: {"date": _FIXED_DATE, "values": {}},
 )

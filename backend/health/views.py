@@ -14,14 +14,19 @@ from rest_framework.views import APIView
 
 from health.models import HealthFieldDefinition
 from health.serializers import (
+    HealthDailySerializer,
     HealthFieldCreateSerializer,
     HealthFieldDefinitionSerializer,
     HealthFieldUpdateSerializer,
+    HealthLogSerializer,
+    HealthLogWriteSerializer,
 )
 from health.services import (
     create_health_field,
+    get_health_daily,
     list_health_fields,
     update_health_field,
+    upsert_health_log,
 )
 
 
@@ -74,3 +79,39 @@ class HealthFieldDefinitionDetailView(APIView):
         except HealthFieldDefinition.DoesNotExist:
             raise NotFound() from None
         return Response(HealthFieldDefinitionSerializer(field).data)
+
+
+class HealthLogDailyView(APIView):
+    """Read-model do ritual matinal (Story 7.2, AC3): ``GET /api/health-logs/daily/``.
+
+    Retorna ``{yesterday, today, fields}`` — **ontem no topo, hoje abaixo**. As datas
+    são resolvidas pela autoridade temporal do servidor (``today_for``, fuso do
+    usuário); o frontend nunca calcula "ontem". Espelha o precedente ``HabitDayView``
+    (GET read-model resolvendo o dia; escrita separada).
+    """
+
+    @extend_schema(responses=HealthDailySerializer)
+    def get(self, request):
+        payload = get_health_daily(user=request.user)
+        return Response(HealthDailySerializer(payload).data)
+
+
+class HealthLogUpsertView(APIView):
+    """Upsert-merge validado do dia (Story 7.2, AC1/AC4): ``PUT /api/health-logs/``.
+
+    Body ``{date, values}`` → grava só se **todos** os valores forem válidos
+    (validação atômica na camada de serviço contra as definições ativas). Merge:
+    preserva chaves não submetidas (inclusive de campos inativos — AC4). ``DomainError``
+    da validação de conteúdo vira 409 (``custom_exception_handler``).
+    """
+
+    @extend_schema(request=HealthLogWriteSerializer, responses=HealthLogSerializer)
+    def put(self, request):
+        body = HealthLogWriteSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        row = upsert_health_log(
+            user=request.user,
+            log_date=body.validated_data["date"],
+            values=body.validated_data["values"],
+        )
+        return Response(HealthLogSerializer(row).data)
