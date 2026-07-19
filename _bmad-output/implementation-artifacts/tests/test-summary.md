@@ -2316,3 +2316,103 @@ Rodado contra o stack real (`npm run dev` na 5173 + `manage.py runserver` sob `c
 ## Próximos Passos
 
 - Nenhum gap bloqueante identificado para a Story 6.4 — encerra o Épico 6 (Sistema de Hábitos) com cobertura E2E ponta-a-ponta das quatro superfícies (tracker, config/multiplicador, histórico/gráfico). A infraestrutura de charting (recharts) e o padrão de seed de dias passados ficam prontos para reuso nos gráficos de Saúde (Épico 7, FR-3.3).
+
+---
+
+# Resumo de Automação de Testes — Story 7.1
+
+**Data:** 2026-07-19
+**Story:** 7.1 — Campos de saúde dinâmicos (catálogo de definições)
+**Framework:** Playwright 1.61 (E2E de browser real contra Django + Neon branch `e2e`, sem mocks de rede)
+
+## Contexto
+
+A Story 7.1 é a **fundação de modelagem** do Épico 7 (Métricas de Saúde): novo app Django `health/` + feature `features/health/` + a tela **Configurações › Métricas de Saúde** (`/settings/health-metrics`), do zero, espelhando o precedente estrutural de `habits` (6.1). Ela entrega **apenas o catálogo de definições** (`health_field_definitions`) — a fonte-de-verdade que 7.2 (log diário) e 7.3 (histórico/gráficos) vão consumir. Divergência-chave: Saúde **não versiona** (AD-01), então desativar é um `PATCH {active}` simples (não sub-recurso `versions/`) e **nada apaga fisicamente** uma definição.
+
+O código já vinha com forte cobertura **de backend** (46 testes no app `health`: `test_models`/`test_serializers`/`test_services`/`test_views` + contrato de isolamento parametrizado) e **de componente/api frontend** (15: `api.test.tsx` 7 + `HealthMetricsManager.test.tsx` 8, todos **mockando** `../../../api/client`).
+
+**Gap encontrado:** **zero cobertura E2E** da 7.1. Nenhum spec exercitava a tela de ponta a ponta (browser real → DRF → Postgres) — nenhum criava um campo, alternava tipo/enum, desativava/reativava, nem provava persistência real. Gap fechado neste ciclo (1 spec E2E novo; nenhum arquivo `backend/`, `src/` ou de contrato foi tocado).
+
+## Testes Gerados
+
+### Testes E2E — `frontend/e2e/health-metrics.spec.ts` (novo)
+
+| Teste | AC Cobertos |
+|-------|-------------|
+| cria campo, renomeia (identidade mutável, tipo imutável na UI) e persiste no backend real; navegação Configurações → Métricas de Saúde | AC1, AC4 |
+| campo enum exige opções definidas pelo usuário; tipos não-enum não têm opções | AC3 |
+| desativar não deleta (some da lista ativa, reaparece em "Mostrar inativos") e reativar traz de volta | AC2 |
+| (regra de negócio, caso de erro) enum sem opção é rejeitado pelo backend real, mostra erro inline e preserva o input para retry | AC3 |
+
+**Total: 1 arquivo · 4 testes · 4 passando** (`4 passed (56.5s)`, sem retries — cada um verde na primeira tentativa: 16,3s / 11,0s / 17,2s / 10,9s).
+
+Sem helper de seed: a feature É o CRUD de definições na tela de settings, então cada teste **cria** seus próprios campos via UI (usuário novo por teste via a fixture de signup), sem semeadura fora da UI.
+
+## Detalhe dos Testes
+
+**Teste 1 — criar + renomear + persistência + navegação (AC1, AC4):** navega o caminho ponta-a-ponta que a Task 5 adicionou — hub **Configurações** → link **"Métricas de Saúde"** → tela (`getByRole('main', { name: 'Configurações — Métricas de Saúde' })`), confirmando `/settings` → `/settings/health-metrics`. Verifica o empty state ("Nenhum campo de saúde ainda."). Cria um campo `integer` "Peso" (POST 201 real), assere a linha + o rótulo de tipo "Inteiro" **escopado à linha**, e prova persistência via `reload` (reidrata do backend, não de cache otimista). Depois **renomeia** para "Peso corporal" (PATCH 200), confirmando que `name` é **identidade mutável** e que o **tipo permanece "Inteiro"** — não há seletor de tipo na edição (imutabilidade de `field_type` garantida na UI, além da rejeição no backend — AC4/NFR-4). Guarda de regressão: `consoleErrors == []`.
+
+**Teste 2 — enum exige opções, não-enum não tem (AC3):** com o tipo default `integer`, o **editor de opções não aparece** ("Opções (obrigatório ao menos uma)" → count 0). Ao escolher **"Enum"** no `<Select>` de tipo, o editor condicional **aparece**; define 2 rótulos ("Bom", "Ruim"), cria "Humor" e assere a linha "Enum · Bom, Ruim". Persistência das opções (JSONB `enum_options`) confirmada via `reload`. Prova, de ponta a ponta, que a definição (tipo + opções) é a fonte-de-verdade renderizada.
+
+**Teste 3 — desativar-não-deletar + reativar (AC2):** cria "Sono", clica **Desativar** → some da lista ativa (default só ativos, GET sem inativos retorna `[]`). Liga o `Switch` **"Mostrar inativos"** → reaparece com o rótulo textual **"(inativo)"** (cor nunca é indicador único — WCAG). Prova a **não-deleção** via persistência: `reload` (o Switch volta a desligado → oculto) + religar "Mostrar inativos" mostra o registro **ainda existente e desativado** no backend. Por fim, **Ativar** → reaparece na lista ativa sem o sufixo. Guarda de regressão: `consoleErrors == []`.
+
+**Teste 4 — caso de erro: enum sem opção rejeitado + input preservado + retry (AC3, regra de negócio):** com o tipo "Enum" e a opção obrigatória deixada em branco, o `handleCreate` limpa strings vazias (`.filter(Boolean)`) e envia `enumOptions: []` — **não há validação client-side**, então o **backend real rejeita (4xx)** pela regra "enum ⇒ ≥1 opção" (a definição é a fonte de verdade, validada na camada de serviço/serializer). Assere o **erro inline factual** ("Não foi possível salvar. Tente novamente.", constante única, voz UX-DR13), que **nenhuma linha foi criada** (lista segue vazia) e — provando o padrão de estado "erro de escrita: input preservado + retry" — que basta **preencher a opção e reenviar** para o campo ser criado com sucesso ("Enum · Alto"). É o caso de erro crítico ponta-a-ponta que a suíte de backend cobre por unit (400/409) e que aqui se manifesta na UI real.
+
+## Cobertura por AC (pós-run)
+
+| AC | Critério | Coberto por |
+|----|----------|-------------|
+| AC1 | Criar campo (nome+tipo), UUID estável/escopo por tenant, `active=true`, `display_order` | `health-metrics.spec.ts` (T1: criação + persistência real após reload) + backend `test_views`/`test_services` |
+| AC2 | Desativar seta `active=false` (nunca deleta); some da lista ativa; reativar reaparece | `health-metrics.spec.ts` (T3: some/reaparece/persiste desativado/reativa) + backend |
+| AC3 | Enum tem opções do usuário (≥1); não-enum não tem opções | `health-metrics.spec.ts` (T2: editor condicional + persistência JSONB; **T4: enum sem opção rejeitado pelo backend real + erro inline + retry**) + backend (create+update, enum⇔opções) |
+| AC4 | Editar `name` (mutável) sem quebrar histórico; `field_type` **imutável** | `health-metrics.spec.ts` (T1: rename persiste, tipo inalterado, sem seletor de tipo na edição) + backend (rejeição snake+camel no serializer + `DomainError`) |
+
+## Resultado da Execução (Node 22.15.1)
+
+```
+npx tsc -b --noEmit
+  ✔ limpo (exit 0)
+
+npx playwright test health-metrics.spec.ts --reporter=list
+  ✓ AC1/AC4 — cria campo, renomeia (…) e persiste no backend real; navegação Configurações → Métricas de Saúde (16.3s)
+  ✓ AC3 — campo enum exige opções definidas pelo usuário; tipos não-enum não têm opções (11.0s)
+  ✓ AC2 — desativar não deleta (…) e reativar traz de volta (17.2s)
+  ✓ AC3 (caso de erro) — enum sem opção é rejeitado pelo backend real, mostra erro inline e preserva o input para retry (10.9s)
+  4 passed (56.5s)
+```
+
+Rodado contra o stack real (`npm run dev` na 5173 + `manage.py runserver` sob `config.settings.e2e`, branch Neon `e2e` dedicada). Logs do servidor confirmaram os endpoints de fato exercitados: `POST /api/health-field-definitions/` (201, criação; **400 no caso de erro do enum sem opção**), `PATCH /api/health-field-definitions/{id}/` (200, rename/desativar/reativar) e `GET /api/health-field-definitions/` com e sem `?includeInactive=true`. Backend **não** reexecutado — nenhum arquivo `backend/`/`src/` tocado por este ciclo (só o spec E2E).
+
+## Correção Auto-Aplicada Durante o Ciclo (gap real de teste)
+
+- **Localizador ambíguo `getByText('Inteiro', { exact: true })`:** a asserção do rótulo de tipo colidia com o valor **"Inteiro" exibido pelo `<Select>` de tipo do formulário** (default `integer`) → *strict mode violation* (2 elementos: o `<p>` da linha + o `role="combobox"` do form). Corrigido escopando a asserção à **linha do campo** via `ancestor::div[1]` (mesmo idioma de `recurring-templates.spec.ts`), excluindo o combobox do form. Após a correção, toda a suíte passa na primeira tentativa, sem retries.
+
+## Notas de Ambiente (não são defeitos)
+
+- **Node ≥ 22.15.1 via nvm** antes de qualquer comando de frontend/e2e.
+- **Migração `health.0001_initial` aplicada à branch Neon `e2e`** (app novo — lacuna recorrente ao introduzir domínio novo; aplicada via `DJANGO_SETTINGS_MODULE=config.settings.e2e manage.py migrate` antes da suíte).
+- **Cold-start/contenção da branch `e2e`:** as primeiras execuções tiveram flakes ambientais no `signUpAndLandOnToday` da fixture (locks órfãos + cold-start, documentado em `playwright.config.ts` — é o motivo de `retries: 2` no CI). Com a branch aquecida e a correção de localizador, o run final passou **sem consumir retries**. Nenhum flake é atribuível à lógica dos specs.
+
+## Checklist de Validação
+
+- [x] Testes E2E gerados (UI existe) — 4 testes novos fechando o gap total da 7.1 (AC1/AC2/AC3/AC4)
+- [x] API tests: N/A como arquivo novo — o contrato (`GET/POST/PATCH /api/health-field-definitions/`) já é coberto pela suíte de backend da 7.1 (46 testes) e é exercitado de verdade por estes E2E (sem mock)
+- [x] Usam APIs padrão do framework já adotado (Playwright + fixture de signup do projeto) — nenhuma ferramenta nova
+- [x] Cobrem happy path (criar/renomear/enum/desativar/reativar) + **caso de erro crítico** (enum sem opção → 4xx real → erro inline → input preservado → retry) + casos de borda (não-enum sem opções; persistência desativado = não-deleção; empty state)
+- [x] Todos os testes passam (4 passed), contra o backend real
+- [x] Locators semânticos/acessíveis (`getByRole('main'/'form'/'link'/'button'/'checkbox'/'option')`, `getByLabel`, `getByText` exato; tipo escopado à linha via ancestor) — sem seletores frágeis de CSS
+- [x] Descrições claras em pt-BR, seguindo a convenção de prosa dos `.spec.ts` do projeto
+- [x] Sem waits/sleeps artificiais — web-first assertions com auto-retry; reload só após a UI refletir a escrita (sem correr contra PATCH/POST em voo)
+- [x] Testes independentes (cada teste cria um usuário novo via signup e seus próprios campos)
+- [x] Summary salvo em `_bmad-output/implementation-artifacts/tests/test-summary.md`
+
+## Limites de Cobertura (por design, não gaps)
+
+- **Isolamento cross-tenant / fail-closed (`TenantScopeViolation`):** asserção de nível de serviço/banco → coberta por backend (`test_services`/`test_views` + contrato de isolamento parametrizado), não observável no browser.
+- **Rejeição de `field_type` no update (snake + camel via `self.initial_data`) e regra enum⇔opções no create+update:** validação de serializer/service → coberta por backend. O E2E cobre a **manifestação de UI** (sem seletor de tipo na edição; editor de opções só para enum).
+- **Contrato aditivo / `ENUM_NAME_OVERRIDES["HealthFieldTypeEnum"]`:** validado pelo gate de diff do CI (`schema.yaml`/`types.gen.ts`) e por `test_serializers`, não por E2E.
+- **UI de reordenação de `display_order`:** deferida nesta fatia (espelha 6.1) — nenhum `<input type="number">` na tela, nada a exercitar.
+
+## Próximos Passos
+
+- Nenhum gap bloqueante identificado para a Story 7.1. As stories 7.2 (log diário) e 7.3 (histórico/gráficos) devem estender este spec (ou irmãos `health-log.spec.ts` / `health-history.spec.ts`) reutilizando a fixture de signup e o padrão de navegação por Configurações — e semeando definições via a camada de serviço (como `seedHabits.ts` faz), já que o log/histórico só têm dados após definições existirem.

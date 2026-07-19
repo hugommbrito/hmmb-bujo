@@ -14,6 +14,8 @@ urlpatterns = [
     path("api/brain-dump/", include("braindump.urls")),
     path("api/habits/", include("habits.urls")),
     path("api/habit-groups/", include("habits.urls_groups")),
+    # NÃO usar "api/health/" — reservado para o liveness check acima (colisão).
+    path("api/health-field-definitions/", include("health.urls")),
     # Schema endpoints (drf-spectacular)
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     path(

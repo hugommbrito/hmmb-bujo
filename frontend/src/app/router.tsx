@@ -17,6 +17,7 @@ import { HabitsPage } from '../pages/habits/HabitsPage'
 import { HabitHistoryPage } from '../pages/habits/HabitHistoryPage'
 import { SettingsPage } from '../pages/settings/SettingsPage'
 import { HabitsSettingsPage } from '../pages/settings/HabitsSettingsPage'
+import { HealthMetricsSettingsPage } from '../pages/settings/HealthMetricsSettingsPage'
 
 function LoginPageRoute() {
   const { isAuthenticated } = useAuth()
@@ -128,6 +129,11 @@ export const routeDefinitions: RouteObject[] = [
         path: 'settings/habits',
         element: <HabitsSettingsPage />,
         handle: { title: 'Configurações — Hábitos' },
+      },
+      {
+        path: 'settings/health-metrics',
+        element: <HealthMetricsSettingsPage />,
+        handle: { title: 'Configurações — Métricas de Saúde' },
       },
       { path: '*', element: <Navigate to="/today" replace /> },
     ],

@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     "bujo",
     "braindump",
     "habits",
+    "health",
 ]
 
 MIDDLEWARE = [
@@ -190,6 +191,10 @@ SPECTACULAR_SETTINGS = {
         # weekend/holiday), então não há colisão a resolver — este pin só estabiliza
         # o nome do único enum de 3 valores.
         "DayTypeEnum": "habits.models.DayType",
+        # Pin do enum de `field_type` (integer/decimal/boolean/enum/text) das Métricas
+        # de Saúde (Story 7.1). Sem override, o drf-spectacular gera um *Enum com hash
+        # instável — mantém o contrato aditivo/estável (lição do Épico 6).
+        "HealthFieldTypeEnum": "health.models.HealthFieldType",
     },
 }
 

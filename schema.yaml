@@ -993,6 +993,78 @@ paths:
               schema:
                 $ref: '#/components/schemas/HolidayResult'
           description: ''
+  /api/health-field-definitions/:
+    get:
+      operationId: health_field_definitions_list
+      parameters:
+      - in: query
+        name: includeInactive
+        schema:
+          type: boolean
+        description: Inclui campos com active=false (desativados).
+      tags:
+      - health-field-definitions
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/HealthFieldDefinition'
+          description: ''
+    post:
+      operationId: health_field_definitions_create
+      tags:
+      - health-field-definitions
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HealthFieldCreate'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthFieldDefinition'
+          description: ''
+  /api/health-field-definitions/{id}/:
+    patch:
+      operationId: health_field_definitions_partial_update
+      description: |-
+        Edita ``name``/``enum_options``/``display_order``/``active`` (AC2, AC4).
+
+        Desativar/reativar é ``PATCH {active: false/true}`` — Saúde não versiona, então
+        não há sub-recurso ``versions/`` (precedente ``RecurringTaskTemplate.active``).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - health-field-definitions
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedHealthFieldUpdate'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthFieldDefinition'
+          description: ''
 components:
   schemas:
     ArchiveEntry:
@@ -1659,6 +1731,70 @@ components:
       required:
       - changes
       - effectiveFrom
+    HealthFieldCreate:
+      type: object
+      description: Entrada de criação (AC1, AC3). Valida a regra enum⇔opções (→ 400).
+      properties:
+        name:
+          type: string
+          maxLength: 200
+        fieldType:
+          $ref: '#/components/schemas/HealthFieldTypeEnum'
+        enumOptions:
+          type: array
+          items:
+            type: string
+            maxLength: 200
+        displayOrder:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+      required:
+      - fieldType
+      - name
+    HealthFieldDefinition:
+      type: object
+      description: 'Saída: a definição de campo. ``field_type`` emite ``HealthFieldTypeEnum``.'
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          maxLength: 200
+        fieldType:
+          $ref: '#/components/schemas/HealthFieldTypeEnum'
+        enumOptions:
+          type: array
+          items:
+            type: string
+          readOnly: true
+        active:
+          type: boolean
+        displayOrder:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+      required:
+      - enumOptions
+      - fieldType
+      - id
+      - name
+    HealthFieldTypeEnum:
+      enum:
+      - integer
+      - decimal
+      - boolean
+      - enum
+      - text
+      type: string
+      description: |-
+        * `integer` - Integer
+        * `decimal` - Decimal
+        * `boolean` - Boolean
+        * `enum` - Enum
+        * `text` - Text
     HolidayResult:
       type: object
       description: 'Resultado do toggle de feriado: a data + o tipo de dia re-resolvido.'
@@ -1819,6 +1955,28 @@ components:
         group:
           type: string
           format: uuid
+    PatchedHealthFieldUpdate:
+      type: object
+      description: |-
+        Entrada de edição (AC2, AC4): ``name``/``enum_options``/``display_order``/
+        ``active``. ``field_type`` é **imutável** — enviá-lo é rejeitado (400). A regra
+        enum⇔opções no update é validada na camada de serviço contra o ``field_type``
+        atual (imutável), pois o serializer não conhece o tipo persistido.
+      properties:
+        name:
+          type: string
+          maxLength: 200
+        enumOptions:
+          type: array
+          items:
+            type: string
+            maxLength: 200
+        displayOrder:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        active:
+          type: boolean
     PatchedRecurringTaskTemplateUpdate:
       type: object
       properties:

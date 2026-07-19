@@ -662,6 +662,44 @@ export interface paths {
         patch: operations["habits_holidays_partial_update"];
         trace?: never;
     };
+    "/api/health-field-definitions/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["health_field_definitions_list"];
+        put?: never;
+        post: operations["health_field_definitions_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/health-field-definitions/{id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * @description Edita ``name``/``enum_options``/``display_order``/``active`` (AC2, AC4).
+         *
+         *     Desativar/reativar é ``PATCH {active: false/true}`` — Saúde não versiona, então
+         *     não há sub-recurso ``versions/`` (precedente ``RecurringTaskTemplate.active``).
+         */
+        patch: operations["health_field_definitions_partial_update"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -965,6 +1003,32 @@ export interface components {
             effectiveFrom: string;
             changes: components["schemas"]["HabitChange"][];
         };
+        /** @description Entrada de criação (AC1, AC3). Valida a regra enum⇔opções (→ 400). */
+        HealthFieldCreate: {
+            name: string;
+            fieldType: components["schemas"]["HealthFieldTypeEnum"];
+            enumOptions?: string[];
+            displayOrder?: number;
+        };
+        /** @description Saída: a definição de campo. ``field_type`` emite ``HealthFieldTypeEnum``. */
+        HealthFieldDefinition: {
+            /** Format: uuid */
+            readonly id: string;
+            name: string;
+            fieldType: components["schemas"]["HealthFieldTypeEnum"];
+            readonly enumOptions: string[];
+            active?: boolean;
+            displayOrder?: number;
+        };
+        /**
+         * @description * `integer` - Integer
+         *     * `decimal` - Decimal
+         *     * `boolean` - Boolean
+         *     * `enum` - Enum
+         *     * `text` - Text
+         * @enum {string}
+         */
+        HealthFieldTypeEnum: "integer" | "decimal" | "boolean" | "enum" | "text";
         /** @description Resultado do toggle de feriado: a data + o tipo de dia re-resolvido. */
         HolidayResult: {
             /** Format: date */
@@ -1035,6 +1099,18 @@ export interface components {
             unit?: string;
             /** Format: uuid */
             group?: string;
+        };
+        /**
+         * @description Entrada de edição (AC2, AC4): ``name``/``enum_options``/``display_order``/
+         *     ``active``. ``field_type`` é **imutável** — enviá-lo é rejeitado (400). A regra
+         *     enum⇔opções no update é validada na camada de serviço contra o ``field_type``
+         *     atual (imutável), pois o serializer não conhece o tipo persistido.
+         */
+        PatchedHealthFieldUpdate: {
+            name?: string;
+            enumOptions?: string[];
+            displayOrder?: number;
+            active?: boolean;
         };
         PatchedRecurringTaskTemplateUpdate: {
             title?: string;
@@ -2275,6 +2351,76 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HolidayResult"];
+                };
+            };
+        };
+    };
+    health_field_definitions_list: {
+        parameters: {
+            query?: {
+                /** @description Inclui campos com active=false (desativados). */
+                includeInactive?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthFieldDefinition"][];
+                };
+            };
+        };
+    };
+    health_field_definitions_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HealthFieldCreate"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthFieldDefinition"];
+                };
+            };
+        };
+    };
+    health_field_definitions_partial_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PatchedHealthFieldUpdate"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthFieldDefinition"];
                 };
             };
         };

@@ -45,6 +45,11 @@ export const keys = {
     series: (habitId: string, range: { start: string; end: string }) =>
       ['habits', 'series', habitId, range] as const,
   },
-  // Adicionados nas stories:
-  // health: { logs: { ... } }  → Story 7.x
+  // Sem userId (mesmo racional de bujo.*/habits.*): logout limpa o cache inteiro.
+  health: {
+    fieldDefinitions: (params?: { includeInactive?: boolean }) =>
+      ['health', 'fieldDefinitions', 'list', params ?? {}] as const,
+    // Adicionado nas próximas stories:
+    // logs: { ... }  → Story 7.2
+  },
 } as const

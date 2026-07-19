@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-22
-last_updated: 2026-07-19  # Story 6.4 criada (create-story): histórico por data e gráfico de evolução → ready-for-dev
+last_updated: 2026-07-19  # Story 7.1 revisão sênior (AI) concluída: campos de saúde dinâmicos → done
 project: hmmb-bujo
 project_key: NOKEY
 tracking_system: file-system
@@ -109,8 +109,8 @@ development_status:
   epic-6-retrospective: done
 
   # Epic 7: Métricas de Saúde
-  epic-7: backlog
-  7-1-campos-de-saude-dinamicos: backlog
+  epic-7: in-progress
+  7-1-campos-de-saude-dinamicos: done
   7-2-log-diario-de-saude: backlog
   7-3-historico-de-saude-em-tres-visualizacoes: backlog
   epic-7-retrospective: optional

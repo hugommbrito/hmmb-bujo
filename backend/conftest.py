@@ -22,6 +22,7 @@ _ISOLATION_TEST_MODULES = [
     "bujo.tests.factories",
     "braindump.tests.factories",
     "habits.tests.factories",
+    "health.tests.factories",
 ]
 
 
