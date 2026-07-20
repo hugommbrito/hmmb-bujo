@@ -73,4 +73,10 @@ export const keys = {
     // Story 8.2 — superfície diária realizada (confirmação por bloco/linha/avulso).
     day: (date?: string) => ['medications', 'day', date ?? 'today'] as const,
   },
+  // Sem userId (mesmo racional de bujo.*/habits.*/health.*/medications.*): logout
+  // limpa o cache inteiro. Story 9.1 — Diário de Gratidão (log plano por data). A
+  // mutação de criação faz append otimista + invalidação por esta chave no onSettled.
+  gratitude: {
+    day: (date?: string) => ['gratitude', 'day', date ?? 'today'] as const,
+  },
 } as const

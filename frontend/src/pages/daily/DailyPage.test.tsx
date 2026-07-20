@@ -410,6 +410,22 @@ describe('DailyPage (AC1, AC3)', () => {
 
     expect(await axe(container)).toHaveNoViolations()
   })
+
+  // Story 9.1 (AC5/D6): link contextual "Gratidão de ontem" no today view,
+  // apontando para o Diário de Gratidão em ONTEM (logDate − 1 dia, tz-safe).
+  it('mostra o link "Gratidão de ontem" apontando para /gratitude?date=<ontem>', () => {
+    mockUseTodayLogQuery.mockReturnValue({
+      isPending: false,
+      data: { id: 'log-1', logDate: '2026-06-15', tasks: [] },
+    })
+
+    renderDailyPage()
+
+    expect(screen.getByRole('link', { name: 'Gratidão de ontem' })).toHaveAttribute(
+      'href',
+      '/gratitude?date=2026-06-14',
+    )
+  })
 })
 
 const YESTERDAY_TASK = {
@@ -665,6 +681,17 @@ describe('Rota /daily/:date — Daily Log de um dia passado (Story 11.11, AC2/AC
     renderDailyPageAtDate('2026-06-10')
 
     expect(screen.getByRole('link', { name: 'Voltar para hoje' })).toHaveAttribute('href', '/today')
+  })
+
+  it('não mostra o link "Gratidão de ontem" num daily log passado (só no today view)', () => {
+    mockUseTodayLogQuery.mockReturnValue({
+      isPending: false,
+      data: { id: 'log-past', logDate: '2026-06-10', tasks: [] },
+    })
+
+    renderDailyPageAtDate('2026-06-10')
+
+    expect(screen.queryByRole('link', { name: 'Gratidão de ontem' })).not.toBeInTheDocument()
   })
 
   it('rota /today (sem parâmetro) mantém o comportamento de hoje: aria-label "Hoje", sem link de volta', () => {

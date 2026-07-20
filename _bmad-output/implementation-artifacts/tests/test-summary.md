@@ -2892,3 +2892,96 @@ npx tsc -b                               → 0 erros (exit 0)
 - Nenhum gap bloqueante para a Story 8.3 — **Épico 8 (Medicamentos) fechado** com cobertura nas camadas apropriadas: 8.1 (cadastro/versões), 8.2 (confirmação diária), 8.3 (histórico/dose perdida/correção retroativa).
 - Artefatos de teste entram no commit da story (`test(story-8.3): ...`); este `test-summary.md` fica fora do commit (artefato de `_bmad-output`).
 - Vitest e Playwright não rodam no CI (rede local/review) — rodar as suítes localmente antes do merge.
+
+---
+
+# Resumo de Automação de Testes — Story 9.1: Entradas de texto livre
+
+**Data:** 2026-07-20
+**Feature:** Diário de Gratidão (`/gratitude`) — log plano por data com N entradas de texto livre/dia (composer + lista com hora e data + seletor hoje/ontem + estado vazio informativo + salvar otimista); acesso pela sidebar e pelo link contextual "Gratidão de ontem" no `/today`
+**Workflow:** bmad-qa-generate-e2e-tests
+**Frameworks:** pytest + DRF `APIClient` (Postgres local) · Vitest + `@testing-library/react` + `jest-axe` · Playwright (browser real, branch Neon `e2e`, sem mocks de rede)
+
+---
+
+## Gaps descobertos e auto-aplicados
+
+A story entrou em `review` com uma suíte **muito completa** nas camadas unitárias (backend serviço/serializer/view/isolamento parametrizado + frontend hook/componente/api) e **1 arquivo E2E com 3 testes** cobrindo AC1/AC3(parcial)/AC4/AC5(só o link)/AC6/AC7. O mapeamento AC×cobertura **contra o E2E** (foco deste workflow) revelou 4 lacunas genuínas de fluxo real — auto-aplicadas como **2 testes E2E novos + 1 teste E2E estendido** em `frontend/e2e/gratitude.spec.ts`:
+
+| AC | Comportamento | Antes | Agora |
+|----|---------------|-------|-------|
+| AC2 | **múltiplas entradas na MESMA data** (N linhas/dia, sem constraint de unicidade) ponta-a-ponta | ❌ **zero** cobertura E2E — só 1 entrada/dia | ✅ **2 entradas via composer, ambas persistem** (novo teste) |
+| AC3 | **ordem cronológica ascendente** entre múltiplas + **data (DD/MM/AAAA)** por entrada no browser | ❌ só a **hora** de 1 entrada | ✅ **ordem asc (`nth(0)`/`nth(1)`) + hora + data por linha** (novo teste) |
+| AC4 | **sem datas futuras** — "Próximo dia" desabilitado em hoje (cap superior) | ❌ não verificado no E2E (só no vitest) | ✅ **disabled em hoje / enabled em ontem** (teste AC4 estendido) |
+| AC5 | **item "Gratidão" da sidebar** abre a superfície real (não mais o stub) | ❌ só o **link contextual** era testado | ✅ **nav pela sidebar → /gratitude** (novo teste) |
+
+**Por que camada E2E (não API/componente):** AC2 é a **divergência arquitetural central** da story (log plano, N-linhas-por-data, *sem* `UniqueConstraint`) e não tinha nenhuma prova de ponta-a-ponta contra o backend real — a mais alta prioridade. AC3 (ordem/data por linha), AC4 (cap em hoje) e AC5 (sidebar) são comportamentos de **jornada do usuário** melhor exercitados no browser real. As camadas unitárias já cobrem o que é rápido/determinístico lá: 400 (texto em branco/só-espaços, data inválida), rollback do otimismo em erro, isolamento multi-tenant (registry fail-closed) e casing camelCase na borda — **não duplicados** no E2E.
+
+## Testes Gerados
+
+### E2E — `frontend/e2e/gratitude.spec.ts` (2 novos + 1 estendido)
+
+- [x] **(novo)** `múltiplas entradas na MESMA data persistem em ordem cronológica, cada uma com hora e data (AC2, AC3)` — adiciona 2 entradas em hoje via composer (esperando o POST de cada); ambas viram `<li>` (`toHaveCount(2)`); ordem ascendente por `nth(0)`/`nth(1)`; cada linha exibe hora `\d{2}:\d{2}` **e** data `\d{2}/\d{2}/\d{4}`; `page.reload()` prova persistência das duas na mesma ordem.
+- [x] **(novo)** `o item "Gratidão" da sidebar abre o Diário de Gratidão (AC5)` — a partir do `/today` (landing do signup), clica no item de sidebar `getByRole('button', { name: 'Gratidão', exact: true })`; assert `/gratitude`, `<main aria-label="Diário de Gratidão">` visível e estado vazio.
+- [x] **(estendido)** `o seletor de data registra na data selecionada e persiste por data (AC4)` — acrescido: "Próximo dia" **desabilitado** em hoje (default) → **habilitado** em ontem → **desabilitado** de novo ao voltar para hoje (cap superior, sem datas futuras).
+
+Helper novo `entryList(page)` escopa `getByRole('listitem')` ao `<main>` do diário, para a contagem/ordem não colher `<li>` de fora da lista. Locators semânticos (`getByRole`/`getByLabel`/`getByText`); nenhuma espera artificial — `addGratitudeEntry` já sincroniza no `waitForResponse` do POST antes de recarregar (evita a corrida otimismo×`reload`, documentada no Debug Log da story).
+
+### API / Componente / Hook
+
+**Nenhum novo** — já cobertos e verdes na verificação do dev-story, e **não tocados** por esta rodada:
+- **API (pytest, `backend/gratitude/tests/test_views.py`):** POST default hoje (201 + `today_for`), POST em data selecionada, texto vazio/só-espaços → 400, camelCase na borda (`createdAt` via `response.content`), **AC2 duas por dia via API**, GET default/`?date=`, estado vazio, data inválida → 400, **AC8 cross-tenant → lista vazia**; isolamento parametrizado fail-closed via `register_isolation_case` + `_ISOLATION_TEST_MODULES`.
+- **Componente/Hook (vitest):** `GratitudeDaySurface.test.tsx` (loading/erro/vazio-string-exata/lista, composer POST+reset, **AC2 múltiplas exibidas**, botão desabilitado vazio, cap "Próximo dia", troca de dia, `?date=`, **jest-axe**); `api.test.tsx` (query com/sem data, **append otimista + rollback em erro — AC7**).
+
+## Cobertura por AC (pós-QA)
+
+| AC | Backend (pytest) | Frontend (vitest) | E2E |
+|----|------------------|-------------------|-----|
+| AC1 — persistência escopada por tenant; texto vazio → 400 | ✅ 201/default-hoje/400 blank+whitespace | ✅ POST `{text,date}` + botão desabilitado vazio | ✅ adicionar + persistir |
+| AC2 — múltiplas entradas no mesmo dia (sem constraint) | ✅ duas via API | ✅ duas exibidas | ✅ **novo** (2 via composer + persistência + ordem) |
+| AC3 — listar por data com hora e data, ordem cronológica | ✅ ordem/`createdAt`/casing | ✅ texto + hora | ✅ **reforçado** (ordem asc + hora + data DD/MM/AAAA) |
+| AC4 — seletor hoje/ontem; cap em hoje (sem futuro) | ✅ POST data selecionada / GET `?date=` / 400 inválida | ✅ default hoje + "Próximo dia" disabled + troca | ✅ **reforçado** (cap em hoje + registra em ontem) |
+| AC5 — sidebar + link contextual "Gratidão de ontem" | — | ✅ abre no `?date=` | ✅ **novo** item sidebar + ✅ link contextual |
+| AC6 — estado vazio informativo (voz neutra) | ✅ lista vazia | ✅ string EXATA | ✅ |
+| AC7 — salvar otimista + rollback em erro | — | ✅ append otimista + rollback | ✅ otimista implícito (`waitForResponse`) |
+| AC8 — isolamento multi-tenant + contrato aditivo | ✅ registry fail-closed + cross-tenant lista vazia | — | — (invariante de backend) |
+
+**ACs cobertas: 8/8. Lacunas fechadas nesta rodada: 4 no E2E (AC2 do zero; AC3/AC4/AC5 reforçados).**
+
+## Execução (contagem real observada)
+
+```
+nvm use 22.15.1
+npx eslint e2e/gratitude.spec.ts          → limpo (ESLINT_OK)
+npx playwright test e2e/gratitude.spec.ts → 5 passed (1.0m)   [era 3 → +2 testes novos, 1 estendido]
+```
+
+> **Honestidade de contagem (guardrail):** rodada **E2E-only** — só `frontend/e2e/gratitude.spec.ts` editado. Backend (`pytest`, 858 passed) e frontend vitest (796 passed) **não re-executados** nesta rodada (nenhum arquivo dessas camadas tocado); estavam verdes na verificação do dev-story. Playwright provou o round-trip real: nos logs, `POST /api/gratitude/entries/ 201` + `GET /api/gratitude/days/?date=... 200` com corpo crescente (34 → 176 → 318 bytes) confirmam as duas entradas do dia; `?date=2026-07-19` exercita ontem; `consoleErrors == []` em todos.
+> **Node:** `nvm use 22.15.1` antes de todo comando de frontend/e2e (shell inicia em versão antiga; sem `.nvmrc`).
+> **Neon:** migration de `gratitude` já aplicada às branches `e2e`/`dev` na story (E2E rodou verde sem reaplicar).
+
+## Checklist de Validação
+
+- [x] API tests: N/A como arquivo novo — contrato (POST/GET, 400s, casing, cross-tenant) já coberto de verdade pela suíte de backend
+- [x] E2E tests gerados (2 novos + 1 estendido) fechando as lacunas de fluxo real AC2/AC3/AC4/AC5
+- [x] Usa APIs padrão do framework adotado (Playwright `test`/`expect`/`getByRole`/`getByText`) — nenhuma ferramenta nova
+- [x] Cobre happy path (múltiplas entradas/dia + nav sidebar) + casos críticos (cap em hoje / ordem cronológica / persistência pós-reload)
+- [x] Todos os testes gerados passam (5/5 no arquivo; suíte E2E de gratidão verde em 1.0m)
+- [x] Locators semânticos/acessíveis (`getByRole`/`getByLabel`/`getByText`, `exact` onde há ambiguidade); sem seletores CSS frágeis
+- [x] Descrições claras em pt-BR referenciando a AC, seguindo a prosa dos testes do projeto
+- [x] Sem waits/sleeps artificiais — `waitForResponse` do POST + auto-retry das asserções do Playwright
+- [x] Testes independentes (signup real de usuário novo por teste via fixture `page`; isolamento total entre specs)
+- [x] Summary anexado (log cumulativo) em `_bmad-output/implementation-artifacts/tests/test-summary.md`
+
+## Limites de Cobertura (por design, não gaps)
+
+- **AC1 texto em branco/só-espaços → 400 e AC4 data inválida → 400:** validação de forma determinística, coberta de verdade no pytest (`test_views.py`); reproduzir no browser só somaria flake sem sinal novo.
+- **AC7 rollback do otimismo em erro de rede:** exige interceptação de rota (o suite E2E é deliberadamente **sem mocks de rede**); a branch de rollback já está provada no `api.test.tsx` (o cache volta ao snapshot). O E2E prova o caminho feliz do otimismo (a entrada aparece na hora, POST 201 confirmado).
+- **AC8 isolamento multi-tenant:** invariante de backend fail-closed provado pelo isolamento parametrizado (`gratitude.GratitudeEntry` no registry); não alcançável de forma estável pelo browser.
+- **camelCase na borda (`createdAt`):** provado por `test_post_entry_camelcase_on_the_edge` (backend, `response.content` cru); o E2E prova o efeito visível (hora `HH:MM` renderizada na linha).
+
+## Próximos Passos
+
+- Nenhum gap bloqueante para a Story 9.1 — cobertura completa nas camadas apropriadas (8/8 ACs), com o E2E agora provando a cardinalidade N-linhas-por-data (AC2), a ordem/data por linha (AC3), o cap em hoje (AC4) e o acesso pela sidebar (AC5).
+- Artefatos de teste entram no commit da story (`test(story-9.1): ...`); este `test-summary.md` fica fora do commit (artefato de `_bmad-output`).
+- Vitest e Playwright não rodam no CI (rede local/review) — rodar as suítes localmente antes do merge.

@@ -24,6 +24,7 @@ _ISOLATION_TEST_MODULES = [
     "habits.tests.factories",
     "health.tests.factories",
     "medications.tests.factories",
+    "gratitude.tests.factories",
 ]
 
 

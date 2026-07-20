@@ -475,6 +475,47 @@ export interface paths {
         patch: operations["doctors_partial_update"];
         trace?: never;
     };
+    "/api/gratitude/days/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description Superfície diária: ``GET days/?date=`` → ``{date, entries}`` (default = hoje).
+         *     Lista simples embutida, **sem paginação** (como as superfícies diárias).
+         */
+        get: operations["gratitude_days_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/gratitude/entries/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description Cria uma entrada (AC1/AC2/AC4): ``POST entries/`` → 201. A ``date`` vem do body
+         *     (data selecionada no composer); ausente → ``today_for(request.user)`` (AD-04). Texto
+         *     em branco → 400 (guard do ``GratitudeEntryWriteSerializer``).
+         */
+        post: operations["gratitude_entries_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/habit-groups/": {
         parameters: {
             query?: never;
@@ -1135,6 +1176,35 @@ export interface components {
             year: number;
             month: number;
             tasks: components["schemas"]["Task"][];
+        };
+        /** @description Read-model da data (AC3): a data + a lista de entradas daquela data. */
+        GratitudeDay: {
+            /** Format: date */
+            date: string;
+            entries: components["schemas"]["GratitudeEntry"][];
+        };
+        /**
+         * @description Saída de uma entrada (leitura). ``created_at`` (ISO timestamptz) → ``createdAt``
+         *     na borda; a hora é derivada dele no frontend.
+         */
+        GratitudeEntry: {
+            /** Format: uuid */
+            readonly id: string;
+            /** Format: date */
+            date: string;
+            text: string;
+            /** Format: date-time */
+            readonly createdAt: string;
+        };
+        /**
+         * @description Entrada de criação (AC1/AC4). Só valida **forma**: ``text`` não-branco
+         *     (``trim_whitespace`` → texto só-espaços vira vazio → ``allow_blank=False`` → 400);
+         *     ``date`` opcional (ausente → o servidor resolve para ``today_for(user)``, AD-04).
+         */
+        GratitudeEntryWrite: {
+            text: string;
+            /** Format: date */
+            date?: string;
         };
         /**
          * @description Config vigente do grupo (read): chaves nomeadas ``weekend``/``holiday``.
@@ -2717,6 +2787,51 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Doctor"];
+                };
+            };
+        };
+    };
+    gratitude_days_retrieve: {
+        parameters: {
+            query?: {
+                /** @description Dia da superfície (YYYY-MM-DD). Default = hoje do usuário. */
+                date?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GratitudeDay"];
+                };
+            };
+        };
+    };
+    gratitude_entries_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GratitudeEntryWrite"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GratitudeEntry"];
                 };
             };
         };

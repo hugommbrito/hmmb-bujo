@@ -5,7 +5,6 @@ import { LoginPage } from '../features/auth/components/LoginPage'
 import { SignupPage } from '../features/auth/components/SignupPage'
 import { useAuth } from '../shared/hooks/useAuth'
 import { AppLayout } from './layout/AppLayout'
-import { PlaceholderPage } from '../pages/PlaceholderPage'
 import { DailyPage } from '../pages/daily/DailyPage'
 import { WeeklyPage } from '../pages/planner/WeeklyPage'
 import { MonthlyPage } from '../pages/planner/MonthlyPage'
@@ -19,6 +18,7 @@ import { HealthMetricsPage } from '../pages/health/HealthMetricsPage'
 import { HealthHistoryPage } from '../pages/health/HealthHistoryPage'
 import { MedicationsPage } from '../pages/health/MedicationsPage'
 import { MedicationHistoryPage } from '../pages/health/MedicationHistoryPage'
+import { GratitudePage } from '../pages/gratitude/GratitudePage'
 import { SettingsPage } from '../pages/settings/SettingsPage'
 import { HabitsSettingsPage } from '../pages/settings/HabitsSettingsPage'
 import { HealthMetricsSettingsPage } from '../pages/settings/HealthMetricsSettingsPage'
@@ -120,7 +120,7 @@ export const routeDefinitions: RouteObject[] = [
       },
       {
         path: 'gratitude',
-        element: <PlaceholderPage title="Diário de Gratidão" />,
+        element: <GratitudePage />,
         handle: { title: 'Diário de Gratidão' },
       },
       { path: 'brain-dump', element: <BrainDumpPage />, handle: { title: 'Brain Dump' } },

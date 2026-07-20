@@ -19,6 +19,18 @@ import { findTaskById } from '../../features/bujo/taskTree'
 import { HabitTracker } from '../../features/habits'
 import { useDailyData } from './useDailyData'
 
+// Aritmética de data tz-safe por SPLIT DE STRING (nunca `new Date(iso)`, que faria
+// drift de fuso). No today view, `logDate` é o "hoje" do servidor (today_for) — ontem
+// = logDate − 1 dia. Alvo do link contextual "Gratidão de ontem" (Story 9.1, AC5/D6).
+function addDaysIso(iso: string, n: number): string {
+  const [y, m, d] = iso.split('-').map(Number)
+  const dt = new Date(y, m - 1, d + n)
+  const yy = dt.getFullYear()
+  const mm = String(dt.getMonth() + 1).padStart(2, '0')
+  const dd = String(dt.getDate()).padStart(2, '0')
+  return `${yy}-${mm}-${dd}`
+}
+
 export function DailyPage() {
   const { date: routeDate } = useParams<{ date: string }>()
   const { todayLog } = useDailyData(routeDate)
@@ -94,6 +106,19 @@ export function DailyPage() {
           {/* Fluxo da manhã (Épico 6): tracker de hábitos de hoje. Só no today
               view — navegar dias passados de hábitos é 6.4. */}
           <HabitTracker />
+          {/* Link contextual "Gratidão de ontem" (Story 9.1, AC5/D6): abre o Diário
+              de Gratidão em ontem. `<Button component={RouterLink}>` PURO (sem
+              TanStack Query) — não toca a casca de navegação. Único caminho móvel para
+              a superfície (Gratidão não tem aba/bottom-tab dedicada). */}
+          <Box sx={{ mb: 1 }}>
+            <Button
+              component={RouterLink}
+              to={`/gratitude?date=${addDaysIso(logDate, -1)}`}
+              size="small"
+            >
+              Gratidão de ontem
+            </Button>
+          </Box>
         </>
       )}
       <DayHeader logDate={logDate} pendingCount={pendingCount}>

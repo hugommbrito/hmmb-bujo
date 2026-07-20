@@ -677,6 +677,53 @@ paths:
               schema:
                 $ref: '#/components/schemas/Doctor'
           description: ''
+  /api/gratitude/days/:
+    get:
+      operationId: gratitude_days_retrieve
+      description: |-
+        Superfície diária: ``GET days/?date=`` → ``{date, entries}`` (default = hoje).
+        Lista simples embutida, **sem paginação** (como as superfícies diárias).
+      parameters:
+      - in: query
+        name: date
+        schema:
+          type: string
+        description: Dia da superfície (YYYY-MM-DD). Default = hoje do usuário.
+      tags:
+      - gratitude
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GratitudeDay'
+          description: ''
+  /api/gratitude/entries/:
+    post:
+      operationId: gratitude_entries_create
+      description: |-
+        Cria uma entrada (AC1/AC2/AC4): ``POST entries/`` → 201. A ``date`` vem do body
+        (data selecionada no composer); ausente → ``today_for(request.user)`` (AD-04). Texto
+        em branco → 400 (guard do ``GratitudeEntryWriteSerializer``).
+      tags:
+      - gratitude
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GratitudeEntryWrite'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GratitudeEntry'
+          description: ''
   /api/habit-groups/:
     get:
       operationId: habit_groups_list
@@ -1807,6 +1854,59 @@ components:
       - month
       - tasks
       - year
+    GratitudeDay:
+      type: object
+      description: 'Read-model da data (AC3): a data + a lista de entradas daquela
+        data.'
+      properties:
+        date:
+          type: string
+          format: date
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/GratitudeEntry'
+      required:
+      - date
+      - entries
+    GratitudeEntry:
+      type: object
+      description: |-
+        Saída de uma entrada (leitura). ``created_at`` (ISO timestamptz) → ``createdAt``
+        na borda; a hora é derivada dele no frontend.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        date:
+          type: string
+          format: date
+        text:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - createdAt
+      - date
+      - id
+      - text
+    GratitudeEntryWrite:
+      type: object
+      description: |-
+        Entrada de criação (AC1/AC4). Só valida **forma**: ``text`` não-branco
+        (``trim_whitespace`` → texto só-espaços vira vazio → ``allow_blank=False`` → 400);
+        ``date`` opcional (ausente → o servidor resolve para ``today_for(user)``, AD-04).
+      properties:
+        text:
+          type: string
+        date:
+          type: string
+          format: date
+      required:
+      - text
     GroupMultipliers:
       type: object
       description: |-
