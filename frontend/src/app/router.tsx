@@ -20,6 +20,7 @@ import { HealthHistoryPage } from '../pages/health/HealthHistoryPage'
 import { SettingsPage } from '../pages/settings/SettingsPage'
 import { HabitsSettingsPage } from '../pages/settings/HabitsSettingsPage'
 import { HealthMetricsSettingsPage } from '../pages/settings/HealthMetricsSettingsPage'
+import { MedicationsSettingsPage } from '../pages/settings/MedicationsSettingsPage'
 
 function LoginPageRoute() {
   const { isAuthenticated } = useAuth()
@@ -141,6 +142,11 @@ export const routeDefinitions: RouteObject[] = [
         path: 'settings/health-metrics',
         element: <HealthMetricsSettingsPage />,
         handle: { title: 'Configurações — Métricas de Saúde' },
+      },
+      {
+        path: 'settings/medications',
+        element: <MedicationsSettingsPage />,
+        handle: { title: 'Configurações — Medicamentos' },
       },
       { path: '*', element: <Navigate to="/today" replace /> },
     ],

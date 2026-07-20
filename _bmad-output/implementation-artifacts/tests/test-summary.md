@@ -2602,3 +2602,98 @@ Running 4 tests using 1 worker
 
 - Nenhum gap bloqueante identificado para a Story 7.3. Épico 7 (Métricas de Saúde) fechado com cobertura E2E das três superfícies: 7.1 (`health-metrics.spec.ts`), 7.2 (`health-log.spec.ts`), 7.3 (`health-history.spec.ts`).
 - Vitest e Playwright não rodam no CI (rede local/review) — rodar a suíte E2E completa localmente antes do merge.
+
+# Resumo de Automação de Testes — Story 8.1: Cadastro de medicamentos com slot estável e versões
+
+**Data:** 2026-07-20
+**Feature:** Configurações › Medicamentos (`/settings/medications`) — slot estável + catálogo versionado (`medications` + `medication_substance_versions` + `medication_schedule_versions` + `time_blocks` + `doctors`)
+**Workflow:** bmad-qa-generate-e2e-tests
+**Framework:** Playwright (`@playwright/test`) — browser real contra backend Django + branch Neon `e2e` (sem mocks de rede)
+
+---
+
+## Gaps descobertos e auto-aplicados
+
+A story entregou 2 specs E2E cobrindo AC1, AC2 (parcial), AC3 (happy), AC5 (agenda) e AC7 (nav). O mapeamento AC×cobertura revelou lacunas, **auto-aplicadas** como 4 novos testes:
+
+| AC | Comportamento | Antes | Agora |
+|----|---------------|-------|-------|
+| AC1 | criar med (slot + substância vigente) | ✅ | ✅ (mantido) |
+| AC2 | blocos dinâmicos | ⚠️ só criava | ✅ **+ desativar/reativar bloco (esconde sem apagar)** |
+| AC3 | dose JSONB validada no serviço | ⚠️ só happy path | ✅ **+ caso de erro (unidade vazia → rejeição backend)** |
+| AC4 | dois eixos de versão independentes | ❌ | ✅ **eixo substância + eixo agenda, independência provada** |
+| AC5 | desativação vive nas versões | ⚠️ só agenda | ✅ **+ nível-medicamento em lote (Decisão 5) + reativar** |
+| AC6 | médicos como catálogo referenciável | ❌ | ✅ **criar + associar na criação + reutilizar entre meds** |
+| AC7 | tela config + estados | ⚠️ nav/vazio | ✅ **+ erro de escrita (role="alert") com input preservado** |
+
+## Testes Gerados
+
+### E2E — `frontend/e2e/medications.spec.ts`
+
+Pré-existentes (mantidos):
+- [x] `AC1/AC2/AC3/AC7 — navega Configurações → Medicamentos, cria bloco + medicamento + dose e persiste`
+- [x] `AC5 — desativar uma agenda grava versão active=false ... e persiste`
+
+Novos (auto-aplicados neste workflow):
+- [x] `AC6 — médico como catálogo: criar, associar na criação e reutilizar entre medicamentos`
+- [x] `AC4 — dois eixos de versão independentes: trocar a substância NÃO toca a agenda e vice-versa (prospectivo)`
+- [x] `AC3/AC7 (caso de erro) — dose sem unidade é rejeitada pelo backend real, erro inline e input preservado no retry`
+- [x] `AC2/AC5 — desativação em versões: medicamento em lote (nível-Item Row) e bloco (esconde sem apagar), ambos reversíveis`
+
+Seed reutilizado: `frontend/e2e/seedMedications.ts` (`seedMedication`) — **nenhum seed novo** necessário (o existente cobre bloco + medicamento + agenda).
+
+**Total: 1 arquivo · 6 testes (2 pré-existentes + 4 novos) · 6 passando**
+
+### API
+
+Não gerados aqui — a API já é coberta pela suíte Django `backend/medications/tests/{test_models,test_serializers,test_services,test_views}.py` (matriz fixa da story + contrato de isolamento cross-tenant parametrizado). Estes E2E exercitam a mesma API de verdade (sem mock).
+
+## Cobertura por AC
+
+| AC | Critério (E2E) | Coberto |
+|----|----------------|---------|
+| AC1 | criar med → slot + substância vigente; persiste após reload | ✅ |
+| AC2 | criar bloco dinâmico; desativar esconde da lista ativa; "Mostrar inativos" revela; reativar volta | ✅ |
+| AC3 | dose multi-componente válida grava; dose sem unidade → rejeição do backend real | ✅ |
+| AC4 | trocar só a substância = nova versão (agenda intacta); trocar só a dose = nova versão (substância intacta) | ✅ |
+| AC5 | desativar agenda = versão active=false (nada deletado); desativar/reativar medicamento em lote | ✅ |
+| AC6 | criar médico; associar na criação; reutilizar o mesmo médico em 2 meds; persiste | ✅ |
+| AC7 | nav Configurações → Medicamentos; estado vazio; erro de escrita inline (role="alert") + input preservado | ✅ |
+
+**ACs cobertas por E2E: 7/7 (AC1–AC7). Fluxos: 6. Caso de erro crítico: 1 (dose inválida).**
+
+## Execução (contagem real observada)
+
+```
+npm run test:e2e -- medications.spec.ts --reporter=line
+6 passed (2.6m)
+```
+
+- **Gate operacional:** migration aplicada à branch Neon `e2e` antes do Playwright
+  (`DJANGO_SETTINGS_MODULE=config.settings.e2e uv run python manage.py migrate` → "No migrations to apply"; `medications.0001_initial` já presente — o gap recorrente **não se aplicou** aqui, confirmado).
+- **Node:** `nvm use 22.15.1` antes do comando (shell inicia em versão incompatível; sem `.nvmrc`).
+- Reporter forçado para `line` (o `html` do config abre um servidor de report e trava shell não-interativo em caso de falha).
+
+## Checklist de Validação
+
+- [x] Testes E2E gerados (UI existe) — 4 novos fechando o gap de AC (AC1–AC7 agora 7/7)
+- [x] API tests: N/A como arquivo novo — contrato coberto pela suíte de backend e exercitado de verdade por estes E2E (sem mock)
+- [x] Usam APIs padrão do framework já adotado (Playwright + fixture de signup + seed via `manage.py shell`) — nenhuma ferramenta nova
+- [x] Cobrem happy path (criar med/dose/associar médico/versionar) + caso de erro crítico (dose inválida rejeitada pelo backend real → erro inline + input preservado)
+- [x] Todos os 6 testes passam contra o backend real
+- [x] Locators semânticos/acessíveis (`getByRole`, `getByLabel`, `getByText`) — nomes acessíveis distintos por nível (medicamento/agenda/bloco) desambiguam os toggles; sem seletores frágeis de CSS
+- [x] Descrições claras em pt-BR, seguindo a convenção de prosa dos `.spec.ts` do projeto
+- [x] Sem waits/sleeps artificiais — web-first assertions com auto-retry; `test.setTimeout`/`LIST_TIMEOUT` só como budget de cold-start
+- [x] Testes independentes (usuário novo por teste via fixture `page`; seed determinístico por `email`)
+- [x] Summary salvo em `_bmad-output/implementation-artifacts/tests/test-summary.md`
+
+## Limites de Cobertura (por design, não gaps)
+
+- **Skeleton de carregamento e erro de leitura com retry (`Tentar novamente`):** difíceis/instáveis de forçar por E2E; cobertos pelos testes de componente em `frontend/src/features/medications/components/MedicationsManager.test.tsx`.
+- **Isolamento cross-tenant / taxonomia de erro (409/404/500 opaco):** asserados na camada de view/serviço (determinístico); não alcançáveis pelo browser.
+- **Casing JSONB da dose (`response.content` cru):** provado por teste de contrato no backend (`test_dose_keys_survive_camelcase_roundtrip`); os E2E provam o efeito visível (dose exibida/persistida).
+
+## Próximos Passos
+
+- Nenhum gap bloqueante para a Story 8.1 — cobertura E2E completa da superfície de cadastro/versões (fundação do Épico 8; a 8.2 materializa `medication_day_entries`, a 8.3 histórico/dose perdida).
+- Vitest e Playwright não rodam no CI (rede local/review) — rodar a suíte E2E completa localmente antes do merge.

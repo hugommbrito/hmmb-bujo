@@ -23,6 +23,7 @@ _ISOLATION_TEST_MODULES = [
     "braindump.tests.factories",
     "habits.tests.factories",
     "health.tests.factories",
+    "medications.tests.factories",
 ]
 
 

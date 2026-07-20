@@ -443,6 +443,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/doctors/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["doctors_list"];
+        put?: never;
+        post: operations["doctors_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/doctors/{id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["doctors_partial_update"];
+        trace?: never;
+    };
     "/api/habit-groups/": {
         parameters: {
             query?: never;
@@ -797,6 +829,111 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/medications/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["medications_list"];
+        put?: never;
+        post: operations["medications_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/medications/{id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["medications_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["medications_partial_update"];
+        trace?: never;
+    };
+    "/api/medications/{id}/schedule-versions/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description Set/deactivate da agenda de um bloco (eixo agenda, AC3/AC5): ``POST
+         *     /api/medications/{id}/schedule-versions/``. ``DomainError`` (dose inválida ou
+         *     sem dose para herdar) → 409; bloco inexistente/cross-tenant → 400.
+         */
+        post: operations["medications_schedule_versions_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/medications/{id}/substance-versions/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description Nova versão de substância (eixo substância, AC4): ``POST
+         *     /api/medications/{id}/substance-versions/``.
+         */
+        post: operations["medications_substance_versions_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/time-blocks/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["time_blocks_list"];
+        put?: never;
+        post: operations["time_blocks_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/time-blocks/{id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["time_blocks_partial_update"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -864,6 +1001,16 @@ export interface components {
          * @enum {string}
          */
         DayTypeEnum: "weekday" | "weekend" | "holiday";
+        Doctor: {
+            /** Format: uuid */
+            readonly id: string;
+            name: string;
+            specialty?: string | null;
+        };
+        DoctorCreate: {
+            name: string;
+            specialty?: string | null;
+        };
         /**
          * @description * `ui` - Urgent Important
          *     * `u` - Urgent
@@ -1253,6 +1400,68 @@ export interface components {
             logDate: string;
             readonly tasks: components["schemas"]["Task"][];
         };
+        /**
+         * @description Medicamento + estado vigente hoje (anotado pela camada de serviço).
+         *
+         *     ``active`` é **derivado** (``medications`` não tem coluna ``active``, AC5):
+         *     ``obj.derived_active`` vem do serviço. ``substance`` = versão de substância vigente
+         *     (ou null); ``schedules`` = versões de agenda vigentes por bloco ativo.
+         */
+        Medication: {
+            /** Format: uuid */
+            readonly id: string;
+            title: string;
+            readonly active: boolean;
+            readonly substance: components["schemas"]["MedicationSubstanceVersion"] | null;
+            readonly schedules: components["schemas"]["MedicationScheduleVersion"][];
+        };
+        /**
+         * @description Entrada de criação (AC1): slot ``title`` + primeira versão de substância.
+         *
+         *     A agenda por bloco é definida em passo separado (``set_schedule``), espelhando as
+         *     ACs ("cadastra um medicamento" vs. "define a agenda de doses"; Decisão 2).
+         */
+        MedicationCreate: {
+            title: string;
+            substanceName: string;
+            laboratory?: string | null;
+            /** Format: uuid */
+            prescribedById?: string | null;
+        };
+        /**
+         * @description Saída de uma versão de agenda vigente/criada (eixo agenda). ``dose`` é o array
+         *     tipado; ``time_block_name`` acompanha para a tela renderizar sem uma query extra.
+         */
+        MedicationScheduleVersion: {
+            /** Format: uuid */
+            readonly id: string;
+            /** Format: uuid */
+            medication: string;
+            /** Format: uuid */
+            timeBlock: string;
+            readonly timeBlockName: string;
+            dose: {
+                label?: string;
+                amount?: number;
+                unit?: string;
+            }[];
+            active?: boolean;
+            /** Format: date */
+            effectiveFrom: string;
+        };
+        /** @description Saída de uma versão de substância vigente/criada (eixo substância). */
+        MedicationSubstanceVersion: {
+            /** Format: uuid */
+            readonly id: string;
+            /** Format: uuid */
+            medication: string;
+            substanceName: string;
+            laboratory?: string | null;
+            /** Format: uuid */
+            prescribedBy?: string | null;
+            /** Format: date */
+            effectiveFrom: string;
+        };
         MigrationQueue: {
             /** Format: date */
             logDate: string;
@@ -1281,6 +1490,10 @@ export interface components {
         };
         /** @enum {unknown} */
         NullEnum: null;
+        PatchedDoctorUpdate: {
+            name?: string;
+            specialty?: string | null;
+        };
         /**
          * @description PATCH de uma linha: marcar/desmarcar ``value`` e/ou correção avulsa.
          *
@@ -1323,6 +1536,10 @@ export interface components {
             displayOrder?: number;
             active?: boolean;
         };
+        /** @description Entrada de edição do slot (AC7): só ``title`` (identidade, não versionada). */
+        PatchedMedicationUpdate: {
+            title?: string;
+        };
         PatchedRecurringTaskTemplateUpdate: {
             title?: string;
             description?: string | null;
@@ -1345,6 +1562,11 @@ export interface components {
             category?: (components["schemas"]["CategoryEnum"] | components["schemas"]["NullEnum"]) | null;
             /** Format: date */
             scheduledDate?: string | null;
+        };
+        PatchedTimeBlockUpdate: {
+            name?: string;
+            displayOrder?: number;
+            active?: boolean;
         };
         /**
          * @description * `before` - before
@@ -1389,6 +1611,24 @@ export interface components {
             scheduledDate?: string | null;
         };
         /**
+         * @description Entrada de nova versão de agenda (AC3/AC5): ``time_block_id`` + ``dose`` +
+         *     ``active``. Só valida **forma** (``dose`` é uma lista quando informada); o conteúdo
+         *     (amount numérico, unit não-vazia, lista não-vazia) é validado na camada de serviço
+         *     (``_validate_dose``, §6.4). ``dose`` omitida → herda a vigente (permite
+         *     desativar/reativar sem reenviar a dose).
+         */
+        ScheduleVersionCreate: {
+            /** Format: uuid */
+            timeBlockId: string;
+            dose?: {
+                label?: string;
+                amount?: number;
+                unit?: string;
+            }[];
+            /** @default true */
+            active: boolean;
+        };
+        /**
          * @description Escrita prospectiva da config (write). Só as chaves enviadas (não-null) são
          *     aplicadas; ambas opcionais.
          */
@@ -1414,6 +1654,16 @@ export interface components {
          * @enum {string}
          */
         StatusEnum: "pending" | "started" | "completed" | "cancelled" | "migrated" | "postponed";
+        /**
+         * @description Entrada de nova versão de substância (AC4). Todos opcionais — os não informados
+         *     são **herdados** da versão vigente na camada de serviço.
+         */
+        SubstanceVersionCreate: {
+            substanceName?: string;
+            laboratory?: string | null;
+            /** Format: uuid */
+            prescribedById?: string | null;
+        };
         /**
          * @description * `today` - Today
          *     * `week` - Week
@@ -1476,6 +1726,17 @@ export interface components {
         };
         TaskTransitionRequest: {
             toStatus: components["schemas"]["ToStatusEnum"];
+        };
+        TimeBlock: {
+            /** Format: uuid */
+            readonly id: string;
+            name: string;
+            displayOrder?: number;
+            active?: boolean;
+        };
+        TimeBlockCreate: {
+            name: string;
+            displayOrder?: number;
         };
         /**
          * @description * `pending` - Pending
@@ -2215,6 +2476,73 @@ export interface operations {
             };
         };
     };
+    doctors_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Doctor"][];
+                };
+            };
+        };
+    };
+    doctors_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DoctorCreate"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Doctor"];
+                };
+            };
+        };
+    };
+    doctors_partial_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PatchedDoctorUpdate"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Doctor"];
+                };
+            };
+        };
+    };
     habit_groups_list: {
         parameters: {
             query?: never;
@@ -2724,6 +3052,217 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthFieldSeries"];
+                };
+            };
+        };
+    };
+    medications_list: {
+        parameters: {
+            query?: {
+                /** @description Data do estado vigente (YYYY-MM-DD). Default = hoje do usuário. */
+                onDate?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Medication"][];
+                };
+            };
+        };
+    };
+    medications_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MedicationCreate"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Medication"];
+                };
+            };
+        };
+    };
+    medications_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Medication"];
+                };
+            };
+        };
+    };
+    medications_partial_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PatchedMedicationUpdate"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Medication"];
+                };
+            };
+        };
+    };
+    medications_schedule_versions_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScheduleVersionCreate"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MedicationScheduleVersion"];
+                };
+            };
+        };
+    };
+    medications_substance_versions_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["SubstanceVersionCreate"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MedicationSubstanceVersion"];
+                };
+            };
+        };
+    };
+    time_blocks_list: {
+        parameters: {
+            query?: {
+                /** @description Inclui blocos com active=false (desativados). */
+                includeInactive?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimeBlock"][];
+                };
+            };
+        };
+    };
+    time_blocks_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TimeBlockCreate"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimeBlock"];
+                };
+            };
+        };
+    };
+    time_blocks_partial_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PatchedTimeBlockUpdate"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimeBlock"];
                 };
             };
         };

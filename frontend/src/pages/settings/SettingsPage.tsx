@@ -20,6 +20,11 @@ export function SettingsPage() {
             Métricas de Saúde
           </Link>
         </ListItem>
+        <ListItem disableGutters sx={{ minHeight: 44 }}>
+          <Link component={RouterLink} to="/settings/medications">
+            Medicamentos
+          </Link>
+        </ListItem>
       </List>
     </Box>
   )

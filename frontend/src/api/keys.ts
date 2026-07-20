@@ -60,4 +60,15 @@ export const keys = {
     series: (fieldId: string, range: { start: string; end: string }) =>
       ['health', 'series', fieldId, range] as const,
   },
+  // Sem userId (mesmo racional de bujo.*/habits.*/health.*): logout limpa o cache
+  // inteiro. Story 8.1 — cadastro de medicamentos (slot + versões), catálogo de
+  // médicos e blocos de horário dinâmicos. Mutações invalidam pelo prefixo
+  // ['medications'] (cobre list, doctors e timeBlocks).
+  medications: {
+    list: (params?: { onDate?: string }) =>
+      ['medications', 'list', params ?? {}] as const,
+    doctors: () => ['medications', 'doctors', 'list'] as const,
+    timeBlocks: (params?: { includeInactive?: boolean }) =>
+      ['medications', 'timeBlocks', 'list', params ?? {}] as const,
+  },
 } as const

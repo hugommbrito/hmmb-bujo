@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     "braindump",
     "habits",
     "health",
+    "medications",
 ]
 
 MIDDLEWARE = [

@@ -616,6 +616,67 @@ paths:
               schema:
                 $ref: '#/components/schemas/WeeklyReviewQueue'
           description: ''
+  /api/doctors/:
+    get:
+      operationId: doctors_list
+      tags:
+      - doctors
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Doctor'
+          description: ''
+    post:
+      operationId: doctors_create
+      tags:
+      - doctors
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DoctorCreate'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Doctor'
+          description: ''
+  /api/doctors/{id}/:
+    patch:
+      operationId: doctors_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - doctors
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedDoctorUpdate'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Doctor'
+          description: ''
   /api/habit-groups/:
     get:
       operationId: habit_groups_list
@@ -1184,6 +1245,220 @@ paths:
               schema:
                 $ref: '#/components/schemas/HealthFieldSeries'
           description: ''
+  /api/medications/:
+    get:
+      operationId: medications_list
+      parameters:
+      - in: query
+        name: onDate
+        schema:
+          type: string
+        description: Data do estado vigente (YYYY-MM-DD). Default = hoje do usuário.
+      tags:
+      - medications
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Medication'
+          description: ''
+    post:
+      operationId: medications_create
+      tags:
+      - medications
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MedicationCreate'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Medication'
+          description: ''
+  /api/medications/{id}/:
+    get:
+      operationId: medications_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - medications
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Medication'
+          description: ''
+    patch:
+      operationId: medications_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - medications
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedMedicationUpdate'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Medication'
+          description: ''
+  /api/medications/{id}/schedule-versions/:
+    post:
+      operationId: medications_schedule_versions_create
+      description: |-
+        Set/deactivate da agenda de um bloco (eixo agenda, AC3/AC5): ``POST
+        /api/medications/{id}/schedule-versions/``. ``DomainError`` (dose inválida ou
+        sem dose para herdar) → 409; bloco inexistente/cross-tenant → 400.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - medications
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScheduleVersionCreate'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MedicationScheduleVersion'
+          description: ''
+  /api/medications/{id}/substance-versions/:
+    post:
+      operationId: medications_substance_versions_create
+      description: |-
+        Nova versão de substância (eixo substância, AC4): ``POST
+        /api/medications/{id}/substance-versions/``.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - medications
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubstanceVersionCreate'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MedicationSubstanceVersion'
+          description: ''
+  /api/time-blocks/:
+    get:
+      operationId: time_blocks_list
+      parameters:
+      - in: query
+        name: includeInactive
+        schema:
+          type: boolean
+        description: Inclui blocos com active=false (desativados).
+      tags:
+      - time-blocks
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TimeBlock'
+          description: ''
+    post:
+      operationId: time_blocks_create
+      tags:
+      - time-blocks
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TimeBlockCreate'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimeBlock'
+          description: ''
+  /api/time-blocks/{id}/:
+    patch:
+      operationId: time_blocks_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - time-blocks
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedTimeBlockUpdate'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimeBlock'
+          description: ''
 components:
   schemas:
     ArchiveEntry:
@@ -1325,6 +1600,35 @@ components:
         * `weekday` - Weekday
         * `weekend` - Weekend
         * `holiday` - Holiday
+    Doctor:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          maxLength: 200
+        specialty:
+          type: string
+          nullable: true
+          maxLength: 200
+      required:
+      - id
+      - name
+    DoctorCreate:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 200
+        specialty:
+          type: string
+          nullable: true
+          maxLength: 200
+      required:
+      - name
     EisenhowerEnum:
       enum:
       - ui
@@ -2154,6 +2458,138 @@ components:
       - id
       - logDate
       - tasks
+    Medication:
+      type: object
+      description: |-
+        Medicamento + estado vigente hoje (anotado pela camada de serviço).
+
+        ``active`` é **derivado** (``medications`` não tem coluna ``active``, AC5):
+        ``obj.derived_active`` vem do serviço. ``substance`` = versão de substância vigente
+        (ou null); ``schedules`` = versões de agenda vigentes por bloco ativo.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        title:
+          type: string
+          maxLength: 200
+        active:
+          type: boolean
+          readOnly: true
+        substance:
+          allOf:
+          - $ref: '#/components/schemas/MedicationSubstanceVersion'
+          readOnly: true
+          nullable: true
+        schedules:
+          type: array
+          items:
+            $ref: '#/components/schemas/MedicationScheduleVersion'
+          readOnly: true
+      required:
+      - active
+      - id
+      - schedules
+      - substance
+      - title
+    MedicationCreate:
+      type: object
+      description: |-
+        Entrada de criação (AC1): slot ``title`` + primeira versão de substância.
+
+        A agenda por bloco é definida em passo separado (``set_schedule``), espelhando as
+        ACs ("cadastra um medicamento" vs. "define a agenda de doses"; Decisão 2).
+      properties:
+        title:
+          type: string
+          maxLength: 200
+        substanceName:
+          type: string
+          maxLength: 200
+        laboratory:
+          type: string
+          nullable: true
+          maxLength: 200
+        prescribedById:
+          type: string
+          format: uuid
+          nullable: true
+      required:
+      - substanceName
+      - title
+    MedicationScheduleVersion:
+      type: object
+      description: |-
+        Saída de uma versão de agenda vigente/criada (eixo agenda). ``dose`` é o array
+        tipado; ``time_block_name`` acompanha para a tela renderizar sem uma query extra.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        medication:
+          type: string
+          format: uuid
+        timeBlock:
+          type: string
+          format: uuid
+        timeBlockName:
+          type: string
+          readOnly: true
+        dose:
+          type: array
+          items:
+            type: object
+            properties:
+              label:
+                type: string
+              amount:
+                type: number
+              unit:
+                type: string
+        active:
+          type: boolean
+        effectiveFrom:
+          type: string
+          format: date
+      required:
+      - dose
+      - effectiveFrom
+      - id
+      - medication
+      - timeBlock
+      - timeBlockName
+    MedicationSubstanceVersion:
+      type: object
+      description: Saída de uma versão de substância vigente/criada (eixo substância).
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        medication:
+          type: string
+          format: uuid
+        substanceName:
+          type: string
+          maxLength: 200
+        laboratory:
+          type: string
+          nullable: true
+          maxLength: 200
+        prescribedBy:
+          type: string
+          format: uuid
+          nullable: true
+        effectiveFrom:
+          type: string
+          format: date
+      required:
+      - effectiveFrom
+      - id
+      - medication
+      - substanceName
     MigrationQueue:
       type: object
       properties:
@@ -2228,6 +2664,16 @@ components:
     NullEnum:
       enum:
       - null
+    PatchedDoctorUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 200
+        specialty:
+          type: string
+          nullable: true
+          maxLength: 200
     PatchedHabitDayEntryUpdate:
       type: object
       description: |-
@@ -2305,6 +2751,14 @@ components:
           minimum: 0
         active:
           type: boolean
+    PatchedMedicationUpdate:
+      type: object
+      description: 'Entrada de edição do slot (AC7): só ``title`` (identidade, não
+        versionada).'
+      properties:
+        title:
+          type: string
+          maxLength: 200
     PatchedRecurringTaskTemplateUpdate:
       type: object
       properties:
@@ -2362,6 +2816,18 @@ components:
           type: string
           format: date
           nullable: true
+    PatchedTimeBlockUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 200
+        displayOrder:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        active:
+          type: boolean
     PositionEnum:
       enum:
       - before
@@ -2459,6 +2925,34 @@ components:
           type: string
           format: date
           nullable: true
+    ScheduleVersionCreate:
+      type: object
+      description: |-
+        Entrada de nova versão de agenda (AC3/AC5): ``time_block_id`` + ``dose`` +
+        ``active``. Só valida **forma** (``dose`` é uma lista quando informada); o conteúdo
+        (amount numérico, unit não-vazia, lista não-vazia) é validado na camada de serviço
+        (``_validate_dose``, §6.4). ``dose`` omitida → herda a vigente (permite
+        desativar/reativar sem reenviar a dose).
+      properties:
+        timeBlockId:
+          type: string
+          format: uuid
+        dose:
+          type: array
+          items:
+            type: object
+            properties:
+              label:
+                type: string
+              amount:
+                type: number
+              unit:
+                type: string
+        active:
+          type: boolean
+          default: true
+      required:
+      - timeBlockId
     SetGroupMultipliers:
       type: object
       description: |-
@@ -2503,6 +2997,23 @@ components:
         * `cancelled` - Cancelled
         * `migrated` - Migrated
         * `postponed` - Postponed
+    SubstanceVersionCreate:
+      type: object
+      description: |-
+        Entrada de nova versão de substância (AC4). Todos opcionais — os não informados
+        são **herdados** da versão vigente na camada de serviço.
+      properties:
+        substanceName:
+          type: string
+          maxLength: 200
+        laboratory:
+          type: string
+          nullable: true
+          maxLength: 200
+        prescribedById:
+          type: string
+          format: uuid
+          nullable: true
     TargetLogEnum:
       enum:
       - today
@@ -2654,6 +3165,37 @@ components:
           $ref: '#/components/schemas/ToStatusEnum'
       required:
       - toStatus
+    TimeBlock:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          maxLength: 200
+        displayOrder:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        active:
+          type: boolean
+      required:
+      - id
+      - name
+    TimeBlockCreate:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 200
+        displayOrder:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+      required:
+      - name
     ToStatusEnum:
       enum:
       - pending
