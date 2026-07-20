@@ -16,11 +16,17 @@ Regras de negócio (AD-01, AC1–AC4):
 from datetime import timedelta
 
 from django.db import transaction
-from django.db.models import Max
+from django.db.models import Avg, Count, FloatField, Max, Min
+from django.db.models.fields.json import KeyTextTransform
+from django.db.models.functions import Cast
 
 from core.calendar import today_for
 from core.exceptions import DomainError
 from health.models import HealthFieldDefinition, HealthFieldType, HealthLog
+
+# Tipos numéricos (plotáveis/resumíveis via cast JSONB). boolean/enum/text não
+# entram no gráfico nem no dashboard (Story 7.3, Decisão 5) — só na tabela.
+_NUMERIC_TYPES = (HealthFieldType.INTEGER, HealthFieldType.DECIMAL)
 
 # Campos mutáveis por UPDATE direto (Saúde não versiona). ``field_type`` é imutável.
 _MUTABLE_FIELDS = ("name", "display_order", "enum_options", "active")
@@ -222,3 +228,155 @@ def upsert_health_log(*, user, log_date, values) -> HealthLog:
         row.values.pop(uuid_key, None)
     row.save(update_fields=["values"])
     return row
+
+
+# --- Camada de LEITURA de histórico (Story 7.3, AD-01/AD-14) -------------------
+# A terceira parte da AD-01 (7.1 catálogo → 7.2 valores → 7.3 histórico): as
+# **queries analíticas** derivadas on-read de ``health_logs.values``. Tudo é
+# read-only puro — **sem** ``@transaction.atomic``, **sem** materialização/view/
+# índice novo (AD-14 reserva a latitude; o modo de revisão histórica não tem NFR).
+# A técnica nova é o **cast explícito do JSONB** ``(values->>'uuid')::double
+# precision`` (AD-01), tanto para a série do gráfico quanto para a agregação do
+# dashboard. Divergência-chave vs. Hábitos (6.4): Saúde **não** versiona e **não**
+# tem ``day_type``/multiplicador — a série é uma linha simples com lacunas honestas,
+# sem marcadores de mudança nem sombreamento de ritmo.
+
+# Bound de range idêntico ao de Hábitos (``habits.services._MAX_RANGE_DAYS``).
+_MAX_RANGE_DAYS = 92
+
+
+def _validate_history_range(start, end) -> None:
+    """Guarda das leituras de histórico: ``start <= end`` e range ≤ 92 dias.
+
+    Espelha ``habits.services._validate_range`` (mesmo bound e mensagens de domínio).
+    """
+    if start > end:
+        raise DomainError("A data inicial deve ser anterior ou igual à data final.")
+    if (end - start).days > _MAX_RANGE_DAYS:
+        raise DomainError(f"O intervalo não pode exceder {_MAX_RANGE_DAYS} dias.")
+
+
+def _numeric_expr(field_id):
+    """``(values ->> '<uuid>')::double precision`` — a operação analítica da AD-01.
+
+    **Segurança do cast (Story 7.3, Decisão 4):** sempre combine com
+    ``.filter(values__has_key=str(field_id))`` **antes** de anotar/agregar. Como
+    ``field_type`` é imutável (7.1) e ``upsert_health_log`` (7.2) só grava número
+    para campos ``integer``/``decimal``, o texto extraído por ``->>`` é **sempre**
+    numérico-parseável → o cast nunca estoura. O ``has_key`` ainda limita qualquer
+    risco residual às linhas que têm a chave, nunca à query inteira. Usa
+    ``FloatField`` (``::double precision``), não ``DecimalField``: evita configurar
+    ``max_digits``/``decimal_places`` e serve gráfico/agregação (o ``::numeric`` da
+    AD-01 é ilustrativo; não há requisito de precisão decimal exata na leitura).
+    """
+    return Cast(KeyTextTransform(str(field_id), "values"), output_field=FloatField())
+
+
+def _summarize_numeric_field(*, field_id, start, end) -> dict:
+    """Resumo de período de UM campo numérico: ``count/min/max/avg/latest`` via cast.
+
+    Filtra ``values__has_key`` (segurança do cast) e agrega com ``_numeric_expr``.
+    ``latest`` = valor na **maior data com registro** dentro do range (não "hoje" se
+    não houver registro nele — Decisão 8). Campo sem nenhum registro no range →
+    ``{count: 0, min/max/avg/latest: None}`` (o frontend mostra "—").
+
+    **N+1 aceitável (AD-14):** uma agregação (+1 query de ``latest``) por campo
+    numérico — poucos campos, single-user, sem NFR; o single-pass fica reservado.
+    """
+    scoped = HealthLog.objects.filter(
+        date__range=(start, end), values__has_key=str(field_id)
+    )
+    agg = scoped.aggregate(
+        count=Count("date"),
+        min=Min(_numeric_expr(field_id)),
+        max=Max(_numeric_expr(field_id)),
+        avg=Avg(_numeric_expr(field_id)),
+    )
+    latest = (
+        scoped.order_by("-date")
+        .annotate(num=_numeric_expr(field_id))
+        .values_list("num", flat=True)
+        .first()
+    )
+    return {
+        "field_id": field_id,
+        "count": agg["count"],
+        "min": agg["min"],
+        "max": agg["max"],
+        "avg": agg["avg"],
+        "latest": latest,
+    }
+
+
+def get_health_history(*, user, start, end) -> dict:
+    """Histórico dia a dia + dashboard de período no range ``[start, end]`` — read-only.
+
+    **Sem** ``@transaction.atomic`` (só leitura). Uma query carrega as linhas do
+    range; as definições vêm de ``list_health_fields(include_inactive=True)``.
+    Retorna:
+
+    - ``fields``: definições **ativas OU que aparecem** em alguma linha do range
+      (Decisão 3 — a 7.2 preserva o histórico ao desativar um campo; esconder a
+      coluna apagaria o passado da visão), ordenadas por ``display_order, name``
+      (Meta.ordering, herdado de ``list_health_fields``).
+    - ``days``: **uma entrada por linha ``health_logs`` existente** no range
+      (``{date, values}`` — o blob cru; o frontend tipa cada célula pela definição
+      **viva**). Um dia sem linha simplesmente não aparece — lacuna honesta, nada
+      é fabricado nem materializado.
+    - ``summary``: para cada campo **numérico** em ``fields``, um resumo
+      ``{field_id, count, min, max, avg, latest}`` via agregação castada.
+    """
+    _validate_history_range(start, end)
+
+    rows = list(HealthLog.objects.filter(date__range=(start, end)).order_by("date"))
+    definitions = list(list_health_fields(user=user, include_inactive=True))
+
+    # Chaves de definição que aparecem em alguma linha do range — para manter na
+    # tabela as colunas de campos hoje inativos que ainda têm histórico (Decisão 3).
+    keys_in_range = {key for row in rows for key in row.values}
+    fields = [d for d in definitions if d.active or str(d.id) in keys_in_range]
+
+    days = [{"date": row.date, "values": row.values} for row in rows]
+
+    summary = [
+        _summarize_numeric_field(field_id=d.id, start=start, end=end)
+        for d in fields
+        if d.field_type in _NUMERIC_TYPES
+    ]
+
+    return {
+        "start": start,
+        "end": end,
+        "fields": fields,
+        "days": days,
+        "summary": summary,
+    }
+
+
+def get_health_field_series(*, user, field_id, start, end) -> dict:
+    """Série ``(data, valor)`` de UM campo numérico no range — read-only, via cast.
+
+    Valida o range primeiro; depois ``HealthFieldDefinition.objects.get(id=field_id)``
+    deixa o ``DoesNotExist`` subir para a view virar 404 (cross-tenant também = 404,
+    via auto-scope do ``TenantManager``). Campo **não-numérico** → ``DomainError``
+    (booleano/enum/texto não são plotáveis — Decisão 5). ``points`` = série ordenada
+    por data derivada via ``_numeric_expr``; dias sem a chave são **omitidos** (o
+    frontend desenha a lacuna com ``connectNulls={false}``, mesmo idioma de 6.4).
+    """
+    _validate_history_range(start, end)
+
+    definition = HealthFieldDefinition.objects.get(id=field_id)
+    if definition.field_type not in _NUMERIC_TYPES:
+        raise DomainError("Só campos numéricos têm gráfico de evolução.")
+
+    rows = (
+        HealthLog.objects.filter(
+            date__range=(start, end), values__has_key=str(field_id)
+        )
+        .annotate(num=_numeric_expr(field_id))
+        .order_by("date")
+        .values_list("date", "num")
+    )
+    points = [{"date": row_date, "value": value} for row_date, value in rows]
+
+    return {"field": definition, "points": points}

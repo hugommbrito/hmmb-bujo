@@ -12,10 +12,17 @@ import {
   useCreateHealthFieldMutation,
   useHealthDailyQuery,
   useHealthFieldDefinitionsQuery,
+  useHealthFieldSeriesQuery,
+  useHealthHistoryQuery,
   useUpdateHealthFieldMutation,
   useUpsertHealthLogMutation,
 } from './api'
-import type { HealthDaily, HealthFieldDefinition } from './types'
+import type {
+  HealthDaily,
+  HealthFieldDefinition,
+  HealthFieldSeries,
+  HealthHistory,
+} from './types'
 
 const mockGet = client.get as ReturnType<typeof vi.fn>
 const mockPost = client.post as ReturnType<typeof vi.fn>
@@ -201,5 +208,76 @@ describe('useUpsertHealthLogMutation', () => {
       date: '2026-07-19',
       values: { 'f-peso': null },
     })
+  })
+})
+
+// --- Story 7.3: histórico read-only (history query + series query) -----------
+
+const HISTORY: HealthHistory = {
+  start: '2026-02-01',
+  end: '2026-02-28',
+  fields: [FIELD],
+  days: [{ date: '2026-02-03', values: { 'field-1': 80.5 } }],
+  summary: [
+    { fieldId: 'field-1', count: 1, min: 80.5, max: 80.5, avg: 80.5, latest: 80.5 },
+  ],
+}
+
+const SERIES: HealthFieldSeries = {
+  field: FIELD,
+  points: [{ date: '2026-02-03', value: 80.5 }],
+}
+
+describe('useHealthHistoryQuery', () => {
+  beforeEach(() => vi.resetAllMocks())
+
+  it('busca o histórico em /history/ com start/end', async () => {
+    const { wrapper } = makeWrapper()
+    mockGet.mockResolvedValueOnce({ data: HISTORY })
+
+    const { result } = renderHook(
+      () => useHealthHistoryQuery({ start: '2026-02-01', end: '2026-02-28' }),
+      { wrapper },
+    )
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(mockGet).toHaveBeenCalledWith('/api/health-logs/history/', {
+      params: { start: '2026-02-01', end: '2026-02-28' },
+    })
+    expect(result.current.data).toEqual(HISTORY)
+  })
+})
+
+describe('useHealthFieldSeriesQuery', () => {
+  beforeEach(() => vi.resetAllMocks())
+
+  it('busca a série em /series/ com field/start/end', async () => {
+    const { wrapper } = makeWrapper()
+    mockGet.mockResolvedValueOnce({ data: SERIES })
+
+    const { result } = renderHook(
+      () =>
+        useHealthFieldSeriesQuery('field-1', { start: '2026-02-01', end: '2026-02-28' }),
+      { wrapper },
+    )
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(mockGet).toHaveBeenCalledWith('/api/health-logs/series/', {
+      params: { field: 'field-1', start: '2026-02-01', end: '2026-02-28' },
+    })
+    expect(result.current.data).toEqual(SERIES)
+  })
+
+  it('fica DESABILITADA com fieldId vazio (não busca)', async () => {
+    const { wrapper } = makeWrapper()
+
+    const { result } = renderHook(
+      () => useHealthFieldSeriesQuery('', { start: '2026-02-01', end: '2026-02-28' }),
+      { wrapper },
+    )
+
+    // enabled:false → a query nunca dispara (fetchStatus idle, nenhum GET).
+    expect(result.current.fetchStatus).toBe('idle')
+    expect(mockGet).not.toHaveBeenCalled()
   })
 })

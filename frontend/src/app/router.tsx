@@ -16,6 +16,7 @@ import { BrainDumpPage } from '../pages/braindump/BrainDumpPage'
 import { HabitsPage } from '../pages/habits/HabitsPage'
 import { HabitHistoryPage } from '../pages/habits/HabitHistoryPage'
 import { HealthMetricsPage } from '../pages/health/HealthMetricsPage'
+import { HealthHistoryPage } from '../pages/health/HealthHistoryPage'
 import { SettingsPage } from '../pages/settings/SettingsPage'
 import { HabitsSettingsPage } from '../pages/settings/HabitsSettingsPage'
 import { HealthMetricsSettingsPage } from '../pages/settings/HealthMetricsSettingsPage'
@@ -98,6 +99,11 @@ export const routeDefinitions: RouteObject[] = [
         path: 'health/metrics',
         element: <HealthMetricsPage />,
         handle: { title: 'Métricas de Saúde' },
+      },
+      {
+        path: 'health/metrics/history',
+        element: <HealthHistoryPage />,
+        handle: { title: 'Métricas de Saúde — Histórico' },
       },
       {
         path: 'health/medications',

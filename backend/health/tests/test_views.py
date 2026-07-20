@@ -7,16 +7,18 @@ só acontece no renderer JSON).
 
 import json
 import uuid
-from datetime import timedelta
+from datetime import date, timedelta
 
 from core.calendar import today_for
 from core.tenant import tenant_context
 from health.models import HealthFieldDefinition, HealthFieldType, HealthLog
-from health.tests.factories import HealthFieldDefinitionFactory
+from health.tests.factories import HealthFieldDefinitionFactory, HealthLogFactory
 
 _URL = "/api/health-field-definitions/"
 _LOGS_URL = "/api/health-logs/"
 _DAILY_URL = "/api/health-logs/daily/"
+_HISTORY_URL = "/api/health-logs/history/"
+_SERIES_URL = "/api/health-logs/series/"
 
 
 # --- lista ---------------------------------------------------------------------
@@ -267,3 +269,154 @@ def test_daily_values_dynamic_keys_survive_camelcase_roundtrip(auth_client, user
     assert values["blood_pressure"] == 120
     # UUID intacto.
     assert values["a1b2c3d4-ef56-7890"] == 88.5
+
+
+# ===============================================================================
+# Story 7.3 — /api/health-logs/history/ e /series/ (GET read-only)
+# ===============================================================================
+
+_HV_START = date(2026, 2, 1)
+_HV_D1 = date(2026, 2, 3)
+_HV_D2 = date(2026, 2, 5)
+_HV_END = date(2026, 2, 28)
+
+
+def _range_qs(start=_HV_START, end=_HV_END):
+    return f"?start={start.isoformat()}&end={end.isoformat()}"
+
+
+# --- GET /history/ (AC1, AC2) --------------------------------------------------
+def test_get_history_returns_shape(auth_client, user):
+    """200 com {start, end, fields, days, summary}; response.data é snake_case."""
+    with tenant_context(user):
+        f = HealthFieldDefinitionFactory(
+            user=user, field_type=HealthFieldType.DECIMAL, name="Peso"
+        )
+        HealthLogFactory(user=user, date=_HV_D1, values={str(f.id): 80.5})
+        HealthLogFactory(user=user, date=_HV_D2, values={str(f.id): 82.0})
+
+    resp = auth_client.get(f"{_HISTORY_URL}{_range_qs()}")
+    assert resp.status_code == 200, resp.data
+    assert set(resp.data.keys()) == {"start", "end", "fields", "days", "summary"}
+    assert resp.data["start"] == _HV_START.isoformat()
+    assert len(resp.data["days"]) == 2
+    assert resp.data["days"][0]["values"] == {str(f.id): 80.5}
+    # summary tem o campo numérico com os fatos do período.
+    assert len(resp.data["summary"]) == 1
+    summ = resp.data["summary"][0]
+    assert summ["count"] == 2
+    assert summ["min"] == 80.5
+    assert summ["max"] == 82.0
+    assert summ["latest"] == 82.0
+
+
+def test_get_history_wire_is_camel_case_but_values_keys_preserved(auth_client, user):
+    """O JSON renderizado é camelCase (fieldId), mas as chaves dinâmicas de
+    ``values`` (UUID) NÃO são camelizadas (§6.3)."""
+    with tenant_context(user):
+        f = HealthFieldDefinitionFactory(
+            user=user, field_type=HealthFieldType.DECIMAL, name="Peso"
+        )
+        HealthLogFactory(user=user, date=_HV_D1, values={str(f.id): 80.5})
+
+    resp = auth_client.get(f"{_HISTORY_URL}{_range_qs()}")
+    body = json.loads(resp.content)
+    assert body["summary"][0]["fieldId"] == str(f.id)  # camelCase na borda
+    assert str(f.id) in body["days"][0]["values"]  # chave UUID intacta
+
+
+def test_get_history_default_range_ok(auth_client, user):
+    """Sem params: default end=hoje, start=hoje-29 (últimos 30 dias)."""
+    with tenant_context(user):
+        HealthFieldDefinitionFactory(user=user)
+    resp = auth_client.get(_HISTORY_URL)
+    assert resp.status_code == 200, resp.data
+    assert resp.data["end"] == today_for(user).isoformat()
+
+
+def test_get_history_cross_tenant_isolated(auth_client, user, other_user):
+    with tenant_context(other_user):
+        alheio = HealthFieldDefinitionFactory(
+            user=other_user, field_type=HealthFieldType.INTEGER
+        )
+        HealthLogFactory(user=other_user, date=_HV_D1, values={str(alheio.id): 5})
+    resp = auth_client.get(f"{_HISTORY_URL}{_range_qs()}")
+    assert resp.status_code == 200
+    assert resp.data["days"] == []
+    assert resp.data["fields"] == []
+    assert resp.data["summary"] == []
+
+
+def test_get_history_invalid_date_returns_400(auth_client):
+    resp = auth_client.get(f"{_HISTORY_URL}?start=2026-13-99&end=2026-01-01")
+    assert resp.status_code == 400
+    assert "start" in resp.data.get("fields", {})
+
+
+def test_get_history_range_too_large_returns_400(auth_client):
+    resp = auth_client.get(f"{_HISTORY_URL}?start=2026-01-01&end=2026-06-01")
+    assert resp.status_code == 400
+    assert "exceder" in resp.data["detail"]
+
+
+# --- GET /series/ (AC2) --------------------------------------------------------
+def test_get_series_returns_shape(auth_client, user):
+    """200 com {field, points}; série ordenada; snake_case em response.data."""
+    with tenant_context(user):
+        f = HealthFieldDefinitionFactory(
+            user=user, field_type=HealthFieldType.DECIMAL, name="Peso"
+        )
+        HealthLogFactory(user=user, date=_HV_D2, values={str(f.id): 82.0})
+        HealthLogFactory(user=user, date=_HV_D1, values={str(f.id): 80.5})
+
+    resp = auth_client.get(f"{_SERIES_URL}?field={f.id}&{_range_qs()[1:]}")
+    assert resp.status_code == 200, resp.data
+    assert resp.data["field"]["name"] == "Peso"
+    assert [(p["date"], p["value"]) for p in resp.data["points"]] == [
+        (_HV_D1.isoformat(), 80.5),
+        (_HV_D2.isoformat(), 82.0),
+    ]
+
+
+def test_get_series_missing_field_returns_400(auth_client):
+    resp = auth_client.get(f"{_SERIES_URL}{_range_qs()}")
+    assert resp.status_code == 400
+    assert "field" in resp.data.get("fields", {})
+
+
+def test_get_series_non_numeric_field_returns_409(auth_client, user):
+    """Campo não-numérico = conflito de tipo → 409 (mesmo idioma do 7.2)."""
+    with tenant_context(user):
+        boolean = HealthFieldDefinitionFactory(
+            user=user, field_type=HealthFieldType.BOOLEAN
+        )
+    resp = auth_client.get(f"{_SERIES_URL}?field={boolean.id}")
+    assert resp.status_code == 409
+
+
+def test_get_series_cross_tenant_field_returns_404(auth_client, other_user):
+    with tenant_context(other_user):
+        alheio = HealthFieldDefinitionFactory(
+            user=other_user, field_type=HealthFieldType.INTEGER
+        )
+    resp = auth_client.get(f"{_SERIES_URL}?field={alheio.id}")
+    assert resp.status_code == 404
+
+
+def test_get_series_nonexistent_field_returns_404(auth_client):
+    resp = auth_client.get(f"{_SERIES_URL}?field={uuid.uuid4()}")
+    assert resp.status_code == 404
+
+
+def test_get_series_malformed_field_returns_404(auth_client):
+    """UUID malformado no param → 404 (nunca 500)."""
+    resp = auth_client.get(f"{_SERIES_URL}?field=nao-e-uuid")
+    assert resp.status_code == 404
+
+
+def test_get_series_range_too_large_returns_400(auth_client, user):
+    with tenant_context(user):
+        f = HealthFieldDefinitionFactory(user=user, field_type=HealthFieldType.INTEGER)
+    resp = auth_client.get(f"{_SERIES_URL}?field={f.id}&start=2026-01-01&end=2026-06-01")
+    assert resp.status_code == 400
+    assert "exceder" in resp.data["detail"]

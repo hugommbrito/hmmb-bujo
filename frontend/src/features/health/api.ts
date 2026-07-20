@@ -4,7 +4,9 @@ import { keys } from '../../api/keys'
 import type {
   HealthDaily,
   HealthFieldDefinition,
+  HealthFieldSeries,
   HealthFieldType,
+  HealthHistory,
   HealthLog,
   HealthValue,
 } from './types'
@@ -126,5 +128,47 @@ export function useUpsertHealthLogMutation() {
   return useMutation({
     mutationFn: upsertHealthLog,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['health'] }),
+  })
+}
+
+// --- Histórico read-only (Story 7.3) -----------------------------------------
+// `useQuery` puro: a superfície é read-only, sem otimismo/prefetch (AD-14 não impõe
+// NFR ao modo de revisão histórica). Mesmo idioma de useHabitHistoryQuery/Series (6.4).
+
+interface HistoryRange {
+  start: string
+  end: string
+}
+
+async function fetchHealthHistory({ start, end }: HistoryRange): Promise<HealthHistory> {
+  const response = await client.get<HealthHistory>('/api/health-logs/history/', {
+    params: { start, end },
+  })
+  return response.data
+}
+
+export function useHealthHistoryQuery(range: HistoryRange) {
+  return useQuery({
+    queryKey: keys.health.history(range),
+    queryFn: () => fetchHealthHistory(range),
+  })
+}
+
+async function fetchHealthFieldSeries(
+  fieldId: string,
+  { start, end }: HistoryRange,
+): Promise<HealthFieldSeries> {
+  const response = await client.get<HealthFieldSeries>('/api/health-logs/series/', {
+    params: { field: fieldId, start, end },
+  })
+  return response.data
+}
+
+export function useHealthFieldSeriesQuery(fieldId: string, range: HistoryRange) {
+  return useQuery({
+    queryKey: keys.health.series(fieldId, range),
+    queryFn: () => fetchHealthFieldSeries(fieldId, range),
+    // Só busca quando há um campo numérico selecionado (o seletor pode iniciar vazio).
+    enabled: fieldId !== '',
   })
 }

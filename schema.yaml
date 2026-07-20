@@ -1113,6 +1113,77 @@ paths:
               schema:
                 $ref: '#/components/schemas/HealthDaily'
           description: ''
+  /api/health-logs/history/:
+    get:
+      operationId: health_logs_history_retrieve
+      description: |-
+        Histórico dia a dia + dashboard de período (Story 7.3, AC1/AC2):
+        ``GET /api/health-logs/history/?start=&end=``.
+
+        View fina: resolve o range (default = últimos 30 dias, autoridade ``today_for``)
+        → ``get_health_history`` → serializa. Read-only puro (nenhuma escrita, transação
+        ou materialização). ``DomainError`` do range (start>end / >92 dias) vira 409;
+        data inválida no parâmetro vira 400.
+      parameters:
+      - in: query
+        name: end
+        schema:
+          type: string
+        description: Fim do intervalo (YYYY-MM-DD). Default = hoje do usuário.
+      - in: query
+        name: start
+        schema:
+          type: string
+        description: Início do intervalo (YYYY-MM-DD). Default = fim − 29 dias.
+      tags:
+      - health-logs
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthHistory'
+          description: ''
+  /api/health-logs/series/:
+    get:
+      operationId: health_logs_series_retrieve
+      description: |-
+        Série de evolução de UM campo numérico (Story 7.3, AC2):
+        ``GET /api/health-logs/series/?field=<uuid>&start=&end=``.
+
+        ``field`` é obrigatório (ausente → 400). Campo **não-numérico** → ``DomainError``
+        (409); ``field`` inexistente/cross-tenant (ou UUID malformado) → 404. Read-only
+        via cast JSONB — nenhuma materialização.
+      parameters:
+      - in: query
+        name: end
+        schema:
+          type: string
+        description: Fim do intervalo (YYYY-MM-DD). Default = hoje do usuário.
+      - in: query
+        name: field
+        schema:
+          type: string
+        description: UUID do campo numérico (integer/decimal) a plotar.
+        required: true
+      - in: query
+        name: start
+        schema:
+          type: string
+        description: Início do intervalo (YYYY-MM-DD). Default = fim − 29 dias.
+      tags:
+      - health-logs
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthFieldSeries'
+          description: ''
 components:
   schemas:
     ArchiveEntry:
@@ -1870,6 +1941,23 @@ components:
       - fieldType
       - id
       - name
+    HealthFieldSeries:
+      type: object
+      description: |-
+        Payload de ``GET /api/health-logs/series/``: a definição do campo + a série.
+
+        ``field`` **reusa** ``HealthFieldDefinitionSerializer`` (7.1). A tabela do
+        ``history`` é a representação equivalente acessível deste gráfico (AC4).
+      properties:
+        field:
+          $ref: '#/components/schemas/HealthFieldDefinition'
+        points:
+          type: array
+          items:
+            $ref: '#/components/schemas/HealthSeriesPoint'
+      required:
+      - field
+      - points
     HealthFieldTypeEnum:
       enum:
       - integer
@@ -1884,6 +1972,61 @@ components:
         * `boolean` - Boolean
         * `enum` - Enum
         * `text` - Text
+    HealthHistory:
+      type: object
+      description: |-
+        Payload de ``GET /api/health-logs/history/``: tabela dia a dia + dashboard.
+
+        ``fields`` **reusa** ``HealthFieldDefinitionSerializer`` (7.1) — inclui campos
+        ativos e inativos-com-histórico (Decisão 3). ``days`` = uma entrada por linha
+        existente. ``summary`` = um cartão por campo numérico.
+      properties:
+        start:
+          type: string
+          format: date
+        end:
+          type: string
+          format: date
+        fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/HealthFieldDefinition'
+        days:
+          type: array
+          items:
+            $ref: '#/components/schemas/HealthHistoryDay'
+        summary:
+          type: array
+          items:
+            $ref: '#/components/schemas/HealthPeriodSummary'
+      required:
+      - days
+      - end
+      - fields
+      - start
+      - summary
+    HealthHistoryDay:
+      type: object
+      description: |-
+        Uma linha de ``health_logs`` no range: a data + o blob opaco de valores.
+
+        ``values`` **reusa** ``HealthValuesField`` (§6.10): dict de chave dinâmica (UUID
+        da definição) que NÃO é camelizado na borda. O frontend tipa cada célula pela
+        definição viva (``fields``), não por esquema estruturado.
+      properties:
+        date:
+          type: string
+          format: date
+        values:
+          type: object
+          additionalProperties:
+            anyOf:
+            - type: number
+            - type: boolean
+            - type: string
+      required:
+      - date
+      - values
     HealthLog:
       type: object
       description: 'Saída de uma linha upsertada (resposta do ``PUT``): ``{id, date,
@@ -1928,6 +2071,58 @@ components:
       required:
       - date
       - values
+    HealthPeriodSummary:
+      type: object
+      description: |-
+        Cartão do dashboard de período de UM campo numérico (AC2, Decisão 7/8).
+
+        Números crus (não string). ``min``/``max``/``avg``/``latest`` são ``allow_null``
+        = campo sem nenhum registro no range (o frontend mostra "—").
+      properties:
+        fieldId:
+          type: string
+          format: uuid
+        count:
+          type: integer
+        min:
+          type: number
+          format: double
+          nullable: true
+        max:
+          type: number
+          format: double
+          nullable: true
+        avg:
+          type: number
+          format: double
+          nullable: true
+        latest:
+          type: number
+          format: double
+          nullable: true
+      required:
+      - avg
+      - count
+      - fieldId
+      - latest
+      - max
+      - min
+    HealthSeriesPoint:
+      type: object
+      description: |-
+        Um ponto diário ``(data, valor)`` da série de evolução (AC2). ``value`` cru
+        (``FloatField``); dias sem a chave já vêm **omitidos** do serviço (não null).
+      properties:
+        date:
+          type: string
+          format: date
+        value:
+          type: number
+          format: double
+          nullable: true
+      required:
+      - date
+      - value
     HolidayResult:
       type: object
       description: 'Resultado do toggle de feriado: a data + o tipo de dia re-resolvido.'

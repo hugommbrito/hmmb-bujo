@@ -53,5 +53,11 @@ export const keys = {
     // as datas via today_for (autoridade temporal do servidor). A mutação de escrita
     // invalida pelo prefixo ['health'] (cobre fieldDefinitions e daily).
     daily: () => ['health', 'logs', 'daily'] as const,
+    // Story 7.3 — histórico read-only (tabela + dashboard) e série de 1 campo.
+    // Sem userId (como o resto de health.*): logout limpa o cache inteiro.
+    history: (range: { start: string; end: string }) =>
+      ['health', 'history', range] as const,
+    series: (fieldId: string, range: { start: string; end: string }) =>
+      ['health', 'series', fieldId, range] as const,
   },
 } as const

@@ -7,9 +7,17 @@ de URL separados no mesmo app. **Nunca** ``/api/health/`` (reservado ao liveness
 
 from django.urls import path
 
-from health.views import HealthLogDailyView, HealthLogUpsertView
+from health.views import (
+    HealthFieldSeriesView,
+    HealthHistoryView,
+    HealthLogDailyView,
+    HealthLogUpsertView,
+)
 
 urlpatterns = [
-    path("", HealthLogUpsertView.as_view(), name="health-log-upsert"),
+    # Rotas específicas ANTES da raiz (como daily/ já é) — evita a raiz capturar.
     path("daily/", HealthLogDailyView.as_view(), name="health-log-daily"),
+    path("history/", HealthHistoryView.as_view(), name="health-log-history"),
+    path("series/", HealthFieldSeriesView.as_view(), name="health-log-series"),
+    path("", HealthLogUpsertView.as_view(), name="health-log-upsert"),
 ]

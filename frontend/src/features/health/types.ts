@@ -15,3 +15,11 @@ export type HealthValues = Record<string, HealthValue>
 export type HealthDaily = components['schemas']['HealthDaily']
 export type HealthDaySection = components['schemas']['HealthDaySection']
 export type HealthLog = components['schemas']['HealthLog']
+
+// Story 7.3 — histórico read-only em três visualizações (tabela + gráfico + dashboard).
+// `HealthHistoryDay.values` reusa o mesmo dict opaco de chave dinâmica (UUID) de 7.2.
+export type HealthHistory = components['schemas']['HealthHistory']
+export type HealthHistoryDay = components['schemas']['HealthHistoryDay']
+export type HealthPeriodSummary = components['schemas']['HealthPeriodSummary']
+export type HealthFieldSeries = components['schemas']['HealthFieldSeries']
+export type HealthSeriesPoint = components['schemas']['HealthSeriesPoint']

@@ -4,9 +4,12 @@ export {
   useUpdateHealthFieldMutation,
   useHealthDailyQuery,
   useUpsertHealthLogMutation,
+  useHealthHistoryQuery,
+  useHealthFieldSeriesQuery,
 } from './api'
 export { HealthMetricsManager } from './components/HealthMetricsManager'
 export { HealthMetricsLog } from './components/HealthMetricsLog'
+export { HealthHistory } from './components/HealthHistory'
 export type {
   HealthFieldDefinition,
   HealthFieldType,
@@ -15,4 +18,9 @@ export type {
   HealthDaily,
   HealthDaySection,
   HealthLog,
+  HealthHistory as HealthHistoryData,
+  HealthHistoryDay,
+  HealthPeriodSummary,
+  HealthFieldSeries,
+  HealthSeriesPoint,
 } from './types'

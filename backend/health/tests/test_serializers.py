@@ -4,8 +4,11 @@ from health.serializers import (
     HealthDailySerializer,
     HealthFieldCreateSerializer,
     HealthFieldDefinitionSerializer,
+    HealthFieldSeriesSerializer,
     HealthFieldUpdateSerializer,
+    HealthHistorySerializer,
     HealthLogWriteSerializer,
+    HealthPeriodSummarySerializer,
 )
 
 
@@ -132,3 +135,47 @@ def test_daily_serializer_declares_expected_fields():
     a property Serializer.fields."""
     serializer = HealthDailySerializer()
     assert set(serializer.fields) == {"yesterday", "today", "fields"}
+
+
+# --- histórico read-only (Story 7.3) -------------------------------------------
+def test_history_serializer_declares_expected_fields():
+    serializer = HealthHistorySerializer()
+    assert set(serializer.fields) == {"start", "end", "fields", "days", "summary"}
+
+
+def test_field_series_serializer_declares_expected_fields():
+    serializer = HealthFieldSeriesSerializer()
+    assert set(serializer.fields) == {"field", "points"}
+
+
+def test_period_summary_serializes_numbers_not_strings():
+    """Os números do dashboard vão CRUS no wire (float), não string (consciente vs.
+    a convenção decimais-como-string de Hábitos)."""
+    data = HealthPeriodSummarySerializer(
+        {
+            "field_id": "a1b2c3d4-ef56-7890-abcd-000000000000",
+            "count": 3,
+            "min": 80.0,
+            "max": 90.0,
+            "avg": 85.0,
+            "latest": 85.0,
+        }
+    ).data
+    assert data["count"] == 3
+    assert isinstance(data["avg"], float)
+    assert data["avg"] == 85.0
+
+
+def test_period_summary_allows_null_stats():
+    data = HealthPeriodSummarySerializer(
+        {
+            "field_id": "a1b2c3d4-ef56-7890-abcd-000000000000",
+            "count": 0,
+            "min": None,
+            "max": None,
+            "avg": None,
+            "latest": None,
+        }
+    ).data
+    assert data["min"] is None
+    assert data["latest"] is None

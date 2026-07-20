@@ -2498,3 +2498,107 @@ Rodado contra o stack real (`npm run dev` na 5173 + `manage.py runserver` sob `c
 ## Próximos Passos
 
 - Nenhum gap bloqueante identificado para a Story 7.2. A Story 7.3 (histórico/gráficos de evolução via cast `(values->>'uuid')::numeric`) deve estender com um spec-irmão `health-history.spec.ts`, reutilizando `seedHealthFields.ts` para semear definições **e** semeando `health_logs` de dias passados (novo helper de seed, análogo a `seedHabitHistory.ts`) — o histórico só tem o que gravar séries se houver linhas de dias anteriores.
+
+---
+
+# Resumo de Automação de Testes — Story 7.3: Histórico de saúde em três visualizações
+
+**Data:** 2026-07-19
+**Story:** 7.3 — Histórico de saúde em três visualizações (tabela dia a dia + gráfico de evolução via cast JSONB + dashboard de período)
+**Framework:** Playwright (browser real Chromium contra `npm run dev` + backend Django real, branch Neon `e2e`, sem mocks de rede) — o padrão E2E do projeto (story 11.1).
+
+---
+
+## Contexto
+
+A Story 7.3 entrega a **camada de leitura analítica** do Épico 7 (`/health/metrics/history`): read-only, on-read, derivada do `health_logs.values` (JSONB por UUID) via **cast explícito** `(values->>'uuid')::double precision` (AD-01). A implementação (dev-story) já trouxe cobertura de **backend** (view/service/serializer, +34 testes) e de **componente frontend** (vitest, +51 testes de health). O **gap total** era **E2E**: nenhum teste de browser real exercitava a superfície de histórico ponta-a-ponta — exatamente o spec-irmão previsto no fecho do resumo da 7.2 acima.
+
+Esta rodada de QA fecha esse gap, como o resumo da 7.2 antecipou: reusa `seedHealthFields`/`create_health_field` (idioma de seed via camada de serviço) e adiciona um **novo helper de seed de `health_logs` de dias passados** (`seedHealthHistory.ts`, análogo a `seedHabitHistory.ts` de 6.4) — o histórico só tem série/tabela se houver linhas de dias anteriores.
+
+## Gaps Descobertos e Auto-Aplicados
+
+| Gap | Arquivo | Descrição |
+|-----|---------|-----------|
+| Superfície de histórico (7.3) sem nenhum E2E | `health-history.spec.ts` (NOVO) | Tabela dia a dia, gráfico de evolução (cast JSONB) e dashboard de período nunca exercitados em browser real ponta-a-ponta |
+| Sem seed de `health_logs` passados | `seedHealthHistory.ts` (NOVO) | A superfície é read-only e não semeia; um histórico determinístico precisa de linhas de dias anteriores (d8/d5/d2 + dia-lacuna d4) seedadas direto pela camada de dados |
+
+## Testes Gerados
+
+### E2E — `frontend/e2e/health-history.spec.ts` (novo, 4 testes)
+
+| # | Teste | ACs | O que exercita |
+|---|---|---|---|
+| 1 | Sem campos: histórico vazio honesto, alcançado por aba, read-only | AC1, AC4 | Navegação por **aba** (botão "Métricas" → aba "Histórico" → `/health/metrics/history`); estado vazio "Nenhum campo de saúde para exibir."; **read-only** (0 checkbox / 0 spinbutton) |
+| 2 | Tabela dia a dia: célula tipada, lacuna honesta, coluna de campo inativo-com-valor, dia sem linha ausente | AC1, AC4 | `<table>` semântica (headers programáticos); **coluna de "Pressão" (inativo COM valor) persiste**, **"Campo Antigo" (inativo SEM valor) excluído** (Decisão 3); célula tipada pela definição viva (número pt-BR / "Sim"/"Não" / string); **"—" honesto** distinto de `false` real ("Não"); **dia-lacuna (d4) ausente** da tabela |
+| 3 | Gráfico de evolução: série via cast JSONB, resumo textual acessível, seletor só numérico | AC2, AC4 | Seletor oferece **só numéricos** (Peso/Passos/Pressão; boolean/enum/text ausentes); série derivada on-read (`GET /series/` real via cast); `role="img"` + `aria-label` + `<figcaption>` ("3 dias com registro"); **sem erros de console** (recharts em browser real) |
+| 4 | Dashboard de período: cartão por campo numérico com os 5 fatos, sem score/gamificação | AC2 | Um cartão por campo numérico com **registros/mín/máx/média/mais recente** (agregação castada no backend, pt-BR); **"mais recente" (88) ≠ máximo (89)** → prova a semântica "maior data com registro" (Decisão 8); boolean/enum/text **sem cartão**; **zero gamificação** (Saúde não tem score/"% de saúde") |
+
+### Seed — `frontend/e2e/seedHealthHistory.ts` (novo)
+
+Uma única chamada `manage.py shell -c` cria o catálogo (7.1) cobrindo todos os tipos + linhas passadas de `health_logs`:
+- **Numéricos plotáveis:** "Peso" (decimal) 87/89/88, "Passos" (integer) 4000/5000/6000 → aritmética limpa em pt-BR (mín/máx/média/mais recente exatos).
+- **"Pressão" (integer)** desativado após gravar 120 em d(2) → prova coluna/cartão de **inativo-com-valor**.
+- **"Campo Antigo" (integer)** desativado e sem valor → prova exclusão de **inativo-sem-valor**.
+- **Não-numéricos:** "Dormiu bem" (boolean; `true` em d2, `false` em d5, ausente em d8), "Humor" (enum), "Observações" (text).
+- Datas relativas a `today_for(user)` (autoridade temporal do backend), devolvidas em ISO — o spec formata por split de string (sem drift de fuso), nunca reproduz aritmética de calendário.
+
+## Cobertura por AC (E2E)
+
+| AC | Critério | Coberto por |
+|----|----------|-------------|
+| AC1 | Tabela dia a dia read-only, célula tipada pela definição viva | Teste 2 |
+| AC1 | Coluna para campo inativo COM valor no range; inativo SEM valor excluído | Teste 2 |
+| AC1 | Lacuna "—" honesta (chave ausente) distinta de `false` real; dia sem linha ausente | Teste 2 |
+| AC2 | Série de campo numérico derivada via cast JSONB; seletor só numérico | Teste 3 |
+| AC2 | Gráfico com `role="img"` + resumo textual + `<figcaption>` | Teste 3 |
+| AC2 | Dashboard: cartão por campo numérico (count/min/max/avg/latest); "mais recente" = maior data | Teste 4 |
+| AC3 | Superfície 100% read-only (0 controle editável) | Testes 1, 2 |
+| AC4 | `<table>` semântica com headers programáticos; equivalente tabular do gráfico | Teste 2 |
+| AC4 | Alcançada por aba dentro de Saúde (sem item novo de nav); estados vazios; voz pt-BR sem gamificação | Testes 1, 4 |
+
+## API / Backend (cobertura pré-existente — não duplicada)
+
+O contrato de API (`GET /api/health-logs/history/` e `/series/`) já é coberto de forma abrangente pelos testes de view da dev-story (`backend/health/tests/test_views.py`, +13 na 7.3): **200** com shape correto (snake_case em `response.data`), query params, **isolamento cross-tenant** (tenant B → `days`/série vazios; `field` de outro tenant → **404**), range/data inválidos → **400**, campo não-numérico → **409**, `field` ausente → **400**, UUID malformado → **404**. Gerar testes de API novos seria redundante; estes endpoints são **exercitados de verdade** pelos E2E (sem mock). Nota: o seletor do gráfico na UI só oferece campos numéricos → o caminho **409 é inalcançável pela UI por design** (a UI previne o erro), então é asserado só na camada de view.
+
+## Execução (contagem real, colada literalmente)
+
+```
+Running 4 tests using 1 worker
+  ✓  1 [chromium] › e2e/health-history.spec.ts:44:1 › sem campos de saúde: histórico vazio honesto, alcançado por aba, read-only (AC1, AC4) (8.5s)
+  ✓  2 [chromium] › e2e/health-history.spec.ts:66:1 › tabela dia a dia: célula tipada pela definição, lacuna honesta, coluna de campo inativo-com-valor, dia sem linha ausente (AC1, AC4) (15.2s)
+  ✓  3 [chromium] › e2e/health-history.spec.ts:131:1 › gráfico de evolução: série via cast JSONB, resumo textual acessível, seletor só numérico (AC2, AC4) (17.3s)
+  ✓  4 [chromium] › e2e/health-history.spec.ts:172:1 › dashboard de período: um cartão por campo numérico com os 5 fatos, sem score/gamificação (AC2) (16.3s)
+
+  4 passed (1.1m)
+```
+
+- **ESLint** (`eslint e2e/health-history.spec.ts e2e/seedHealthHistory.ts`): limpo (exit 0). `lint: "eslint ."` cobre o e2e.
+
+## Notas de Ambiente (não são defeitos)
+
+- **Node 22.15.1 via nvm** antes de todo comando de frontend/e2e.
+- **Sem migration nesta story (read-only):** `makemigrations --check --dry-run` (settings `e2e`) → **"No changes detected"**; `migrate --check` → exit 0. A branch Neon `e2e` já tinha 7.1 `0001_initial` + 7.2 `0002_health_log` aplicadas (`showmigrations health` = `[X] [X]`) → **nada a aplicar** (diferente de 7.1/7.2, que introduziram tabela). O gap recorrente de "migration nova não aplicada à branch e2e" **não se aplica** aqui — confirmado explicitamente.
+- **Timeouts folgados (30s) para stalls de cold-start do Neon `e2e`:** config de ambiente, não lógica de spec (mesma disciplina de `health-log.spec.ts`). O run passou 4/4 na primeira execução.
+
+## Checklist de Validação
+
+- [x] Testes E2E gerados (UI existe) — 4 testes novos fechando o gap total da superfície de histórico da 7.3 (AC1–AC4)
+- [x] API tests: N/A como arquivo novo — o contrato (`/history/`, `/series/`) já é coberto pela suíte de backend da 7.3 e é exercitado de verdade por estes E2E (sem mock)
+- [x] Usam APIs padrão do framework já adotado (Playwright + fixture de signup + seed via `manage.py shell`) — nenhuma ferramenta nova
+- [x] Cobrem happy path (tabela/gráfico/dashboard) + casos de borda críticos (dia-lacuna honesto, `false` real vs. ausente, inativo-com-valor vs. inativo-sem-valor, "mais recente" ≠ máximo, estado vazio); casos de erro da API (400/404/409) na camada de view
+- [x] Todos os 4 testes passam contra o backend real
+- [x] Locators semânticos/acessíveis (`getByRole('table'/'columnheader'/'rowheader'/'cell'/'combobox'/'option'/'img'/'list'/'listitem'/'heading'/'tab'/'button')`, nomes acessíveis via aria-label) — sem seletores frágeis de CSS
+- [x] Descrições claras em pt-BR, seguindo a convenção de prosa dos `.spec.ts` do projeto
+- [x] Sem waits/sleeps artificiais — web-first assertions com auto-retry; `test.setTimeout` só como budget de ambiente
+- [x] Testes independentes (cada teste cria um usuário novo via signup e seus próprios campos/logs)
+- [x] Summary salvo em `_bmad-output/implementation-artifacts/tests/test-summary.md`
+
+## Limites de Cobertura (por design, não gaps)
+
+- **Isolamento cross-tenant / taxonomia de erro (400/404/409):** asserados na camada de view (determinístico, rápido); não observáveis/inalcançáveis no browser (o seletor só oferece campos numéricos → 409 impossível pela UI).
+- **Série SVG do recharts:** o E2E assere o DOM próprio acessível (role/aria/figcaption) e o `GET /series/` real, não os paths do SVG (mesmo padrão de 6.4).
+
+## Próximos Passos
+
+- Nenhum gap bloqueante identificado para a Story 7.3. Épico 7 (Métricas de Saúde) fechado com cobertura E2E das três superfícies: 7.1 (`health-metrics.spec.ts`), 7.2 (`health-log.spec.ts`), 7.3 (`health-history.spec.ts`).
+- Vitest e Playwright não rodam no CI (rede local/review) — rodar a suíte E2E completa localmente antes do merge.

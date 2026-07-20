@@ -158,3 +158,69 @@ class HealthLogWriteSerializer(serializers.Serializer):
                 "Deve ser um objeto de valores indexado por campo."
             )
         return value
+
+
+# --- Histórico read-only (Story 7.3, AD-01/AD-14) ------------------------------
+# Serializers de SAÍDA das três visualizações (tabela + gráfico + dashboard). Todos
+# read-only (sem ``validate``/write). **Nenhum enum novo:** ``field_type`` continua
+# saindo via ``HealthFieldDefinitionSerializer`` (``HealthFieldTypeEnum`` pinado).
+# Os números do dashboard/série vão **crus** no wire (``FloatField``, não string):
+# Saúde nunca adotou a convenção decimais-como-string de Hábitos (7.2 tipou
+# ``HealthValue = number|boolean|string``); o front consome números.
+
+
+class HealthHistoryDaySerializer(serializers.Serializer):
+    """Uma linha de ``health_logs`` no range: a data + o blob opaco de valores.
+
+    ``values`` **reusa** ``HealthValuesField`` (§6.10): dict de chave dinâmica (UUID
+    da definição) que NÃO é camelizado na borda. O frontend tipa cada célula pela
+    definição viva (``fields``), não por esquema estruturado."""
+
+    date = serializers.DateField()
+    values = HealthValuesField()
+
+
+class HealthPeriodSummarySerializer(serializers.Serializer):
+    """Cartão do dashboard de período de UM campo numérico (AC2, Decisão 7/8).
+
+    Números crus (não string). ``min``/``max``/``avg``/``latest`` são ``allow_null``
+    = campo sem nenhum registro no range (o frontend mostra "—")."""
+
+    field_id = serializers.UUIDField()
+    count = serializers.IntegerField()
+    min = serializers.FloatField(allow_null=True)
+    max = serializers.FloatField(allow_null=True)
+    avg = serializers.FloatField(allow_null=True)
+    latest = serializers.FloatField(allow_null=True)
+
+
+class HealthHistorySerializer(serializers.Serializer):
+    """Payload de ``GET /api/health-logs/history/``: tabela dia a dia + dashboard.
+
+    ``fields`` **reusa** ``HealthFieldDefinitionSerializer`` (7.1) — inclui campos
+    ativos e inativos-com-histórico (Decisão 3). ``days`` = uma entrada por linha
+    existente. ``summary`` = um cartão por campo numérico."""
+
+    start = serializers.DateField()
+    end = serializers.DateField()
+    fields = HealthFieldDefinitionSerializer(many=True)
+    days = HealthHistoryDaySerializer(many=True)
+    summary = HealthPeriodSummarySerializer(many=True)
+
+
+class HealthSeriesPointSerializer(serializers.Serializer):
+    """Um ponto diário ``(data, valor)`` da série de evolução (AC2). ``value`` cru
+    (``FloatField``); dias sem a chave já vêm **omitidos** do serviço (não null)."""
+
+    date = serializers.DateField()
+    value = serializers.FloatField(allow_null=True)
+
+
+class HealthFieldSeriesSerializer(serializers.Serializer):
+    """Payload de ``GET /api/health-logs/series/``: a definição do campo + a série.
+
+    ``field`` **reusa** ``HealthFieldDefinitionSerializer`` (7.1). A tabela do
+    ``history`` é a representação equivalente acessível deste gráfico (AC4)."""
+
+    field = HealthFieldDefinitionSerializer()
+    points = HealthSeriesPointSerializer(many=True)

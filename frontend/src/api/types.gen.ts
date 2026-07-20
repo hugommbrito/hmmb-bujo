@@ -748,6 +748,55 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/health-logs/history/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description Histórico dia a dia + dashboard de período (Story 7.3, AC1/AC2):
+         *     ``GET /api/health-logs/history/?start=&end=``.
+         *
+         *     View fina: resolve o range (default = últimos 30 dias, autoridade ``today_for``)
+         *     → ``get_health_history`` → serializa. Read-only puro (nenhuma escrita, transação
+         *     ou materialização). ``DomainError`` do range (start>end / >92 dias) vira 409;
+         *     data inválida no parâmetro vira 400.
+         */
+        get: operations["health_logs_history_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/health-logs/series/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description Série de evolução de UM campo numérico (Story 7.3, AC2):
+         *     ``GET /api/health-logs/series/?field=<uuid>&start=&end=``.
+         *
+         *     ``field`` é obrigatório (ausente → 400). Campo **não-numérico** → ``DomainError``
+         *     (409); ``field`` inexistente/cross-tenant (ou UUID malformado) → 404. Read-only
+         *     via cast JSONB — nenhuma materialização.
+         */
+        get: operations["health_logs_series_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1091,6 +1140,16 @@ export interface components {
             displayOrder?: number;
         };
         /**
+         * @description Payload de ``GET /api/health-logs/series/``: a definição do campo + a série.
+         *
+         *     ``field`` **reusa** ``HealthFieldDefinitionSerializer`` (7.1). A tabela do
+         *     ``history`` é a representação equivalente acessível deste gráfico (AC4).
+         */
+        HealthFieldSeries: {
+            field: components["schemas"]["HealthFieldDefinition"];
+            points: components["schemas"]["HealthSeriesPoint"][];
+        };
+        /**
          * @description * `integer` - Integer
          *     * `decimal` - Decimal
          *     * `boolean` - Boolean
@@ -1099,6 +1158,36 @@ export interface components {
          * @enum {string}
          */
         HealthFieldTypeEnum: "integer" | "decimal" | "boolean" | "enum" | "text";
+        /**
+         * @description Payload de ``GET /api/health-logs/history/``: tabela dia a dia + dashboard.
+         *
+         *     ``fields`` **reusa** ``HealthFieldDefinitionSerializer`` (7.1) — inclui campos
+         *     ativos e inativos-com-histórico (Decisão 3). ``days`` = uma entrada por linha
+         *     existente. ``summary`` = um cartão por campo numérico.
+         */
+        HealthHistory: {
+            /** Format: date */
+            start: string;
+            /** Format: date */
+            end: string;
+            fields: components["schemas"]["HealthFieldDefinition"][];
+            days: components["schemas"]["HealthHistoryDay"][];
+            summary: components["schemas"]["HealthPeriodSummary"][];
+        };
+        /**
+         * @description Uma linha de ``health_logs`` no range: a data + o blob opaco de valores.
+         *
+         *     ``values`` **reusa** ``HealthValuesField`` (§6.10): dict de chave dinâmica (UUID
+         *     da definição) que NÃO é camelizado na borda. O frontend tipa cada célula pela
+         *     definição viva (``fields``), não por esquema estruturado.
+         */
+        HealthHistoryDay: {
+            /** Format: date */
+            date: string;
+            values: {
+                [key: string]: number | boolean | string;
+            };
+        };
         /** @description Saída de uma linha upsertada (resposta do ``PUT``): ``{id, date, values}``. */
         HealthLog: {
             /** Format: uuid */
@@ -1121,6 +1210,35 @@ export interface components {
             values: {
                 [key: string]: number | boolean | string;
             };
+        };
+        /**
+         * @description Cartão do dashboard de período de UM campo numérico (AC2, Decisão 7/8).
+         *
+         *     Números crus (não string). ``min``/``max``/``avg``/``latest`` são ``allow_null``
+         *     = campo sem nenhum registro no range (o frontend mostra "—").
+         */
+        HealthPeriodSummary: {
+            /** Format: uuid */
+            fieldId: string;
+            count: number;
+            /** Format: double */
+            min: number | null;
+            /** Format: double */
+            max: number | null;
+            /** Format: double */
+            avg: number | null;
+            /** Format: double */
+            latest: number | null;
+        };
+        /**
+         * @description Um ponto diário ``(data, valor)`` da série de evolução (AC2). ``value`` cru
+         *     (``FloatField``); dias sem a chave já vêm **omitidos** do serviço (não null).
+         */
+        HealthSeriesPoint: {
+            /** Format: date */
+            date: string;
+            /** Format: double */
+            value: number | null;
         };
         /** @description Resultado do toggle de feriado: a data + o tipo de dia re-resolvido. */
         HolidayResult: {
@@ -2556,6 +2674,56 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthDaily"];
+                };
+            };
+        };
+    };
+    health_logs_history_retrieve: {
+        parameters: {
+            query?: {
+                /** @description Fim do intervalo (YYYY-MM-DD). Default = hoje do usuário. */
+                end?: string;
+                /** @description Início do intervalo (YYYY-MM-DD). Default = fim − 29 dias. */
+                start?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthHistory"];
+                };
+            };
+        };
+    };
+    health_logs_series_retrieve: {
+        parameters: {
+            query: {
+                /** @description Fim do intervalo (YYYY-MM-DD). Default = hoje do usuário. */
+                end?: string;
+                /** @description UUID do campo numérico (integer/decimal) a plotar. */
+                field: string;
+                /** @description Início do intervalo (YYYY-MM-DD). Default = fim − 29 dias. */
+                start?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthFieldSeries"];
                 };
             };
         };

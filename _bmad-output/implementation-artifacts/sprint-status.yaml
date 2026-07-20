@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-22
-last_updated: 2026-07-19  # Story 7.2 revisada (code review, 0 críticos, fixes auto-aplicados): review → done
+last_updated: 2026-07-19  # Story 7.3 review (story-automator-review): review → done
 project: hmmb-bujo
 project_key: NOKEY
 tracking_system: file-system
@@ -112,7 +112,7 @@ development_status:
   epic-7: in-progress
   7-1-campos-de-saude-dinamicos: done
   7-2-log-diario-de-saude: done
-  7-3-historico-de-saude-em-tres-visualizacoes: backlog
+  7-3-historico-de-saude-em-tres-visualizacoes: done
   epic-7-retrospective: optional
 
   # Epic 8: Medicamentos

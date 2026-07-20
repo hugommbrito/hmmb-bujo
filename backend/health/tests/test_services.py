@@ -10,13 +10,16 @@ from core.exceptions import DomainError
 from core.tenant import tenant_context
 from health.models import HealthFieldDefinition, HealthFieldType, HealthLog
 from health.services import (
+    _validate_history_range,
     create_health_field,
     get_health_daily,
+    get_health_field_series,
+    get_health_history,
     list_health_fields,
     update_health_field,
     upsert_health_log,
 )
-from health.tests.factories import HealthFieldDefinitionFactory
+from health.tests.factories import HealthFieldDefinitionFactory, HealthLogFactory
 
 # Data fixa de log (guardrail: nunca ``date.today()``; os testes de ritual usam ``today_for``).
 _D = date(2026, 3, 10)
@@ -406,3 +409,235 @@ def test_get_health_daily_cross_tenant_isolated(user, other_user):
         assert daily["fields"] == []
         assert daily["yesterday"]["values"] == {}
         assert daily["today"]["values"] == {}
+
+
+# ===============================================================================
+# Story 7.3 — histórico read-only (get_health_history + get_health_field_series)
+# ===============================================================================
+
+# Datas fixas dentro de um mesmo range (guardrail: nunca ``date.today()``).
+_H_START = date(2026, 2, 1)
+_H_D1 = date(2026, 2, 3)
+_H_D2 = date(2026, 2, 5)
+_H_D3 = date(2026, 2, 8)
+_H_END = date(2026, 2, 28)
+
+
+# --- _validate_history_range ---------------------------------------------------
+def test_validate_history_range_start_after_end():
+    with pytest.raises(DomainError):
+        _validate_history_range(_H_END, _H_START)
+
+
+def test_validate_history_range_over_92_days():
+    with pytest.raises(DomainError):
+        _validate_history_range(date(2026, 1, 1), date(2026, 6, 1))
+
+
+def test_validate_history_range_within_bounds_ok():
+    # No limite (92 dias) não estoura.
+    _validate_history_range(date(2026, 1, 1), date(2026, 4, 3))
+
+
+def test_get_health_history_range_over_92_raises(user):
+    with tenant_context(user), pytest.raises(DomainError):
+        get_health_history(user=user, start=date(2026, 1, 1), end=date(2026, 6, 1))
+
+
+# --- get_health_history: days / fields / summary -------------------------------
+def test_history_days_reflect_only_existing_rows(user):
+    """``days`` traz uma entrada por linha existente, ordenada por data — nunca
+    fabrica dias sem registro (diferente de Hábitos, que preenche o range inteiro)."""
+    with tenant_context(user):
+        weight = HealthFieldDefinitionFactory(
+            user=user, field_type=HealthFieldType.DECIMAL, name="Peso"
+        )
+        HealthLogFactory(user=user, date=_H_D2, values={str(weight.id): 82.5})
+        HealthLogFactory(user=user, date=_H_D1, values={str(weight.id): 80.5})
+        result = get_health_history(user=user, start=_H_START, end=_H_END)
+
+    assert [d["date"] for d in result["days"]] == [_H_D1, _H_D2]  # ordenado, só existentes
+    assert result["days"][0]["values"] == {str(weight.id): 80.5}
+
+
+def test_history_fields_include_active_and_inactive_with_value(user):
+    """``fields`` inclui campos ATIVOS e campos INATIVOS que têm valor no range
+    (Decisão 3 — esconder a coluna apagaria o histórico); exclui inativo sem valor."""
+    with tenant_context(user):
+        active = HealthFieldDefinitionFactory(
+            user=user, name="Ativo", active=True, display_order=0
+        )
+        inactive_with = HealthFieldDefinitionFactory(
+            user=user, name="InativoComDado", active=False, display_order=1
+        )
+        HealthFieldDefinitionFactory(
+            user=user, name="InativoSemDado", active=False, display_order=2
+        )
+        HealthLogFactory(user=user, date=_H_D1, values={str(inactive_with.id): 5})
+        result = get_health_history(user=user, start=_H_START, end=_H_END)
+
+    names = [f.name for f in result["fields"]]
+    assert names == ["Ativo", "InativoComDado"]  # ordenado por display_order; sem-dado fora
+    assert active.id in [f.id for f in result["fields"]]
+
+
+def test_history_summary_numeric_field_stats(user):
+    """``summary`` de campo numérico: count/min/max/avg/latest via cast JSONB.
+    ``latest`` = valor na maior data com registro (D3), não hoje (Decisão 8)."""
+    with tenant_context(user):
+        f = HealthFieldDefinitionFactory(
+            user=user, field_type=HealthFieldType.DECIMAL, name="Peso"
+        )
+        HealthLogFactory(user=user, date=_H_D1, values={str(f.id): 80.0})
+        HealthLogFactory(user=user, date=_H_D2, values={str(f.id): 90.0})
+        HealthLogFactory(user=user, date=_H_D3, values={str(f.id): 85.0})
+        result = get_health_history(user=user, start=_H_START, end=_H_END)
+
+    stats = next(s for s in result["summary"] if s["field_id"] == f.id)
+    assert stats["count"] == 3
+    assert stats["min"] == 80.0
+    assert stats["max"] == 90.0
+    assert stats["avg"] == 85.0
+    assert stats["latest"] == 85.0  # valor na maior data (D3)
+
+
+def test_history_summary_numeric_field_without_record_is_zeroed(user):
+    """Campo numérico sem nenhum registro no range → summary zerado/None."""
+    with tenant_context(user):
+        f = HealthFieldDefinitionFactory(
+            user=user, field_type=HealthFieldType.INTEGER, name="Passos"
+        )
+        result = get_health_history(user=user, start=_H_START, end=_H_END)
+
+    stats = next(s for s in result["summary"] if s["field_id"] == f.id)
+    assert stats["count"] == 0
+    assert stats["min"] is None
+    assert stats["max"] is None
+    assert stats["avg"] is None
+    assert stats["latest"] is None
+
+
+def test_history_summary_excludes_non_numeric_fields(user):
+    """Booleano/enum/texto NÃO entram no dashboard (Decisão 5) — só na tabela
+    (aparecem em ``fields``, mas não em ``summary``)."""
+    with tenant_context(user):
+        boolean = HealthFieldDefinitionFactory(
+            user=user, field_type=HealthFieldType.BOOLEAN, name="Atividade"
+        )
+        HealthLogFactory(user=user, date=_H_D1, values={str(boolean.id): True})
+        result = get_health_history(user=user, start=_H_START, end=_H_END)
+
+    assert all(s["field_id"] != boolean.id for s in result["summary"])
+    assert boolean.id in [f.id for f in result["fields"]]  # coluna existe na tabela
+
+
+def test_history_cross_tenant_isolated(user, other_user):
+    """A leitura de ``user`` nunca enxerga linhas/definições de ``other_user``."""
+    with tenant_context(other_user):
+        alheio = HealthFieldDefinitionFactory(
+            user=other_user, field_type=HealthFieldType.INTEGER
+        )
+        HealthLogFactory(user=other_user, date=_H_D1, values={str(alheio.id): 5})
+    with tenant_context(user):
+        result = get_health_history(user=user, start=_H_START, end=_H_END)
+
+    assert result["days"] == []
+    assert result["fields"] == []
+    assert result["summary"] == []
+
+
+# --- get_health_field_series ---------------------------------------------------
+def test_series_points_ordered_with_gaps_omitted(user):
+    """``points`` ordenados por data; dias sem a chave (lacuna) são OMITIDOS."""
+    with tenant_context(user):
+        f = HealthFieldDefinitionFactory(
+            user=user, field_type=HealthFieldType.DECIMAL, name="Peso"
+        )
+        other = HealthFieldDefinitionFactory(
+            user=user, field_type=HealthFieldType.INTEGER, name="Sono"
+        )
+        HealthLogFactory(user=user, date=_H_D2, values={str(f.id): 82.5})
+        HealthLogFactory(user=user, date=_H_D1, values={str(f.id): 80.5})
+        # Dia com registro só de OUTRO campo → não entra na série de f (chave ausente).
+        HealthLogFactory(user=user, date=_H_D3, values={str(other.id): 7})
+        result = get_health_field_series(
+            user=user, field_id=f.id, start=_H_START, end=_H_END
+        )
+
+    assert result["field"].id == f.id
+    assert [(p["date"], p["value"]) for p in result["points"]] == [
+        (_H_D1, 80.5),
+        (_H_D2, 82.5),
+    ]
+
+
+def test_series_cast_reads_integer_and_decimal(user):
+    """(c) o cast JSONB lê integer e decimal corretamente como número."""
+    with tenant_context(user):
+        weight = HealthFieldDefinitionFactory(
+            user=user, field_type=HealthFieldType.DECIMAL, name="Peso"
+        )
+        sleep = HealthFieldDefinitionFactory(
+            user=user, field_type=HealthFieldType.INTEGER, name="Sono"
+        )
+        HealthLogFactory(
+            user=user, date=_H_D1, values={str(weight.id): 88.2, str(sleep.id): 4}
+        )
+        w = get_health_field_series(user=user, field_id=weight.id, start=_H_START, end=_H_END)
+        s = get_health_field_series(user=user, field_id=sleep.id, start=_H_START, end=_H_END)
+
+    assert w["points"][0]["value"] == 88.2
+    assert s["points"][0]["value"] == 4.0  # int no blob → float via cast
+
+
+def test_series_non_numeric_field_raises_domain_error(user):
+    """Campo não-numérico não é plotável (Decisão 5) → DomainError."""
+    with tenant_context(user):
+        boolean = HealthFieldDefinitionFactory(
+            user=user, field_type=HealthFieldType.BOOLEAN
+        )
+        with pytest.raises(DomainError):
+            get_health_field_series(
+                user=user, field_id=boolean.id, start=_H_START, end=_H_END
+            )
+
+
+def test_series_nonexistent_field_raises_does_not_exist(user):
+    with tenant_context(user), pytest.raises(HealthFieldDefinition.DoesNotExist):
+        get_health_field_series(
+            user=user, field_id=uuid.uuid4(), start=_H_START, end=_H_END
+        )
+
+
+def test_series_cross_tenant_field_raises_does_not_exist(user, other_user):
+    with tenant_context(other_user):
+        alheio = HealthFieldDefinitionFactory(
+            user=other_user, field_type=HealthFieldType.INTEGER
+        )
+    with tenant_context(user), pytest.raises(HealthFieldDefinition.DoesNotExist):
+        get_health_field_series(
+            user=user, field_id=alheio.id, start=_H_START, end=_H_END
+        )
+
+
+def test_series_range_over_92_raises(user):
+    with tenant_context(user):
+        f = HealthFieldDefinitionFactory(user=user, field_type=HealthFieldType.INTEGER)
+        with pytest.raises(DomainError):
+            get_health_field_series(
+                user=user, field_id=f.id, start=date(2026, 1, 1), end=date(2026, 6, 1)
+            )
+
+
+# --- (e) leituras NUNCA materializam -------------------------------------------
+def test_history_reads_do_not_materialize(user):
+    """Nenhuma leitura de histórico cria linhas em health_logs (AC3, on-read puro)."""
+    with tenant_context(user):
+        f = HealthFieldDefinitionFactory(user=user, field_type=HealthFieldType.INTEGER)
+        HealthLogFactory(user=user, date=_H_D1, values={str(f.id): 5})
+        before = HealthLog.objects.count()
+        get_health_history(user=user, start=_H_START, end=_H_END)
+        get_health_field_series(user=user, field_id=f.id, start=_H_START, end=_H_END)
+        after = HealthLog.objects.count()
+
+    assert before == after == 1
