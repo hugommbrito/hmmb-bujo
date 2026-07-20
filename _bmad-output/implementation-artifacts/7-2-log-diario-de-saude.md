@@ -4,7 +4,7 @@ baseline_commit: aaa8ce4c60a0cc88e8cd96fa494de4599b12fc07
 
 # Story 7.2: Log diário de saúde
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -413,8 +413,32 @@ Story 7.2 entrega a **captura e o armazenamento de valores de saúde** (segunda 
 - `frontend/src/features/health/index.ts` — exports dos novos hooks/tipos/componente.
 - `frontend/src/features/health/api.test.tsx` — appends (daily query + upsert mutation).
 
+**E2E (etapa de QA automation da story) — novos:**
+- `frontend/e2e/health-log.spec.ts` — 4 specs da superfície `/health/metrics` (AC1–AC5) ponta-a-ponta contra a branch Neon `e2e`: ritual ontem/hoje + Row por tipo + salvar-por-dia + round-trip por UUID (T1); campo inativo some mas valor histórico preservado no merge (T2); empty state + link (T3); valor incompatível → 409 + erro inline + input preservado + retry (T4).
+- `frontend/e2e/seedHealthFields.ts` — seed de definições ativas via `create_health_field` + `setHealthFieldActive` (des/reativar), devolvendo o map `{nome: uuid}` (idioma de `seedHabits.ts`).
+- `_bmad-output/implementation-artifacts/tests/test-summary.md` — append da seção "Story 7.2" (cobertura por AC, resultado do run, gaps auto-aplicados).
+
 ### Change Log
 
 | Data | Versão | Descrição | Autor |
 |---|---|---|---|
 | 2026-07-19 | 0.1 | Implementação da Story 7.2 (log diário de saúde): model `HealthLog` + JSONB `values` validado por definição, `PUT /api/health-logs/` (upsert-merge) + `GET /daily/` (read-model ontem/hoje), superfície `/health/metrics` (Health Metric Row por tipo, salvar-por-dia). Status → review. | Amelia (dev-story) |
+| 2026-07-19 | 0.2 | QA automation (E2E): `frontend/e2e/health-log.spec.ts` (4 specs, AC1–AC5) + seed `seedHealthFields.ts`, contra a branch Neon `e2e` (sem mocks). Gaps auto-aplicados: migração `health.0002_health_log` aplicada à branch `e2e` (estava pendente); timeouts folgados (30s/180s) para os stalls de cold-start do Neon. Run: 3 passed + 1 flaky (fixture de signup, passa no retry). | HugoMMBrito (qa-generate-e2e-tests) |
+| 2026-07-19 | 0.3 | Code review (adversarial, auto-fix). 0 críticos. 1 MÉDIO + 2 BAIXOS corrigidos. Status → done. | HugoMMBrito (story-automator-review) |
+
+## Senior Developer Review (AI)
+
+**Revisor:** HugoMMBrito · **Data:** 2026-07-19 · **Resultado:** ✅ Aprovado (done) — 0 issues críticos.
+
+**Escopo:** todos os arquivos-fonte do commit `c513314` (backend `health/*`, `config/urls.py`; frontend `features/health/*`, `pages/health/*`, `api/keys.ts`, `api/types.gen.ts`, `app/router.tsx`) + os E2E não-commitados (`frontend/e2e/health-log.spec.ts`, `seedHealthFields.ts`). Excluídos da revisão: artefatos de planejamento/UX em `_bmad-output/` (trabalho paralelo).
+
+**Veredito por AC:** AC1–AC5 **implementadas** e cobertas por testes reais (serviço/model/view/serializer no backend + unit + E2E no frontend). Tarefas `[x]` conferidas contra o código — nenhuma marcada como feita sem evidência. Sem discrepância git ↔ File List (E2E + `test-summary.md` são os artefatos ainda não-commitados esperados, consolidados no fim). Segurança/tenancy corretas (manager auto-escopado, JSONB `values` opaco, `DomainError`→409 / `ValidationError`→400, sem FK, sem `all_objects` indevido).
+
+**Achados e correções auto-aplicadas:**
+1. **[MÉDIO] `HealthMetricsLog` — erro de refetch em background destruía o contexto.** A guarda `daily.isError || !daily.data` acionava o estado de erro-bloqueante (desmontando as duas seções + rascunhos não salvos + a confirmação "Dados salvos.") num **erro de refetch em background** — alcançável via `refetchOnWindowFocus:true` + `staleTime:0` (queryClient) + os stalls de cold-start do Neon, e após cada save invalidar `['health']`. Contradizia a AC5 ("erro de leitura … **preserva contexto**"). **Fix:** a guarda passou a `if (!daily.data)` — o erro-bloqueante só ocorre na **leitura inicial** (sem dado a exibir); um erro de refetch mantém o último sucesso e preserva rascunhos/confirmação. Divergência de propósito do idioma de `HabitTracker` (documentada inline). *Arquivo: `frontend/src/features/health/components/HealthMetricsLog.tsx`.*
+2. **[BAIXO] Docstring de módulo desatualizada em `health/views.py`** — dizia que os endpoints ficavam só sob `/api/health-field-definitions/`, mas o arquivo agora serve também `/api/health-logs/` (7.2). **Fix:** docstring atualizada para descrever os dois recursos-irmãos.
+3. **[BAIXO] Ramo sem teste em `_validate_value` (cap de texto `>1000`).** O `_MAX_TEXT_LEN=1000` levantava `DomainError` sem cobertura. **Fix:** `test_upsert_text_rejects_over_max_len` (1000 passa; 1001 rejeita) em `test_services.py`.
+
+**Observações não acionadas (por design, sem violação de AC):** (a) campos `boolean` persistem `false` ao salvar mesmo se intocados (toggle é binário; nenhuma AC proíbe); (b) o draft de uma seção não é re-semeado após um refetch bem-sucedido (correto para single-user — o draft espelha os valores salvos).
+
+**Verificação pós-fix:** frontend `vitest run` **689 passed** (62 arquivos) + `tsc` limpo; backend `pytest health --reuse-db` **82 passed** (inclui o novo teste) + `ruff` limpo. Nenhum arquivo novo no File List (os 3 fixes tocaram arquivos já listados).

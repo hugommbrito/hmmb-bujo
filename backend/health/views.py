@@ -1,9 +1,11 @@
 """Views finas das Métricas de Saúde (§6.2): validam → chamam o serviço → serializam.
 
-Endpoints sob ``/api/health-field-definitions/`` — **não** ``/api/health/`` (reservado
-para o liveness check em ``config/urls.py``). Padrão idêntico ao ``habits``: ``APIView``
-fina, ``@extend_schema``, ``body.is_valid(raise_exception=True)`` → service
-``user=request.user`` → serializa; ``DoesNotExist`` → ``NotFound`` (404).
+Dois recursos-irmãos (mesmo split de ``habits``): definições sob
+``/api/health-field-definitions/`` (7.1) e log diário de valores sob
+``/api/health-logs/`` (7.2, ``daily/`` + upsert). **Nunca** ``/api/health/``
+(reservado ao liveness check em ``config/urls.py``). Padrão idêntico ao ``habits``:
+``APIView`` fina, ``@extend_schema``, ``body.is_valid(raise_exception=True)`` →
+service ``user=request.user`` → serializa; ``DoesNotExist`` → ``NotFound`` (404).
 """
 
 from drf_spectacular.utils import OpenApiParameter, extend_schema

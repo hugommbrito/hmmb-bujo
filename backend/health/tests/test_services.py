@@ -307,6 +307,16 @@ def test_upsert_text_requires_string(user):
             upsert_health_log(user=user, log_date=_D, values={str(f.id): 123})
 
 
+def test_upsert_text_rejects_over_max_len(user):
+    """Cap defensivo (_MAX_TEXT_LEN=1000): texto acima do limite → DomainError."""
+    with tenant_context(user):
+        f = HealthFieldDefinitionFactory(user=user, field_type=HealthFieldType.TEXT)
+        # No limite (1000) passa; acima (1001) é rejeitado antes de qualquer write.
+        upsert_health_log(user=user, log_date=_D, values={str(f.id): "a" * 1000})
+        with pytest.raises(DomainError):
+            upsert_health_log(user=user, log_date=_D, values={str(f.id): "a" * 1001})
+
+
 # --- (d) UUID inexistente / inativo --------------------------------------------
 def test_upsert_rejects_unknown_uuid(user):
     with tenant_context(user), pytest.raises(DomainError):

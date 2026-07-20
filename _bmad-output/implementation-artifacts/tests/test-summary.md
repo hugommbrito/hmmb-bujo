@@ -2416,3 +2416,85 @@ Rodado contra o stack real (`npm run dev` na 5173 + `manage.py runserver` sob `c
 ## Próximos Passos
 
 - Nenhum gap bloqueante identificado para a Story 7.1. As stories 7.2 (log diário) e 7.3 (histórico/gráficos) devem estender este spec (ou irmãos `health-log.spec.ts` / `health-history.spec.ts`) reutilizando a fixture de signup e o padrão de navegação por Configurações — e semeando definições via a camada de serviço (como `seedHabits.ts` faz), já que o log/histórico só têm dados após definições existirem.
+
+---
+
+# Resumo de Automação de Testes — Story 7.2: Log diário de saúde
+
+Fecha o gap E2E da **superfície de VALORES** do Épico 7. A Story 7.1 cobriu a gestão de *definições* (`/settings/health-metrics`); a 7.2 entrega o *log do ritual matinal* (`/health/metrics`) — captura e armazenamento de valores em `health_logs.values` (JSONB chaveado pelo **UUID** de cada definição), com "ontem no topo, hoje abaixo". Antes deste ciclo, essa superfície tinha **zero cobertura E2E** (a `health-metrics.spec.ts` só exercita definições, não valores). Seguindo à risca a recomendação de "Próximos Passos" da 7.1, criei o **spec-irmão `health-log.spec.ts`** + o seed via camada de serviço **`seedHealthFields.ts`** (idioma de `seedHabits.ts`), reutilizando a fixture de signup e o padrão de nav do projeto.
+
+## Arquivos gerados
+
+- `frontend/e2e/health-log.spec.ts` — **4 testes E2E** da superfície `/health/metrics` (Story 7.2), contra o backend real (branch Neon `e2e`, sem mocks de rede).
+- `frontend/e2e/seedHealthFields.ts` — helper de seed via `manage.py shell` → `create_health_field` (definições ativas) + `setHealthFieldActive` (des/reativar, a alavanca da AC4). Devolve o map `{nome: uuid}` — as chaves reais do JSONB que a 7.2 grava.
+
+## Testes
+
+**Teste 1 — ritual ontem/hoje + Health Metric Row por tipo + salvar-por-dia + round-trip por UUID (AC3, AC5, AC1, AC2):** seeda 5 definições ativas cobrindo os **5 tipos** (`integer`/`decimal`/`boolean`/`enum`/`text`); navega pela entrada de nav "Saúde › Métricas"; assere as duas seções — **"Ontem, [data]" ACIMA de "Hoje, [data]"** (ordem provada por `boundingBox().y`, datas formatadas em pt-BR vindas da autoridade temporal do servidor); preenche a Row correta de cada tipo em HOJE (numérico com `inputMode`, `Switch`, `Select`, texto), salva e confere a **confirmação inline** literal "Dados de hoje salvos." (`role="status"`); **recarrega e prova que todos os valores voltam idênticos** do backend (round-trip por UUID, não cache otimista); depois salva a seção de ONTEM independentemente ("Dados de ontem salvos.") — provando linhas independentes por `(user, date)`.
+
+**Teste 2 — campo inativo some, valor histórico preservado no merge (AC4):** grava Peso+Humor de hoje; **desativa "Humor"** via serviço; recarrega → "Humor" some das duas seções (só campos ativos renderizam) mas Peso segue com o valor; **reativa "Humor"** → o valor "Bom" **reaparece intacto**. Prova ponta-a-ponta que o upsert faz **merge, nunca replace** (jamais apaga chaves de campos hoje inativos — o coração da AC4).
+
+**Teste 3 — sem campos ativos: empty state + uma ação (AC5):** usuário novo sem definições → frase neutra "Nenhum campo de saúde ativo." + link único "Configurar métricas de saúde" que leva a `/settings/health-metrics` (voz UX-DR13, zero gamificação).
+
+**Teste 4 — valor incompatível com o tipo → 409 real + erro inline + input preservado + retry (AC1, AC5):** "1.5" num campo `integer` → o front envia o número `1.5`, a **validação-contra-definição na camada de serviço** o rejeita (não é inteiro) → **409**; assere o erro inline "Não foi possível salvar. Tente novamente." (`role="alert"`), que **nada** foi persistido e que o **input "1.5" é preservado**; o retry com "88" grava e confirma, e o reload prova a persistência real. É o "grava só se TODOS forem válidos" (AC1) provado pelo lado negativo na UI real.
+
+## Cobertura por AC (pós-run)
+
+| AC | Critério | Coberto por |
+|----|----------|-------------|
+| AC1 | Gravação validada em `health_logs.values` (JSONB por UUID); grava só se tudo válido; upsert por `(user, date)` | `health-log.spec.ts` (T1 grava+persiste; **T4 rejeita valor incompatível → 409, nada persistido**) + backend `test_services`/`test_views` |
+| AC2 | Round-trip por UUID idempotente (`values` não cameliza) | `health-log.spec.ts` (T1: valores por UUID voltam idênticos após reload) + backend `test_views` (round-trip via `response.content`) + `core/test_api_contract` |
+| AC3 | "Ontem, [data]" no topo, "Hoje, [data]" abaixo; datas da autoridade do servidor; campos ativos renderizados | `health-log.spec.ts` (T1: ordem por `boundingBox`, datas pt-BR do servidor, campos ativos) |
+| AC4 | Campo inativo some do log ativo; valores históricos preservados (merge, não replace) | `health-log.spec.ts` (T2: desativa/some/reativa/valor intacto) + backend `test_services` (merge preserva chave inativa) |
+| AC5 | Health Metric Row por tipo; confirmação inline por dia; estados empty/erro-de-escrita | `health-log.spec.ts` (T1 render+confirmação; T3 empty+link; **T4 erro de escrita+input preservado+retry**) |
+
+## Resultado da Execução (Node 22.15.1)
+
+```
+npx eslint e2e/health-log.spec.ts e2e/seedHealthFields.ts
+  ✔ limpo (exit 0)
+
+npx playwright test health-log.spec.ts --retries=2 --reporter=line
+  (chromium, workers=1, contra o stack real: vite 5173 + manage.py runserver config.settings.e2e)
+  ✓ AC4 — campo desativado some do log ativo mas valor histórico preservado; reativar traz de volta intacto
+  ✓ AC5 — sem campos de saúde ativos: mensagem neutra + link para Configurações
+  ✓ AC1/AC5 — valor incompatível → 409 real, erro inline, input preservado, retry corrige
+  ⚑ AC3/AC5/AC1/AC2 — ritual ontem/hoje, Row por tipo, salvar por dia, round-trip por UUID  (flaky: 1 falha na FIXTURE de signup por stall do Neon, passou no retry)
+  3 passed, 1 flaky (1.4m)
+```
+
+Rodado contra o stack real (`npm run dev` na 5173 + `manage.py runserver` sob `config.settings.e2e`, branch Neon `e2e` dedicada, **sem mocks de rede**). Endpoints de fato exercitados (confirmados no log do runserver): `GET /api/health-logs/daily/` (read-model ontem/hoje/fields), `PUT /api/health-logs/` (upsert-merge; **409 no caso de valor incompatível**). O **único** flake foi no `signUpAndLandOnToday` compartilhado (fixture usada por todo o suite E2E), por um stall de cold-start do Neon — **nenhum flake é atribuível à lógica dos specs da 7.2** (as asserções do corpo passaram assim que a fixture completou). Backend **não** reexecutado — nenhum arquivo `backend/`/`src/` tocado por este ciclo (só specs/seeds E2E).
+
+## Correções/Gaps Auto-Aplicados Durante o Ciclo
+
+- **Migração `health.0002_health_log` não aplicada à branch Neon `e2e`** (gap de infra real): `showmigrations health` mostrava `[ ] 0002_health_log`. Sem a tabela `health_logs`, **todo** teste falharia no seed/GET `/daily/`. Apliquei via `DJANGO_SETTINGS_MODULE=config.settings.e2e manage.py migrate health` antes da suíte — exatamente a lacuna recorrente ao introduzir tabela nova (a 7.1 fez o mesmo com `0001_initial`).
+- **Timeouts folgados para os stalls de cold-start do Neon `e2e`** (config, não lógica): diagnóstico por `curl` mostrou signup/token **quentes ~1,4s**, mas um request aleatório ao DB **estola ~30s** (instabilidade documentada da branch `e2e`). Ajustei `LIST_TIMEOUT`/`SAVE_TIMEOUT` para **30s** e o budget por teste para **180s**, para um stall isolado num round-trip não derrubar a asserção — mesma disciplina do `RECONCILE` (20s) de `habit-multiplier.spec.ts` e do `LIST_TIMEOUT` (15s) de `health-metrics.spec.ts`.
+
+## Notas de Ambiente (não são defeitos)
+
+- **Node ≥ 22.15.1 via nvm** antes de qualquer comando de frontend/e2e.
+- **Cold-start/contenção da branch `e2e`:** stalls intermitentes de ~30s em qualquer request ao DB (locks órfãos + cold-start, documentado em `playwright.config.ts` — é o motivo de `retries: 2` no CI). O run final passou 4/4 sob `retries` (1 retry consumido pela fixture compartilhada). Nenhum flake na lógica dos specs.
+- **Seeds via camada de serviço** (`seedHealthFields`/`setHealthFieldActive`): definições semeadas direto por `create_health_field`/`update_health_field` (idioma de `seedHabits.ts`) — controle determinístico de tipo/opções/ativo, sem depender da UI de config da 7.1.
+
+## Checklist de Validação
+
+- [x] Testes E2E gerados (UI existe) — 4 testes novos fechando o gap total da superfície de valores da 7.2 (AC1–AC5)
+- [x] API tests: N/A como arquivo novo — o contrato (`GET /api/health-logs/daily/`, `PUT /api/health-logs/`) já é coberto pela suíte de backend da 7.2 e é exercitado de verdade por estes E2E (sem mock)
+- [x] Usam APIs padrão do framework já adotado (Playwright + fixture de signup + seed via `manage.py shell` do projeto) — nenhuma ferramenta nova
+- [x] Cobrem happy path (render por tipo, salvar ontem/hoje, persistência/round-trip) + **caso de erro crítico** (valor incompatível → 409 real → erro inline → input preservado → retry) + casos de borda (campo inativo some mas valor preservado; empty state + link)
+- [x] Todos os testes passam (3 passed + 1 flaky que passa no retry, 4/4 sob a política `retries` do CI), contra o backend real
+- [x] Locators semânticos/acessíveis (`getByRole('main'/'region'/'heading'/'button'/'link'/'option')`, `getByLabel`, `getByText` literal; seções escopadas por `region` para desambiguar ontem/hoje) — sem seletores frágeis de CSS
+- [x] Descrições claras em pt-BR, seguindo a convenção de prosa dos `.spec.ts` do projeto
+- [x] Sem waits/sleeps artificiais — web-first assertions com auto-retry; reload só após a confirmação de salvamento (sem correr contra o PUT em voo)
+- [x] Testes independentes (cada teste cria um usuário novo via signup e seus próprios campos)
+- [x] Summary salvo em `_bmad-output/implementation-artifacts/tests/test-summary.md`
+
+## Limites de Cobertura (por design, não gaps)
+
+- **Round-trip camelCase por chave dinâmica (AC2) no nível de renderer/parser:** o E2E prova o round-trip **funcional** (valores por UUID voltam idênticos após reload); a prova de que `blood_pressure` não vira `bloodPressure` no JSON renderizado de produção é do backend (`test_views` via `response.content` + `core/test_api_contract`).
+- **Atomicidade "grava só se tudo válido" com lote misto (um inválido no meio de vários):** o E2E cobre a manifestação de UI (T4: um valor inválido → 409 → nada persistido); a prova de que **nenhuma** chave do lote persiste é do backend `test_services`.
+- **Isolamento cross-tenant / fail-closed (`TenantScopeViolation`):** asserção de nível de serviço/banco → coberta por backend (contrato de isolamento parametrizado via `register_isolation_case("health.HealthLog")`), não observável no browser.
+
+## Próximos Passos
+
+- Nenhum gap bloqueante identificado para a Story 7.2. A Story 7.3 (histórico/gráficos de evolução via cast `(values->>'uuid')::numeric`) deve estender com um spec-irmão `health-history.spec.ts`, reutilizando `seedHealthFields.ts` para semear definições **e** semeando `health_logs` de dias passados (novo helper de seed, análogo a `seedHabitHistory.ts`) — o histórico só tem o que gravar séries se houver linhas de dias anteriores.

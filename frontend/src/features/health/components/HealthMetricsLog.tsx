@@ -150,7 +150,15 @@ export function HealthMetricsLog() {
     )
   }
 
-  if (daily.isError || !daily.data) {
+  // Erro de LEITURA inicial (nunca houve sucesso → não há dados a exibir): estado
+  // bloqueante com retry. Um erro de refetch em BACKGROUND (após o save invalidar
+  // ['health'], ou no refetchOnWindowFocus com staleTime:0) NÃO cai aqui — `daily.data`
+  // retém o último sucesso, então os rascunhos em edição das duas seções e a
+  // confirmação "Dados salvos" são PRESERVADOS (AC5: "erro de leitura … preserva
+  // contexto"). Diverge de propósito do idioma `isError || !data` de HabitTracker:
+  // esta superfície mantém rascunhos não salvos, cuja perda num blip de refetch
+  // (Neon cold-start) seria uma regressão de contexto.
+  if (!daily.data) {
     return (
       <Box sx={{ px: 1, py: 1 }}>
         <Alert
