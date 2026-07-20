@@ -34,8 +34,12 @@ extend-exclude = ["migrations"]
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "DJ"]
 
+# Tests default to config.settings.test → local docker-compose Postgres (fast,
+# no Neon round-trips, no dev-branch pollution). Start the DB with
+# `docker compose up -d db` from the repo root. CI overrides this via its
+# workflow env: block (DJANGO_SETTINGS_MODULE + DATABASE_URL), so CI is unaffected.
 [tool.pytest.ini_options]
-DJANGO_SETTINGS_MODULE = "config.settings.dev"
+DJANGO_SETTINGS_MODULE = "config.settings.test"
 python_files = "test_*.py"
 testpaths = ["."]
 

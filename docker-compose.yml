@@ -1,0 +1,28 @@
+# Local Postgres for the backend test suite — mirrors the ephemeral Postgres that
+# CI uses (postgres:16). Lets `uv run pytest` run against localhost instead of the
+# remote Neon dev branch: eliminates network round-trips and Neon cold starts
+# (minutes → seconds) and stops the pytest test-DB churn from polluting the shared
+# Neon dev branch.
+#
+#   docker compose up -d db          # start once (waits until healthy)
+#   cd backend && uv run pytest      # fast; uses config.settings.test → localhost
+#
+# Data lives on tmpfs (in-memory): maximum speed, fully ephemeral. `--reuse-db`
+# reuses the test DB while the container stays up; a restart just recreates it.
+services:
+  db:
+    image: postgres:16
+    container_name: hmmb-test-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: hmmb_test
+    ports:
+      - "5432:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
