@@ -8,8 +8,6 @@ sessionStatus: 'COMPLETO — tópicos T1–T16 resolvidos (AD-01 a AD-15); PRD r
 inputDocuments:
   - '_bmad-output/planning-artifacts/prds/prd-hmmb-bujo-2026-06-15/prd.md'
   - '_bmad-output/planning-artifacts/prds/prd-hmmb-bujo-2026-06-15/addendum.md'
-  - '_bmad-output/planning-artifacts/ux-designs/ux-hmmb-bujo-2026-06-15/DESIGN.md'
-  - '_bmad-output/planning-artifacts/ux-designs/ux-hmmb-bujo-2026-06-15/EXPERIENCE.md'
   - '_bmad-output/planning-artifacts/briefs/brief-hmmb-bujo-2026-06-15/brief.md'
 workflowType: 'architecture'
 project_name: 'hmmb-bujo'
@@ -95,7 +93,7 @@ O sistema cobre 35 requisitos funcionais em 7 categorias:
 **Decisão:**
 
 - **Hábitos → tabela normalizada.** A estrutura é conhecida: todo hábito tem `type` (boolean/numeric), `weight` e `value`. O log diário captura `weight_at_time` para preservar o snapshot sem JSONB.
-- **Métricas de saúde → JSONB.** Os campos são genuinamente abertos — o usuário define nome, tipo e quantidade. JSONB com índice GIN e validação de tipo na camada de serviço (contra `health_field_definitions`).
+- **Métricas de saúde → JSONB.** Os campos são genuinamente abertos — o usuário define nome, tipo e quantidade. JSONB com validação de tipo na camada de serviço (contra `health_field_definitions`). Índice: **latitude reservada, sem índice no MVP** (AD-14, sem NFR de performance). O GIN esboçado aqui **não foi adotado** — a query analítica de saúde é um cast *range on-expression* sobre chave dinâmica (`values->>'<uuid>'`), que o GIN (containment `@>`) e um índice de expressão estático (chave conhecida) não atendem genericamente; achado resolvido e documentado nas Stories 7.2/7.3.
 - **Medicamentos → tabela normalizada.** Campos fixos (nome, dose, bloco de horário). Entidade separada de métricas de saúde.
 - **View materializada:** não por ora. Adicionar se performance de queries analíticas se tornar perceptível com o crescimento de dados.
 
@@ -105,7 +103,8 @@ O sistema cobre 35 requisitos funcionais em 7 categorias:
 habits (id, user_id, name, type, active, ...)
 habit_logs (id, user_id, habit_id, date, value NUMERIC, weight_at_time NUMERIC)
 
-health_field_definitions (id, user_id, name, field_type, active, display_order)
+health_field_definitions (id, user_id, name, field_type, enum_options JSONB, active, display_order)
+-- enum_options: lista de rótulos (só para field_type=enum); Story 7.1/AC3 (precedente JSONB estruturado da AD-07)
 health_logs (id, user_id, date, values JSONB)
 -- values = {"uuid-campo-peso": 88.2, "uuid-campo-sono": 4, "uuid-atividade": true}
 
@@ -117,7 +116,7 @@ medication_logs (id, user_id, medication_id, block, date, confirmed_at)
 **Operacionalização da camada de serviço para JSONB:**
 - Na escrita: serviço carrega `health_field_definitions` ativas do usuário, valida cada valor submetido contra o `field_type` correspondente, grava somente se tudo válido.
 - Na leitura: serviço usa as definições para saber como tipar e renderizar cada campo.
-- Em queries analíticas (gráficos): cast explícito via operadores JSONB (`(values->>'uuid')::numeric`).
+- Em queries analíticas (gráficos): cast explícito via operadores JSONB (`(values->>'uuid')::numeric`). Implementado na Story 7.3 como `Cast(KeyTextTransform(uuid, "values"), FloatField())` → `::double precision` (o `::numeric` acima é ilustrativo); guarda `values__has_key` antes de castar + `field_type` imutável (7.1) tornam o texto sempre parseável.
 
 ---
 
@@ -856,7 +855,7 @@ _Regras que todos os agentes de IA DEVEM seguir para escrever código compatíve
 ### 6.1 Nomenclatura
 
 **Banco de dados (PostgreSQL/Django):**
-- Tabelas: `snake_case` no plural — `habits`, `habit_logs`, `medication_blocks`, `health_field_definitions`.
+- Tabelas: `snake_case` no plural — `habits`, `habit_logs`, `medication_day_entries`, `health_field_definitions`.
 - Colunas: `snake_case`. FK = `<entidade>_id` (`user_id`, `habit_id`, `migrated_to_task_id`).
 - Índices: `idx_<tabela>_<coluna(s)>` (ex.: `idx_habit_logs_user_id_date`). Toda tabela tenant indexa `user_id`.
 - **PKs: `UUID`** (default `uuid4`, server-side; o cliente também pode gerar para mutação otimista — ver §6.5 e AD-13).
@@ -1102,7 +1101,7 @@ hmmb-bujo/
 │   ├── habits/                      # FR-2 (+ FR-2.10): habit_versions, habit_day_entries
 │   ├── health/                      # FR-3 métricas genéricas (JSONB): health_field_definitions, health_logs
 │   │   └── models/                  # pacote (definições + logs JSONB)
-│   ├── medications/                 # FR-3: dono COMPLETO do rastreio de medicação (medications, medication_blocks, medication_logs) — sem FK p/ health
+│   ├── medications/                 # FR-3.4–3.7: dono do rastreio de medicação (AD-07: doctors, time_blocks, medications, medication_substance_versions, medication_schedule_versions, medication_day_entries) — sem FK p/ health
 │   ├── gratitude/                   # FR-4
 │   └── braindump/                   # FR-5 (Fase 1b)
 │       ├── models.py  serializers.py  services.py  views.py  urls.py  admin.py
@@ -1127,7 +1126,7 @@ hmmb-bujo/
         │   └── providers/           # QueryClientProvider, ThemeProvider, AuthProvider (auth state/contexto)
         ├── pages/                   # COMPOSIÇÃO DE TELA — único lugar que importa MÚLTIPLAS features
         │   └── daily/
-        │       ├── DailyPage.tsx    # orquestra bujo + habits + medications + gratitude do dia
+        │       ├── DailyPage.tsx    # orquestra bujo + habits do dia; gratitude via link contextual "Gratidão de ontem" (Épico 9 D7); medications vive em /health/medications (Épico 8 D5) — nenhum dos dois é montado aqui
         │       └── useDailyData.ts  # prefetch PARALELO das query keys do dia (NFR-2); /daily/:date agregado reservado se <2s falhar
         ├── shared/                  # PRIMITIVOS SEM DONO
         │   ├── components/          # ErrorBoundary global, Snackbar/Alert padrão (§6.4)
@@ -1156,7 +1155,7 @@ hmmb-bujo/
 - **Contrato back↔front:** `drf-spectacular` (schema) → `types.gen.ts` via **passo de CI versionado** (não geração manual ad-hoc) — o "contrato único" não envelhece.
 - **Leitura:** componente → `useQuery` (chave da factory) → Axios → `/api/...` → view → `TenantManager` (escopo) → DB (Neon).
 - **Escrita:** componente → `useMutation`/`useOptimisticMutation` → Axios → view → serializer → service (`@transaction.atomic`) → DB; resposta invalida a chave por prefixo.
-- **Daily Log (tela crítica, NFR-2):** `pages/daily/useDailyData.ts` dispara **prefetch paralelo** das query keys de `bujo`/`habits`/`medications`/`gratitude` no load da rota (sem prop-drilling; cada widget lê seu dado do cache). Se o <2s não se sustentar, endpoint agregado `/api/daily/{date}/` que hidrata o cache de várias features de uma vez — **reservado, não no MVP** (coerente com AD-14).
+- **Daily Log (tela crítica, NFR-2):** `pages/daily/useDailyData.ts` dispara **prefetch paralelo** das query keys de `bujo`/`habits` no load da rota (sem prop-drilling; cada widget lê seu dado do cache). *Medications ficou em `/health/medications` (Épico 8 D5) e gratitude entra por link contextual "Gratidão de ontem" no `/today` (Épico 9 D7) — nenhum dos dois foi integrado ao prefetch do dia (latitude AD-14; o slot em `useDailyData` fica reservado).* Se o <2s não se sustentar, endpoint agregado `/api/daily/{date}/` que hidrata o cache de várias features de uma vez — **reservado, não no MVP** (coerente com AD-14).
 - **Externos:** Neon (Postgres gerenciado, branch por ambiente) e Railway (deploy). Sem outras integrações no MVP solo; Sentry/Better Stack entram no gate multiusuário do Épico 10.
 
 ### 7.4 Configuração, Build, Testes & Deploy

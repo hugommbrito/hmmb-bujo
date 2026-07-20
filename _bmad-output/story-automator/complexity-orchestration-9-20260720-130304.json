@@ -1,0 +1,1 @@
+{"stories":[{"storyId":"9.1","title":"Entradas de texto livre","complexity":{"score":4,"level":"Medium","reasons":["Authentication system","High AC count (12)"]}},{"storyId":"9.2","title":"Histórico navegável por data e mês","complexity":{"score":3,"level":"Low","reasons":["Performance optimization","Batch/bulk operations","Elevated AC count (9)"]}}]}
