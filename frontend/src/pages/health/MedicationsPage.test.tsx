@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { MemoryRouter } from 'react-router-dom'
 
 vi.mock('../../api/client', () => ({
   default: { get: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn(), delete: vi.fn() },
@@ -15,10 +16,14 @@ function renderPage() {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
+  // MemoryRouter: a página agora hospeda <MedicationsTabs/> (Story 8.3), que usa
+  // useLocation — precisa de contexto de rota (a aba "Hoje" vive no <Outlet/>).
   return render(
-    <QueryClientProvider client={qc}>
-      <MedicationsPage />
-    </QueryClientProvider>,
+    <MemoryRouter initialEntries={['/health/medications']}>
+      <QueryClientProvider client={qc}>
+        <MedicationsPage />
+      </QueryClientProvider>
+    </MemoryRouter>,
   )
 }
 

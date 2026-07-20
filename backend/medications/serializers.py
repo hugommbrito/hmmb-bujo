@@ -244,9 +244,30 @@ class MedicationDaySerializer(serializers.Serializer):
 
 
 class EntryConfirmSerializer(serializers.Serializer):
-    """PATCH de uma linha: confirmar/desconfirmar (AC4)."""
+    """PATCH de uma linha: corrigir a confirmação e/ou a dose (AC4/AC5/AC6).
 
-    confirmed = serializers.BooleanField()
+    Aditivo sobre a 8.2 (que só tinha ``confirmed``): ganha ``dose`` opcional (correção
+    retroativa da dose, AC6) e ``confirmed`` passa a ser opcional — mas **ao menos um**
+    deve vir. O guard "ambos ausentes" mora no ``validate()`` e levanta
+    ``ValidationError`` → **400** (não ``DomainError``/409). O conteúdo da ``dose``
+    (amount numérico, unit não-vazia, lista não-vazia) é validado na camada de serviço
+    (``_validate_dose``, §6.4); aqui só a **forma** (é uma lista quando informada). O nome
+    da classe é mantido (contrato aditivo, sem renomear o componente do schema)."""
+
+    confirmed = serializers.BooleanField(required=False)
+    dose = DoseField(required=False)
+
+    def validate_dose(self, value):
+        if not isinstance(value, list):
+            raise serializers.ValidationError("A dose deve ser uma lista de componentes.")
+        return value
+
+    def validate(self, attrs):
+        if "confirmed" not in attrs and "dose" not in attrs:
+            raise serializers.ValidationError(
+                "Informe ao menos um campo para atualizar (confirmed ou dose)."
+            )
+        return attrs
 
 
 class BlockConfirmSerializer(serializers.Serializer):

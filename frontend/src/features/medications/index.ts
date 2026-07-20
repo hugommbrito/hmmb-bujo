@@ -16,11 +16,14 @@ export {
   useConfirmMedicationEntryMutation,
   useConfirmBlockMutation,
   useCreateAdHocEntryMutation,
+  // Story 8.3 — correção retroativa de dose.
+  useEditEntryDoseMutation,
 } from './api'
 export { MedicationsManager } from './components/MedicationsManager'
 export { MedicationBlock } from './components/MedicationBlock'
 export { MedicationDaySurface } from './components/MedicationDaySurface'
-export { deriveBlockStatus, doseSummary } from './dayModel'
+export { MedicationHistorySurface } from './components/MedicationHistorySurface'
+export { deriveBlockStatus, deriveEntryStatus, doseSummary } from './dayModel'
 export type {
   Medication,
   MedicationSubstanceVersion,

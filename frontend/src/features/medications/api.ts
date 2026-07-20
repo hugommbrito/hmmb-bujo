@@ -336,6 +336,35 @@ export function useConfirmMedicationEntryMutation(date?: string) {
   })
 }
 
+// Correção retroativa da DOSE (Story 8.3, AC6). Baixa frequência (ação de revisão) →
+// useMutation + invalidate da chave do dia, sem otimismo (Decisão 5). O PATCH reusa o
+// endpoint de linha da 8.2, agora aceitando `{dose}`; a confirmação retroativa (AC5)
+// continua reusando `useConfirmMedicationEntryMutation` (otimista). Chave `day(date)`.
+interface EditEntryDoseVariables {
+  entryId: string
+  dose: DoseComponent[]
+}
+
+async function editEntryDose({
+  entryId,
+  dose,
+}: EditEntryDoseVariables): Promise<MedicationDay> {
+  const response = await client.patch<MedicationDay>(
+    `/api/medications/days/${entryId}/`,
+    { dose },
+  )
+  return response.data
+}
+
+export function useEditEntryDoseMutation(date?: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: editEntryDose,
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: keys.medications.day(date) }),
+  })
+}
+
 interface ConfirmBlockVariables {
   date: string
   timeBlockId: string

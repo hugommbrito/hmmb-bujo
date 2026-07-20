@@ -83,6 +83,52 @@ print(json.dumps({"medicationId": str(med.id)}))
   return (JSON.parse(runShell(script)) as { medicationId: string }).medicationId
 }
 
+// Story 8.3 (histórico): cria bloco + medicamento com uma agenda ativa vigente numa
+// data PASSADA (effective_from = hoje − daysAgo), para que navegar ao histórico daquele
+// dia materialize (gap-fill) uma linha `scheduled` sem confirmação — o sinal "dose
+// perdida" (AC3/AC4). `set_schedule` só grava versões prospectivas (effective_from =
+// hoje), então as versões passadas são inseridas direto pelo model (dentro do
+// tenant_context o `user_id` é auto-preenchido). Retorna {medicationId, blockId, date}.
+export function seedMedicationPastSchedule(
+  email: string,
+  opts: { title: string; substanceName: string; blockName: string; dose: unknown; daysAgo: number },
+): { medicationId: string; blockId: string; date: string } {
+  const script = `
+import json
+from datetime import timedelta
+from accounts.models import User
+from core.calendar import today_for
+from core.tenant import tenant_context
+from medications.models import MedicationScheduleVersion, MedicationSubstanceVersion
+from medications.services import create_medication, create_time_block
+
+user = User.objects.get(email=${JSON.stringify(email)})
+opts = json.loads(${JSON.stringify(JSON.stringify(opts))})
+with tenant_context(user):
+    block = create_time_block(user=user, name=opts["blockName"])
+    med = create_medication(
+        user=user, title=opts["title"], substance_name=opts["substanceName"]
+    )
+    past = today_for(user) - timedelta(days=opts["daysAgo"])
+    # Substância vigente já no passado (read-model deriva o nome vigente em D).
+    MedicationSubstanceVersion.objects.create(
+        medication=med, substance_name=opts["substanceName"], effective_from=past
+    )
+    # Agenda ATIVA vigente no passado → navegar a D materializa a linha scheduled.
+    MedicationScheduleVersion.objects.create(
+        medication=med, time_block=block, dose=opts["dose"], active=True,
+        effective_from=past,
+    )
+print(json.dumps({"medicationId": str(med.id), "blockId": str(block.id), "date": past.isoformat()}))
+`.trim()
+
+  return JSON.parse(runShell(script)) as {
+    medicationId: string
+    blockId: string
+    date: string
+  }
+}
+
 // Story 8.2: adiciona um segundo medicamento agendado no MESMO bloco existente
 // (para cenários com ≥2 linhas no bloco — ex.: estado "parcial"). Retorna o
 // medicationId criado.

@@ -10,8 +10,9 @@ vi.mock('../../../api/client', () => ({
 
 import client from '../../../api/client'
 import { MedicationDaySurface } from './MedicationDaySurface'
+import { MedicationBlock } from './MedicationBlock'
 import { deriveBlockStatus } from '../dayModel'
-import type { MedicationDay, MedicationDayEntry } from '../types'
+import type { MedicationDay, MedicationDayBlock, MedicationDayEntry } from '../types'
 
 const mockGet = client.get as ReturnType<typeof vi.fn>
 const mockPost = client.post as ReturnType<typeof vi.fn>
@@ -249,5 +250,205 @@ describe('MedicationDaySurface — estados e avulso (AC7/AC8)', () => {
         dose: [{ label: '', amount: 1, unit: 'comp' }],
       }),
     )
+  })
+})
+
+// --- Story 8.3 — MedicationBlock com isPast (histórico) ----------------------
+
+function block(overrides: Partial<MedicationDayBlock> = {}): MedicationDayBlock {
+  return {
+    timeBlockId: 'b1',
+    timeBlockName: 'Manhã',
+    status: 'pending',
+    entries: [entry({ id: 'e1' })],
+    ...overrides,
+  }
+}
+
+function renderBlock(b: MedicationDayBlock, { isPast = false } = {}) {
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  })
+  return render(
+    <QueryClientProvider client={qc}>
+      <main aria-label="Medicamentos">
+        <MedicationBlock block={b} date="2026-03-01" dayDate="2026-03-01" isPast={isPast} />
+      </main>
+    </QueryClientProvider>,
+  )
+}
+
+describe('MedicationBlock — histórico (isPast, AC3)', () => {
+  beforeEach(() => vi.resetAllMocks())
+
+  it('dia passado: cabeçalho de bloco pending vira "Doses perdidas"', () => {
+    renderBlock(block({ entries: [entry({ id: 'e1', confirmedAt: null })] }), { isPast: true })
+    expect(screen.getByText('Doses perdidas')).toBeInTheDocument()
+    expect(screen.queryByText('Pendente')).not.toBeInTheDocument()
+  })
+
+  it('sem isPast: cabeçalho pending continua "Pendente" (aba "Hoje" intacta)', () => {
+    renderBlock(block({ entries: [entry({ id: 'e1', confirmedAt: null })] }), { isPast: false })
+    expect(screen.getByText('Pendente')).toBeInTheDocument()
+    expect(screen.queryByText('Doses perdidas')).not.toBeInTheDocument()
+    // Sem afordance de correção fora do histórico.
+    expect(screen.queryByRole('button', { name: 'Corrigir dose' })).not.toBeInTheDocument()
+  })
+
+  it('dia passado: linha sem confirmação mostra "Dose perdida"; confirmada mostra "Confirmado"', () => {
+    renderBlock(
+      block({
+        entries: [
+          entry({ id: 'e1', medicationTitle: 'Losartana', confirmedAt: null }),
+          entry({ id: 'e2', medicationTitle: 'AAS', confirmedAt: '2026-03-01T10:00:00Z' }),
+        ],
+      }),
+      { isPast: true },
+    )
+    expect(screen.getByText('Dose perdida')).toBeInTheDocument()
+    expect(screen.getByText('Confirmado')).toBeInTheDocument()
+  })
+})
+
+describe('MedicationBlock — correção de dose (isPast, AC6)', () => {
+  beforeEach(() => vi.resetAllMocks())
+
+  it('abre o editor, corrige a dose e chama PATCH /days/{id}/ com {dose}', async () => {
+    mockPatch.mockResolvedValue({ data: dayWith() })
+    const user = userEvent.setup()
+    renderBlock(
+      block({
+        entries: [entry({ id: 'e1', doseAtTime: [{ label: '', amount: 50, unit: 'mg' }] })],
+      }),
+      { isPast: true },
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Corrigir dose' }))
+    // <input type="number">: fireEvent.change (guardrail jsdom).
+    fireEvent.change(screen.getByLabelText('Quantidade do componente 1'), {
+      target: { value: '25' },
+    })
+    await user.click(screen.getByRole('button', { name: 'Salvar dose' }))
+
+    await waitFor(() =>
+      expect(mockPatch).toHaveBeenCalledWith('/api/medications/days/e1/', {
+        dose: [{ label: '', amount: 25, unit: 'mg' }],
+      }),
+    )
+  })
+
+  it('erro de escrita no editor de dose mostra alerta (role="alert")', async () => {
+    mockPatch.mockRejectedValue(new Error('falhou'))
+    const user = userEvent.setup()
+    renderBlock(
+      block({
+        entries: [entry({ id: 'e1', doseAtTime: [{ label: '', amount: 50, unit: 'mg' }] })],
+      }),
+      { isPast: true },
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Corrigir dose' }))
+    await user.click(screen.getByRole('button', { name: 'Salvar dose' }))
+
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
+  })
+})
+
+// --- Story 8.3 — editor de dose com componentes repetíveis (AC6) --------------
+// AC6 pede um "editor de componentes de dose repetível [{label, amount, unit}]"
+// (add/remove de linhas, idioma EnumOptionsEditor da 8.1). Os testes acima só editam
+// a quantidade do único componente pré-preenchido; estes cobrem o add/remove de linhas,
+// o save de dose multi-componente e a guarda de cliente (canSave).
+describe('MedicationBlock — editor de dose repetível (isPast, AC6)', () => {
+  beforeEach(() => vi.resetAllMocks())
+
+  it('adiciona um 2º componente e salva a dose multi-componente via PATCH', async () => {
+    mockPatch.mockResolvedValue({ data: dayWith() })
+    const user = userEvent.setup()
+    renderBlock(
+      block({
+        entries: [entry({ id: 'e1', doseAtTime: [{ label: '', amount: 50, unit: 'mg' }] })],
+      }),
+      { isPast: true },
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Corrigir dose' }))
+    // Só há 1 componente pré-preenchido → nenhum botão de remover ainda.
+    expect(screen.queryByRole('button', { name: /Remover componente/ })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Adicionar componente' }))
+    // <input type="number"> (Quantidade): fireEvent.change (guardrail jsdom).
+    fireEvent.change(screen.getByLabelText('Rótulo do componente 2'), {
+      target: { value: 'Xarope' },
+    })
+    fireEvent.change(screen.getByLabelText('Quantidade do componente 2'), {
+      target: { value: '5' },
+    })
+    fireEvent.change(screen.getByLabelText('Unidade do componente 2'), {
+      target: { value: 'ml' },
+    })
+    await user.click(screen.getByRole('button', { name: 'Salvar dose' }))
+
+    await waitFor(() =>
+      expect(mockPatch).toHaveBeenCalledWith('/api/medications/days/e1/', {
+        dose: [
+          { label: '', amount: 50, unit: 'mg' },
+          { label: 'Xarope', amount: 5, unit: 'ml' },
+        ],
+      }),
+    )
+  })
+
+  it('remove um componente adicionado (botão de remover só aparece com >1 componente)', async () => {
+    mockPatch.mockResolvedValue({ data: dayWith() })
+    const user = userEvent.setup()
+    renderBlock(
+      block({
+        entries: [entry({ id: 'e1', doseAtTime: [{ label: '', amount: 50, unit: 'mg' }] })],
+      }),
+      { isPast: true },
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Corrigir dose' }))
+    await user.click(screen.getByRole('button', { name: 'Adicionar componente' }))
+    // Com 2 componentes, ambos ganham botão de remover.
+    expect(screen.getByRole('button', { name: 'Remover componente 2' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Remover componente 2' }))
+    // Volta a 1 componente → botões de remover somem, e o save envia só o original.
+    expect(screen.queryByLabelText('Quantidade do componente 2')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Remover componente/ })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Salvar dose' }))
+    await waitFor(() =>
+      expect(mockPatch).toHaveBeenCalledWith('/api/medications/days/e1/', {
+        dose: [{ label: '', amount: 50, unit: 'mg' }],
+      }),
+    )
+  })
+
+  it('"Salvar dose" fica desabilitado enquanto um componente tem quantidade/unidade vazia', async () => {
+    const user = userEvent.setup()
+    // Sem dose registrada → editor semeia um componente vazio → save desabilitado.
+    renderBlock(
+      block({ entries: [entry({ id: 'e1', doseAtTime: [] })] }),
+      { isPast: true },
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Corrigir dose' }))
+    const save = screen.getByRole('button', { name: 'Salvar dose' })
+    expect(save).toBeDisabled()
+
+    // Só quantidade não basta; falta a unidade → segue desabilitado.
+    fireEvent.change(screen.getByLabelText('Quantidade do componente 1'), {
+      target: { value: '2' },
+    })
+    expect(save).toBeDisabled()
+
+    // Preenchidos quantidade + unidade → habilita.
+    fireEvent.change(screen.getByLabelText('Unidade do componente 1'), {
+      target: { value: 'comp' },
+    })
+    expect(save).toBeEnabled()
   })
 })

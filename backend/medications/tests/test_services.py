@@ -34,6 +34,7 @@ from medications.services import (
     list_time_blocks,
     seed_medication_day,
     set_schedule,
+    update_day_entry,
     update_medication,
     update_time_block,
 )
@@ -732,4 +733,196 @@ def test_seed_read_model_status_field_is_not_a_column(user):
     """AC6: ``status`` é derivado — não existe coluna de status de bloco no schema."""
     field_names = {f.name for f in MedicationDayEntry._meta.get_fields()}
     assert "status" not in field_names
+
+
+# ===============================================================================
+# Story 8.3 — edição retroativa de UMA linha (AC5/AC6) + histórico (AC4/AC7)
+# ===============================================================================
+
+
+# --- AC6: correção retroativa da DOSE (update só na linha, não sangra) ---------
+def test_update_day_entry_dose_updates_only_that_row(user):
+    """AC6: corrigir a dose faz UPDATE só na ``dose_at_time`` daquela linha (via
+    ``update_fields``), NÃO cria versão de agenda/substância e NÃO altera vizinhas."""
+    with tenant_context(user):
+        med = MedicationFactory(user=user)
+        b1 = TimeBlockFactory(user=user, name="Manhã", display_order=0)
+        b2 = TimeBlockFactory(user=user, name="Noite", display_order=1)
+        alvo = MedicationDayEntryFactory(
+            user=user, medication=med, time_block=b1, date=_D1, dose_at_time=_DOSE_A,
+        )
+        vizinha = MedicationDayEntryFactory(
+            user=user, medication=med, time_block=b2, date=_D1, dose_at_time=_DOSE_A,
+        )
+
+        atualizada = update_day_entry(user=user, entry_id=alvo.id, dose=_DOSE_B)
+
+        assert atualizada.dose_at_time == _DOSE_B
+        alvo.refresh_from_db()
+        vizinha.refresh_from_db()
+        assert alvo.dose_at_time == _DOSE_B
+        assert vizinha.dose_at_time == _DOSE_A  # não sangra
+        # A confirmação não é tocada quando só a dose muda.
+        assert alvo.confirmed_at is None
+        # Não criou versão de agenda nem de substância (só a linha realizada mudou).
+        assert not MedicationScheduleVersion.objects.filter(medication=med).exists()
+        assert not MedicationSubstanceVersion.objects.filter(medication=med).exists()
+
+
+@pytest.mark.parametrize(
+    "dose_invalida",
+    [
+        [],  # lista vazia
+        [{"label": "x", "amount": True, "unit": "mg"}],  # amount bool
+        [{"label": "x", "amount": "muito", "unit": "mg"}],  # amount não-numérico
+        [{"label": "x", "amount": 1, "unit": "   "}],  # unit vazia após strip
+    ],
+)
+def test_update_day_entry_invalid_dose_raises_domain_error(user, dose_invalida):
+    """AC6: dose inválida → ``DomainError`` (validada ANTES de escrever; nada muda)."""
+    with tenant_context(user):
+        entry = MedicationDayEntryFactory(user=user, date=_D1, dose_at_time=_DOSE_A)
+        with pytest.raises(DomainError):
+            update_day_entry(user=user, entry_id=entry.id, dose=dose_invalida)
+        entry.refresh_from_db()
+        assert entry.dose_at_time == _DOSE_A  # inalterada
+
+
+# --- AC5: correção retroativa da CONFIRMAÇÃO num dia passado --------------------
+def test_update_day_entry_confirmed_on_past_day_does_not_bleed(user):
+    """AC5: confirmar/desconfirmar uma linha de um dia PASSADO seta ``confirmed_at`` só
+    nela; não toca vizinhas nem a dose."""
+    with tenant_context(user):
+        med = MedicationFactory(user=user)
+        b1 = TimeBlockFactory(user=user, name="Manhã", display_order=0)
+        b2 = TimeBlockFactory(user=user, name="Noite", display_order=1)
+        alvo = MedicationDayEntryFactory(
+            user=user, medication=med, time_block=b1, date=_D1, dose_at_time=_DOSE_A,
+        )
+        vizinha = MedicationDayEntryFactory(
+            user=user, medication=med, time_block=b2, date=_D1,
+        )
+
+        update_day_entry(user=user, entry_id=alvo.id, confirmed=True)
+        alvo.refresh_from_db()
+        vizinha.refresh_from_db()
+        assert alvo.confirmed_at is not None
+        assert alvo.dose_at_time == _DOSE_A  # dose intacta
+        assert vizinha.confirmed_at is None  # não sangra
+
+        update_day_entry(user=user, entry_id=alvo.id, confirmed=False)
+        alvo.refresh_from_db()
+        assert alvo.confirmed_at is None
+
+
+def test_update_day_entry_confirm_and_dose_together(user):
+    """AC5+AC6: um único PATCH pode corrigir a confirmação E a dose na mesma linha."""
+    with tenant_context(user):
+        entry = MedicationDayEntryFactory(user=user, date=_D1, dose_at_time=_DOSE_A)
+        update_day_entry(user=user, entry_id=entry.id, confirmed=True, dose=_DOSE_B)
+        entry.refresh_from_db()
+        assert entry.confirmed_at is not None
+        assert entry.dose_at_time == _DOSE_B
+
+
+def test_update_day_entry_cross_tenant_raises(user, other_user):
+    """AC5/§6.7: editar linha de outro tenant → ``DoesNotExist`` (view vira 404)."""
+    with tenant_context(other_user):
+        alheio = MedicationDayEntryFactory(user=other_user, date=_D1)
+    with tenant_context(user):
+        with pytest.raises(MedicationDayEntry.DoesNotExist):
+            update_day_entry(user=user, entry_id=alheio.id, dose=_DOSE_B)
+
+
+# --- AC7: histórico preservado após troca/desativação ---------------------------
+def test_past_entries_survive_prospective_deactivation(user):
+    """AC7: desativar a agenda (nova versão ``active=False``, prospectiva) NÃO apaga as
+    linhas de ``medication_day_entries`` de dias passados (nunca ``.delete()``)."""
+    with tenant_context(user):
+        med = create_medication(user=user, title="Losartana", substance_name="Losartana K")
+        block = TimeBlockFactory(user=user)
+        # Linha realizada de um dia passado (materializada quando ativo).
+        entry = MedicationDayEntryFactory(
+            user=user, medication=med, time_block=block, date=_D1, dose_at_time=_DOSE_A,
+        )
+        # Cria a agenda (hoje) e depois desativa (prospectivo, hoje).
+        set_schedule(user=user, medication_id=med.id, time_block_id=block.id, dose=_DOSE_A)
+        set_schedule(
+            user=user, medication_id=med.id, time_block_id=block.id, active=False,
+        )
+
+        # A linha do dia passado permanece, com a dose congelada em D.
+        entry.refresh_from_db()
+        assert MedicationDayEntry.objects.filter(id=entry.id).exists()
+        assert entry.dose_at_time == _DOSE_A
+
+
+def test_substance_shown_for_past_day_is_the_one_effective_then(user):
+    """AC7: a substância exibida em D é a vigente EM D (``max(effective_from) <= D``),
+    não a atual — trocar o remédio depois de D não reescreve o histórico."""
+    with tenant_context(user):
+        med = MedicationFactory(user=user)
+        # Substância vigente em _D1; troca depois (em _D2).
+        MedicationSubstanceVersionFactory(
+            user=user, medication=med, substance_name="Losartana K", effective_from=_D1,
+        )
+        MedicationSubstanceVersionFactory(
+            user=user, medication=med, substance_name="Genérico X", effective_from=_D2,
+        )
+
+        antiga = current_substance_version_of(med, _D1)
+        nova = current_substance_version_of(med, _D2)
+        assert antiga.substance_name == "Losartana K"  # vigente em _D1
+        assert nova.substance_name == "Genérico X"  # trocada em _D2
+
+        # O read-model de _D1 deriva a substância vigente em _D1 (não a atual).
+        MedicationDayEntryFactory(user=user, medication=med, date=_D1)
+        day = get_medication_day(user=user, date=_D1)
+        nomes = {e["substance_name"] for e in day["blocks"][0]["entries"]}
+        assert nomes == {"Losartana K"}
+
+
+# --- AC4 (reverificação no contexto de histórico) ------------------------------
+def test_navigating_a_past_day_seeds_the_missed_dose_signal(user):
+    """AC4: navegar a um dia passado nunca aberto materializa a linha ``scheduled`` sem
+    ``confirmed_at`` — o dado-fonte da "dose perdida" (a derivação temporal é no front)."""
+    with tenant_context(user):
+        med = MedicationFactory(user=user)
+        block = TimeBlockFactory(user=user)
+        _schedule(user, med=med, block=block, dose=_DOSE_A, effective_from=_D1)
+
+        seed_medication_day(user=user, date=_D1)
+
+        entry = MedicationDayEntry.objects.get(date=_D1, source="scheduled")
+        assert entry.confirmed_at is None  # linha materializada, ainda não confirmada
+        assert entry.dose_at_time == _DOSE_A  # dose congelada em D
+
+        # Re-navegar (2ª visita) é idempotente e não recria/sobrescreve.
+        seed_medication_day(user=user, date=_D1)
+        assert MedicationDayEntry.objects.filter(date=_D1, source="scheduled").count() == 1
+
+
+def test_seed_tolerates_concurrent_duplicate_insert(user, monkeypatch):
+    """AC4/concorrência (8.3): dois seeds SIMULTÂNEOS do mesmo dia podem ambos passar o
+    filtro ``existentes`` e tentar criar a mesma linha; o 2º INSERT colide na constraint
+    parcial ``uniq_med_day_entry_scheduled``. O seed isola a colisão num savepoint e a
+    trata como idempotência (não propaga → não 500). Regressão do 500 pego no E2E de
+    histórico (aba "Hoje" + aba "Histórico" semeando hoje ao mesmo tempo)."""
+    from django.db import IntegrityError
+
+    with tenant_context(user):
+        med = MedicationFactory(user=user)
+        block = TimeBlockFactory(user=user)
+        _schedule(user, med=med, block=block, dose=_DOSE_A, effective_from=_D1)
+
+        def colide(**kwargs):
+            raise IntegrityError(
+                'duplicate key value violates unique constraint '
+                '"uniq_med_day_entry_scheduled"'
+            )
+
+        monkeypatch.setattr(MedicationDayEntry.objects, "create", colide)
+
+        # NÃO deve propagar o IntegrityError: seed tolera a corrida (swallow + continue).
+        seed_medication_day(user=user, date=_D1)
     assert Source.values == ["scheduled", "ad_hoc"]

@@ -41,7 +41,6 @@ from medications.serializers import (
 from medications.services import (
     add_substance_version,
     confirm_block,
-    confirm_medication_entry,
     create_ad_hoc_entry,
     create_doctor,
     create_medication,
@@ -53,6 +52,7 @@ from medications.services import (
     list_time_blocks,
     seed_medication_day,
     set_schedule,
+    update_day_entry,
     update_doctor,
     update_medication,
     update_time_block,
@@ -309,15 +309,18 @@ class MedicationDayView(APIView):
 
 
 class MedicationDayEntryDetailView(APIView):
-    """Confirma/desconfirma **uma** linha (AC4). Devolve o read-model do dia da linha.
-    ``DoesNotExist`` (inclusive cross-tenant) → 404 (esconde existência)."""
+    """Edição retroativa de **uma** linha (AC4/AC5/AC6): confirma/desconfirma e/ou
+    corrige a dose. Devolve o read-model do dia da linha. ``DoesNotExist`` (inclusive
+    cross-tenant) → 404 (esconde existência); ``DomainError`` (dose inválida) → 409
+    (propaga ao ``custom_exception_handler``, como ``MedicationScheduleVersionCreateView``);
+    body sem ``confirmed`` nem ``dose`` → 400 (guard do ``EntryConfirmSerializer``)."""
 
     @extend_schema(request=EntryConfirmSerializer, responses=MedicationDaySerializer)
     def patch(self, request, pk):
         body = EntryConfirmSerializer(data=request.data)
         body.is_valid(raise_exception=True)
         try:
-            entry = confirm_medication_entry(
+            entry = update_day_entry(
                 user=request.user, entry_id=pk, **body.validated_data
             )
         except MedicationDayEntry.DoesNotExist:

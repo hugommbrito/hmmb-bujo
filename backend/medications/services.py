@@ -16,7 +16,7 @@ Dois eixos independentes: ``add_substance_version`` (substância/lab/médico) e
 "hoje" (nunca ``date.today()``/``timezone.now()`` — guardrail de AST no CI).
 """
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Max
 
 from core.calendar import now, today_for
@@ -378,14 +378,27 @@ def seed_medication_day(*, user, date) -> None:
             version = current_schedule_version_of(medication, block, date)
             if version is None or not version.active:
                 continue
-            MedicationDayEntry.objects.create(
-                medication=medication,
-                time_block=block,
-                date=date,
-                dose_at_time=version.dose,
-                confirmed_at=None,
-                source=Source.SCHEDULED,
-            )
+            # Idempotência sob CONCORRÊNCIA (Story 8.3): dois seeds simultâneos do MESMO
+            # dia podem ambos passar o filtro ``existentes`` e tentar criar a mesma linha
+            # — ex.: navegar da aba "Hoje" (``day('today')`` → ``GET /days/``) para a aba
+            # "Histórico" (``day(hoje)`` → ``GET /days/?date=hoje``) dispara duas leituras
+            # concorrentes que semeiam hoje. O 2º INSERT colide na constraint parcial
+            # ``uniq_med_day_entry_scheduled``. Um savepoint (``atomic`` aninhado) isola o
+            # rollback dessa colisão sem abortar o seed inteiro, e a tratamos como "a linha
+            # já existe" — create-if-missing, **nunca** ``update_or_create`` (AC4: seed
+            # não-destrutivo; preserva ``confirmed_at``/correções da linha concorrente).
+            try:
+                with transaction.atomic():
+                    MedicationDayEntry.objects.create(
+                        medication=medication,
+                        time_block=block,
+                        date=date,
+                        dose_at_time=version.dose,
+                        confirmed_at=None,
+                        source=Source.SCHEDULED,
+                    )
+            except IntegrityError:
+                continue
 
 
 def _derive_block_status(entries) -> str:
@@ -472,10 +485,44 @@ def confirm_medication_entry(*, user, entry_id, confirmed) -> MedicationDayEntry
 
     ``confirmed_at = now()`` (``TIMESTAMPTZ`` de auditoria — ver ``core.calendar.now``)
     ou ``None``. ``DoesNotExist`` (inclusive cross-tenant) sobe para a view virar 404.
+
+    Mantido intacto para a superfície diária da 8.2 (usado direto nos testes de
+    serviço). A superfície de HISTÓRICO (8.3) usa ``update_day_entry`` — o verbo
+    generalizado que também corrige a dose (AC5/AC6).
     """
     entry = MedicationDayEntry.objects.get(id=entry_id)
     entry.confirmed_at = now() if confirmed else None
     entry.save(update_fields=["confirmed_at"])
+    return entry
+
+
+@transaction.atomic
+def update_day_entry(*, user, entry_id, confirmed=_UNSET, dose=_UNSET) -> MedicationDayEntry:
+    """Edição retroativa de **uma** linha (AC5/AC6): corrige a confirmação e/ou a dose.
+
+    UPDATE **só naquela linha** de ``medication_day_entries`` — não sangra para
+    vizinhas nem toca a agenda (``medication_schedule_versions``) ou a substância
+    (``medication_substance_versions``). Corrigir a dose de um dia passado muda a linha
+    **realizada** daquele dia, **nunca** o catálogo prospectivo (AD-07 item 11; não
+    confundir com ``set_schedule``). NFR-4: imutabilidade **sistêmica**, o usuário edita
+    qualquer registro histórico à mão.
+
+    Molde ``habits.update_habit_day_entry``: reusa a sentinela ``_UNSET`` (``services.py``,
+    topo) para distinguir "não enviado" de valor explícito — ``confirmed=False`` desconfirma
+    e ``dose=[...]`` corrige. Se ``dose`` vier, é validada (``_validate_dose``) **antes** de
+    qualquer escrita. ``DoesNotExist`` (inclusive cross-tenant) sobe para a view virar 404.
+    """
+    entry = MedicationDayEntry.objects.get(id=entry_id)
+    fields = []
+    if dose is not _UNSET:
+        _validate_dose(dose)  # reusa services.py:70 — valida antes de escrever
+        entry.dose_at_time = dose
+        fields.append("dose_at_time")
+    if confirmed is not _UNSET:
+        entry.confirmed_at = now() if confirmed else None  # core.calendar.now() (8.2)
+        fields.append("confirmed_at")
+    if fields:
+        entry.save(update_fields=fields)  # UPDATE só naquela linha — não sangra
     return entry
 
 

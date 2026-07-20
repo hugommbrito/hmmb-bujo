@@ -2798,3 +2798,97 @@ npm run test:e2e -- medications-day.spec.ts (3 testes)→ 3 passed (55.3s)
 - Nenhum gap bloqueante para a Story 8.2 — AC1–AC8 cobertas nas camadas apropriadas (branches de erro e o fluxo de avulso agora fechados).
 - Artefatos de teste entram no commit da story (`test(story-8.2): ...`) ao fechar; este `test-summary.md` fica fora do commit da story (artefato de `_bmad-output`).
 - A 8.3 (histórico + dose perdida + edição retroativa) reusa o read-model `get_medication_day` sem semear — a semântica de ausência (`scheduled` sem `confirmed_at`) já está exercitada aqui.
+
+---
+
+# Resumo de Automação de Testes — Story 8.3: Histórico de adesão e dose perdida
+
+**Data:** 2026-07-20
+**Feature:** Saúde › Medicamentos › **Histórico** (`/health/medications/history`) — camada de LEITURA por data + correção retroativa (aba "Hoje" · "Histórico", navegador de data, "dose perdida" como sinal clínico neutro, edição de confirmação/dose de uma linha passada)
+**Workflow:** bmad-qa-generate-e2e-tests
+**Frameworks:** pytest + DRF `APIClient` (Neon dev, `--reuse-db`) · Vitest + `@testing-library/react` + `jest-axe` · Playwright (browser real, branch Neon `e2e`, sem mocks de rede)
+
+---
+
+## Gaps descobertos e auto-aplicados
+
+A story entrou em `review` com uma suíte **notavelmente completa** (backend serviço/view + frontend helper puro/componente/hook + 1 E2E ponta-a-ponta cobrindo AC1/AC3/AC4/AC5/AC6/AC8). O mapeamento AC×cobertura contra o código-fonte revelou **uma** lacuna genuína — no **AC6** — auto-aplicada como 3 testes de componente:
+
+| AC | Comportamento | Antes | Agora |
+|----|---------------|-------|-------|
+| AC6 | editor de dose **repetível** — adicionar 2º componente + salvar dose **multi-componente** via PATCH | ❌ só editava a quantidade do único componente pré-preenchido | ✅ **add componente + PATCH com 2 componentes** |
+| AC6 | **remover** um componente (`IconButton` "Remover componente N", só visível com >1) | ❌ branch `removeComponent`/`components.length > 1` sem teste | ✅ **remove volta a 1 componente; botões somem; save envia só o original** |
+| AC6 | guarda de cliente `canSave` (Salvar desabilitado enquanto quantidade/unidade vazia) | ❌ branch de validação no cliente sem teste (só o 409 do backend) | ✅ **desabilitado sem quantidade/unidade; habilita quando ambos preenchidos** |
+
+**Por que camada de componente (não E2E/API):** o `EntryDoseEditor` é um editor inline com estado local (add/remove de linhas + `canSave`); as branches `addComponent`/`removeComponent`/`canSave` e o mapeamento multi-componente de `handleSubmit` são lógica de UI pura, testável de forma rápida e determinística com PATCH mockado. O E2E já prova o **round-trip real** de correção de dose (single-component: 50 mg → 25 mg, persiste após reload); duplicá-lo com multi-componente só somaria tempo/flake sem sinal novo. A API do PATCH `{dose}` já está coberta de verdade no backend (200/400/409/404 + casing).
+
+## Testes Gerados
+
+### Componente — `frontend/src/features/medications/components/MedicationBlock.test.tsx` (3 novos)
+
+Novo `describe` "MedicationBlock — editor de dose repetível (isPast, AC6)":
+- [x] `adiciona um 2º componente e salva a dose multi-componente via PATCH` — "Adicionar componente" → preenche rótulo/quantidade/unidade da 2ª linha → `PATCH /api/medications/days/{id}/` com `dose` de **dois** componentes; prova também que o botão de remover **não** aparece com 1 componente.
+- [x] `remove um componente adicionado (botão de remover só aparece com >1 componente)` — 2 componentes → "Remover componente 2" → volta a 1 (label/botão somem) e o save envia só o componente original.
+- [x] `"Salvar dose" fica desabilitado enquanto um componente tem quantidade/unidade vazia` — dose vazia semeia componente vazio → save desabilitado; só quantidade não basta; quantidade **+** unidade → habilita.
+
+`<input type="number">` (Quantidade) via `fireEvent.change` (caveat jsdom, guardrail do doc); locators semânticos (`getByRole`/`getByLabelText`); mocks isolados por `beforeEach(vi.resetAllMocks())`.
+
+### API / E2E
+
+**Nenhum novo** — já cobertos e verdes na verificação do dev-story, e **não tocados** por esta rodada:
+- **API (pytest):** `update_day_entry` dose/confirmação (UPDATE 1 linha, não sangra), 4 variantes de dose inválida → `DomainError`, confirm+dose juntos, cross-tenant `DoesNotExist`; views PATCH `{dose}`/`{confirmed}` → 200 read-model, corpo vazio → 400, dose inválida → 409, inexistente/cross-tenant → 404, casing roundtrip via `response.content`; AC4 seed idempotente/imune a agenda criada depois de D/tolerância a corrida (regressão do 500); AC7 linhas passadas sobrevivem à desativação prospectiva + substância vigente em D.
+- **E2E (`frontend/e2e/medications-history.spec.ts`):** navegar a ontem materializa → "Dose perdida" → confirmar retroativamente → corrigir dose (50→25 mg) → reload prova persistência → empty state; `consoleErrors == []`.
+
+## Cobertura por AC (pós-QA)
+
+| AC | Backend (pytest) | Frontend (vitest) | E2E |
+|----|------------------|-------------------|-----|
+| AC1 — abas Hoje/Histórico + navegador de data, sem novo nav | — | ✅ `MedicationHistorySurface` + `MedicationHistoryPage` | ✅ |
+| AC2 — estado por bloco/med na data (read-model reusado) | ✅ substância vigente em D | ✅ reuso `MedicationBlock` | ✅ |
+| AC3 — dose perdida ≠ pendente ≠ não aplicável | — | ✅ `dayModel` (matriz `deriveEntryStatus`) + relabel | ✅ |
+| AC4 — seed idempotente ao navegar o passado | ✅ (+ imune a agenda futura, + corrida) | — | ✅ |
+| AC5 — confirmação retroativa (UPDATE 1 linha, não sangra) | ✅ | ✅ | ✅ |
+| AC6 — correção de dose (UPDATE 1 linha, validada) | ✅ 200/400/409/404 + casing | ✅ editor + **editor repetível (novo)** | ✅ |
+| AC7 — histórico preservado após troca/desativação | ✅ | ✅ Avulso/PRN read-only | — (invariante de backend) |
+| AC8 — a11y, voz neutra, casca intocada, sem gráfico | — | ✅ jest-axe/`role=status`/empty/erro-retry/erro-escrita | ✅ `consoleErrors == []` |
+
+**ACs cobertas: 8/8. Lacuna fechada nesta rodada: 1 (branch do editor de dose repetível — AC6).**
+
+## Execução (contagem real observada)
+
+```
+nvm use 22.15.1
+npx vitest run MedicationBlock.test.tsx  → 21 passed  (era 18 → +3)
+npx vitest run  (suíte completa)         → 779 passed (73 files)  [era 776 → +3]
+npx tsc -b                               → 0 erros (exit 0)
+```
+
+> **Honestidade de contagem (guardrail):** rodada **puramente aditiva** (só `MedicationBlock.test.tsx`); **zero** edição de produção/backend/E2E → nenhuma regressão esperada, confirmada pela suíte completa (779 passed). Backend (`pytest medications`) e E2E **não re-executados** nesta rodada (nenhum arquivo dessas camadas tocado); estavam verdes na verificação do dev-story (`138 passed` em `medications`; E2E `1 passed`, `consoleErrors == []`).
+> **Node:** `nvm use 22.15.1` antes de todo comando de frontend (shell inicia em v18; sem `.nvmrc`).
+
+## Checklist de Validação
+
+- [x] API tests: N/A como arquivo novo — contrato do PATCH já coberto de verdade pela suíte de backend
+- [x] E2E tests: N/A como arquivo novo — fluxo real já coberto por `medications-history.spec.ts`
+- [x] Teste de componente gerado (3 novos, fechando a branch do editor de dose repetível/AC6)
+- [x] Usa APIs padrão do framework adotado (Vitest + `@testing-library/react` + `userEvent`/`fireEvent`) — nenhuma ferramenta nova
+- [x] Cobre happy path (add + save multi-componente) + casos críticos (remover componente; guarda `canSave` bloqueando dose incompleta)
+- [x] Todos os testes gerados passam (21 no arquivo; 779 na suíte completa; `tsc` limpo)
+- [x] Locators semânticos/acessíveis (`getByRole`/`getByLabelText`); sem seletores CSS frágeis
+- [x] Descrições claras em pt-BR referenciando a AC, seguindo a prosa dos testes do projeto
+- [x] Sem waits/sleeps artificiais — `waitFor` com auto-retry (vitest)
+- [x] Testes independentes (`beforeEach(vi.resetAllMocks())`; render isolado por teste)
+- [x] Summary anexado (log cumulativo) em `_bmad-output/implementation-artifacts/tests/test-summary.md`
+
+## Limites de Cobertura (por design, não gaps)
+
+- **Rollback do otimismo da confirmação retroativa com data concreta:** o mesmo código (date-agnostic) já tem rollback provado no teste da 8.2 (`day(undefined)`); um teste com data concreta seria redundante.
+- **"Dose perdida" com ícone (nunca só cor):** o ícone é `aria-hidden` (decorativo); o sinal acessível é o **texto** ("Dose perdida"), asserido, e `jest-axe` passa — asserir presença de ícone decorativo seria frágil e de baixo valor.
+- **AC7 via E2E (desativação preserva histórico):** invariante de backend determinístico (`past_entries_survive_prospective_deactivation`), não alcançável de forma estável pelo browser.
+- **Casing JSONB da dose (`response.content` cru):** provado por `test_day_entry_dose_edit_survives_camelcase_roundtrip` (backend); o E2E prova o efeito visível ("Losartana · 25 mg").
+
+## Próximos Passos
+
+- Nenhum gap bloqueante para a Story 8.3 — **Épico 8 (Medicamentos) fechado** com cobertura nas camadas apropriadas: 8.1 (cadastro/versões), 8.2 (confirmação diária), 8.3 (histórico/dose perdida/correção retroativa).
+- Artefatos de teste entram no commit da story (`test(story-8.3): ...`); este `test-summary.md` fica fora do commit (artefato de `_bmad-output`).
+- Vitest e Playwright não rodam no CI (rede local/review) — rodar as suítes localmente antes do merge.

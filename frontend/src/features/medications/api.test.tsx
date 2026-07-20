@@ -17,6 +17,7 @@ import {
   useCreateMedicationMutation,
   useCreateTimeBlockMutation,
   useDoctorsQuery,
+  useEditEntryDoseMutation,
   useMedicationDayQuery,
   useMedicationsQuery,
   useSetMedicationActiveMutation,
@@ -374,5 +375,47 @@ describe('mutações otimistas do dia (AC4)', () => {
       dose: [{ label: '', amount: 1, unit: 'comp' }],
     })
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.medications.day(undefined) })
+  })
+})
+
+// --- Story 8.3 — correção retroativa de dose (AC6) ---------------------------
+
+describe('useEditEntryDoseMutation', () => {
+  beforeEach(() => vi.resetAllMocks())
+
+  it('faz PATCH /days/{id}/ com {dose} e invalida a chave do dia da data', async () => {
+    const { qc, wrapper } = makeWrapper()
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+    mockPatch.mockResolvedValueOnce({ data: DAY })
+    const { result } = renderHook(() => useEditEntryDoseMutation('2026-03-01'), { wrapper })
+
+    result.current.mutate({
+      entryId: 'e1',
+      dose: [{ label: 'Meia', amount: 0.5, unit: 'comp' }],
+    })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(mockPatch).toHaveBeenCalledWith('/api/medications/days/e1/', {
+      dose: [{ label: 'Meia', amount: 0.5, unit: 'comp' }],
+    })
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: keys.medications.day('2026-03-01'),
+    })
+  })
+
+  it('confirmação retroativa reusa useConfirmMedicationEntryMutation na chave da data', async () => {
+    const { qc, wrapper } = makeWrapper()
+    qc.setQueryData(keys.medications.day('2026-03-01'), DAY)
+    mockPatch.mockResolvedValueOnce({ data: DAY })
+    const { result } = renderHook(
+      () => useConfirmMedicationEntryMutation('2026-03-01'),
+      { wrapper },
+    )
+
+    result.current.mutate({ entryId: 'e1', confirmed: true })
+    await waitFor(() => {
+      const cached = qc.getQueryData<MedicationDay>(keys.medications.day('2026-03-01'))
+      expect(cached?.blocks[0].entries[0].confirmedAt).not.toBeNull()
+    })
+    expect(mockPatch).toHaveBeenCalledWith('/api/medications/days/e1/', { confirmed: true })
   })
 })

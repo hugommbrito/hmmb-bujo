@@ -9,44 +9,22 @@ import {
   TextField,
   Typography,
 } from '@mui/material'
-import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
 import {
   useCreateAdHocEntryMutation,
   useMedicationDayQuery,
   useMedicationsQuery,
 } from '../api'
-import { doseSummary } from '../dayModel'
+import { AdHocList } from './AdHocList'
 import { MedicationBlock } from './MedicationBlock'
-import type { Medication, MedicationDayEntry } from '../types'
+import type { Medication } from '../types'
 
 // Voz neutra pt-BR (UX-DR13, zero gamificação). Strings de erro/empty EXATAS.
 const LOAD_ERROR = 'Não foi possível carregar os medicamentos.'
 const SAVE_ERROR = 'Não foi possível salvar. Tente novamente.'
 const EMPTY_STATE = 'Nenhum medicamento para hoje.'
 
-// --- Seção Avulso/PRN (AC7): lista os avulsos + um controle simples de registro ---
-
-function AdHocList({ entries }: { entries: MedicationDayEntry[] }) {
-  return (
-    <Box sx={{ px: 1 }}>
-      {entries.map((entry) => {
-        const summary = doseSummary(entry.doseAtTime)
-        return (
-          <Box
-            key={entry.id}
-            sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minHeight: 44 }}
-          >
-            <CheckCircleOutlineIcon fontSize="small" color="success" aria-hidden />
-            <Typography variant="body2">
-              {entry.medicationTitle}
-              {summary ? ` · ${summary}` : ''}
-            </Typography>
-          </Box>
-        )
-      })}
-    </Box>
-  )
-}
+// --- Seção Avulso/PRN (AC7): o `AdHocList` (lista) é compartilhado com o histórico
+// (8.3); aqui fica só o controle de registro de avulso ---
 
 interface AdHocFormProps {
   medications: Medication[]

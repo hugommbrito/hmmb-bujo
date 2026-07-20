@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-22
-last_updated: 2026-07-20  # Story 8.2 implementada (dev-story) → review
+last_updated: 2026-07-20  # Story 8.3 implementada (dev-story) → review
 project: hmmb-bujo
 project_key: NOKEY
 tracking_system: file-system
@@ -119,7 +119,7 @@ development_status:
   epic-8: in-progress  # 8.1 criada 2026-07-20 (create-story) → épico entra em in-progress
   8-1-cadastro-de-medicamentos-com-slot-estavel-e-versoes: done
   8-2-confirmacao-diaria-por-bloco-ou-individual: done
-  8-3-historico-de-adesao-e-dose-perdida: backlog
+  8-3-historico-de-adesao-e-dose-perdida: done
   epic-8-retrospective: optional
 
   # Epic 9: Diário de Gratidão

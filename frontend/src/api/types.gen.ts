@@ -936,8 +936,11 @@ export interface paths {
         options?: never;
         head?: never;
         /**
-         * @description Confirma/desconfirma **uma** linha (AC4). Devolve o read-model do dia da linha.
-         *     ``DoesNotExist`` (inclusive cross-tenant) → 404 (esconde existência).
+         * @description Edição retroativa de **uma** linha (AC4/AC5/AC6): confirma/desconfirma e/ou
+         *     corrige a dose. Devolve o read-model do dia da linha. ``DoesNotExist`` (inclusive
+         *     cross-tenant) → 404 (esconde existência); ``DomainError`` (dose inválida) → 409
+         *     (propaga ao ``custom_exception_handler``, como ``MedicationScheduleVersionCreateView``);
+         *     body sem ``confirmed`` nem ``dose`` → 400 (guard do ``EntryConfirmSerializer``).
          */
         patch: operations["medications_days_partial_update"];
         trace?: never;
@@ -1644,9 +1647,24 @@ export interface components {
             name?: string;
             specialty?: string | null;
         };
-        /** @description PATCH de uma linha: confirmar/desconfirmar (AC4). */
+        /**
+         * @description PATCH de uma linha: corrigir a confirmação e/ou a dose (AC4/AC5/AC6).
+         *
+         *     Aditivo sobre a 8.2 (que só tinha ``confirmed``): ganha ``dose`` opcional (correção
+         *     retroativa da dose, AC6) e ``confirmed`` passa a ser opcional — mas **ao menos um**
+         *     deve vir. O guard "ambos ausentes" mora no ``validate()`` e levanta
+         *     ``ValidationError`` → **400** (não ``DomainError``/409). O conteúdo da ``dose``
+         *     (amount numérico, unit não-vazia, lista não-vazia) é validado na camada de serviço
+         *     (``_validate_dose``, §6.4); aqui só a **forma** (é uma lista quando informada). O nome
+         *     da classe é mantido (contrato aditivo, sem renomear o componente do schema).
+         */
         PatchedEntryConfirm: {
             confirmed?: boolean;
+            dose?: {
+                label?: string;
+                amount?: number;
+                unit?: string;
+            }[];
         };
         /**
          * @description PATCH de uma linha: marcar/desmarcar ``value`` e/ou correção avulsa.

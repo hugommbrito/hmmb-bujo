@@ -530,3 +530,86 @@ def test_confirm_block_invalid_date_returns_400(auth_client, user):
     )
     assert response.status_code == 400
     assert "date" in response.data.get("fields", {})
+
+
+# --- Story 8.3 — PATCH de linha: correção de dose e confirmação retroativa ------
+
+_DOSE_META = [{"label": "Meia", "amount": 0.5, "unit": "comp"}]
+
+
+def test_patch_entry_dose_returns_day_read_model_with_updated_dose(auth_client, user):
+    """AC6: PATCH ``{dose}`` corrige a dose daquela linha e devolve o read-model do dia
+    com a dose atualizada."""
+    _seed_med_with_schedule(auth_client, user)
+    entry_id = auth_client.get(_DAYS).data["blocks"][0]["entries"][0]["id"]
+
+    response = auth_client.patch(
+        f"{_DAYS}{entry_id}/", {"dose": _DOSE_META}, format="json"
+    )
+    assert response.status_code == 200, response.data
+    entry = response.data["blocks"][0]["entries"][0]
+    assert entry["dose_at_time"] == _DOSE_META
+    # A confirmação não é tocada quando só a dose muda.
+    assert entry["confirmed_at"] is None
+
+
+def test_patch_entry_confirmed_still_works(auth_client, user):
+    """AC5: o caminho de confirmação da 8.2 segue funcionando via o verbo generalizado."""
+    _seed_med_with_schedule(auth_client, user)
+    entry_id = auth_client.get(_DAYS).data["blocks"][0]["entries"][0]["id"]
+
+    response = auth_client.patch(
+        f"{_DAYS}{entry_id}/", {"confirmed": True}, format="json"
+    )
+    assert response.status_code == 200, response.data
+    assert response.data["blocks"][0]["entries"][0]["confirmed_at"] is not None
+
+
+def test_patch_entry_empty_body_returns_400(auth_client, user):
+    """AC6: PATCH sem ``confirmed`` nem ``dose`` → 400 (guard do serializer, não 409)."""
+    _seed_med_with_schedule(auth_client, user)
+    entry_id = auth_client.get(_DAYS).data["blocks"][0]["entries"][0]["id"]
+
+    response = auth_client.patch(f"{_DAYS}{entry_id}/", {}, format="json")
+    assert response.status_code == 400
+
+
+def test_patch_entry_invalid_dose_returns_409(auth_client, user):
+    """AC6: dose inválida (unit vazia) → 409 (``DomainError`` de ``_validate_dose``)."""
+    _seed_med_with_schedule(auth_client, user)
+    entry_id = auth_client.get(_DAYS).data["blocks"][0]["entries"][0]["id"]
+
+    response = auth_client.patch(
+        f"{_DAYS}{entry_id}/",
+        {"dose": [{"label": "x", "amount": 1, "unit": ""}]},
+        format="json",
+    )
+    assert response.status_code == 409
+
+
+def test_patch_entry_unknown_returns_404(auth_client, user):
+    """AC5/§6.7: linha inexistente → 404 (esconde existência)."""
+    response = auth_client.patch(
+        f"{_DAYS}{uuid.uuid4()}/", {"dose": _DOSE_META}, format="json"
+    )
+    assert response.status_code == 404
+
+
+def test_day_entry_dose_edit_survives_camelcase_roundtrip(auth_client, user):
+    """AC6/casing: as chaves da dose (``label``/``amount``/``unit``) NÃO são camelizadas
+    na borda ao corrigir — provado inspecionando ``response.content`` (molde do teste
+    homônimo da 8.2)."""
+    _seed_med_with_schedule(auth_client, user)
+    entry_id = auth_client.get(_DAYS).data["blocks"][0]["entries"][0]["id"]
+
+    response = auth_client.patch(
+        f"{_DAYS}{entry_id}/",
+        {"dose": [{"label": "Meia", "amount": 0.5, "unit": "comp"}]},
+        format="json",
+    )
+    body = json.loads(response.content)
+    assert body["blocks"][0]["entries"][0]["doseAtTime"][0] == {
+        "label": "Meia",
+        "amount": 0.5,
+        "unit": "comp",
+    }

@@ -6,6 +6,25 @@ import type { MedicationDayEntry } from './types'
 
 export type BlockStatus = 'confirmed' | 'partial' | 'pending'
 
+export type EntryStatus = 'confirmed' | 'missed' | 'pending'
+
+/**
+ * Estado temporal DERIVADO de UMA linha (Story 8.3, AC3). A distinção "dose perdida"
+ * vs. "pendente" é **temporal sobre dados idênticos**: a mesma linha `scheduled` sem
+ * `confirmedAt` é `pending` hoje/futuro e `missed` num dia passado (`isPast`). Linhas
+ * `ad_hoc` (avulso, sempre confirmado) e linhas com `confirmedAt` são `confirmed`.
+ * Helper puro (molde `deriveBlockStatus`) — mantém a derivação no front sem tocar o
+ * read-model compartilhado. `deriveBlockStatus` permanece inalterado (alimenta o
+ * updater otimista); o relabel "pending→Doses perdidas" do bloco é só de exibição.
+ */
+export function deriveEntryStatus(
+  entry: MedicationDayEntry,
+  isPast: boolean,
+): EntryStatus {
+  if (entry.source === 'ad_hoc' || entry.confirmedAt != null) return 'confirmed'
+  return isPast ? 'missed' : 'pending'
+}
+
 /**
  * Estado DERIVADO de um bloco a partir das suas linhas `scheduled` (AC6):
  * `confirmed` = todas confirmadas; `partial` = ≥1 e <todas; `pending` = nenhuma.
