@@ -2985,3 +2985,114 @@ npx playwright test e2e/gratitude.spec.ts → 5 passed (1.0m)   [era 3 → +2 te
 - Nenhum gap bloqueante para a Story 9.1 — cobertura completa nas camadas apropriadas (8/8 ACs), com o E2E agora provando a cardinalidade N-linhas-por-data (AC2), a ordem/data por linha (AC3), o cap em hoje (AC4) e o acesso pela sidebar (AC5).
 - Artefatos de teste entram no commit da story (`test(story-9.1): ...`); este `test-summary.md` fica fora do commit (artefato de `_bmad-output`).
 - Vitest e Playwright não rodam no CI (rede local/review) — rodar as suítes localmente antes do merge.
+
+---
+
+# Resumo de Automação de Testes — Story 9.2: Histórico navegável por data e mês
+
+**Data:** 2026-07-20
+**Feature:** Diário de Gratidão — aba **"Histórico"** (`/gratitude/history`, read-only): navegação **por mês** (endpoint novo `GET months/`, agrupado por dia, cronológico) e **por data específica** (reusa o read-model diário da 9.1). Abas "Hoje"/"Histórico" na página + rota nova; sem migration.
+**Workflow:** bmad-qa-generate-e2e-tests
+**Frameworks:** pytest + DRF `APIClient` (Postgres local) · Vitest + `@testing-library/react` + `jest-axe` · Playwright (browser real, branch Neon `e2e`)
+
+---
+
+## Gaps descobertos e auto-aplicados
+
+A story entrou em `review` com uma suíte forte: backend (serviço/serializer/view/isolamento parametrizado), frontend (`GratitudeHistorySurface.test.tsx`, `GratitudeTabs.test.tsx`, `api.test.tsx`) e **1 arquivo E2E** cobrindo AC1/AC2/AC3/AC4/AC6. O mapeamento AC×cobertura **+ as convenções do projeto** (padrão `health/medications`) revelou **7 lacunas genuínas**, todas auto-aplicadas (só testes — nenhuma mudança de implementação):
+
+| # | Lacuna | Camada | AC | Ação |
+|---|--------|--------|----|------|
+| 1 | `GratitudePage.test.tsx` **ausente** (medications tem `MedicationsPage.test.tsx`; a página foi **alterada na 9.2** para receber as abas) | Frontend | AC6 | **Novo arquivo (2 testes)** |
+| 2 | `GratitudeHistoryPage.test.tsx` **ausente** (medications tem `MedicationHistoryPage.test.tsx`) | Frontend | AC6 | **Novo arquivo (2 testes)** |
+| 3 | `DayView` (modo por-data): **loading (`role="status"`) e erro (`role="alert"` + retry)** não testados — só o `MonthView` | Frontend | AC3/AC5/AC6 | +2 testes |
+| 4 | `DayView`: **trocar a data DENTRO do modo por-data** (rebusca `days/?date=`) não testado | Frontend | AC3 | +1 teste |
+| 5 | Navegador de mês: **seletor `type="month"`** (navegação + **clamp de mês futuro**) não testado — só os botões prev/next | Frontend | AC4 | +3 testes |
+| 6 | `jest-axe` não rodava na **visão por-data** | Frontend | AC6 | +1 teste |
+| 7 | Caminho **default de `GET months/`** só validava o campo `month`, nunca **com dados** agrupados (o ramo `_resolve_month` default → serviço → serialização com conteúdo) | Backend | AC1/AC4 | +1 teste |
+
+**Por que estas camadas:** as lacunas #1/#2 são **violações de convenção** — o par de páginas de medications (molde declarado da story) tem testes de página, e a `GratitudePage` foi *modificada* nesta story (ganhou `<GratitudeTabs/>`) sem teste que prove o landmark único + abas. As #3–#6 são **ramos de código não exercitados** do `GratitudeHistorySurface` (o `DayView` inteiro tinha loading/erro/troca-de-data sem cobertura; o seletor de mês e o clamp de futuro eram cegos). A #7 fecha o **único caminho backend** do endpoint novo que rodava sem asserção de conteúdo.
+
+**E2E não inflado (princípio "keep it simple"):** `gratitude-history.spec.ts` já cobre AC1/AC2/AC3/AC4/AC6 ponta-a-ponta e `gratitude.spec.ts` (9.1) cobre a regressão da página com abas. Os estados vazios (AC5) e os ramos loading/erro estão exaustivamente cobertos no nível unitário (rápido/determinístico) — nenhuma lacuna **crítica** de fluxo real foi encontrada, então a suíte E2E ficou intocada.
+
+## Testes Gerados
+
+### Frontend — arquivos novos (Vitest + RTL)
+
+- [x] **`frontend/src/pages/gratitude/GratitudePage.test.tsx`** (2 testes) — `/gratitude`: único `<main aria-label="Diário de Gratidão">` com a surface diária da 9.1 intacta sob as abas (estado vazio exato); abas "Hoje"/"Histórico" com "Hoje" ativa.
+- [x] **`frontend/src/pages/gratitude/GratitudeHistoryPage.test.tsx`** (2 testes) — `/gratitude/history`: único `<main>`, heading "Histórico" (h2); abas com "Histórico" ativa. Espelha `MedicationHistoryPage.test.tsx`.
+
+### Frontend — `GratitudeHistorySurface.test.tsx` estendido (+7 testes)
+
+- [x] seletor de mês (`type="month"`) navega para o mês escolhido (`params {month}`).
+- [x] seletor de mês **NÃO** vai ao futuro — clamp no mês corrente → "Próximo mês" desabilita (locale-independente, via estado do botão).
+- [x] "Próximo mês" avança e desabilita ao chegar no mês corrente.
+- [x] modo por-data: **loading** exibe `role="status"`.
+- [x] modo por-data: **erro** de leitura → `role="alert"` + "Tentar novamente".
+- [x] trocar a data **dentro** do modo por-data rebusca `days/?date=` com a nova data.
+- [x] sem violações de acessibilidade no **modo por-data** (`jest-axe`).
+
+> Nota de locator: os inputs `type="month"`/`type="date"` da surface carregam um `aria-label` ("Mês selecionado: …" / "Data selecionada: …") que sobrepõe o `label` MUI — as buscas usam `getByLabelText(/Mês selecionado:/)` / `getByLabelText(/Data selecionada:/)`.
+
+### Backend — `test_views.py` (+1 teste)
+
+- [x] `test_get_months_default_returns_current_month_entries` — GET `months/` **sem** `?month=` agrupa e retorna as entradas do mês corrente (caminho default de ponta a ponta), não só o campo `month`. Data via `today_for(user)` (autoridade temporal do servidor, não `date.today()` cru — guardrail respeitado).
+
+## Cobertura por AC (pós-QA)
+
+| AC | Backend (pytest) | Frontend (vitest) | E2E |
+|----|------------------|-------------------|-----|
+| AC1 — mês agrupado por dia | ✅ serviço/view + **default com dados (novo)** | ✅ agrupamento por dia | ✅ mês corrente agrupado |
+| AC2 — ordem cronológica (dias + entradas) | ✅ dias asc + entradas por `created_at` | ✅ ordem no grupo | ✅ ordem asc no browser |
+| AC3 — por data específica (reusa `days/?date=`) | — (reusa 9.1) | ✅ entrar/**trocar data (novo)**/voltar/**loading+erro (novo)** | ✅ modo por-data + voltar ao mês |
+| AC4 — navegação de mês, cap no corrente | ✅ normaliza `?month=`/400 | ✅ botões prev/next + **seletor + clamp futuro (novo)** | ✅ nav até mês semeado + próximo disabled |
+| AC5 — estados vazios (voz neutra) | ✅ `days=[]` | ✅ mês e dia, strings exatas | — (unit) |
+| AC6 — abas + rota + a11y | — | ✅ **páginas (novas)** + tabs + axe mês **+ dia (novo)** | ✅ URL + handle.title + abas |
+| AC7 — read-only + tenant + contrato aditivo, sem migration | ✅ camelCase na borda + cross-tenant vazio | ✅ hooks read-only (`useQuery` puro) | — (invariante backend) |
+
+**ACs cobertas: 7/7. Lacunas fechadas nesta rodada: 7 (2 arquivos de página novos + 5 ramos unitários; +1 backend default).**
+
+## Execução (contagem real observada)
+
+```
+# Frontend (Node 22.15.1 via nvm)
+npx vitest run src/features/gratitude src/pages/gratitude  → 41 passed (6 arquivos)   [era 30 / 4 arquivos]
+npm run typecheck                                           → limpo
+npm run lint                                                → limpo
+npm run test:run                                            → 822 passed (79 arquivos) [era 811 / 77]
+
+# Backend (Postgres local: docker compose up -d db)
+uv run pytest gratitude/ -q                                 → 40 passed                [era 39]
+uv run pytest -k "guardrail or isolation" -q               → 30 passed
+uv run ruff check gratitude/                                → All checks passed!
+```
+
+> **Honestidade de contagem (guardrail):** frontend **completo** re-executado (822 passed, 0 regressão); backend rodado no app afetado (`gratitude/` 40) + guardrails/isolamento (30) + ruff — a suíte completa (871) não foi re-rodada nesta rodada de QA (só um teste de `gratitude` adicionado; guardrails de tempo/isolamento verdes cobrem o risco). **E2E não re-executado** (nenhuma spec tocada; estava verde na verificação do dev-story: 6 passed).
+> **Node:** `nvm use 22.15.1` antes de todo comando de frontend/e2e.
+> **Sem migration:** a 9.2 é leitura sobre `GratitudeEntry` da 9.1 — nada a aplicar às branches Neon.
+
+## Checklist de Validação
+
+- [x] API tests gerados (backend `months/` default com dados — fecha o único ramo backend sem asserção de conteúdo).
+- [x] E2E: suíte existente cobre os fluxos-chave (AC1–4, 6); nenhuma lacuna crítica nova → não inflado.
+- [x] Usa APIs padrão dos frameworks (Vitest/RTL/`jest-axe`, pytest/`factory_boy`) — nenhuma ferramenta nova.
+- [x] Cobre happy path + casos de erro críticos (loading/erro+retry no modo por-data; clamp de mês futuro).
+- [x] **Todos os testes gerados passam** (frontend 822 · backend gratitude 40 · guardrails+isolation 30).
+- [x] Locators semânticos/acessíveis (roles, labels, aria-labels via regex); sem seletores CSS frágeis.
+- [x] Descrições claras em pt-BR referenciando a AC.
+- [x] Sem waits/sleeps artificiais (`waitFor`/`findBy`).
+- [x] Testes independentes (`vi.clearAllMocks()` no `beforeEach`; cada `it` re-renderiza do zero).
+- [x] `typecheck`/`lint`/`ruff` limpos; **nenhuma migration** criada.
+- [x] Summary anexado (log cumulativo) em `_bmad-output/implementation-artifacts/tests/test-summary.md`.
+
+## Limites de Cobertura (por design, não gaps)
+
+- **AC5 estado vazio de mês/dia no E2E:** determinístico e barato no unit (`GratitudeHistorySurface.test.tsx`, strings exatas) — reproduzir no browser só somaria flake sem sinal novo.
+- **AC7 isolamento multi-tenant:** invariante de backend fail-closed provado pelo isolamento parametrizado (`gratitude.GratitudeEntry` no registry, registrado na 9.1) + `test_get_months_is_tenant_scoped`; não alcançável de forma estável pelo browser.
+- **camelCase na borda (`createdAt` em `days[].entries[]`):** provado por `test_get_months_camelcase_on_the_edge` (backend, `response.content` cru).
+
+## Próximos Passos
+
+- Nenhum gap bloqueante para a 9.2 — cobertura completa (7/7 ACs) nas camadas apropriadas, com as páginas agora testadas (paridade com o molde `health/medications`) e o `DayView`/seletor de mês exercitados.
+- Artefatos de teste entram no commit da story; este `test-summary.md` fica fora do commit (artefato de `_bmad-output`).
+- Vitest e Playwright não rodam no CI — rodar as suítes localmente antes do merge.

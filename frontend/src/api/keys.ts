@@ -78,5 +78,9 @@ export const keys = {
   // mutação de criação faz append otimista + invalidação por esta chave no onSettled.
   gratitude: {
     day: (date?: string) => ['gratitude', 'day', date ?? 'today'] as const,
+    // Story 9.2 — histórico por mês (agrupado por dia). Forma de bujo.taskDensity/
+    // monthlyLog: sentinela 'current' para o default resolvido no servidor (today_for).
+    month: (monthFirst?: string) =>
+      ['gratitude', 'month', monthFirst ?? 'current'] as const,
   },
 } as const

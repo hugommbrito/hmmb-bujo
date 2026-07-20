@@ -516,6 +516,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/gratitude/months/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description Superfície de histórico por mês: ``GET months/?month=`` → ``{month, days}`` com as
+         *     entradas do mês agrupadas por dia (default = mês corrente). Somente leitura; lista
+         *     embutida, **sem paginação** (o mês é naturalmente limitado — divergência do range/cap
+         *     da Saúde).
+         */
+        get: operations["gratitude_months_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/habit-groups/": {
         parameters: {
             query?: never;
@@ -1205,6 +1227,16 @@ export interface components {
             text: string;
             /** Format: date */
             date?: string;
+        };
+        /**
+         * @description Read-model do mês (9.2 AC1/AC2): o mês (dia 1) + os dias com entradas. Cada dia
+         *     é um read-model diário → **reusa** ``GratitudeDaySerializer`` (mesmo shape, um nível
+         *     acima). Sem envelope; ``createdAt`` na borda (herdado do serializer de entrada).
+         */
+        GratitudeMonth: {
+            /** Format: date */
+            month: string;
+            days: components["schemas"]["GratitudeDay"][];
         };
         /**
          * @description Config vigente do grupo (read): chaves nomeadas ``weekend``/``holiday``.
@@ -2832,6 +2864,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GratitudeEntry"];
+                };
+            };
+        };
+    };
+    gratitude_months_retrieve: {
+        parameters: {
+            query?: {
+                /** @description Mês do histórico (AAAA-MM-DD; normalizado para o dia 1). Default = mês corrente do usuário. */
+                month?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GratitudeMonth"];
                 };
             };
         };

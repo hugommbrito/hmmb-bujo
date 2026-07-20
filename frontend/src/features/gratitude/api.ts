@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import client from '../../api/client'
 import { keys } from '../../api/keys'
 import { useOptimisticMutation } from '../../shared/hooks/useOptimisticMutation'
-import type { GratitudeDay, GratitudeEntry } from './types'
+import type { GratitudeDay, GratitudeEntry, GratitudeMonth } from './types'
 
 // --- Query -------------------------------------------------------------------
 // Read-model do dia: {date, entries[]}. `params: date ? {date} : undefined` —
@@ -20,6 +20,26 @@ export function useGratitudeDayQuery(date?: string) {
   return useQuery({
     queryKey: keys.gratitude.day(date),
     queryFn: () => fetchGratitudeDay(date),
+  })
+}
+
+// --- Query: histórico por mês (Story 9.2) ------------------------------------
+// Read-model do mês: {month, days:[{date, entries[]}]}. `params: monthFirst ?
+// {month} : undefined` — ausência → o backend resolve o mês corrente (today_for).
+// Read-only puro (useQuery, sem otimismo). A visão "por data" reusa
+// useGratitudeDayQuery (days/?date=) — sem query nova.
+
+async function fetchGratitudeMonth(monthFirst?: string): Promise<GratitudeMonth> {
+  const response = await client.get<GratitudeMonth>('/api/gratitude/months/', {
+    params: monthFirst ? { month: monthFirst } : undefined,
+  })
+  return response.data
+}
+
+export function useGratitudeMonthQuery(monthFirst?: string) {
+  return useQuery({
+    queryKey: keys.gratitude.month(monthFirst),
+    queryFn: () => fetchGratitudeMonth(monthFirst),
   })
 }
 

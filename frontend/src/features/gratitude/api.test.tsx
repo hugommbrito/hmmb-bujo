@@ -8,9 +8,13 @@ vi.mock('../../api/client', () => ({
 }))
 
 import client from '../../api/client'
-import { useCreateGratitudeEntryMutation, useGratitudeDayQuery } from './api'
+import {
+  useCreateGratitudeEntryMutation,
+  useGratitudeDayQuery,
+  useGratitudeMonthQuery,
+} from './api'
 import { keys } from '../../api/keys'
-import type { GratitudeDay } from './types'
+import type { GratitudeDay, GratitudeMonth } from './types'
 
 const mockGet = client.get as ReturnType<typeof vi.fn>
 const mockPost = client.post as ReturnType<typeof vi.fn>
@@ -54,6 +58,42 @@ describe('useGratitudeDayQuery', () => {
     renderHook(() => useGratitudeDayQuery(), { wrapper })
     await waitFor(() =>
       expect(mockGet).toHaveBeenCalledWith('/api/gratitude/days/', { params: undefined }),
+    )
+  })
+})
+
+const MONTH: GratitudeMonth = {
+  month: '2026-07-01',
+  days: [
+    {
+      date: '2026-07-20',
+      entries: [
+        { id: 'g1', date: '2026-07-20', text: 'Grato pelo café', createdAt: '2026-07-20T09:00:00Z' },
+      ],
+    },
+  ],
+}
+
+describe('useGratitudeMonthQuery (Story 9.2)', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('busca o mês com params {month} e retorna o read-model agrupado por dia', async () => {
+    const { wrapper } = makeWrapper()
+    mockGet.mockResolvedValueOnce({ data: MONTH })
+    const { result } = renderHook(() => useGratitudeMonthQuery('2026-07-01'), { wrapper })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(mockGet).toHaveBeenCalledWith('/api/gratitude/months/', {
+      params: { month: '2026-07-01' },
+    })
+    expect(result.current.data).toEqual(MONTH)
+  })
+
+  it('sem mês → params undefined (mês corrente resolvido no servidor)', async () => {
+    const { wrapper } = makeWrapper()
+    mockGet.mockResolvedValueOnce({ data: MONTH })
+    renderHook(() => useGratitudeMonthQuery(), { wrapper })
+    await waitFor(() =>
+      expect(mockGet).toHaveBeenCalledWith('/api/gratitude/months/', { params: undefined }),
     )
   })
 })

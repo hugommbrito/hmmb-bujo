@@ -14,6 +14,7 @@ from gratitude.models import GratitudeEntry
 from gratitude.tests.factories import GratitudeEntryFactory
 
 _DAYS = "/api/gratitude/days/"
+_MONTHS = "/api/gratitude/months/"
 _ENTRIES = "/api/gratitude/entries/"
 
 
@@ -123,3 +124,74 @@ def test_entries_are_tenant_scoped(auth_client, user, other_user):
     resp = auth_client.get(_DAYS)
     assert resp.status_code == 200
     assert resp.data["entries"] == []
+
+
+# --- 9.2 AC1/AC4: histórico por mês --------------------------------------------
+def test_get_months_default_current_month(auth_client, user):
+    """9.2 AC1/AC4: GET sem ``month`` usa o mês corrente do usuário (dia 1 via today_for)."""
+    resp = auth_client.get(_MONTHS)
+    assert resp.status_code == 200, resp.data
+    assert resp.data["month"] == today_for(user).replace(day=1).isoformat()
+
+
+def test_get_months_default_returns_current_month_entries(auth_client, user):
+    """9.2 AC1/AC4: GET sem ``month`` agrupa e retorna as entradas do mês corrente
+    (não só o campo ``month`` — exercita o caminho default de ponta a ponta)."""
+    with tenant_context(user):
+        GratitudeEntryFactory(user=user, date=today_for(user), text="deste mês")
+    resp = auth_client.get(_MONTHS)
+    assert resp.status_code == 200, resp.data
+    assert resp.data["month"] == today_for(user).replace(day=1).isoformat()
+    texts = [e["text"] for d in resp.data["days"] for e in d["entries"]]
+    assert "deste mês" in texts
+
+
+def test_get_months_specific_month_normalizes_and_filters(auth_client, user):
+    """9.2 AC1/AC4: ``?month=2026-01-15`` normaliza para janeiro/2026 (dia 1) e lista só
+    as entradas de janeiro, agrupadas por dia em ordem cronológica ascendente."""
+    with tenant_context(user):
+        GratitudeEntryFactory(user=user, date="2026-01-10", text="jan-10")
+        GratitudeEntryFactory(user=user, date="2026-01-20", text="jan-20")
+        GratitudeEntryFactory(user=user, date="2026-02-05", text="fev-05")
+    resp = auth_client.get(f"{_MONTHS}?month=2026-01-15")
+    assert resp.status_code == 200, resp.data
+    assert resp.data["month"] == "2026-01-01"  # normalizado para o dia 1
+    dates = [d["date"] for d in resp.data["days"]]
+    assert dates == ["2026-01-10", "2026-01-20"]  # só janeiro, dias ascendentes
+    assert [e["text"] for e in resp.data["days"][0]["entries"]] == ["jan-10"]
+
+
+def test_get_months_empty_state(auth_client):
+    """9.2 AC5: mês sem entradas → ``days=[]``."""
+    resp = auth_client.get(f"{_MONTHS}?month=2026-01-01")
+    assert resp.status_code == 200
+    assert resp.data["days"] == []
+
+
+def test_get_months_invalid_month_returns_400(auth_client):
+    """9.2 AC1: ``month`` malformado → 400 (mesmo idioma do ``days/``)."""
+    resp = auth_client.get(f"{_MONTHS}?month=2026-13-99")
+    assert resp.status_code == 400
+    assert "month" in resp.data.get("fields", {})
+
+
+def test_get_months_camelcase_on_the_edge(auth_client, user):
+    """9.2 AC7/contrato: ``created_at`` sai como ``createdAt`` na borda, dentro de
+    ``days[].entries[]`` (JSON renderizado)."""
+    with tenant_context(user):
+        GratitudeEntryFactory(user=user, date="2026-01-10", text="jan-10")
+    resp = auth_client.get(f"{_MONTHS}?month=2026-01-01")
+    assert resp.status_code == 200
+    body = json.loads(resp.content)
+    entry = body["days"][0]["entries"][0]
+    assert "createdAt" in entry
+    assert "created_at" not in entry
+
+
+def test_get_months_is_tenant_scoped(auth_client, user, other_user):
+    """9.2 AC7: entradas de outro usuário nunca aparecem (cross-tenant → mês vazio)."""
+    with tenant_context(other_user):
+        GratitudeEntryFactory(user=other_user, date="2026-01-10", text="Alheio")
+    resp = auth_client.get(f"{_MONTHS}?month=2026-01-01")
+    assert resp.status_code == 200
+    assert resp.data["days"] == []

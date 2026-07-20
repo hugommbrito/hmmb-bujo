@@ -10,6 +10,9 @@ apenas lê as entradas da data (auto-escopadas; ``Meta.ordering`` aplica a ordem
 cronológica) — não há read-model derivado de snapshot nem gap-fill.
 """
 
+from collections import defaultdict
+from datetime import date as date_cls
+
 from django.db import transaction
 
 from gratitude.models import GratitudeEntry
@@ -30,4 +33,25 @@ def get_gratitude_day(*, user, date) -> dict:
     return {
         "date": date,
         "entries": list(GratitudeEntry.objects.filter(date=date)),
+    }
+
+
+def get_gratitude_month(*, user, month) -> dict:
+    """Read-model do mês (9.2 AC1/AC2): ``{month, days:[{date, entries}]}`` com todas as
+    entradas do mês agrupadas por dia, em ordem cronológica ascendente.
+
+    Idioma de mês do ``bujo`` (``TaskDensityView``), **não** o range/cap da Saúde: filtra
+    por ``date__year``/``date__month`` (o mês já é naturalmente limitado — sem paginação,
+    sem cap de range). Auto-escopado por tenant (``GratitudeEntry.objects``; nunca
+    ``user_id`` cru, nunca ``all_objects``). ``Meta.ordering=["created_at"]`` aplica →
+    as linhas chegam globalmente por ``created_at``; o agrupamento em Python preserva essa
+    ordem dentro de cada dia. Dias sem entrada não aparecem (lacunas honestas, sem gap-fill).
+    Leitura pura (sem ``@transaction.atomic``, como ``get_gratitude_day``)."""
+    rows = GratitudeEntry.objects.filter(date__year=month.year, date__month=month.month)
+    days: dict[date_cls, list] = defaultdict(list)
+    for entry in rows:
+        days[entry.date].append(entry)
+    return {
+        "month": month,
+        "days": [{"date": day, "entries": days[day]} for day in sorted(days)],
     }

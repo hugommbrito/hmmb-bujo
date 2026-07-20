@@ -27,6 +27,15 @@ class GratitudeDaySerializer(serializers.Serializer):
     entries = GratitudeEntrySerializer(many=True)
 
 
+class GratitudeMonthSerializer(serializers.Serializer):
+    """Read-model do mês (9.2 AC1/AC2): o mês (dia 1) + os dias com entradas. Cada dia
+    é um read-model diário → **reusa** ``GratitudeDaySerializer`` (mesmo shape, um nível
+    acima). Sem envelope; ``createdAt`` na borda (herdado do serializer de entrada)."""
+
+    month = serializers.DateField()
+    days = GratitudeDaySerializer(many=True)
+
+
 class GratitudeEntryWriteSerializer(serializers.Serializer):
     """Entrada de criação (AC1/AC4). Só valida **forma**: ``text`` não-branco
     (``trim_whitespace`` → texto só-espaços vira vazio → ``allow_blank=False`` → 400);

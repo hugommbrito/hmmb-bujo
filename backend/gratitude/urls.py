@@ -7,10 +7,15 @@ Rotas estáticas (não há ``<uuid:pk>`` na 9.1 — editar/excluir é escopo fut
 
 from django.urls import path
 
-from gratitude.views import GratitudeDayView, GratitudeEntryCreateView
+from gratitude.views import (
+    GratitudeDayView,
+    GratitudeEntryCreateView,
+    GratitudeMonthView,
+)
 
 urlpatterns = [
     path("days/", GratitudeDayView.as_view(), name="gratitude-day"),
+    path("months/", GratitudeMonthView.as_view(), name="gratitude-month"),
     path(
         "entries/",
         GratitudeEntryCreateView.as_view(),

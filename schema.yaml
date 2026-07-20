@@ -724,6 +724,32 @@ paths:
               schema:
                 $ref: '#/components/schemas/GratitudeEntry'
           description: ''
+  /api/gratitude/months/:
+    get:
+      operationId: gratitude_months_retrieve
+      description: |-
+        Superfície de histórico por mês: ``GET months/?month=`` → ``{month, days}`` com as
+        entradas do mês agrupadas por dia (default = mês corrente). Somente leitura; lista
+        embutida, **sem paginação** (o mês é naturalmente limitado — divergência do range/cap
+        da Saúde).
+      parameters:
+      - in: query
+        name: month
+        schema:
+          type: string
+        description: Mês do histórico (AAAA-MM-DD; normalizado para o dia 1). Default
+          = mês corrente do usuário.
+      tags:
+      - gratitude
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GratitudeMonth'
+          description: ''
   /api/habit-groups/:
     get:
       operationId: habit_groups_list
@@ -1907,6 +1933,23 @@ components:
           format: date
       required:
       - text
+    GratitudeMonth:
+      type: object
+      description: |-
+        Read-model do mês (9.2 AC1/AC2): o mês (dia 1) + os dias com entradas. Cada dia
+        é um read-model diário → **reusa** ``GratitudeDaySerializer`` (mesmo shape, um nível
+        acima). Sem envelope; ``createdAt`` na borda (herdado do serializer de entrada).
+      properties:
+        month:
+          type: string
+          format: date
+        days:
+          type: array
+          items:
+            $ref: '#/components/schemas/GratitudeDay'
+      required:
+      - days
+      - month
     GroupMultipliers:
       type: object
       description: |-

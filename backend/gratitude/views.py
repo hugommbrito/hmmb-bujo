@@ -19,8 +19,13 @@ from gratitude.serializers import (
     GratitudeDaySerializer,
     GratitudeEntrySerializer,
     GratitudeEntryWriteSerializer,
+    GratitudeMonthSerializer,
 )
-from gratitude.services import create_gratitude_entry, get_gratitude_day
+from gratitude.services import (
+    create_gratitude_entry,
+    get_gratitude_day,
+    get_gratitude_month,
+)
 
 
 def _resolve_day(request):
@@ -56,6 +61,46 @@ class GratitudeDayView(APIView):
         day = _resolve_day(request)
         payload = get_gratitude_day(user=request.user, date=day)
         return Response(GratitudeDaySerializer(payload).data)
+
+
+def _resolve_month(request):
+    """Resolve o parâmetro ``month`` do navegador de mês, normalizando para o dia 1
+    (idioma do ``MonthlyLogView``; default = mês corrente via ``today_for``). Data
+    inválida → 400. O ``?month=`` é conveniência de navegação, validada; "mês corrente"
+    é resolvido no servidor (AD-04)."""
+    raw = request.query_params.get("month")
+    if not raw:
+        return today_for(request.user).replace(day=1)
+    try:
+        return date_cls.fromisoformat(raw).replace(day=1)
+    except ValueError:
+        raise serializers.ValidationError(
+            {"month": "Data inválida. Use o formato AAAA-MM-DD."}
+        ) from None
+
+
+class GratitudeMonthView(APIView):
+    """Superfície de histórico por mês: ``GET months/?month=`` → ``{month, days}`` com as
+    entradas do mês agrupadas por dia (default = mês corrente). Somente leitura; lista
+    embutida, **sem paginação** (o mês é naturalmente limitado — divergência do range/cap
+    da Saúde)."""
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="month", type=str, required=False,
+                description=(
+                    "Mês do histórico (AAAA-MM-DD; normalizado para o dia 1). "
+                    "Default = mês corrente do usuário."
+                ),
+            )
+        ],
+        responses=GratitudeMonthSerializer,
+    )
+    def get(self, request):
+        month = _resolve_month(request)
+        payload = get_gratitude_month(user=request.user, month=month)
+        return Response(GratitudeMonthSerializer(payload).data)
 
 
 class GratitudeEntryCreateView(APIView):

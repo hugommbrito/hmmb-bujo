@@ -19,6 +19,7 @@ import { HealthHistoryPage } from '../pages/health/HealthHistoryPage'
 import { MedicationsPage } from '../pages/health/MedicationsPage'
 import { MedicationHistoryPage } from '../pages/health/MedicationHistoryPage'
 import { GratitudePage } from '../pages/gratitude/GratitudePage'
+import { GratitudeHistoryPage } from '../pages/gratitude/GratitudeHistoryPage'
 import { SettingsPage } from '../pages/settings/SettingsPage'
 import { HabitsSettingsPage } from '../pages/settings/HabitsSettingsPage'
 import { HealthMetricsSettingsPage } from '../pages/settings/HealthMetricsSettingsPage'
@@ -122,6 +123,11 @@ export const routeDefinitions: RouteObject[] = [
         path: 'gratitude',
         element: <GratitudePage />,
         handle: { title: 'Diário de Gratidão' },
+      },
+      {
+        path: 'gratitude/history',
+        element: <GratitudeHistoryPage />,
+        handle: { title: 'Histórico de Gratidão' },
       },
       { path: 'brain-dump', element: <BrainDumpPage />, handle: { title: 'Brain Dump' } },
       { path: 'archive', element: <ArchivePage />, handle: { title: 'Arquivo' } },
