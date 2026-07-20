@@ -2697,3 +2697,104 @@ npm run test:e2e -- medications.spec.ts --reporter=line
 
 - Nenhum gap bloqueante para a Story 8.1 — cobertura E2E completa da superfície de cadastro/versões (fundação do Épico 8; a 8.2 materializa `medication_day_entries`, a 8.3 histórico/dose perdida).
 - Vitest e Playwright não rodam no CI (rede local/review) — rodar a suíte E2E completa localmente antes do merge.
+
+---
+
+# Resumo de Automação de Testes — Story 8.2: Confirmação diária por bloco ou individual
+
+**Data:** 2026-07-20
+**Feature:** Saúde › Medicamentos (`/health/medications`) — camada realizada (`medication_day_entries` + enum `source`): materialização ansiosa/idempotente, confirmação por linha/bloco(lote)/avulso, estado de bloco derivado
+**Workflow:** bmad-qa-generate-e2e-tests
+**Frameworks:** pytest + DRF `APIClient` (Neon dev, `--reuse-db`) · Playwright (browser real, branch Neon `e2e`, sem mocks de rede)
+
+---
+
+## Gaps descobertos e auto-aplicados
+
+A story entrou em `review` com suíte forte (backend model/serviço/view + frontend componente/hooks + 2 E2E). O mapeamento AC×cobertura revelou lacunas em **AC4** (branches de "desconfirmar" e validação) e **AC7** (branches de erro do avulso + fluxo E2E real), **auto-aplicadas** como 6 novos testes de API + 1 novo E2E:
+
+| AC | Comportamento | Antes | Agora |
+|----|---------------|-------|-------|
+| AC7 | avulso com medicamento inexistente/cross-tenant | ❌ branch 404 sem teste | ✅ **404 (esconde existência)** |
+| AC7 | avulso com `timeBlockId` inexistente | ❌ branch 400 sem teste | ✅ **400 (bloco não encontrado)** |
+| AC4/AC7 | avulso **com** bloco herda a dose da agenda vigente | ⚠️ só no serviço | ✅ **via HTTP (dose herdada + `time_block_id` gravado)** |
+| AC4 | PATCH **desconfirmar** (`confirmed:false`) | ❌ branch `else None` sem teste HTTP | ✅ **bloco volta a `pending`** |
+| AC4 | confirm-block **desconfirmar** (lote) | ❌ branch `else None` **sem teste em nenhuma camada** | ✅ **lote reverte `scheduled` → `pending`** |
+| AC4 | confirm-block com `date` malformada | ❌ validação sem teste | ✅ **400 (`BlockConfirmSerializer.date`)** |
+| AC7 | avulso/PRN **fluxo real ponta-a-ponta** | ⚠️ só teste de componente mockado | ✅ **E2E: formulário → POST → seção "Avulso / PRN" → persiste** |
+
+## Testes Gerados
+
+### API — `backend/medications/tests/test_views.py` (6 novos)
+
+- [x] `test_ad_hoc_unknown_medication_returns_404` — **AC7** (branch `Medication.DoesNotExist` de `MedicationAdHocView`)
+- [x] `test_ad_hoc_unknown_block_returns_400` — **AC7** (branch `TimeBlock.DoesNotExist`)
+- [x] `test_ad_hoc_with_block_inherits_dose_from_schedule` — **AC4/AC7** (herança de dose + `time_block_id` na linha `ad_hoc`)
+- [x] `test_patch_entry_unconfirm_reverts_status` — **AC4** (PATCH `{confirmed:false}` → `pending`)
+- [x] `test_confirm_block_unconfirm_reverts_status` — **AC4** (lote `{confirmed:false}` → `pending`)
+- [x] `test_confirm_block_invalid_date_returns_400` — **AC4** (validação de `date`)
+
+### E2E — `frontend/e2e/medications-day.spec.ts` (1 novo)
+
+Pré-existentes (mantidos):
+- [x] `superfície vazia para usuário sem medicamentos (AC8)`
+- [x] `materializa, confirma por linha e por bloco; estado derivado e persistência (AC2, AC4, AC5, AC6)`
+
+Novo (auto-aplicado neste workflow):
+- [x] `registra um avulso/PRN pelo formulário e ele aparece na seção Avulso/PRN (AC7)`
+
+Seed novo: `seedMedicationCatalogOnly(email, {title, substanceName})` em `frontend/e2e/seedMedications.ts` — medicamento sem agenda (só catálogo), isola o fluxo de avulso sem blocos agendados no dia.
+
+**Total desta rodada: 6 testes de API + 1 E2E (7 novos) — todos passando.**
+
+## Cobertura por AC (pós-QA)
+
+| AC | Backend | Frontend | E2E |
+|----|---------|----------|-----|
+| AC1 — model/constraint parcial/`source` | ✅ | — | — |
+| AC2 — seed idempotente | ✅ | — | ✅ |
+| AC3 — gap-fill | ✅ | — | — |
+| AC4 — GET/PATCH/confirm-block/ad-hoc (+ desconfirmar, +400s) | ✅ **reforçado** | ✅ | ✅ |
+| AC5 — Medication Block UI | — | ✅ | ✅ |
+| AC6 — estado de bloco derivado | ✅ | ✅ | ✅ |
+| AC7 — avulso/PRN (+404/400 + herança de dose + fluxo real) | ✅ **reforçado** | ✅ | ✅ **novo** |
+| AC8 — superfície `/health/medications` + estados/a11y | ✅ | ✅ | ✅ |
+
+## Execução (contagem real observada)
+
+```
+ruff check medications/tests/test_views.py            → All checks passed
+pytest medications/tests/test_views.py (arquivo todo) → 33 passed (159.76s)   [era 27 → +6]
+pytest -k "<os 6 novos>"                              → 6 passed (43.78s)
+DJANGO_SETTINGS_MODULE=config.settings.e2e migrate    → No migrations to apply (schema já OK; sem migration nova)
+npm run test:e2e -- medications-day.spec.ts (3 testes)→ 3 passed (55.3s)
+```
+
+> **Honestidade de contagem (guardrail):** os números acima são **escopados aos artefatos tocados** por esta rodada de QA (`test_views.py` + `medications-day.spec.ts`), **não** a suíte inteira. Rodada **puramente aditiva** de testes; **zero** edição de produção → nenhuma regressão esperada. A união completa da suíte já foi reportada pelo dev-story (Backend Lote A: 221 passed; Frontend vitest: 754 passed).
+> **Node:** `nvm use 22.15.1` antes de todo comando de frontend/E2E (shell inicia em v18; sem `.nvmrc`).
+
+## Checklist de Validação
+
+- [x] API tests gerados (6 novos, fechando branches de AC4/AC7)
+- [x] E2E tests gerados (1 novo + seed helper, fechando o fluxo real de avulso/AC7)
+- [x] Usam APIs padrão do framework adotado (pytest/DRF `APIClient`; Playwright roles/labels + fixture de signup + seed via `manage.py shell`) — nenhuma ferramenta nova
+- [x] Cobrem happy path (avulso com herança de dose; desconfirmar) + erros críticos (404 med inexistente, 400 bloco inexistente, 400 data inválida)
+- [x] Todos os testes gerados passam (6 API + 3 E2E)
+- [x] Locators semânticos/acessíveis (`getByRole`/`getByLabel`/`getByText`); sem seletores CSS frágeis
+- [x] Descrições claras em pt-BR referenciando a AC, seguindo a prosa dos testes do projeto
+- [x] Sem waits/sleeps artificiais — `expect` web-first com auto-retry (Playwright); `waitFor` (vitest)
+- [x] Testes independentes (usuário novo por teste E2E via fixture `page`; `auth_client`/`user`/`other_user` isolados por tenant no backend)
+- [x] Summary anexado (log cumulativo) em `_bmad-output/implementation-artifacts/tests/test-summary.md`
+
+## Limites de Cobertura (por design, não gaps)
+
+- **Skeleton de carregamento / erro de leitura com retry:** instáveis de forçar por E2E; cobertos por `MedicationBlock.test.tsx` (`role="status"`, `role="alert"` + "Tentar novamente").
+- **Rollback do otimismo (escrita falha → snapshot volta + `role="alert"`):** determinístico só com mock; coberto no teste de componente, não no E2E (backend real não falha sob demanda).
+- **Casing JSONB da dose (`response.content` cru):** provado por `test_ad_hoc_dose_keys_survive_camelcase_roundtrip` (backend); o E2E prova o efeito visível ("Dipirona · 1 comp").
+- **Isolamento cross-tenant (404 via service/view):** asserado na camada de backend (determinístico), não alcançável pelo browser.
+
+## Próximos Passos
+
+- Nenhum gap bloqueante para a Story 8.2 — AC1–AC8 cobertas nas camadas apropriadas (branches de erro e o fluxo de avulso agora fechados).
+- Artefatos de teste entram no commit da story (`test(story-8.2): ...`) ao fechar; este `test-summary.md` fica fora do commit da story (artefato de `_bmad-output`).
+- A 8.3 (histórico + dose perdida + edição retroativa) reusa o read-model `get_medication_day` sem semear — a semântica de ausência (`scheduled` sem `confirmed_at`) já está exercitada aqui.

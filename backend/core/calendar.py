@@ -19,6 +19,21 @@ def today_for(user) -> date:
     return timezone.now().astimezone(ZoneInfo(user.timezone)).date()
 
 
+def now():
+    """Única fonte de 'agora' (``TIMESTAMPTZ`` timezone-aware) para timestamps de
+    auditoria de escrita — ex.: ``medication_day_entries.confirmed_at`` (AD-04/AD-07).
+
+    Distinção deliberada de ``today_for`` (que retorna uma **``date``**, a "autoridade
+    temporal de negócio" do usuário): ``now()`` é um instante de auditoria, não uma
+    noção de "dia atual". Mora aqui porque o guardrail de AST
+    (``test_no_bare_date_today_outside_calendar``) proíbe ``timezone.now()`` em
+    **todo** módulo de produção fora de ``core/calendar.py``, sem distinguir intenção
+    (autoridade de "hoje" vs. timestamp de auditoria). Centralizar mantém o guardrail
+    válido e dá um único ponto de mock nos testes.
+    """
+    return timezone.now()
+
+
 def week_start_of(d: date) -> date:
     """Segunda-feira da semana de d (chave do Weekly Log).
 

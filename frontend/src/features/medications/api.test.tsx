@@ -10,17 +10,22 @@ vi.mock('../../api/client', () => ({
 import client from '../../api/client'
 import {
   useAddSubstanceVersionMutation,
+  useConfirmBlockMutation,
+  useConfirmMedicationEntryMutation,
+  useCreateAdHocEntryMutation,
   useCreateDoctorMutation,
   useCreateMedicationMutation,
   useCreateTimeBlockMutation,
   useDoctorsQuery,
+  useMedicationDayQuery,
   useMedicationsQuery,
   useSetMedicationActiveMutation,
   useSetScheduleMutation,
   useTimeBlocksQuery,
   useUpdateMedicationTitleMutation,
 } from './api'
-import type { Doctor, Medication, TimeBlock } from './types'
+import { keys } from '../../api/keys'
+import type { Doctor, Medication, MedicationDay, TimeBlock } from './types'
 
 const mockGet = client.get as ReturnType<typeof vi.fn>
 const mockPost = client.post as ReturnType<typeof vi.fn>
@@ -263,5 +268,111 @@ describe('useCreateTimeBlockMutation / useCreateDoctorMutation', () => {
       name: 'Dra. Ana',
       specialty: 'Cardiologia',
     })
+  })
+})
+
+// --- Story 8.2 — superfície diária realizada -------------------------------
+
+const DAY: MedicationDay = {
+  date: '2026-03-01',
+  blocks: [
+    {
+      timeBlockId: 'b1',
+      timeBlockName: 'Manhã',
+      status: 'pending',
+      entries: [
+        {
+          id: 'e1',
+          medicationId: 'm1',
+          medicationTitle: 'Losartana',
+          substanceName: 'Losartana K',
+          doseAtTime: [{ label: '', amount: 50, unit: 'mg' }],
+          confirmedAt: null,
+          source: 'scheduled',
+          timeBlockId: 'b1',
+        },
+      ],
+    },
+  ],
+  adHoc: [],
+}
+
+describe('useMedicationDayQuery', () => {
+  beforeEach(() => vi.resetAllMocks())
+
+  it('busca o dia sem params (hoje)', async () => {
+    const { wrapper } = makeWrapper()
+    mockGet.mockResolvedValueOnce({ data: DAY })
+    const { result } = renderHook(() => useMedicationDayQuery(), { wrapper })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(mockGet).toHaveBeenCalledWith('/api/medications/days/', { params: undefined })
+    expect(result.current.data).toEqual(DAY)
+  })
+
+  it('passa date quando informado', async () => {
+    const { wrapper } = makeWrapper()
+    mockGet.mockResolvedValueOnce({ data: DAY })
+    renderHook(() => useMedicationDayQuery('2026-03-01'), { wrapper })
+    await waitFor(() =>
+      expect(mockGet).toHaveBeenCalledWith('/api/medications/days/', {
+        params: { date: '2026-03-01' },
+      }),
+    )
+  })
+})
+
+describe('mutações otimistas do dia (AC4)', () => {
+  beforeEach(() => vi.resetAllMocks())
+
+  it('confirm entry faz PATCH e aplica update otimista no cache', async () => {
+    const { qc, wrapper } = makeWrapper()
+    qc.setQueryData(keys.medications.day(undefined), DAY)
+    mockPatch.mockResolvedValueOnce({ data: DAY })
+    const { result } = renderHook(() => useConfirmMedicationEntryMutation(), { wrapper })
+
+    result.current.mutate({ entryId: 'e1', confirmed: true })
+
+    // Otimismo aplicado no onMutate (antes do await do servidor).
+    await waitFor(() => {
+      const cached = qc.getQueryData<MedicationDay>(keys.medications.day(undefined))
+      expect(cached?.blocks[0].entries[0].confirmedAt).not.toBeNull()
+      expect(cached?.blocks[0].status).toBe('confirmed')
+    })
+    expect(mockPatch).toHaveBeenCalledWith('/api/medications/days/e1/', { confirmed: true })
+  })
+
+  it('confirm block faz POST com o payload correto', async () => {
+    const { qc, wrapper } = makeWrapper()
+    qc.setQueryData(keys.medications.day(undefined), DAY)
+    mockPost.mockResolvedValueOnce({ data: DAY })
+    const { result } = renderHook(() => useConfirmBlockMutation(), { wrapper })
+
+    result.current.mutate({ date: '2026-03-01', timeBlockId: 'b1', confirmed: true })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(mockPost).toHaveBeenCalledWith('/api/medications/days/confirm-block/', {
+      date: '2026-03-01',
+      timeBlockId: 'b1',
+      confirmed: true,
+    })
+  })
+
+  it('avulso faz POST e invalida a chave do dia', async () => {
+    const { qc, wrapper } = makeWrapper()
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+    mockPost.mockResolvedValueOnce({ data: DAY })
+    const { result } = renderHook(() => useCreateAdHocEntryMutation(), { wrapper })
+
+    result.current.mutate({
+      date: '2026-03-01',
+      medicationId: 'm1',
+      dose: [{ label: '', amount: 1, unit: 'comp' }],
+    })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(mockPost).toHaveBeenCalledWith('/api/medications/days/ad-hoc/', {
+      date: '2026-03-01',
+      medicationId: 'm1',
+      dose: [{ label: '', amount: 1, unit: 'comp' }],
+    })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.medications.day(undefined) })
   })
 })

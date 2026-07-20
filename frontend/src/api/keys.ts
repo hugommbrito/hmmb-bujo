@@ -70,5 +70,7 @@ export const keys = {
     doctors: () => ['medications', 'doctors', 'list'] as const,
     timeBlocks: (params?: { includeInactive?: boolean }) =>
       ['medications', 'timeBlocks', 'list', params ?? {}] as const,
+    // Story 8.2 — superfície diária realizada (confirmação por bloco/linha/avulso).
+    day: (date?: string) => ['medications', 'day', date ?? 'today'] as const,
   },
 } as const

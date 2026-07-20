@@ -6,7 +6,7 @@ temporal: este arquivo não é ``test_*.py``/``conftest.py``, mas o scanner que 
 ``date.today()`` cobre factories — as datas são constantes fixas + ``timedelta``, nunca
 ``date.today()`` (os testes de serviço que precisam de "hoje" usam ``today_for``).
 
-Registra os **5** models de ``TenantModel`` no contrato de isolamento parametrizado
+Registra os **6** models de ``TenantModel`` no contrato de isolamento parametrizado
 (``medications.tests.factories`` está em ``_ISOLATION_TEST_MODULES`` no ``conftest.py``):
 cross-tenant 404 **e** fail-closed ``TenantScopeViolation``.
 """
@@ -21,6 +21,7 @@ from core.tests.registry import register_isolation_case
 from medications.models import (
     Doctor,
     Medication,
+    MedicationDayEntry,
     MedicationScheduleVersion,
     MedicationSubstanceVersion,
     TimeBlock,
@@ -96,6 +97,25 @@ class MedicationScheduleVersionFactory(DjangoModelFactory):
     effective_from = factory.Sequence(lambda n: _FIXED_DATE + timedelta(days=n))
 
 
+class MedicationDayEntryFactory(DjangoModelFactory):
+    """Linha realizada por dia (Story 8.2). ``confirmed_at`` nulo (= não confirmado) e
+    ``source=scheduled`` por default; sobrescreva para cenários ``ad_hoc``/confirmados."""
+
+    class Meta:
+        model = MedicationDayEntry
+
+    class Params:
+        user = factory.SubFactory(UserFactory)
+
+    user_id = factory.SelfAttribute("user.id")
+    medication = factory.LazyAttribute(lambda o: MedicationFactory(user=o.user))
+    time_block = factory.LazyAttribute(lambda o: TimeBlockFactory(user=o.user))
+    date = factory.Sequence(lambda n: _FIXED_DATE + timedelta(days=n))
+    dose_at_time = factory.List([factory.Dict({"label": "", "amount": 1, "unit": "comp"})])
+    confirmed_at = None
+    source = "scheduled"
+
+
 # --- Contrato de isolamento parametrizado (um caso por model TenantModel) -------
 register_isolation_case(
     id="medications.Doctor",
@@ -133,5 +153,17 @@ register_isolation_case(
         "time_block": TimeBlock.objects.create(name="Bloco iso sched", display_order=0),
         "dose": [{"label": "", "amount": 1, "unit": "comp"}],
         "effective_from": _FIXED_DATE,
+    },
+)
+
+register_isolation_case(
+    id="medications.MedicationDayEntry",
+    model=MedicationDayEntry,
+    make=lambda: {
+        "medication": Medication.objects.create(title="Med iso day"),
+        "time_block": TimeBlock.objects.create(name="Bloco iso day", display_order=0),
+        "date": _FIXED_DATE,
+        "dose_at_time": [{"label": "", "amount": 1, "unit": "comp"}],
+        "source": "scheduled",
     },
 )

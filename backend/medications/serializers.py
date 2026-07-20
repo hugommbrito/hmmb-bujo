@@ -21,6 +21,7 @@ from medications.models import (
     Medication,
     MedicationScheduleVersion,
     MedicationSubstanceVersion,
+    Source,
     TimeBlock,
 )
 
@@ -194,6 +195,78 @@ class ScheduleVersionCreateSerializer(serializers.Serializer):
     time_block_id = serializers.UUIDField()
     dose = DoseField(required=False)
     active = serializers.BooleanField(required=False, default=True)
+
+    def validate_dose(self, value):
+        if not isinstance(value, list):
+            raise serializers.ValidationError("A dose deve ser uma lista de componentes.")
+        return value
+
+
+# --- Camada realizada por dia (Story 8.2, AD-07 itens 7-11) --------------------
+# Read-model montado pela camada de serviço (dicts, não models): plano `Serializer`
+# com fields explícitos. `dose_at_time` reusa `DoseField` (array tipado); `source`
+# reusa o `SourceEnum` (pinado em ENUM_NAME_OVERRIDES). `status` do bloco é `CharField`
+# (NÃO ChoiceField) de propósito — é DERIVADO (AC6), e um ChoiceField emitiria um enum
+# novo e instável no contrato (mesma decisão do `HabitChange.field`).
+
+
+class MedicationDayEntrySerializer(serializers.Serializer):
+    """Uma linha realizada do dia (``scheduled`` ou ``ad_hoc``). ``substanceName`` é
+    derivado da versão de substância vigente no dia; ``confirmedAt`` nulo = não
+    confirmado; ``timeBlockId`` nulo = avulso sem bloco (AC4/AC7)."""
+
+    id = serializers.UUIDField()
+    medication_id = serializers.UUIDField()
+    medication_title = serializers.CharField()
+    substance_name = serializers.CharField(allow_null=True)
+    dose_at_time = DoseField()
+    confirmed_at = serializers.DateTimeField(allow_null=True)
+    source = serializers.ChoiceField(choices=Source.choices)
+    time_block_id = serializers.UUIDField(allow_null=True)
+
+
+class MedicationDayBlockSerializer(serializers.Serializer):
+    """Um Medication Block do dia: cabeçalho (nome + estado derivado) + suas linhas
+    ``scheduled`` (AC5/AC6)."""
+
+    time_block_id = serializers.UUIDField()
+    time_block_name = serializers.CharField()
+    status = serializers.CharField()  # DERIVADO (AC6): confirmed/partial/pending
+    entries = MedicationDayEntrySerializer(many=True)
+
+
+class MedicationDaySerializer(serializers.Serializer):
+    """Payload da superfície diária: blocos agendados + seção avulso/PRN (AC4/AC7)."""
+
+    date = serializers.DateField()
+    blocks = MedicationDayBlockSerializer(many=True)
+    ad_hoc = MedicationDayEntrySerializer(many=True)
+
+
+class EntryConfirmSerializer(serializers.Serializer):
+    """PATCH de uma linha: confirmar/desconfirmar (AC4)."""
+
+    confirmed = serializers.BooleanField()
+
+
+class BlockConfirmSerializer(serializers.Serializer):
+    """POST de confirmação em lote de um bloco no dia (AC4)."""
+
+    date = serializers.DateField()
+    time_block_id = serializers.UUIDField()
+    confirmed = serializers.BooleanField()
+
+
+class AdHocCreateSerializer(serializers.Serializer):
+    """POST de registro de avulso/PRN (AC7). ``time_block_id``/``dose`` opcionais:
+    ``dose`` omitida herda da agenda vigente (se houver bloco), senão o serviço exige
+    (``DomainError`` → 409). Só valida **forma** (``dose`` é lista quando informada); o
+    conteúdo é validado no serviço (``_validate_dose``, §6.4)."""
+
+    date = serializers.DateField()
+    medication_id = serializers.UUIDField()
+    time_block_id = serializers.UUIDField(required=False, allow_null=True)
+    dose = DoseField(required=False)
 
     def validate_dose(self, value):
         if not isinstance(value, list):

@@ -18,12 +18,16 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core.calendar import today_for
-from medications.models import Doctor, Medication, TimeBlock
+from medications.models import Doctor, Medication, MedicationDayEntry, TimeBlock
 from medications.serializers import (
+    AdHocCreateSerializer,
+    BlockConfirmSerializer,
     DoctorCreateSerializer,
     DoctorSerializer,
     DoctorUpdateSerializer,
+    EntryConfirmSerializer,
     MedicationCreateSerializer,
+    MedicationDaySerializer,
     MedicationScheduleVersionSerializer,
     MedicationSerializer,
     MedicationSubstanceVersionSerializer,
@@ -36,13 +40,18 @@ from medications.serializers import (
 )
 from medications.services import (
     add_substance_version,
+    confirm_block,
+    confirm_medication_entry,
+    create_ad_hoc_entry,
     create_doctor,
     create_medication,
     create_time_block,
     get_medication,
+    get_medication_day,
     list_doctors,
     list_medications,
     list_time_blocks,
+    seed_medication_day,
     set_schedule,
     update_doctor,
     update_medication,
@@ -63,6 +72,22 @@ def _resolve_on_date(request):
     except ValueError:
         raise serializers.ValidationError(
             {"onDate": "Data inválida. Use o formato YYYY-MM-DD."}
+        ) from None
+
+
+def _resolve_day(request):
+    """Resolve o parâmetro ``date`` da superfície diária (default = hoje do usuário).
+
+    Idioma idêntico ao ``HabitDayView`` (``?date=`` / hoje); data inválida → 400.
+    """
+    raw = request.query_params.get("date")
+    if not raw:
+        return today_for(request.user)
+    try:
+        return date_cls.fromisoformat(raw)
+    except ValueError:
+        raise serializers.ValidationError(
+            {"date": "Data inválida. Use o formato YYYY-MM-DD."}
         ) from None
 
 
@@ -254,3 +279,92 @@ class TimeBlockDetailView(APIView):
         except TimeBlock.DoesNotExist:
             raise NotFound() from None
         return Response(TimeBlockSerializer(block).data)
+
+
+# --- Superfície diária realizada (Story 8.2) -----------------------------------
+# Molde exato de `habits.HabitDayView`: o GET materializa (seed no view, não no
+# serializer) e serializa o read-model. Cada mutação (linha/bloco/avulso) devolve o
+# read-model do dia atualizado (Decisão 2 — poupa um GET de reconciliação e uniformiza
+# a resposta para o updater otimista).
+
+
+class MedicationDayView(APIView):
+    """Superfície diária: ``GET`` materializa (idempotente) as linhas ``scheduled`` do
+    dia e retorna ``{date, blocks, adHoc}`` (default = hoje). Molde ``HabitDayView``."""
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="date", type=str, required=False,
+                description="Dia da superfície (YYYY-MM-DD). Default = hoje do usuário.",
+            )
+        ],
+        responses=MedicationDaySerializer,
+    )
+    def get(self, request):
+        day = _resolve_day(request)
+        seed_medication_day(user=request.user, date=day)
+        payload = get_medication_day(user=request.user, date=day)
+        return Response(MedicationDaySerializer(payload).data)
+
+
+class MedicationDayEntryDetailView(APIView):
+    """Confirma/desconfirma **uma** linha (AC4). Devolve o read-model do dia da linha.
+    ``DoesNotExist`` (inclusive cross-tenant) → 404 (esconde existência)."""
+
+    @extend_schema(request=EntryConfirmSerializer, responses=MedicationDaySerializer)
+    def patch(self, request, pk):
+        body = EntryConfirmSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        try:
+            entry = confirm_medication_entry(
+                user=request.user, entry_id=pk, **body.validated_data
+            )
+        except MedicationDayEntry.DoesNotExist:
+            raise NotFound() from None
+        payload = get_medication_day(user=request.user, date=entry.date)
+        return Response(MedicationDaySerializer(payload).data)
+
+
+class MedicationBlockConfirmView(APIView):
+    """Confirma/desconfirma o **bloco inteiro** no dia (AC4, escrita em lote). Devolve
+    o read-model do dia atualizado."""
+
+    @extend_schema(request=BlockConfirmSerializer, responses=MedicationDaySerializer)
+    def post(self, request):
+        body = BlockConfirmSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        data = dict(body.validated_data)
+        day = data["date"]
+        confirm_block(
+            user=request.user,
+            date=day,
+            time_block_id=data["time_block_id"],
+            confirmed=data["confirmed"],
+        )
+        payload = get_medication_day(user=request.user, date=day)
+        return Response(MedicationDaySerializer(payload).data)
+
+
+class MedicationAdHocView(APIView):
+    """Registra um avulso/PRN no dia (AC7). Medicamento inexistente/cross-tenant → 404;
+    bloco inexistente → 400; ``DomainError`` (dose ausente sem agenda para herdar) → 409
+    (propaga ao ``custom_exception_handler``, como ``MedicationScheduleVersionCreateView``).
+    Devolve o read-model do dia atualizado."""
+
+    @extend_schema(request=AdHocCreateSerializer, responses=MedicationDaySerializer)
+    def post(self, request):
+        body = AdHocCreateSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        data = dict(body.validated_data)
+        day = data.pop("date")
+        try:
+            create_ad_hoc_entry(user=request.user, date=day, **data)
+        except Medication.DoesNotExist:
+            raise NotFound() from None
+        except TimeBlock.DoesNotExist:
+            raise serializers.ValidationError(
+                {"time_block_id": "Bloco de horário não encontrado."}
+            ) from None
+        payload = get_medication_day(user=request.user, date=day)
+        return Response(MedicationDaySerializer(payload).data)

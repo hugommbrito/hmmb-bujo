@@ -9,12 +9,15 @@ from django.db import IntegrityError, transaction
 from core.tenant import tenant_context
 from medications.models import (
     Medication,
+    MedicationDayEntry,
     MedicationScheduleVersion,
     MedicationSubstanceVersion,
+    Source,
     TimeBlock,
 )
 from medications.tests.factories import (
     DoctorFactory,
+    MedicationDayEntryFactory,
     MedicationFactory,
     MedicationScheduleVersionFactory,
     MedicationSubstanceVersionFactory,
@@ -167,3 +170,97 @@ def test_all_models_ids_are_uuid(user):
         sched = MedicationScheduleVersionFactory(user=user)
         for obj in (doctor, block, subst, sched):
             assert isinstance(obj.id, uuid.UUID)
+
+
+# ==============================================================================
+# Story 8.2 — camada realizada (MedicationDayEntry): constraints + defaults (AC1)
+# ==============================================================================
+
+
+def test_day_entry_source_default_is_scheduled(user):
+    with tenant_context(user):
+        entry = MedicationDayEntryFactory(user=user, source=Source.SCHEDULED)
+        assert entry.source == "scheduled"
+        assert entry.confirmed_at is None
+
+
+def test_scheduled_partial_unique_blocks_duplicate(user):
+    """AC1: uma linha ``scheduled`` por (med, bloco, dia) — a 2ª viola a constraint
+    parcial ``uniq_med_day_entry_scheduled``."""
+    with tenant_context(user):
+        med = MedicationFactory(user=user)
+        block = TimeBlockFactory(user=user)
+        MedicationDayEntry.objects.create(
+            medication=med, time_block=block, date=_D, source=Source.SCHEDULED,
+            dose_at_time=[{"label": "", "amount": 1, "unit": "comp"}],
+        )
+        with pytest.raises(IntegrityError), transaction.atomic():
+            MedicationDayEntry.objects.create(
+                medication=med, time_block=block, date=_D, source=Source.SCHEDULED,
+                dose_at_time=[{"label": "", "amount": 2, "unit": "comp"}],
+            )
+
+
+def test_ad_hoc_duplicates_allowed_outside_partial_constraint(user):
+    """AC1/AC7: a constraint parcial é ``WHERE source='scheduled'`` — duas linhas
+    ``ad_hoc`` iguais (mesmo med/bloco/dia) coexistem (múltiplos avulsos)."""
+    with tenant_context(user):
+        med = MedicationFactory(user=user)
+        block = TimeBlockFactory(user=user)
+        for _ in range(2):
+            MedicationDayEntry.objects.create(
+                medication=med, time_block=block, date=_D, source=Source.AD_HOC,
+                dose_at_time=[{"label": "", "amount": 1, "unit": "comp"}],
+            )
+        assert MedicationDayEntry.objects.filter(
+            medication=med, time_block=block, date=_D, source=Source.AD_HOC
+        ).count() == 2
+
+
+def test_scheduled_and_ad_hoc_coexist_same_med_block_day(user):
+    """A linha ``scheduled`` agendada + um ``ad_hoc`` do mesmo remédio/bloco/dia
+    coexistem (a parcial não restringe ``ad_hoc``)."""
+    with tenant_context(user):
+        med = MedicationFactory(user=user)
+        block = TimeBlockFactory(user=user)
+        MedicationDayEntry.objects.create(
+            medication=med, time_block=block, date=_D, source=Source.SCHEDULED,
+            dose_at_time=[{"label": "", "amount": 1, "unit": "comp"}],
+        )
+        MedicationDayEntry.objects.create(
+            medication=med, time_block=block, date=_D, source=Source.AD_HOC,
+            dose_at_time=[{"label": "", "amount": 1, "unit": "comp"}],
+        )
+        assert MedicationDayEntry.objects.filter(
+            medication=med, time_block=block, date=_D
+        ).count() == 2
+
+
+def test_source_check_constraint_rejects_invalid_value(user):
+    with tenant_context(user):
+        med = MedicationFactory(user=user)
+        block = TimeBlockFactory(user=user)
+        with pytest.raises(IntegrityError), transaction.atomic():
+            MedicationDayEntry.objects.create(
+                medication=med, time_block=block, date=_D, source="bogus",
+                dose_at_time=[{"label": "", "amount": 1, "unit": "comp"}],
+            )
+
+
+def test_ad_hoc_time_block_may_be_null(user):
+    """AC7: ``time_block`` é opcional (avulso sem bloco)."""
+    with tenant_context(user):
+        med = MedicationFactory(user=user)
+        entry = MedicationDayEntry.objects.create(
+            medication=med, time_block=None, date=_D, source=Source.AD_HOC,
+            dose_at_time=[{"label": "", "amount": 1, "unit": "comp"}],
+        )
+        assert entry.time_block_id is None
+
+
+def test_day_entry_ordering(user):
+    with tenant_context(user):
+        MedicationDayEntryFactory(user=user, date=date(2026, 2, 1))
+        MedicationDayEntryFactory(user=user, date=date(2026, 1, 1))
+        dates = [e.date for e in MedicationDayEntry.objects.all()]
+        assert dates == sorted(dates)

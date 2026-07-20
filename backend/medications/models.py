@@ -1,9 +1,11 @@
-"""Medicamentos — camada de cadastro/versões prospectivas (FR-3.4, FR-3.5, FR-3.7, AD-07).
+"""Medicamentos — cadastro/versões prospectivas (8.1) + camada realizada (8.2).
 
-Esta story (8.1) implementa APENAS a camada de **catálogo versionado** da AD-07
-(slot estável + blocos dinâmicos + agenda/substância versionadas). A camada
-realizada (``medication_day_entries`` com ``dose_at_time`` congelado) e a semântica
-de dose perdida são 8.2/8.3 e **não** existem aqui.
+A Story 8.1 implementou a camada de **catálogo versionado** da AD-07 (slot estável +
+blocos dinâmicos + agenda/substância versionadas). A Story 8.2 acrescenta a **camada
+realizada** (``medication_day_entries`` com ``dose_at_time`` congelado, ``source``
+scheduled/ad_hoc e a semântica de ausência = dose perdida) — itens 7-11 da AD-07,
+espelhando ``habits.HabitDayEntry`` (AD-06). A **exibição** da dose perdida (histórico)
+é 8.3; o **schema e a semântica de ausência** nascem aqui na 8.2.
 
 Divergência-chave (AD-07 espelha AD-06): Medicamentos **VERSIONA** — porte o molde de
 ``habits`` (``HabitVersion``), NÃO o de ``health`` (plano). O estado de
@@ -149,5 +151,90 @@ class MedicationScheduleVersion(TenantModel):
             models.UniqueConstraint(
                 fields=["medication", "time_block", "effective_from"],
                 name="uniq_schedule_version_per_day",
+            ),
+        ]
+
+
+class Source(models.TextChoices):
+    """Origem da linha realizada (AD-07 itens 8/10) — no **nível do módulo** (não
+    aninhada em ``MedicationDayEntry``): uma classe aninhada não é visível ao
+    ``CheckConstraint`` de ``Meta`` (mesmo motivo de ``bujo.models.TaskStatus`` /
+    ``habits.models.HabitType``). Exposta como ``MedicationDayEntry.Source``.
+
+    - ``SCHEDULED``: materializada da agenda vigente no dia (contrapartida esperada;
+      uma ``scheduled`` sem ``confirmed_at`` num dia passado é uma **dose perdida** —
+      sinal clínico, exibido na 8.3).
+    - ``AD_HOC``: medicamento tomado sem previsão (PRN); sempre confirmado, sem
+      contrapartida — a **ausência** de uma ``ad_hoc`` nunca significa perda.
+    """
+
+    SCHEDULED = "scheduled"
+    AD_HOC = "ad_hoc"
+
+
+class MedicationDayEntry(TenantModel):
+    """Snapshot realizado, congelado por dia (AD-07 itens 7-11 — camada da 8.2).
+
+    Espelha ``habits.HabitDayEntry`` (AD-06): uma linha ``scheduled`` por
+    ``(medicamento, bloco)`` agendado e ativo em D, materializada na 1ª abertura do
+    dia via ``seed_medication_day`` (gap-fill idempotente), com ``dose_at_time``
+    **congelado** da versão de agenda vigente naquele dia. ``confirmed_at`` nulo =
+    não confirmado; preenchê-lo = adesão registrada. Confirmar não sangra para outras
+    linhas nem toca a agenda/substância.
+
+    Duas semânticas que hábitos não tem (o coração da 8.2):
+
+    1. **Dose perdida ≠ 0% de hábito.** Uma linha ``scheduled`` sem ``confirmed_at``
+       num dia passado é um **sinal clínico**, não entra em denominador nenhum. A
+       exibição como "perda" é a 8.3; o schema e a semântica de ausência nascem aqui.
+    2. **``ad_hoc`` (PRN).** Medicamento tomado sem previsão, sempre confirmado, sem
+       contrapartida — ``time_block`` opcional (pode ser nulo) e **fora** da constraint
+       parcial de ``scheduled`` (permite múltiplos avulsos no mesmo dia/bloco).
+
+    Também herda ``TenantModel`` (UUID PK + ``user_id`` denormalizado + auto-scope):
+    a AD-07 desenha PK composta ``(user_id, medication_id, time_block_id, date)``, mas
+    o projeto exige UUID PK + ``user_id`` indexado em toda tabela tenant (§6.1/AD-12),
+    então a unicidade vira ``UniqueConstraint`` — e aqui **PARCIAL** (``WHERE
+    source='scheduled'``), diferente de hábitos (que não tem ``source``). É a primeira
+    constraint parcial do codebase.
+
+    ⚠️ **Casing JSONB (§6.3):** ``dose_at_time`` usa chaves estáticas de palavra única
+    (``label``/``amount``/``unit``) — o ``underscoreize``/``camelize`` as deixa
+    **intactas**, então ``dose_at_time`` **NÃO** entra em
+    ``JSON_UNDERSCOREIZE.ignore_fields`` (base.py), mesma decisão do ``dose`` da 8.1.
+    """
+
+    Source = Source
+
+    medication = models.ForeignKey(
+        Medication, on_delete=models.CASCADE, related_name="day_entries"
+    )
+    time_block = models.ForeignKey(
+        TimeBlock, on_delete=models.PROTECT, null=True, blank=True,
+        related_name="day_entries",
+    )
+    date = models.DateField()
+    dose_at_time = models.JSONField(default=list, blank=True)
+    confirmed_at = models.DateTimeField(null=True, blank=True)
+    source = models.CharField(
+        max_length=16, choices=Source.choices, default=Source.SCHEDULED
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "medication_day_entries"
+        ordering = ["date", "time_block", "medication"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(source__in=Source.values),
+                name="med_day_entry_source_valid",
+            ),
+            # PRIMEIRA constraint parcial do codebase: uma linha ``scheduled`` por
+            # ``(med, bloco, dia)``. Linhas ``ad_hoc`` NÃO são restringidas (Django
+            # gera um índice único parcial ``... WHERE source = 'scheduled'``).
+            models.UniqueConstraint(
+                fields=["medication", "time_block", "date"],
+                condition=models.Q(source=Source.SCHEDULED),
+                name="uniq_med_day_entry_scheduled",
             ),
         ]

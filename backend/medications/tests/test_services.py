@@ -1,7 +1,7 @@
 """Testes da camada de serviço de Medicamentos (AD-07, AC1–AC6)."""
 
 import uuid
-from datetime import timedelta
+from datetime import date, timedelta
 
 import pytest
 
@@ -11,28 +11,38 @@ from core.tenant import tenant_context
 from medications.models import (
     Doctor,
     Medication,
+    MedicationDayEntry,
     MedicationScheduleVersion,
     MedicationSubstanceVersion,
+    Source,
     TimeBlock,
 )
 from medications.services import (
     _validate_dose,
     add_substance_version,
+    confirm_block,
+    confirm_medication_entry,
+    create_ad_hoc_entry,
     create_doctor,
     create_medication,
     create_time_block,
     current_schedule_version_of,
     current_substance_version_of,
     get_medication,
+    get_medication_day,
     list_medications,
     list_time_blocks,
+    seed_medication_day,
     set_schedule,
     update_medication,
     update_time_block,
 )
 from medications.tests.factories import (
     DoctorFactory,
+    MedicationDayEntryFactory,
     MedicationFactory,
+    MedicationScheduleVersionFactory,
+    MedicationSubstanceVersionFactory,
     TimeBlockFactory,
 )
 
@@ -446,3 +456,280 @@ def test_set_schedule_cross_tenant_block_raises(user, other_user):
             set_schedule(
                 user=user, medication_id=med.id, time_block_id=alheio_block.id, dose=_DOSE
             )
+
+
+# ==============================================================================
+# Story 8.2 — camada realizada (seed / confirmação / read-model / avulso)
+# ==============================================================================
+
+_D1 = date(2026, 3, 1)
+_D2 = date(2026, 3, 2)
+_DOSE_A = [{"label": "", "amount": 1, "unit": "comp"}]
+_DOSE_B = [{"label": "", "amount": 2, "unit": "comp"}]
+
+
+def _schedule(user, *, med, block, dose, effective_from, active=True):
+    return MedicationScheduleVersionFactory(
+        user=user, medication=med, time_block=block, dose=dose,
+        effective_from=effective_from, active=active,
+    )
+
+
+# --- seed_medication_day (AC2) -------------------------------------------------
+def test_seed_creates_one_scheduled_row_per_active_block_frozen_dose(user):
+    """AC2: uma linha ``scheduled`` por (med, bloco) ativo em D, dose congelada da
+    versão vigente, ``confirmed_at`` null."""
+    with tenant_context(user):
+        med = MedicationFactory(user=user)
+        manha = TimeBlockFactory(user=user, name="Manhã", display_order=0)
+        noite = TimeBlockFactory(user=user, name="Noite", display_order=1)
+        _schedule(user, med=med, block=manha, dose=_DOSE_A, effective_from=_D1)
+        _schedule(user, med=med, block=noite, dose=_DOSE_B, effective_from=_D1)
+
+        seed_medication_day(user=user, date=_D1)
+
+        rows = {e.time_block_id: e for e in MedicationDayEntry.objects.filter(date=_D1)}
+        assert len(rows) == 2
+        assert rows[manha.id].dose_at_time == _DOSE_A
+        assert rows[manha.id].confirmed_at is None
+        assert rows[manha.id].source == "scheduled"
+        assert rows[noite.id].dose_at_time == _DOSE_B
+
+
+def test_seed_is_idempotent_and_preserves_confirmation(user):
+    """AC2: 2ª abertura não recria/sobrescreve — preserva ``confirmed_at`` editado."""
+    with tenant_context(user):
+        med = MedicationFactory(user=user)
+        block = TimeBlockFactory(user=user)
+        _schedule(user, med=med, block=block, dose=_DOSE_A, effective_from=_D1)
+
+        seed_medication_day(user=user, date=_D1)
+        entry = MedicationDayEntry.objects.get(date=_D1, medication=med, time_block=block)
+        confirm_medication_entry(user=user, entry_id=entry.id, confirmed=True)
+
+        seed_medication_day(user=user, date=_D1)  # 2ª passada
+
+        assert MedicationDayEntry.objects.filter(date=_D1, source="scheduled").count() == 1
+        entry.refresh_from_db()
+        assert entry.confirmed_at is not None  # preservado
+
+
+def test_seed_excludes_inactive_block(user):
+    """AC2: bloco desativado (``active=False``) não gera linha."""
+    with tenant_context(user):
+        med = MedicationFactory(user=user)
+        block = TimeBlockFactory(user=user, active=False)
+        _schedule(user, med=med, block=block, dose=_DOSE_A, effective_from=_D1)
+
+        seed_medication_day(user=user, date=_D1)
+
+        assert not MedicationDayEntry.objects.filter(date=_D1).exists()
+
+
+def test_seed_excludes_inactive_schedule_version(user):
+    """AC2: agenda vigente ``active=False`` em D não gera linha."""
+    with tenant_context(user):
+        med = MedicationFactory(user=user)
+        block = TimeBlockFactory(user=user)
+        _schedule(user, med=med, block=block, dose=_DOSE_A, effective_from=_D1, active=False)
+
+        seed_medication_day(user=user, date=_D1)
+
+        assert not MedicationDayEntry.objects.filter(date=_D1).exists()
+
+
+def test_seed_immune_to_schedule_created_after_the_day(user):
+    """AC2: dia passado é imune a agenda criada depois (``current_...(D) is None``)."""
+    with tenant_context(user):
+        med = MedicationFactory(user=user)
+        block = TimeBlockFactory(user=user)
+        _schedule(user, med=med, block=block, dose=_DOSE_A, effective_from=_D2)  # nasce D2
+
+        seed_medication_day(user=user, date=_D1)  # _D1 < _D2
+
+        assert not MedicationDayEntry.objects.filter(date=_D1).exists()
+
+
+# --- seed gap-fill (AC3) -------------------------------------------------------
+def test_seed_skipped_day_uses_version_effective_that_day(user):
+    """AC3: dia pulado aberto depois usa a versão vigente NAQUELE dia, não a de hoje."""
+    with tenant_context(user):
+        med = MedicationFactory(user=user)
+        block = TimeBlockFactory(user=user)
+        _schedule(user, med=med, block=block, dose=_DOSE_A, effective_from=_D1)
+        _schedule(user, med=med, block=block, dose=_DOSE_B, effective_from=_D2)
+
+        seed_medication_day(user=user, date=_D1)
+
+        entry = MedicationDayEntry.objects.get(date=_D1)
+        assert entry.dose_at_time == _DOSE_A  # versão de _D1, não a de _D2
+
+
+def test_materialized_day_keeps_frozen_dose_after_schedule_change(user):
+    """AC3: dia já materializado mantém a dose congelada mesmo que a agenda mude depois."""
+    with tenant_context(user):
+        med = MedicationFactory(user=user)
+        block = TimeBlockFactory(user=user)
+        _schedule(user, med=med, block=block, dose=_DOSE_A, effective_from=_D1)
+
+        seed_medication_day(user=user, date=_D1)
+        # Agenda muda a partir de _D2; re-seed de _D1 NÃO reescreve.
+        _schedule(user, med=med, block=block, dose=_DOSE_B, effective_from=_D2)
+        seed_medication_day(user=user, date=_D1)
+
+        entry = MedicationDayEntry.objects.get(date=_D1)
+        assert entry.dose_at_time == _DOSE_A
+
+
+# --- confirmação individual e em lote (AC4) ------------------------------------
+def test_confirm_entry_updates_only_that_row(user):
+    """AC4: confirmar uma linha seta ``confirmed_at`` só nela; desconfirmar volta a None."""
+    with tenant_context(user):
+        med = MedicationFactory(user=user)
+        b1 = TimeBlockFactory(user=user, name="Manhã", display_order=0)
+        b2 = TimeBlockFactory(user=user, name="Noite", display_order=1)
+        e1 = MedicationDayEntryFactory(user=user, medication=med, time_block=b1, date=_D1)
+        e2 = MedicationDayEntryFactory(user=user, medication=med, time_block=b2, date=_D1)
+
+        confirm_medication_entry(user=user, entry_id=e1.id, confirmed=True)
+        e1.refresh_from_db()
+        e2.refresh_from_db()
+        assert e1.confirmed_at is not None
+        assert e2.confirmed_at is None  # não sangra
+
+        confirm_medication_entry(user=user, entry_id=e1.id, confirmed=False)
+        e1.refresh_from_db()
+        assert e1.confirmed_at is None
+
+
+def test_confirm_block_batch_affects_scheduled_only(user):
+    """AC4: confirmar bloco = lote sobre todas as linhas ``scheduled`` do bloco no dia;
+    ignora ``ad_hoc`` e devolve a contagem afetada."""
+    with tenant_context(user):
+        med1 = MedicationFactory(user=user)
+        med2 = MedicationFactory(user=user)
+        block = TimeBlockFactory(user=user)
+        MedicationDayEntryFactory(user=user, medication=med1, time_block=block, date=_D1)
+        MedicationDayEntryFactory(user=user, medication=med2, time_block=block, date=_D1)
+        # Um ad_hoc no mesmo bloco/dia NÃO deve ser afetado pelo lote.
+        ad_hoc = MedicationDayEntryFactory(
+            user=user, medication=med1, time_block=block, date=_D1, source="ad_hoc",
+        )
+
+        affected = confirm_block(
+            user=user, date=_D1, time_block_id=block.id, confirmed=True
+        )
+        assert affected == 2
+        scheduled = MedicationDayEntry.objects.filter(date=_D1, source="scheduled")
+        assert all(e.confirmed_at is not None for e in scheduled)
+        ad_hoc.refresh_from_db()
+        assert ad_hoc.confirmed_at is None  # ad_hoc do factory nasce sem confirmação
+
+
+# --- avulso / PRN (AC7) --------------------------------------------------------
+def test_create_ad_hoc_entry_always_confirmed_no_block(user):
+    """AC7: avulso sem bloco, sempre confirmado, ``source=ad_hoc``, com a dose dada."""
+    with tenant_context(user):
+        med = MedicationFactory(user=user)
+        entry = create_ad_hoc_entry(
+            user=user, date=_D1, medication_id=med.id, dose=_DOSE_A
+        )
+        assert entry.source == "ad_hoc"
+        assert entry.time_block_id is None
+        assert entry.confirmed_at is not None
+        assert entry.dose_at_time == _DOSE_A
+
+
+def test_create_ad_hoc_inherits_dose_from_current_schedule(user):
+    """AC4/AC7: com bloco e agenda vigente, a dose omitida é herdada da versão vigente."""
+    with tenant_context(user):
+        med = MedicationFactory(user=user)
+        block = TimeBlockFactory(user=user)
+        _schedule(user, med=med, block=block, dose=_DOSE_B, effective_from=_D1)
+
+        entry = create_ad_hoc_entry(
+            user=user, date=_D1, medication_id=med.id, time_block_id=block.id
+        )
+        assert entry.dose_at_time == _DOSE_B
+
+
+def test_create_ad_hoc_without_dose_or_schedule_raises(user):
+    """AC7 (Decisão 6): sem dose e sem agenda para herdar → ``DomainError``."""
+    with tenant_context(user):
+        med = MedicationFactory(user=user)
+        with pytest.raises(DomainError):
+            create_ad_hoc_entry(user=user, date=_D1, medication_id=med.id)
+
+
+# --- read-model + status derivado do bloco (AC4/AC6) ---------------------------
+def test_get_medication_day_groups_blocks_and_derives_status(user):
+    """AC4/AC6: read-model agrupa por bloco (ordenado), deriva status e separa avulsos;
+    ``substance_name`` vem da versão vigente no dia. Duas linhas ``scheduled`` no mesmo
+    bloco exigem medicamentos DISTINTOS (a constraint parcial proíbe duplicar (med,
+    bloco, dia))."""
+    with tenant_context(user):
+        med1 = MedicationFactory(user=user, title="Losartana")
+        # Substância vigente em _D1 (não hoje) — para o read-model derivar o nome
+        # naquele dia (create_medication criaria a versão com effective_from=hoje).
+        MedicationSubstanceVersionFactory(
+            user=user, medication=med1, substance_name="Losartana K", effective_from=_D1,
+        )
+        med2 = MedicationFactory(user=user, title="AAS")
+        med3 = MedicationFactory(user=user, title="Vitamina D")
+        manha = TimeBlockFactory(user=user, name="Manhã", display_order=0)
+        noite = TimeBlockFactory(user=user, name="Noite", display_order=1)
+        # Manhã: 2 meds (1 confirmado → partial). Noite: 1 med não confirmado → pending.
+        m1 = MedicationDayEntryFactory(user=user, medication=med1, time_block=manha, date=_D1)
+        MedicationDayEntryFactory(user=user, medication=med2, time_block=manha, date=_D1)
+        MedicationDayEntryFactory(user=user, medication=med3, time_block=noite, date=_D1)
+        MedicationDayEntryFactory(
+            user=user, medication=med1, time_block=None, date=_D1, source="ad_hoc",
+        )
+        confirm_medication_entry(user=user, entry_id=m1.id, confirmed=True)
+
+        day = get_medication_day(user=user, date=_D1)
+
+        assert day["date"] == _D1
+        assert [b["time_block_name"] for b in day["blocks"]] == ["Manhã", "Noite"]
+        assert day["blocks"][0]["status"] == "partial"
+        assert day["blocks"][1]["status"] == "pending"
+        # A substância vem da versão vigente do med1 (os factory-meds não têm versão).
+        substances = {e["substance_name"] for e in day["blocks"][0]["entries"]}
+        assert "Losartana K" in substances
+        assert len(day["ad_hoc"]) == 1
+        assert day["ad_hoc"][0]["source"] == "ad_hoc"
+
+
+def test_get_medication_day_block_confirmed_when_all_confirmed(user):
+    """AC6: status ``confirmed`` quando todas as linhas ``scheduled`` do bloco estão
+    confirmadas (via lote). Meds distintos (constraint parcial)."""
+    with tenant_context(user):
+        med1 = MedicationFactory(user=user)
+        med2 = MedicationFactory(user=user)
+        block = TimeBlockFactory(user=user)
+        MedicationDayEntryFactory(user=user, medication=med1, time_block=block, date=_D1)
+        MedicationDayEntryFactory(user=user, medication=med2, time_block=block, date=_D1)
+
+        confirm_block(user=user, date=_D1, time_block_id=block.id, confirmed=True)
+        day = get_medication_day(user=user, date=_D1)
+
+        assert day["blocks"][0]["status"] == "confirmed"
+
+
+def test_confirm_entry_cross_tenant_raises(user, other_user):
+    with tenant_context(other_user):
+        med = MedicationFactory(user=other_user)
+        block = TimeBlockFactory(user=other_user)
+        alheio = MedicationDayEntryFactory(
+            user=other_user, medication=med, time_block=block, date=_D1,
+        )
+    with tenant_context(user):
+        with pytest.raises(MedicationDayEntry.DoesNotExist):
+            confirm_medication_entry(user=user, entry_id=alheio.id, confirmed=True)
+
+
+def test_seed_read_model_status_field_is_not_a_column(user):
+    """AC6: ``status`` é derivado — não existe coluna de status de bloco no schema."""
+    field_names = {f.name for f in MedicationDayEntry._meta.get_fields()}
+    assert "status" not in field_names
+    assert Source.values == ["scheduled", "ad_hoc"]

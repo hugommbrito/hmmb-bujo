@@ -902,6 +902,88 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/medications/days/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description Superfície diária: ``GET`` materializa (idempotente) as linhas ``scheduled`` do
+         *     dia e retorna ``{date, blocks, adHoc}`` (default = hoje). Molde ``HabitDayView``.
+         */
+        get: operations["medications_days_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/medications/days/{id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * @description Confirma/desconfirma **uma** linha (AC4). Devolve o read-model do dia da linha.
+         *     ``DoesNotExist`` (inclusive cross-tenant) → 404 (esconde existência).
+         */
+        patch: operations["medications_days_partial_update"];
+        trace?: never;
+    };
+    "/api/medications/days/ad-hoc/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description Registra um avulso/PRN no dia (AC7). Medicamento inexistente/cross-tenant → 404;
+         *     bloco inexistente → 400; ``DomainError`` (dose ausente sem agenda para herdar) → 409
+         *     (propaga ao ``custom_exception_handler``, como ``MedicationScheduleVersionCreateView``).
+         *     Devolve o read-model do dia atualizado.
+         */
+        post: operations["medications_days_ad_hoc_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/medications/days/confirm-block/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description Confirma/desconfirma o **bloco inteiro** no dia (AC4, escrita em lote). Devolve
+         *     o read-model do dia atualizado.
+         */
+        post: operations["medications_days_confirm_block_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/time-blocks/": {
         parameters: {
             query?: never;
@@ -938,6 +1020,25 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * @description POST de registro de avulso/PRN (AC7). ``time_block_id``/``dose`` opcionais:
+         *     ``dose`` omitida herda da agenda vigente (se houver bloco), senão o serviço exige
+         *     (``DomainError`` → 409). Só valida **forma** (``dose`` é lista quando informada); o
+         *     conteúdo é validado no serviço (``_validate_dose``, §6.4).
+         */
+        AdHocCreate: {
+            /** Format: date */
+            date: string;
+            /** Format: uuid */
+            medicationId: string;
+            /** Format: uuid */
+            timeBlockId?: string | null;
+            dose?: {
+                label?: string;
+                amount?: number;
+                unit?: string;
+            }[];
+        };
         ArchiveEntry: {
             type: components["schemas"]["TypeEnum"];
             /** Format: date */
@@ -947,6 +1048,14 @@ export interface components {
         };
         /** @enum {unknown} */
         BlankEnum: "";
+        /** @description POST de confirmação em lote de um bloco no dia (AC4). */
+        BlockConfirm: {
+            /** Format: date */
+            date: string;
+            /** Format: uuid */
+            timeBlockId: string;
+            confirmed: boolean;
+        };
         BrainDumpCount: {
             count: number;
         };
@@ -1428,6 +1537,47 @@ export interface components {
             /** Format: uuid */
             prescribedById?: string | null;
         };
+        /** @description Payload da superfície diária: blocos agendados + seção avulso/PRN (AC4/AC7). */
+        MedicationDay: {
+            /** Format: date */
+            date: string;
+            blocks: components["schemas"]["MedicationDayBlock"][];
+            adHoc: components["schemas"]["MedicationDayEntry"][];
+        };
+        /**
+         * @description Um Medication Block do dia: cabeçalho (nome + estado derivado) + suas linhas
+         *     ``scheduled`` (AC5/AC6).
+         */
+        MedicationDayBlock: {
+            /** Format: uuid */
+            timeBlockId: string;
+            timeBlockName: string;
+            status: string;
+            entries: components["schemas"]["MedicationDayEntry"][];
+        };
+        /**
+         * @description Uma linha realizada do dia (``scheduled`` ou ``ad_hoc``). ``substanceName`` é
+         *     derivado da versão de substância vigente no dia; ``confirmedAt`` nulo = não
+         *     confirmado; ``timeBlockId`` nulo = avulso sem bloco (AC4/AC7).
+         */
+        MedicationDayEntry: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            medicationId: string;
+            medicationTitle: string;
+            substanceName: string | null;
+            doseAtTime: {
+                label?: string;
+                amount?: number;
+                unit?: string;
+            }[];
+            /** Format: date-time */
+            confirmedAt: string | null;
+            source: components["schemas"]["SourceEnum"];
+            /** Format: uuid */
+            timeBlockId: string | null;
+        };
         /**
          * @description Saída de uma versão de agenda vigente/criada (eixo agenda). ``dose`` é o array
          *     tipado; ``time_block_name`` acompanha para a tela renderizar sem uma query extra.
@@ -1493,6 +1643,10 @@ export interface components {
         PatchedDoctorUpdate: {
             name?: string;
             specialty?: string | null;
+        };
+        /** @description PATCH de uma linha: confirmar/desconfirmar (AC4). */
+        PatchedEntryConfirm: {
+            confirmed?: boolean;
         };
         /**
          * @description PATCH de uma linha: marcar/desmarcar ``value`` e/ou correção avulsa.
@@ -1644,6 +1798,12 @@ export interface components {
             date: string;
             isHoliday: boolean;
         };
+        /**
+         * @description * `scheduled` - Scheduled
+         *     * `ad_hoc` - Ad Hoc
+         * @enum {string}
+         */
+        SourceEnum: "scheduled" | "ad_hoc";
         /**
          * @description * `pending` - Pending
          *     * `started` - Started
@@ -3193,6 +3353,99 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MedicationSubstanceVersion"];
+                };
+            };
+        };
+    };
+    medications_days_retrieve: {
+        parameters: {
+            query?: {
+                /** @description Dia da superfície (YYYY-MM-DD). Default = hoje do usuário. */
+                date?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MedicationDay"];
+                };
+            };
+        };
+    };
+    medications_days_partial_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PatchedEntryConfirm"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MedicationDay"];
+                };
+            };
+        };
+    };
+    medications_days_ad_hoc_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdHocCreate"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MedicationDay"];
+                };
+            };
+        };
+    };
+    medications_days_confirm_block_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BlockConfirm"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MedicationDay"];
                 };
             };
         };

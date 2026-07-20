@@ -11,9 +11,14 @@ import uuid
 
 from core.calendar import today_for
 from core.tenant import tenant_context
-from medications.models import Medication, MedicationScheduleVersion
+from medications.models import (
+    Medication,
+    MedicationDayEntry,
+    MedicationScheduleVersion,
+)
 from medications.tests.factories import (
     DoctorFactory,
+    MedicationDayEntryFactory,
     MedicationFactory,
     TimeBlockFactory,
 )
@@ -263,3 +268,265 @@ def test_get_daily_state_respects_on_date(auth_client, user):
     # onDate hoje: agenda presente.
     listing = auth_client.get(f"{_MEDS}?onDate={today.isoformat()}")
     assert len(listing.data[0]["schedules"]) == 1
+
+
+# ==============================================================================
+# Story 8.2 — superfície diária (GET days / PATCH / confirm-block / ad-hoc)
+# ==============================================================================
+
+_DAYS = "/api/medications/days/"
+_CONFIRM_BLOCK = "/api/medications/days/confirm-block/"
+_AD_HOC = "/api/medications/days/ad-hoc/"
+
+
+def _seed_med_with_schedule(auth_client, user, *, block_name="Manhã"):
+    """Cria (via API) med + bloco + agenda vigente hoje; retorna (medId, blockId)."""
+    with tenant_context(user):
+        block = TimeBlockFactory(user=user, name=block_name)
+    resp = auth_client.post(_MEDS, {"title": "M", "substanceName": "Losartana"}, format="json")
+    med_id = resp.data["id"]
+    auth_client.post(
+        f"{_MEDS}{med_id}/schedule-versions/",
+        {"timeBlockId": str(block.id), "dose": _DOSE},
+        format="json",
+    )
+    return med_id, str(block.id)
+
+
+def test_get_days_seeds_and_returns_read_model(auth_client, user):
+    """AC4: GET default=hoje materializa (idempotente) e retorna blocos + status."""
+    med_id, block_id = _seed_med_with_schedule(auth_client, user)
+
+    response = auth_client.get(_DAYS)
+    assert response.status_code == 200, response.data
+    assert response.data["date"] == today_for(user).isoformat()
+    assert len(response.data["blocks"]) == 1
+    block = response.data["blocks"][0]
+    assert block["time_block_name"] == "Manhã"
+    assert block["status"] == "pending"
+    assert len(block["entries"]) == 1
+    entry = block["entries"][0]
+    assert entry["medication_title"] == "M"
+    assert entry["substance_name"] == "Losartana"
+    assert entry["confirmed_at"] is None
+    assert entry["source"] == "scheduled"
+
+    # Idempotência via HTTP: 2ª chamada não duplica linhas.
+    auth_client.get(_DAYS)
+    with tenant_context(user):
+        assert MedicationDayEntry.objects.filter(source="scheduled").count() == 1
+
+
+def test_get_days_empty_state(auth_client, user):
+    """AC8: usuário sem medicamentos → superfície vazia (sem blocos nem avulsos)."""
+    response = auth_client.get(_DAYS)
+    assert response.status_code == 200
+    assert response.data["blocks"] == []
+    assert response.data["ad_hoc"] == []
+
+
+def test_get_days_invalid_date_returns_400(auth_client):
+    response = auth_client.get(f"{_DAYS}?date=2026-13-99")
+    assert response.status_code == 400
+    assert "date" in response.data.get("fields", {})
+
+
+def test_patch_entry_confirms_single_row(auth_client, user):
+    """AC4: PATCH ``{confirmed:true}`` marca só aquela linha; o dia reflete ``partial``."""
+    _seed_med_with_schedule(auth_client, user)
+    day = auth_client.get(_DAYS).data
+    entry_id = day["blocks"][0]["entries"][0]["id"]
+
+    response = auth_client.patch(
+        f"{_DAYS}{entry_id}/", {"confirmed": True}, format="json"
+    )
+    assert response.status_code == 200, response.data
+    assert response.data["blocks"][0]["entries"][0]["confirmed_at"] is not None
+    assert response.data["blocks"][0]["status"] == "confirmed"
+
+
+def test_patch_entry_other_tenant_returns_404(auth_client, user, other_user):
+    with tenant_context(other_user):
+        med = MedicationFactory(user=other_user)
+        block = TimeBlockFactory(user=other_user)
+        alheio = MedicationDayEntryFactory(
+            user=other_user, medication=med, time_block=block,
+        )
+    response = auth_client.patch(
+        f"{_DAYS}{alheio.id}/", {"confirmed": True}, format="json"
+    )
+    assert response.status_code == 404
+
+
+def test_confirm_block_batch(auth_client, user):
+    """AC4: POST confirm-block confirma todas as linhas ``scheduled`` do bloco no dia."""
+    med_id, block_id = _seed_med_with_schedule(auth_client, user)
+    day = auth_client.get(_DAYS).data
+    date_str = day["date"]
+
+    response = auth_client.post(
+        _CONFIRM_BLOCK,
+        {"date": date_str, "timeBlockId": block_id, "confirmed": True},
+        format="json",
+    )
+    assert response.status_code == 200, response.data
+    assert response.data["blocks"][0]["status"] == "confirmed"
+
+
+def test_post_ad_hoc_creates_confirmed_entry(auth_client, user):
+    """AC7: POST ad-hoc cria linha confirmada na seção avulso/PRN, sem bloco."""
+    resp = auth_client.post(
+        _MEDS, {"title": "Dipirona", "substanceName": "Dipirona"}, format="json"
+    )
+    med_id = resp.data["id"]
+    date_str = today_for(user).isoformat()
+
+    response = auth_client.post(
+        _AD_HOC,
+        {"date": date_str, "medicationId": med_id, "dose": _DOSE},
+        format="json",
+    )
+    assert response.status_code == 200, response.data
+    assert len(response.data["ad_hoc"]) == 1
+    ad_hoc = response.data["ad_hoc"][0]
+    assert ad_hoc["source"] == "ad_hoc"
+    assert ad_hoc["confirmed_at"] is not None
+    assert ad_hoc["time_block_id"] is None
+
+
+def test_post_ad_hoc_without_dose_or_schedule_returns_409(auth_client, user):
+    """AC7 (Decisão 6): sem dose e sem agenda para herdar → 409 (DomainError)."""
+    resp = auth_client.post(_MEDS, {"title": "Dipirona", "substanceName": "D"}, format="json")
+    med_id = resp.data["id"]
+    date_str = today_for(user).isoformat()
+
+    response = auth_client.post(
+        _AD_HOC, {"date": date_str, "medicationId": med_id}, format="json"
+    )
+    assert response.status_code == 409
+
+
+def test_ad_hoc_dose_keys_survive_camelcase_roundtrip(auth_client, user):
+    """AC2/Task3: as chaves da dose (``label``/``amount``/``unit``) NÃO são camelizadas
+    na borda — provado inspecionando ``response.content`` (JSON renderizado)."""
+    resp = auth_client.post(_MEDS, {"title": "M", "substanceName": "S"}, format="json")
+    med_id = resp.data["id"]
+    date_str = today_for(user).isoformat()
+
+    response = auth_client.post(
+        _AD_HOC,
+        {
+            "date": date_str,
+            "medicationId": med_id,
+            "dose": [{"label": "A", "amount": 50, "unit": "mg"}],
+        },
+        format="json",
+    )
+    body = json.loads(response.content)
+    # Campos externos camelizados (adHoc/doseAtTime); chaves internas da dose intactas.
+    assert "adHoc" in body
+    assert body["adHoc"][0]["doseAtTime"][0] == {"label": "A", "amount": 50, "unit": "mg"}
+
+
+def test_ad_hoc_unknown_medication_returns_404(auth_client, user):
+    """AC7: avulso com medicamento inexistente/cross-tenant → 404 (esconde existência,
+    como ``MedicationAdHocView`` converte ``Medication.DoesNotExist``)."""
+    date_str = today_for(user).isoformat()
+    response = auth_client.post(
+        _AD_HOC,
+        {"date": date_str, "medicationId": str(uuid.uuid4()), "dose": _DOSE},
+        format="json",
+    )
+    assert response.status_code == 404
+
+
+def test_ad_hoc_unknown_block_returns_400(auth_client, user):
+    """AC7: avulso com ``timeBlockId`` inexistente → 400 (``TimeBlock.DoesNotExist`` vira
+    erro de campo, como no ``schedule-versions/``)."""
+    resp = auth_client.post(
+        _MEDS, {"title": "Dipirona", "substanceName": "Dipirona"}, format="json"
+    )
+    med_id = resp.data["id"]
+    date_str = today_for(user).isoformat()
+
+    response = auth_client.post(
+        _AD_HOC,
+        {
+            "date": date_str,
+            "medicationId": med_id,
+            "timeBlockId": str(uuid.uuid4()),
+            "dose": _DOSE,
+        },
+        format="json",
+    )
+    assert response.status_code == 400
+    assert "time_block_id" in response.data.get("fields", {})
+
+
+def test_ad_hoc_with_block_inherits_dose_from_schedule(auth_client, user):
+    """AC4/AC7: avulso COM bloco e agenda vigente (dose omitida) herda a dose da versão
+    vigente e grava o ``time_block_id`` na linha ``ad_hoc`` (sempre confirmada)."""
+    med_id, block_id = _seed_med_with_schedule(auth_client, user)
+    date_str = today_for(user).isoformat()
+
+    response = auth_client.post(
+        _AD_HOC,
+        {"date": date_str, "medicationId": med_id, "timeBlockId": block_id},
+        format="json",
+    )
+    assert response.status_code == 200, response.data
+    assert len(response.data["ad_hoc"]) == 1
+    ad_hoc = response.data["ad_hoc"][0]
+    assert ad_hoc["source"] == "ad_hoc"
+    assert str(ad_hoc["time_block_id"]) == block_id
+    assert ad_hoc["dose_at_time"] == _DOSE  # herdada da agenda vigente
+    assert ad_hoc["confirmed_at"] is not None
+
+
+def test_patch_entry_unconfirm_reverts_status(auth_client, user):
+    """AC4: PATCH ``{confirmed:false}`` desconfirma a linha (branch ``else None``); o
+    bloco de uma linha volta a ``pending``."""
+    _seed_med_with_schedule(auth_client, user)
+    entry_id = auth_client.get(_DAYS).data["blocks"][0]["entries"][0]["id"]
+    auth_client.patch(f"{_DAYS}{entry_id}/", {"confirmed": True}, format="json")
+
+    response = auth_client.patch(
+        f"{_DAYS}{entry_id}/", {"confirmed": False}, format="json"
+    )
+    assert response.status_code == 200, response.data
+    assert response.data["blocks"][0]["entries"][0]["confirmed_at"] is None
+    assert response.data["blocks"][0]["status"] == "pending"
+
+
+def test_confirm_block_unconfirm_reverts_status(auth_client, user):
+    """AC4: POST confirm-block ``{confirmed:false}`` desconfirma em lote todas as linhas
+    ``scheduled`` do bloco no dia (branch ``else None`` do ``.update()``); volta a
+    ``pending``."""
+    _, block_id = _seed_med_with_schedule(auth_client, user)
+    date_str = auth_client.get(_DAYS).data["date"]
+    auth_client.post(
+        _CONFIRM_BLOCK,
+        {"date": date_str, "timeBlockId": block_id, "confirmed": True},
+        format="json",
+    )
+
+    response = auth_client.post(
+        _CONFIRM_BLOCK,
+        {"date": date_str, "timeBlockId": block_id, "confirmed": False},
+        format="json",
+    )
+    assert response.status_code == 200, response.data
+    assert response.data["blocks"][0]["status"] == "pending"
+    assert response.data["blocks"][0]["entries"][0]["confirmed_at"] is None
+
+
+def test_confirm_block_invalid_date_returns_400(auth_client, user):
+    """AC4: ``date`` malformada no confirm-block → 400 (``BlockConfirmSerializer.date``)."""
+    _, block_id = _seed_med_with_schedule(auth_client, user)
+    response = auth_client.post(
+        _CONFIRM_BLOCK,
+        {"date": "2026-13-99", "timeBlockId": block_id, "confirmed": True},
+        format="json",
+    )
+    assert response.status_code == 400
+    assert "date" in response.data.get("fields", {})

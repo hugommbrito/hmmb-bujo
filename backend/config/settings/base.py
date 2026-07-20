@@ -196,6 +196,10 @@ SPECTACULAR_SETTINGS = {
         # de Saúde (Story 7.1). Sem override, o drf-spectacular gera um *Enum com hash
         # instável — mantém o contrato aditivo/estável (lição do Épico 6).
         "HealthFieldTypeEnum": "health.models.HealthFieldType",
+        # Pin do enum `source` (scheduled/ad_hoc) da camada realizada de Medicamentos
+        # (Story 8.2). Sem override, o drf-spectacular gera um *Enum com hash instável
+        # que polui o diff de contratos não-relacionados (mesma lição das linhas acima).
+        "SourceEnum": "medications.models.Source",
     },
 }
 

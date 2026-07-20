@@ -56,3 +56,59 @@ print(json.dumps({"medicationId": str(med.id), "blockId": str(block.id)}))
 
   return JSON.parse(runShell(script)) as SeededMedication
 }
+
+// Story 8.2: cria um medicamento SEM agenda (só catálogo) — aparece no seletor do
+// formulário de avulso mas não materializa nenhuma linha `scheduled` (nenhum bloco no
+// dia). Usado para exercitar o fluxo de registro de avulso/PRN isolado. Retorna o
+// medicationId criado.
+export function seedMedicationCatalogOnly(
+  email: string,
+  opts: { title: string; substanceName: string },
+): string {
+  const script = `
+import json
+from accounts.models import User
+from core.tenant import tenant_context
+from medications.services import create_medication
+
+user = User.objects.get(email=${JSON.stringify(email)})
+opts = json.loads(${JSON.stringify(JSON.stringify(opts))})
+with tenant_context(user):
+    med = create_medication(
+        user=user, title=opts["title"], substance_name=opts["substanceName"]
+    )
+print(json.dumps({"medicationId": str(med.id)}))
+`.trim()
+
+  return (JSON.parse(runShell(script)) as { medicationId: string }).medicationId
+}
+
+// Story 8.2: adiciona um segundo medicamento agendado no MESMO bloco existente
+// (para cenários com ≥2 linhas no bloco — ex.: estado "parcial"). Retorna o
+// medicationId criado.
+export function seedMedicationOnBlock(
+  email: string,
+  blockId: string,
+  opts: { title: string; substanceName: string; dose: unknown },
+): string {
+  const script = `
+import json
+from accounts.models import User
+from core.tenant import tenant_context
+from medications.services import create_medication, set_schedule
+
+user = User.objects.get(email=${JSON.stringify(email)})
+opts = json.loads(${JSON.stringify(JSON.stringify(opts))})
+block_id = ${JSON.stringify(blockId)}
+with tenant_context(user):
+    med = create_medication(
+        user=user, title=opts["title"], substance_name=opts["substanceName"]
+    )
+    set_schedule(
+        user=user, medication_id=med.id, time_block_id=block_id, dose=opts["dose"]
+    )
+print(json.dumps({"medicationId": str(med.id)}))
+`.trim()
+
+  return (JSON.parse(runShell(script)) as { medicationId: string }).medicationId
+}

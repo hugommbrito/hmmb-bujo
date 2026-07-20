@@ -1,10 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import client from '../../api/client'
 import { keys } from '../../api/keys'
+import { useOptimisticMutation } from '../../shared/hooks/useOptimisticMutation'
+import { deriveBlockStatus } from './dayModel'
 import type {
   Doctor,
   DoseComponent,
   Medication,
+  MedicationDay,
   MedicationScheduleVersion,
   MedicationSubstanceVersion,
   TimeBlock,
@@ -273,5 +276,125 @@ export function useUpdateDoctorMutation() {
   return useMutation({
     mutationFn: updateDoctor,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['medications'] }),
+  })
+}
+
+// --- Superfície diária realizada (Story 8.2) ---------------------------------
+// A confirmação diária é o "toggle de alta frequência" antevisto no comentário do
+// bloco de mutations acima → OTIMISTA (via useOptimisticMutation), ao contrário do
+// CRUD de config. O updater atualiza `confirmedAt` da(s) linha(s) e recomputa o
+// `status` do bloco via `deriveBlockStatus` (cabeçalho reage antes do refetch). O
+// endpoint devolve o read-model do dia; o cache reconcilia no onSettled (refetch).
+
+async function fetchMedicationDay(date?: string): Promise<MedicationDay> {
+  const response = await client.get<MedicationDay>('/api/medications/days/', {
+    params: date ? { date } : undefined,
+  })
+  return response.data
+}
+
+export function useMedicationDayQuery(date?: string) {
+  return useQuery({
+    queryKey: keys.medications.day(date),
+    queryFn: () => fetchMedicationDay(date),
+  })
+}
+
+interface ConfirmEntryVariables {
+  entryId: string
+  confirmed: boolean
+}
+
+async function confirmEntry({
+  entryId,
+  confirmed,
+}: ConfirmEntryVariables): Promise<MedicationDay> {
+  const response = await client.patch<MedicationDay>(
+    `/api/medications/days/${entryId}/`,
+    { confirmed },
+  )
+  return response.data
+}
+
+export function useConfirmMedicationEntryMutation(date?: string) {
+  return useOptimisticMutation<MedicationDay, unknown, ConfirmEntryVariables, MedicationDay>({
+    mutationFn: confirmEntry,
+    queryKey: keys.medications.day(date),
+    updater: (current, { entryId, confirmed }) => {
+      if (!current) return current as unknown as MedicationDay
+      const nextConfirmedAt = confirmed ? new Date().toISOString() : null
+      return {
+        ...current,
+        blocks: current.blocks.map((block) => {
+          const entries = block.entries.map((entry) =>
+            entry.id === entryId ? { ...entry, confirmedAt: nextConfirmedAt } : entry,
+          )
+          return { ...block, entries, status: deriveBlockStatus(entries) }
+        }),
+      }
+    },
+  })
+}
+
+interface ConfirmBlockVariables {
+  date: string
+  timeBlockId: string
+  confirmed: boolean
+}
+
+async function confirmBlockRequest({
+  date,
+  timeBlockId,
+  confirmed,
+}: ConfirmBlockVariables): Promise<MedicationDay> {
+  const response = await client.post<MedicationDay>(
+    '/api/medications/days/confirm-block/',
+    { date, timeBlockId, confirmed },
+  )
+  return response.data
+}
+
+export function useConfirmBlockMutation(date?: string) {
+  return useOptimisticMutation<MedicationDay, unknown, ConfirmBlockVariables, MedicationDay>({
+    mutationFn: confirmBlockRequest,
+    queryKey: keys.medications.day(date),
+    updater: (current, { timeBlockId, confirmed }) => {
+      if (!current) return current as unknown as MedicationDay
+      const nextConfirmedAt = confirmed ? new Date().toISOString() : null
+      return {
+        ...current,
+        blocks: current.blocks.map((block) => {
+          if (block.timeBlockId !== timeBlockId) return block
+          const entries = block.entries.map((entry) => ({
+            ...entry,
+            confirmedAt: nextConfirmedAt,
+          }))
+          return { ...block, entries, status: deriveBlockStatus(entries) }
+        }),
+      }
+    },
+  })
+}
+
+interface CreateAdHocVariables {
+  date: string
+  medicationId: string
+  timeBlockId?: string | null
+  dose?: DoseComponent[]
+}
+
+async function createAdHoc(fields: CreateAdHocVariables): Promise<MedicationDay> {
+  const response = await client.post<MedicationDay>('/api/medications/days/ad-hoc/', fields)
+  return response.data
+}
+
+// Avulso não é otimista (não há id até o servidor responder): useMutation +
+// invalidate da chave do dia (refetch traz a nova linha na seção PRN).
+export function useCreateAdHocEntryMutation(date?: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: createAdHoc,
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: keys.medications.day(date) }),
   })
 }

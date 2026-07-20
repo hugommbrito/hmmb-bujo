@@ -17,6 +17,7 @@ import { HabitsPage } from '../pages/habits/HabitsPage'
 import { HabitHistoryPage } from '../pages/habits/HabitHistoryPage'
 import { HealthMetricsPage } from '../pages/health/HealthMetricsPage'
 import { HealthHistoryPage } from '../pages/health/HealthHistoryPage'
+import { MedicationsPage } from '../pages/health/MedicationsPage'
 import { SettingsPage } from '../pages/settings/SettingsPage'
 import { HabitsSettingsPage } from '../pages/settings/HabitsSettingsPage'
 import { HealthMetricsSettingsPage } from '../pages/settings/HealthMetricsSettingsPage'
@@ -108,7 +109,7 @@ export const routeDefinitions: RouteObject[] = [
       },
       {
         path: 'health/medications',
-        element: <PlaceholderPage title="Medicamentos" />,
+        element: <MedicationsPage />,
         handle: { title: 'Medicamentos' },
       },
       {

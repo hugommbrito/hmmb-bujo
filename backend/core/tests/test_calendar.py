@@ -8,6 +8,7 @@ import pytest
 from core.calendar import (
     is_workday,
     months_of_week,
+    now,
     resolve_day_type,
     resolve_day_types_range,
     today_for,
@@ -25,6 +26,15 @@ def user_sp():
 @pytest.fixture
 def user_utc():
     return types.SimpleNamespace(timezone="UTC")
+
+
+# --- now (timestamp de auditoria, Story 8.2) ---
+def test_now_returns_timezone_aware_datetime():
+    """``now()`` é a única fonte de 'agora' para timestamps de auditoria de escrita
+    (ex.: ``confirmed_at``) — timezone-aware, distinta de ``today_for`` (uma ``date``)."""
+    result = now()
+    assert isinstance(result, datetime)
+    assert result.tzinfo is not None
 
 
 # --- today_for ---
