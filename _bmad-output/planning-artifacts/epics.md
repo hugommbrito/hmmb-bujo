@@ -6,8 +6,8 @@ inputDocuments:
   - '_bmad-output/planning-artifacts/prds/prd-hmmb-bujo-2026-06-15/prd.md'
   - '_bmad-output/planning-artifacts/prds/prd-hmmb-bujo-2026-06-15/addendum.md'
   - '_bmad-output/planning-artifacts/architecture.md'
-  - '_bmad-output/planning-artifacts/ux-designs/ux-hmmb-bujo-2026-06-15/EXPERIENCE.md'
-  - '_bmad-output/planning-artifacts/ux-designs/ux-hmmb-bujo-2026-06-15/DESIGN.md'
+  - '_bmad-output/planning-artifacts/ux-designs/ux-hmmb-bujo-2026-07-17/EXPERIENCE.md'
+  - '_bmad-output/planning-artifacts/ux-designs/ux-hmmb-bujo-2026-07-17/DESIGN.md'
   - '_bmad-output/planning-artifacts/sprint-change-proposal-2026-06-22.md'
 project_name: 'hmmb-bujo'
 user_name: 'HugoMMBrito'
@@ -168,13 +168,13 @@ _Requisitos acionáveis extraídos do EXPERIENCE.md (comportamento, fluxos, comp
 - **UX-DR13 (Voz, tom e estados vazios)** — pt-BR direto e funcional; zero gamificação/exclamações/sequências; microcopy conforme tabela de exemplos (EXPERIENCE §3); estados vazios informativos ("Brain Dump vazio.", "Nenhuma tarefa para hoje.", etc.).
 - **UX-DR14 (Loading & escrita otimista)** — skeleton screens (Daily/Weekly/Monthly); sem spinner global em escrita; resposta otimista com rollback + erro inline em falha; meta percebida < 2s (NFR-2).
 - **UX-DR15 (Conectividade & erros)** — MVP sem offline; toast não-bloqueante em perda de conexão; erro inline em escrita com retry; FAB desabilitado offline; nenhuma captura perdida silenciosamente.
-- **UX-DR16 (Estados de Auth)** — redirect para Login sem sessão; erro de login inline ("Email ou senha incorretos."); sessão expirada com banner não-bloqueante sem destruir o estado da UI; pós-login abre no Daily Log de hoje.
+- **UX-DR16 (Estados de Auth)** — redirect para Login sem sessão; erro de login inline ("Email ou senha incorretos."); sessão expirada com banner não-bloqueante sem destruir o estado da UI. **[REVOGADO PARCIALMENTE — CC 2026-07-22]**: a cláusula "pós-login abre no Daily Log de hoje" é revogada — pós-login abre no **Dashboard-panorama (home)**. Exigências preservadas: captura a um toque; card do dia **acionável** (rapid logging direto, migrações pendentes visíveis). "Hoje" permanece como superfície de trabalho — **Hoje = trabalhar / Dashboard = ver** — compartilhando o mesmo componente de tasks do dia. Detalhamento na spec da nova home (bmad-ux, pré-requisito da Onda 2b).
 
 **Estrutura, navegação e plataforma:**
 
 - **UX-DR17 (Arquitetura de Informação / Roteamento)** — mapa de superfícies (Hoje, Planner: Esta Semana/Este Mês/Futuro, Hábitos, Saúde: Métricas/Medicamentos, Gratidão, Brain Dump, Arquivo, Configurações + sub-seções); empilhamento de modal máximo 1 nível; Fluxo de Migração nunca navegado diretamente.
 - **UX-DR18 (Responsividade)** — breakpoints desktop ≥1024 / tablet 768–1023 / mobile <768; Weekly Log 7 colunas (desktop) → seletor de dia (tablet/mobile), sem scroll horizontal; Monthly Log lista vertical no mobile; detalhe de tarefa = bottom sheet no mobile; Migração full-screen no mobile.
-- **UX-DR19 (Primitivos de interação / teclado)** — atalhos globais `[` (sidebar), `N` (nova tarefa), `B` (Brain Dump), `Esc` (fechar modal/popover); drag-and-drop de reordenação só desktop; ciclo de status por clique; proibições explícitas (migração automática, drag mobile, modal aninhado, gamificação, sugestões de IA, scroll horizontal de navegação).
+- **UX-DR19 (Primitivos de interação / teclado)** — atalhos globais `[` (sidebar), `N` (nova tarefa), `B` (Brain Dump), `Esc` (fechar modal/popover); drag-and-drop de reordenação só desktop; ciclo de status por clique; proibições explícitas (migração automática, drag mobile, modal aninhado, gamificação, sugestões de IA, scroll horizontal de navegação). **[Fronteira registrada — CC 2026-07-22]**: "sugestões de IA" proíbe IA como **primitivo de interação** (sugerir/preencher/automatizar captura e migração — atalhos em fluxos intencionalmente atritosos). **Não** proíbe análises sobre dados já preenchidos (collection Análises) nem transcrição sob confirmação humana obrigatória (Pressão Arterial foto+IA). Guardrail obrigatório nas stories dessas features: *a IA analisa e explica; nunca sugere, preenche ou automatiza captura/migração; transcrição só salva após confirmação explícita.* Consentimento: campo de journalling só vira contexto com `contexto_ia: on` (opt-in, default off); métrica selecionada em Modelo de Relatório ganha badge "dado lido por IA" no formulário de origem (cor + ícone/texto, conforme UX-DR20).
 - **UX-DR20 (Acessibilidade — WCAG 2.2 AA)** — cor nunca único indicador (sempre + ícone/texto); touch target ≥ 44px mobile; focus ring MUI preservado; tab order = ordem visual; `Esc` fecha modal/popover; anúncios `aria-live` (mudança de superfície, progresso de migração, status de tarefa, badge do Brain Dump); semântica HTML (`<nav>`, `<main>`, `role=dialog`/`aria-modal` com foco travado).
 
 ### FR Coverage Map

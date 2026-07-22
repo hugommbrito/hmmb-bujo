@@ -1,5 +1,5 @@
 # generated: 2026-06-22
-# last_updated: 2026-07-17
+# last_updated: 2026-07-22
 # project: hmmb-bujo
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-22
-last_updated: 2026-07-20  # Retrospectiva do Epic 9 concluída (#YOLO) → epic-9-retrospective: done
+last_updated: 2026-07-22  # CC 2026-07-22 (sprint-change-proposal-2026-07-22.md): housekeeping épicos 1/2/3/7/8/9 → done + Story 10.0 adicionada
 project: hmmb-bujo
 project_key: NOKEY
 tracking_system: file-system
@@ -43,7 +43,7 @@ story_location: _bmad-output/implementation-artifacts
 
 development_status:
   # Epic 1: Fundação de Plataforma
-  epic-1: in-progress
+  epic-1: done  # housekeeping CC 2026-07-22 (5/5 stories done; retro optional)
   1-1-scaffold-do-monorepo-e-pipeline-de-ci-base: done
   1-2-modulo-core-com-isolamento-multi-tenant-fail-closed-e-guardrails: done
   1-3-autoridade-temporal-core-calendar-py-e-padrao-temporal-canonico: done
@@ -52,7 +52,7 @@ development_status:
   epic-1-retrospective: optional
 
   # Epic 2: Autenticação & Acesso
-  epic-2: in-progress
+  epic-2: done  # housekeeping CC 2026-07-22 (4/4 stories + retro done)
   2-1-cadastro-e-login-com-jwt: done
   2-2-sessao-persistente-refresh-single-flight-e-estados-de-auth-no-frontend: done
   2-3-casca-de-navegacao-autenticada-sidebar-bottom-nav-roteamento: done
@@ -60,7 +60,7 @@ development_status:
   epic-2-retrospective: done
 
   # Epic 3: Daily Log & Agregado de Tarefas
-  epic-3: in-progress
+  epic-3: done  # housekeeping CC 2026-07-22 (4/4 stories + retro done)
   3-1-agregado-task-com-schema-congelado-e-maquina-de-estados: done
   3-2-superficie-do-daily-log-com-task-row-e-ciclo-de-estados: done
   3-3-criacao-e-edicao-de-tarefas-com-campos-completos-e-subtarefas: done
@@ -109,27 +109,28 @@ development_status:
   epic-6-retrospective: done
 
   # Epic 7: Métricas de Saúde
-  epic-7: in-progress
+  epic-7: done  # housekeeping CC 2026-07-22 (3/3 stories + retro done)
   7-1-campos-de-saude-dinamicos: done
   7-2-log-diario-de-saude: done
   7-3-historico-de-saude-em-tres-visualizacoes: done
   epic-7-retrospective: done
 
   # Epic 8: Medicamentos
-  epic-8: in-progress  # 8.1 criada 2026-07-20 (create-story) → épico entra em in-progress
+  epic-8: done  # housekeeping CC 2026-07-22 (3/3 stories + retro done)
   8-1-cadastro-de-medicamentos-com-slot-estavel-e-versoes: done
   8-2-confirmacao-diaria-por-bloco-ou-individual: done
   8-3-historico-de-adesao-e-dose-perdida: done
   epic-8-retrospective: done  # retrospectiva #YOLO concluída 2026-07-20 (epic-8-retro-2026-07-20.md)
 
   # Epic 9: Diário de Gratidão
-  epic-9: in-progress  # 9.1 criada 2026-07-20 (create-story) → épico entra em in-progress
+  epic-9: done  # housekeeping CC 2026-07-22 (2/2 stories + retro done — fecha o conjunto de features do MVP)
   9-1-entradas-de-texto-livre: done
   9-2-historico-navegavel-por-data-e-mes: done
   epic-9-retrospective: done  # retrospectiva #YOLO concluída 2026-07-20 (epic-9-retro-2026-07-20.md) — Epic 9 fecha o conjunto de features do MVP
 
   # Epic 10: Gestão de Usuários (pós-MVP — fora da contagem de sprint do MVP)
   epic-10: backlog
+  10-0-observabilidade-minima-antes-de-usuarios-convidados: backlog  # adicionada pelo CC 2026-07-22 (story já existia no epics.md; pré-requisito de 10.1/10.2)
   10-1-convite-de-novos-usuarios-por-email: backlog
   10-2-onboarding-de-usuario-convidado-com-espaco-isolado: backlog
   epic-10-retrospective: optional

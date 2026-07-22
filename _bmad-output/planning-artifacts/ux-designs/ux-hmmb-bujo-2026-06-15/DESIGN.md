@@ -1,11 +1,15 @@
 ---
 title: "BuJo Digital — DESIGN.md"
-status: final
+status: legacy
 created: 2026-06-15
-updated: 2026-06-15
+updated: 2026-07-17
 sources:
   - prd: "_bmad-output/planning-artifacts/prds/prd-hmmb-bujo-2026-06-15/prd.md"
   - decisions: "_bmad-output/planning-artifacts/ux-designs/ux-hmmb-bujo-2026-06-15/.decision-log.md"
+  - spec: "_bmad-output/specs/spec-design-system-migration/SPEC.md"
+  - contract: "_bmad-output/specs/spec-design-system-migration/design-system-contract.md"
+  - migration: "_bmad-output/specs/spec-design-system-migration/migration-plan.md"
+  - handoff: "imports/mybujo-full-handoff/design_handoff_full_app/README.md"
 
 colors:
   # ── Superfície e Tinta ──────────────────────────────────────────────────────
@@ -129,6 +133,30 @@ spacing:
   "12": "48px"
   "16": "64px"
 
+breakpoints:
+  compact: "0px"
+  medium: "768px"
+  wide: "1024px"
+  expansive: "1440px"
+
+density:
+  compact-row: "36px"
+  comfortable-row: "44px"
+  touch-row: "48px"
+  workspace-max: "1440px"
+  reading-max: "800px"
+
+focus:
+  width: "2px"
+  offset: "2px"
+  color: "brand-primary"
+
+motion:
+  instant: "0ms"
+  fast: "120ms"
+  standard: "180ms"
+  easing: "ease-out"
+
 components:
   task-row:
     height: "auto"
@@ -189,6 +217,8 @@ components:
 ---
 
 # BuJo Digital — Guia de Design
+
+> **LEGADO — NÃO USAR.** Preservado apenas como registro histórico do planejamento de 15/06. O contrato canônico atual está em `../ux-hmmb-bujo-2026-07-17/DESIGN.md`.
 
 ---
 
@@ -299,12 +329,7 @@ Em desktop, o Weekly Log exibe os 7 dias lado a lado quando a viewport permite (
 - Bordas hairline de 1px (`border-hairline`) separando seções
 - Bordas coloridas de 3px em task-rows marcando categoria
 
-**Overrides MUI obrigatórios:**
-
-```js
-theme.shadows = Array(25).fill("none")
-theme.components.MuiPaper = { defaultProps: { elevation: 0 } }
-```
+**Overrides MUI obrigatórios:** toda a escala de sombras é neutralizada e componentes de superfície usam elevação zero por padrão. A implementação deve expressar essa regra no tema central, sem exceções locais não documentadas.
 
 Dialogs e drawers usam `surface-raised` como background (diferença tonal em vez de sombra). O overlay de backdrop usa `ink-primary` com 40% de opacidade.
 
@@ -434,6 +459,69 @@ Tela de decisão de migração (FR-1.7/1.8/1.9). Apresenta uma tarefa por vez co
 Botões planos, sem preenchimento, separados por dividers verticais. Sem dialog overlay para não interromper o fluxo — implementado como surface que substitui o conteúdo principal (full-page flow).
 
 ---
+
+### 7.9 Fundação operacional da migração
+
+O novo sistema substitui a expressão visual anterior; não existe variante de produto “Legado” e “Moderno”. Durante o rollout, uma rota pode usar internamente uma das duas fundações, mas cada superfície renderiza apenas uma linguagem por vez. Depois da aprovação da fundação, qualquer módulo novo usa exclusivamente estes tokens e padrões.
+
+| Primitiva | Anatomia visual vinculante | Variantes obrigatórias |
+|---|---|---|
+| App Shell | sidebar, top bar compacta, área de conteúdo e zona persistente de feedback | sidebar expandida/colapsada; navegação compacta; badge Brain Dump |
+| Page/Period Header | título, contexto temporal, stepper, retorno a atual e ações | simples; período; fechado; com resumo |
+| Workspace Surface | região principal dominante, contexto secundário e zona sticky opcional | leitura; trabalho; grid; ritual |
+| Card/Panel | header, corpo, ações e feedback local | padrão; denso; selecionado; somente leitura |
+| Item Row | estado leading, conteúdo, metadados e ações trailing | task; recorrente; inbox; arquivo; configuração |
+| Chip | ícone/forma, texto e cor semântica | status; prioridade; origem; período; contagem |
+| Section Header | rótulo, contagem/progresso e ações | estático; colapsável; fechado |
+| Date/Range Control | anterior, valor atual, próximo e ação Hoje/Atual | dia; semana; mês; intervalo |
+| Data Grid | headers persistentes, célula, seleção e alternativa compacta | calendário; histórico; tracker |
+| Dialog/Sheet/Flow | título, contexto, conteúdo, feedback e ações | dialog; bottom sheet; full-screen ritual |
+| Feedback | mensagem, consequência e recuperação | loading; empty; error; offline; disabled |
+
+Uma variação local só é aceita quando possui semântica de domínio que não pode ser representada por composição. Se o mesmo desenho aparecer em duas features, deve ser promovido para a fundação compartilhada antes da terceira utilização.
+
+### 7.10 Linguagem de páginas e superfícies
+
+O handoff inspira a divisão entre superfície de trabalho dominante e contexto auxiliar, não uma coleção de dashboards. A largura ampla existe para trabalho temporal, não para esticar texto.
+
+| Tipo de superfície | Composição wide | Composição compacta |
+|---|---|---|
+| Foco diário | lista principal 2/3 + contexto 1/3 | sequência: header, alertas, lista, contexto |
+| Planner temporal | header + grid/calendário + painel contextual | seletor de período + lista/cartões por dia; sem compressão do grid |
+| Ritual | fluxo concentrado com progresso e destino visível | tela cheia, uma decisão por vez, ações fixas no rodapé |
+| Coleção/inbox | lista densa + detalhe contextual | lista; detalhe em sheet/tela própria |
+| Configuração | índice/seções + formulário | seções empilhadas, ação principal persistente quando necessário |
+| Histórico/arquivo | filtros + lista/tabela somente leitura | cartões cronológicos e detalhe separado |
+| Dados densos | controle de período + tabela/gráfico autorizado | resumo + alternância entre tabela e gráfico; nunca miniaturização ilegível |
+
+O `workspace-max` de {density.workspace-max} governa planners e grids; o `reading-max` de {density.reading-max} governa formulários, gratidão e detalhes. Em wide, gutters são 24–32px; em compact, 16px. Regiões principais se separam por 24px, seções por 16px e elementos relacionados por 4–12px.
+
+### 7.11 Hierarquia, densidade e estados visuais
+
+- Ação e estado do ciclo vêm antes de estatísticas, atalhos e contexto histórico.
+- Listas de trabalho usam densidade compacta de {density.compact-row} apenas com mouse/teclado; touch usa no mínimo {density.touch-row}.
+- Cards não são o contêiner universal. Divisores e agrupamento espacial são preferidos quando não há necessidade de borda própria.
+- Hover nunca revela a única forma de executar uma ação; foco e touch têm acesso equivalente.
+- Loading preserva a geometria esperada com skeletons; não usa spinner central para páginas.
+- Empty ocupa a região que receberia conteúdo, explica o estado em uma frase e oferece no máximo uma ação primária pertinente.
+- Error fica junto ao dado/ação afetado e inclui recuperação. Erro de página mantém shell e contexto temporal.
+- Disabled usa opacidade apenas como reforço; mantém rótulo legível e fornece motivo quando não for óbvio.
+- Readonly/archive reduz controles, não contraste. Ciclo fechado exibe label textual “Fechado” e não aparenta indisponibilidade.
+- Foco usa {focus.width} em {focus.color}, offset {focus.offset}; nunca é removido em favor de hover.
+
+### 7.12 Iconografia e motion
+
+Ícones vêm da biblioteca já adotada pelo produto; SVGs do handoff não são ativos. O conjunto usa traço simples, tamanho 16–20px em listas e 20–24px em navegação. Ícone sem texto é permitido apenas para convenções inequívocas com nome acessível; status, prioridade e origem sempre têm redundância textual ou de forma.
+
+Motion confirma causalidade, não decora: {motion.fast} para hover/pressed e {motion.standard} para abrir/fechar navegação, sheet ou painel. Reordenação pode animar deslocamento sem bloquear entrada. `prefers-reduced-motion` reduz movimentos espaciais a {motion.instant}; nenhum fluxo usa celebração, parallax ou animação automática contínua.
+
+### 7.13 Limites da referência MyBujo
+
+**Adotado como inspiração:** shell lateral, headers temporais, contraste entre trabalho e contexto, cards compostos, chips compactos, grids e sidebars contextuais, controles persistentes e ritual com progresso.
+
+**Reconciliado:** rail de 78px vira sidebar da IA real; duas variantes do Daily viram uma composição responsiva; grids de semana/hábitos ganham alternativa compacta; paleta é a taxonomia única deste documento; MUI permanece infraestrutura.
+
+**Descartado:** papel pautado, moldura, tags de região, pins, toolbar, fontes do pacote, SVGs, CSS/JavaScript, streaks, produtividade, fasting, auto-injeção de recorrentes, health fields fixos e analytics sem requisito. Esses itens não podem ser recuperados por histórias sem uma mudança upstream explícita.
 
 ## 8. Do's e Don'ts
 
