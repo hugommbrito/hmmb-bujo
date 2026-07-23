@@ -1,10 +1,12 @@
 /* eslint-disable react-refresh/only-export-components */
+import { Suspense } from 'react'
 import { createBrowserRouter, Navigate, useNavigate } from 'react-router-dom'
 import type { RouteObject } from 'react-router-dom'
 import { LoginPage } from '../features/auth/components/LoginPage'
 import { SignupPage } from '../features/auth/components/SignupPage'
 import { useAuth } from '../shared/hooks/useAuth'
 import { AppLayout } from './layout/AppLayout'
+import { collections } from './collections/registry'
 import { DailyPage } from '../pages/daily/DailyPage'
 import { WeeklyPage } from '../pages/planner/WeeklyPage'
 import { MonthlyPage } from '../pages/planner/MonthlyPage'
@@ -12,14 +14,6 @@ import { FuturePage } from '../pages/planner/FuturePage'
 import { RecurringPage } from '../pages/planner/RecurringPage'
 import { ArchivePage } from '../pages/archive/ArchivePage'
 import { BrainDumpPage } from '../pages/braindump/BrainDumpPage'
-import { HabitsPage } from '../pages/habits/HabitsPage'
-import { HabitHistoryPage } from '../pages/habits/HabitHistoryPage'
-import { HealthMetricsPage } from '../pages/health/HealthMetricsPage'
-import { HealthHistoryPage } from '../pages/health/HealthHistoryPage'
-import { MedicationsPage } from '../pages/health/MedicationsPage'
-import { MedicationHistoryPage } from '../pages/health/MedicationHistoryPage'
-import { GratitudePage } from '../pages/gratitude/GratitudePage'
-import { GratitudeHistoryPage } from '../pages/gratitude/GratitudeHistoryPage'
 import { SettingsPage } from '../pages/settings/SettingsPage'
 import { HabitsSettingsPage } from '../pages/settings/HabitsSettingsPage'
 import { HealthMetricsSettingsPage } from '../pages/settings/HealthMetricsSettingsPage'
@@ -57,6 +51,26 @@ function ProtectedLayout() {
   return <AppLayout />
 }
 
+// Rotas de collection derivadas do registro por map puro (Story 12.3). Cada
+// elemento lazy é embrulhado num <Suspense fallback={null}> — nada é pintado
+// durante o microtask de load, preservando o pixel-idêntico. As rotas de NÚCLEO
+// permanecem eager e hardcoded abaixo (Suspense em `/today` quebraria os testes
+// síncronos de chrome — ver Risco crítico nas Dev Notes da story).
+const collectionRoutes: RouteObject[] = collections.flatMap((collection) =>
+  collection.routes.map((route) => {
+    const RouteComponent = route.component
+    return {
+      path: route.path,
+      element: (
+        <Suspense fallback={null}>
+          <RouteComponent />
+        </Suspense>
+      ),
+      handle: { title: route.title },
+    }
+  }),
+)
+
 export const routeDefinitions: RouteObject[] = [
   {
     path: '/login',
@@ -93,42 +107,10 @@ export const routeDefinitions: RouteObject[] = [
         element: <RecurringPage />,
         handle: { title: 'Recorrentes' },
       },
-      { path: 'habits', element: <HabitsPage />, handle: { title: 'Hábitos' } },
-      {
-        path: 'habits/history',
-        element: <HabitHistoryPage />,
-        handle: { title: 'Hábitos — Histórico' },
-      },
-      {
-        path: 'health/metrics',
-        element: <HealthMetricsPage />,
-        handle: { title: 'Métricas de Saúde' },
-      },
-      {
-        path: 'health/metrics/history',
-        element: <HealthHistoryPage />,
-        handle: { title: 'Métricas de Saúde — Histórico' },
-      },
-      {
-        path: 'health/medications',
-        element: <MedicationsPage />,
-        handle: { title: 'Medicamentos' },
-      },
-      {
-        path: 'health/medications/history',
-        element: <MedicationHistoryPage />,
-        handle: { title: 'Medicamentos — Histórico' },
-      },
-      {
-        path: 'gratitude',
-        element: <GratitudePage />,
-        handle: { title: 'Diário de Gratidão' },
-      },
-      {
-        path: 'gratitude/history',
-        element: <GratitudeHistoryPage />,
-        handle: { title: 'Histórico de Gratidão' },
-      },
+      // Rotas de collection (Hábitos, Saúde-Métricas, Medicamentos, Gratidão)
+      // derivadas do registro — ver `collectionRoutes` acima. Ordem/paths/títulos
+      // idênticos aos hardcoded que substituíram.
+      ...collectionRoutes,
       { path: 'brain-dump', element: <BrainDumpPage />, handle: { title: 'Brain Dump' } },
       { path: 'archive', element: <ArchivePage />, handle: { title: 'Arquivo' } },
       {
