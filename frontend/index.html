@@ -2,9 +2,11 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- Defaults de PROD para um first-paint limpo em produção. Em DEV,
+         applyEnvBranding() (src/shared/env.ts) troca título e favicon no boot. -->
+    <link rel="icon" type="image/svg+xml" href="/favicon-prod.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>hmmb-bujo</title>
+    <title>BuJo</title>
   </head>
   <body>
     <div id="root"></div>

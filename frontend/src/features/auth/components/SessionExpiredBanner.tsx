@@ -10,7 +10,9 @@ export function SessionExpiredBanner({ onLogin }: SessionExpiredBannerProps) {
   return (
     <Alert
       severity="warning"
-      sx={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999 }}
+      // top lê --dev-banner-height (0 em prod, 28px em DEV) para ficar logo
+      // abaixo do DevEnvBanner e não sobrepor o botão "Entrar".
+      sx={{ position: 'fixed', top: 'var(--dev-banner-height)', left: 0, right: 0, zIndex: 9999 }}
       action={
         <Button color="inherit" size="small" onClick={handleLogin}>
           Entrar
