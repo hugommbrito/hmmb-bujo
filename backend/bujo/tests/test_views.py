@@ -273,6 +273,135 @@ def test_patch_task_detail_edita_campos_parciais(auth_client, user):
 
 
 @pytest.mark.django_db
+def test_patch_task_detail_alterna_waiting_on_e_persiste(auth_client, user):
+    """Story 12.2 (AC2): PATCH `{"waitingOn": true|false}` alterna a flag e
+    persiste. Corpo em camelCase (`waitingOn`); `response.data` em snake_case
+    (`waiting_on`) — a camelização só ocorre no render do corpo HTTP."""
+    with tenant_context(user):
+        task = TaskFactory(user=user, waiting_on=False)
+
+    on = auth_client.patch(
+        f"/api/bujo/tasks/{task.id}/", {"waitingOn": True}, format="json"
+    )
+    assert on.status_code == 200
+    assert on.data["waiting_on"] is True
+    with tenant_context(user):
+        assert Task.objects.get(id=task.id).waiting_on is True
+
+    off = auth_client.patch(
+        f"/api/bujo/tasks/{task.id}/", {"waitingOn": False}, format="json"
+    )
+    assert off.status_code == 200
+    assert off.data["waiting_on"] is False
+    with tenant_context(user):
+        assert Task.objects.get(id=task.id).waiting_on is False
+
+
+@pytest.mark.django_db
+def test_transicao_de_estado_preserva_waiting_on(auth_client, user):
+    """Story 12.2 (AC2, ortogonalidade sentido 1): transicionar o estado NÃO
+    altera `waiting_on` — a flag sobrevive a `pending→started` (`transition_task`
+    salva só `update_fields=["status"]`)."""
+    with tenant_context(user):
+        task = TaskFactory(user=user, status=Task.Status.PENDING, waiting_on=True)
+
+    response = auth_client.post(
+        f"/api/bujo/tasks/{task.id}/transition/", {"toStatus": "started"}, format="json"
+    )
+
+    assert response.status_code == 200
+    assert response.data["status"] == "started"
+    with tenant_context(user):
+        assert Task.objects.get(id=task.id).waiting_on is True
+
+
+@pytest.mark.django_db
+def test_alternar_waiting_on_preserva_status(auth_client, user):
+    """Story 12.2 (AC2, ortogonalidade sentido 2): alternar `waiting_on` NÃO
+    altera o `status` — `update_task` salva só `update_fields=["waiting_on",
+    "updated_at"]`."""
+    with tenant_context(user):
+        task = TaskFactory(user=user, status=Task.Status.STARTED, waiting_on=False)
+
+    response = auth_client.patch(
+        f"/api/bujo/tasks/{task.id}/", {"waitingOn": True}, format="json"
+    )
+
+    assert response.status_code == 200
+    assert response.data["waiting_on"] is True
+    assert response.data["status"] == "started"
+    with tenant_context(user):
+        assert Task.objects.get(id=task.id).status == Task.Status.STARTED
+
+
+@pytest.mark.django_db
+def test_get_today_log_filtra_por_waiting_on(auth_client, user):
+    """Story 12.2 (AC3): `?waitingOn=true|false` filtra as raízes do Daily Log;
+    ausência do parâmetro retorna todas; combina com `?log_date=` sem conflito."""
+    with tenant_context(user):
+        log_date = today_for(user)
+        log = get_or_create_daily_log(user=user, log_date=log_date)
+        TaskFactory(user=user, log=log, title="Aguardando", waiting_on=True, order_index=1.0)
+        TaskFactory(user=user, log=log, title="Normal", waiting_on=False, order_index=2.0)
+
+    only_waiting = auth_client.get("/api/bujo/logs/today/?waitingOn=true")
+    assert only_waiting.status_code == 200
+    assert [t["title"] for t in only_waiting.data["tasks"]] == ["Aguardando"]
+
+    only_normal = auth_client.get("/api/bujo/logs/today/?waitingOn=false")
+    assert only_normal.status_code == 200
+    assert [t["title"] for t in only_normal.data["tasks"]] == ["Normal"]
+
+    todas = auth_client.get("/api/bujo/logs/today/")
+    assert {t["title"] for t in todas.data["tasks"]} == {"Aguardando", "Normal"}
+
+    # combina com o parâmetro pré-existente `?log_date=` sem conflito (AC3)
+    combinado = auth_client.get(
+        f"/api/bujo/logs/today/?log_date={log_date.isoformat()}&waitingOn=true"
+    )
+    assert [t["title"] for t in combinado.data["tasks"]] == ["Aguardando"]
+
+
+@pytest.mark.django_db
+def test_get_today_log_filtro_waiting_on_aplica_so_nas_raizes(auth_client, user):
+    """Story 12.2 (AC3, "só as raízes"): o filtro `?waitingOn=` decide APENAS
+    pela flag da raiz — subtarefas aninhadas NÃO são filtradas independentemente.
+    (1) uma raiz `waiting_on=False` com filha `True` fica de fora de
+    `?waitingOn=true` (a raiz é que conta, não a filha aguardando); (2) uma raiz
+    `waiting_on=True` aparece com TODAS as filhas aninhadas, mesmo as `False` (o
+    filtro não poda a subárvore). Guarda `LogSerializer.get_tasks` (filtra só
+    `parent_task__isnull=True`) e `get_subtasks` (serializa a subárvore sem
+    filtro) contra regressões que estendam o filtro às subtarefas."""
+    with tenant_context(user):
+        log = get_or_create_daily_log(user=user, log_date=today_for(user))
+        pai_normal = TaskFactory(
+            user=user, log=log, title="Pai normal", waiting_on=False, order_index=1.0
+        )
+        TaskFactory(
+            user=user, log=log, parent_task=pai_normal, title="Filha aguardando", waiting_on=True
+        )
+        pai_aguardando = TaskFactory(
+            user=user, log=log, title="Pai aguardando", waiting_on=True, order_index=2.0
+        )
+        TaskFactory(
+            user=user, log=log, parent_task=pai_aguardando, title="Filha normal", waiting_on=False
+        )
+
+    # `?waitingOn=true`: só a raiz aguardando (a raiz normal fica fora apesar da
+    # filha `True`), e a subárvore da raiz aguardando vem inteira (filha `False`).
+    only_waiting = auth_client.get("/api/bujo/logs/today/?waitingOn=true")
+    assert only_waiting.status_code == 200
+    assert [t["title"] for t in only_waiting.data["tasks"]] == ["Pai aguardando"]
+    assert [c["title"] for c in only_waiting.data["tasks"][0]["subtasks"]] == ["Filha normal"]
+
+    # `?waitingOn=false`: só a raiz normal, com a filha aguardando ainda aninhada.
+    only_normal = auth_client.get("/api/bujo/logs/today/?waitingOn=false")
+    assert only_normal.status_code == 200
+    assert [t["title"] for t in only_normal.data["tasks"]] == ["Pai normal"]
+    assert [c["title"] for c in only_normal.data["tasks"][0]["subtasks"]] == ["Filha aguardando"]
+
+
+@pytest.mark.django_db
 def test_patch_task_detail_de_outro_tenant_retorna_404(auth_client, other_user):
     with tenant_context(other_user):
         task = TaskFactory(user=other_user, title="Original")

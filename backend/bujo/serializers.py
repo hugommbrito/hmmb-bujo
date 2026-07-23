@@ -8,6 +8,7 @@ from datetime import timedelta
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from bujo.filters import TaskFilter
 from bujo.models import Log, RecurringTaskTemplate, Task
 
 
@@ -25,6 +26,11 @@ class TaskSerializer(serializers.ModelSerializer):
             "category",
             "scheduled_date",
             "subtasks",
+            # Flag "Aguardando Terceiro" (Story 12.2, AD-18): read-only aqui,
+            # sai como `waitingOn` via `CamelCaseJSONRenderer`. A escrita é pelo
+            # `TaskUpdateSerializer` (PATCH); criar tarefa já com a flag não é
+            # requisito (nasce `false` pelo default do model).
+            "waiting_on",
             "migration_count",
             "migrated_to_task",
             # Story 11.3 (AC1): habilita o dedup client-side. Revoga a decisão
@@ -56,6 +62,13 @@ class LogSerializer(serializers.ModelSerializer):
     @extend_schema_field(TaskSerializer(many=True))
     def get_tasks(self, obj):
         roots = obj.tasks.filter(parent_task__isnull=True)
+        # Filtro `?waitingOn=` (Story 12.2, AC3) só quando há `request` no
+        # contexto — o endpoint o injeta; `LogSerializer(log).data` sem contexto
+        # (ex.: test_serializers) não filtra nada. `.qs` preserva a ordenação
+        # `Meta.ordering = ["order_index"]` do model.
+        request = self.context.get("request")
+        if request is not None:
+            roots = TaskFilter(request.query_params, queryset=roots, request=request).qs
         return TaskSerializer(roots, many=True).data
 
 
@@ -80,6 +93,11 @@ class TaskUpdateSerializer(serializers.Serializer):
         choices=Task.Category.choices, required=False, allow_null=True
     )
     scheduled_date = serializers.DateField(required=False, allow_null=True)
+    # Alterna "Aguardando Terceiro" (Story 12.2, AC2): o corpo chega como
+    # `waitingOn` e o `CamelCaseJSONParser` converte para `waiting_on` antes do
+    # serializer. `update_task` já repassa o campo genéricamente (setattr +
+    # save escopado), então a ortogonalidade com o `status` é automática.
+    waiting_on = serializers.BooleanField(required=False)
 
 
 class TaskReorderSerializer(serializers.Serializer):

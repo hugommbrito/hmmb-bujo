@@ -3174,3 +3174,91 @@ npx playwright test migration-flow.spec.ts                               → 6 p
 - Nenhum gap bloqueante para a 12.1 — 4/4 ACs cobertas nas camadas apropriadas; o efeito observável agora tem prova ponta-a-ponta.
 - Artefatos de teste entram no commit da story; este `test-summary.md` fica fora do commit (artefato de `_bmad-output`).
 - Vitest e Playwright não rodam no CI — rodar as suítes localmente antes do merge.
+
+---
+
+# Resumo de Automação de Testes — Story 12.2: Flag `waiting_on` no backend (#15)
+
+**Data:** 2026-07-23
+**Feature:** Backend Tier 0 do `waiting_on` (#15): campo booleano (`tasks.waiting_on NOT NULL DEFAULT false`, migration 0006), leitura no `TaskSerializer` + escrita via `PATCH {"waitingOn": ...}`, filtro `?waitingOn=` (novo `bujo/filters.py`, django-filter *standalone*) no Daily Log, e herança do flag na migração (`_migrate_subtree`). **Backend-only** — Épico 12 é Tier 0 (DIR-15); **AC5 proíbe qualquer mudança de UI**. O indicador visual e o filtro de UI nascem na **Story 17.5** (Onda 2b / Épico 17).
+**Workflow:** bmad-qa-generate-e2e-tests
+**Frameworks:** pytest + pytest-django (DB Postgres LOCAL via docker-compose; CI roda `uv run pytest` sem scoping)
+
+---
+
+## Decisão de escopo: SEM E2E de UI (justificada e verificada)
+
+O passo 3 do workflow (`Generate E2E Tests`) é condicionado a **"if UI exists"**. Diferente da Story 12.1 — que, embora também Tier 0, ganhou +1 E2E porque o status já era **observável numa superfície de UI existente** (`TaskRow`: chip "Iniciada" + botão de status) — a Story 12.2 **não tem superfície de UI alguma para o `waiting_on`**.
+
+**Verificado (não assumido):** `grep -rn "waitingOn|waiting_on" frontend/src frontend/e2e` → **zero ocorrências**. Não há indicador, filtro, chip, botão ou seletor de `waiting_on` em lugar nenhum do frontend; nascem na 17.5. `types.gen.ts` **não** foi regenerado (é da 17.5).
+
+Logo, um E2E de browser aqui exercitaria uma superfície **inexistente** — não haveria o que acionar nem o que assertar sem **fabricar** UI que a story explicitamente não entrega (AC5). Seria brittle por construção e teria de ser reescrito na 17.5. **Decisão: nenhum E2E gerado.** O gate real é a **suíte pytest do backend**. O E2E do `waitingOn` (indicador + filtro no Hoje/Daily; sucessor migrado mantém o indicador) nasce na **Story 17.5**, contra a superfície real.
+
+## Gaps descobertos e auto-aplicados
+
+A story entrou em `review` com cobertura backend sólida (8 testes: serializer read/default, PATCH toggle, ortogonalidade nos 2 sentidos, filtro no Daily Log, herança `today` + subárvore mista). O mapeamento AC×camada + comparação com o padrão da irmã **12.1** revelou **2 lacunas genuínas na camada de API/serviço**:
+
+| # | Lacuna | Camada | AC | Ação |
+|---|--------|--------|----|------|
+| A | **Herança de `waiting_on` só testada em `destination="today"`.** AC4 nomeia explicitamente **todos os fluxos** (diária/semanal/mensal/Catch-Up/Mover → `today`/`week`/`month`/`future`). A 12.1, mesma mecânica no mesmo `_migrate_subtree`, testou os **4 destinos** para `status`; a 12.2 só cobria `today` para o flag. | Service (pytest) | AC4 | **+3 testes** em `test_services.py` |
+| B | **Semântica "só as raízes" (AC3) não travada por teste.** O filtro decide pela flag da **raiz**; a subárvore é serializada por `get_subtasks` **sem** filtro. Nenhum teste provava que subtarefas não são filtradas independentemente. | View (pytest) | AC3 | **+1 teste** em `test_views.py` |
+
+**Por que estas camadas (e não E2E):** ambas são invariantes de **API/serviço** — round-trips de browser não acrescentariam sinal, só flake, e (Gap B) exigiriam UI inexistente. As lacunas foram medidas contra o texto explícito dos ACs (AC4 "qualquer fluxo"; AC3 "só as raízes") e contra o bar do projeto (a 12.1 testou os 4 destinos para a dimensão irmã).
+
+## Testes Gerados
+
+### Service — `backend/bujo/tests/test_services.py` (+3 testes) — Gap A / AC4
+- [x] **`test_migrar_waiting_on_true_para_week_sucessor_herda_true`** — fluxo `week`; afirma `weekly_log_id` correto e `waiting_on is True` no sucessor.
+- [x] **`test_migrar_waiting_on_true_para_month_sucessor_herda_true`** — fluxo `month` (ramo POSTPONED); `monthly_log_id` correto + herança.
+- [x] **`test_migrar_waiting_on_true_para_future_sucessor_herda_true`** — fluxo `future` (mês futuro, POSTPONED) + herança.
+
+### View — `backend/bujo/tests/test_views.py` (+1 teste) — Gap B / AC3
+- [x] **`test_get_today_log_filtro_waiting_on_aplica_so_nas_raizes`** — prova nos 2 sentidos: (1) raiz `False` com filha `True` fica **fora** de `?waitingOn=true` (a raiz é que conta, não a filha); (2) raiz `True` aparece com a subárvore **inteira**, inclusive filha `False` (o filtro não poda filhos). Guarda `LogSerializer.get_tasks` + `get_subtasks` contra regressões que estendam o filtro às subtarefas.
+
+## Cobertura por AC (pós-QA)
+
+| AC | Backend (pytest) | E2E |
+|----|-------------------|-----|
+| AC1 — schema/migration 0006, enum de 6 estados intocado | ✅ migration aplicada (Postgres LOCAL + Neon e2e); `test_serializers` de campos exatos | — (invariante de schema) |
+| AC2 — PATCH `waitingOn` + ortogonalidade (2 sentidos) | ✅ toggle persiste; transição preserva flag; toggle preserva status; read/default | — (invariante de API) |
+| AC3 — filtro `?waitingOn=` no Daily Log | ✅ true/false/ausente + combina com `?log_date=`; **"só as raízes" (novo)** | — (sem UI; superfície nasce na 17.5) |
+| AC4 — herança em todos os fluxos, por nó | ✅ `today` + subárvore mista + **`week`/`month`/`future` (novos)** | — (invariante de service) |
+| AC5 — nenhuma UI muda | ✅ verificado: zero refs a `waitingOn` no frontend | — (por design: **sem E2E**) |
+
+**ACs cobertas: 5/5 nas camadas apropriadas. Lacunas fechadas nesta rodada: 2 (herança week/month/future; filtro "só as raízes").**
+
+## Execução (contagem real observada)
+
+```
+# Backend (Postgres LOCAL via docker-compose)
+uv run pytest                                                              → 892 passed (181.14s)   [baseline da story: 888; +4]
+uv run pytest bujo/tests/test_services.py bujo/tests/test_views.py -k waiting_on  → 11 passed
+uv run pytest test_services.py + test_views.py + test_serializers.py (full)       → 278 passed (64.0s)
+uv run ruff check bujo/tests/test_services.py bujo/tests/test_views.py            → All checks passed!
+```
+
+Migration 0006 já aplicada à branch Neon `e2e` (Task 1 da story; `showmigrations` → `[X]`).
+
+## Checklist de Validação
+
+- [x] API/service tests gerados: +4 (3 herança multi-destino + 1 filtro "só as raízes").
+- [x] E2E **não** gerado — decisão justificada e verificada (sem superfície de UI; AC5). O gate real é o pytest.
+- [x] Usa APIs padrão do framework (pytest/pytest-django, django-filter, factories/fixtures existentes) — nenhuma abstração nova.
+- [x] Cobre happy path (herança nos 4 fluxos; filtro true/false) + caso crítico (filtro não poda subárvore).
+- [x] **Todos os testes gerados passam** (11 waiting_on; 278 nos arquivos afetados; **892 na suíte completa**).
+- [x] Sem waits/sleeps; testes independentes (cada um cria seu próprio tenant/log via fixtures).
+- [x] Descrições claras em pt-BR referenciando Story 12.2 / AC3 / AC4 / AD-18.
+- [x] **Nenhuma migration nova** criada nesta rodada de QA (0006 já existia da dev-story).
+- [x] Summary anexado (log cumulativo) em `_bmad-output/implementation-artifacts/tests/test-summary.md`.
+
+## Limites de Cobertura (por design, não gaps)
+
+- **`?waitingOn=<valor inválido>`:** comportamento é do django-filter (`BooleanFilter`/`NullBooleanField`), não código nosso; não é comportamento documentado em nenhum AC. Não asserido (evita travar quirk de framework — instrução "não assumir").
+- **Filtro em Weekly/Monthly/filas:** fora do escopo da 12.2 por decisão explícita da story (Épico 17 / spec 17.0); `TaskFilter` já fica reutilizável.
+- **Qualquer superfície de UI:** proibida pela AC5 — é da Story 17.5.
+
+## Próximos Passos
+
+- **Story 17.5 (Épico 17):** gerar o E2E de UI do `waitingOn` (indicador na Task Row + filtro no Hoje/Daily) contra a superfície real; verificar que o sucessor migrado mantém o indicador (herança já garantida aqui).
+- Artefatos de teste (`test_services.py`, `test_views.py`) entram no commit da story; este `test-summary.md` fica fora do commit (artefato de `_bmad-output`).
+- pytest roda no CI (`uv run pytest` sem scoping) — a suíte completa é o gate de merge.

@@ -59,6 +59,11 @@ def _migrate_subtree(
     AD-18 item 2). Não confundir com `new_status`, que é o status TERMINAL da
     origem (`MIGRATED`/`POSTPONED`), dimensão independente da herança."""
     source_status = source.status  # AC2: por nó, ANTES de transicionar
+    # Herança de `waiting_on` (Story 12.2, AC4 / AD-18 item 5): cópia-identidade
+    # de um booleano — lida POR NÓ (cada filho herda o PRÓPRIO valor, não o do
+    # pai). `transition_task` sobre a origem só toca `status`, então este valor é
+    # estável; ler no topo mantém a simetria com `source_status`.
+    source_waiting_on = source.waiting_on
     new_task = create_task(
         user=user,
         parent_task=parent_task,
@@ -70,7 +75,15 @@ def _migrate_subtree(
         **{container_field: container},
     )
     transition_task(user=user, task_id=source.id, to_status=new_status)
-    set_lineage_fields(task_id=new_task.id, migration_count=source.migration_count + 1)
+    # O sucessor nasce `waiting_on=False` (via `create_task`); `set_lineage_fields`
+    # (contorna o guardrail de ciclo fechado — veículo correto, `update_task`
+    # rodaria `_check_container_open`) copia o valor da origem junto ao bump de
+    # `migration_count`, na mesma escrita escopada.
+    set_lineage_fields(
+        task_id=new_task.id,
+        migration_count=source.migration_count + 1,
+        waiting_on=source_waiting_on,
+    )
     set_lineage_fields(task_id=source.id, migrated_to_task=new_task)
 
     # `create_task` sempre nasce `pending`; promover o sucessor a `started`

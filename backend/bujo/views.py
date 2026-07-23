@@ -65,7 +65,7 @@ class TodayLogView(APIView):
         else:
             log_date = today_for(request.user)
         log = get_or_create_daily_log(user=request.user, log_date=log_date)
-        return Response(LogSerializer(log).data)
+        return Response(LogSerializer(log, context={"request": request}).data)
 
 
 class TaskCreateView(APIView):

@@ -1102,6 +1102,136 @@ def test_migrar_subarvore_profunda_cada_nivel_herda_o_proprio_status(user):
         assert new_grandchild.status == Task.Status.STARTED
 
 
+# --- herança de waiting_on na migração (Story 12.2 / AD-18 item 5, #15) --------
+
+
+@pytest.mark.django_db
+def test_migrar_waiting_on_true_para_today_sucessor_herda_true(user):
+    """AC4 (AD-18 item 5): uma tarefa `waiting_on=True` migrada gera um sucessor
+    que continua aguardando o terceiro (`waiting_on=True`)."""
+    with tenant_context(user):
+        log = LogFactory(user=user)
+        task = TaskFactory(user=user, log=log, status=Task.Status.PENDING, waiting_on=True)
+
+        result = migrate_task(user=user, task_id=task.id, destination="today")
+
+        new_task = result.migrated_to_task
+        assert new_task is not None
+        assert new_task.waiting_on is True
+
+
+@pytest.mark.django_db
+def test_migrar_waiting_on_false_para_today_sucessor_permanece_false(user):
+    """AC4: a herança é cópia-identidade — origem `waiting_on=False` gera
+    sucessor `False` (o default de `create_task` não é indevidamente promovido)."""
+    with tenant_context(user):
+        log = LogFactory(user=user)
+        task = TaskFactory(user=user, log=log, status=Task.Status.PENDING, waiting_on=False)
+
+        result = migrate_task(user=user, task_id=task.id, destination="today")
+
+        new_task = result.migrated_to_task
+        assert new_task is not None
+        assert new_task.waiting_on is False
+
+
+@pytest.mark.django_db
+def test_migrar_waiting_on_true_para_week_sucessor_herda_true(user):
+    """AC4 (fluxo `week`, ritual semanal): `waiting_on` é herdado também na
+    migração para a Weekly Log — todos os fluxos passam por `_migrate_subtree`.
+    Espelha `test_migrar_started_para_week_...` (12.1) para a dimensão flag."""
+    with tenant_context(user):
+        log = LogFactory(user=user)
+        task = TaskFactory(user=user, log=log, status=Task.Status.PENDING, waiting_on=True)
+
+        result = migrate_task(user=user, task_id=task.id, destination="week")
+
+        current_week_start = week_start_of(today_for(user))
+        weekly_log = get_or_create_weekly_log(user=user, week_start=current_week_start)
+        new_task = result.migrated_to_task
+        assert new_task is not None
+        assert new_task.weekly_log_id == weekly_log.id
+        assert new_task.waiting_on is True
+
+
+@pytest.mark.django_db
+def test_migrar_waiting_on_true_para_month_sucessor_herda_true(user):
+    """AC4 (fluxo `month`, ramo POSTPONED): `waiting_on` é herdado no adiamento
+    para o Monthly Log corrente. Espelha `test_migrar_started_para_month_...`."""
+    with tenant_context(user):
+        log = LogFactory(user=user)
+        task = TaskFactory(user=user, log=log, status=Task.Status.PENDING, waiting_on=True)
+        current_month_first = today_for(user).replace(day=1)
+
+        result = migrate_task(
+            user=user, task_id=task.id, destination="month", month_first=current_month_first
+        )
+
+        monthly_log = get_or_create_monthly_log(user=user, month_first=current_month_first)
+        new_task = result.migrated_to_task
+        assert new_task is not None
+        assert new_task.monthly_log_id == monthly_log.id
+        assert new_task.waiting_on is True
+
+
+@pytest.mark.django_db
+def test_migrar_waiting_on_true_para_future_sucessor_herda_true(user):
+    """AC4 (fluxo `future`, ramo POSTPONED): `waiting_on` é herdado no adiamento
+    para um mês futuro. Espelha `test_migrar_started_para_future_...` (12.1)."""
+    with tenant_context(user):
+        log = LogFactory(user=user)
+        task = TaskFactory(user=user, log=log, status=Task.Status.PENDING, waiting_on=True)
+        current_month_first = today_for(user).replace(day=1)
+        future_month = date(current_month_first.year + 1, current_month_first.month, 1)
+
+        result = migrate_task(
+            user=user, task_id=task.id, destination="future", month_first=future_month
+        )
+
+        new_task = result.migrated_to_task
+        assert new_task is not None
+        assert new_task.waiting_on is True
+
+
+@pytest.mark.django_db
+def test_migrar_subarvore_waiting_on_misto_cada_no_herda_o_proprio(user):
+    """AC4 (disciplina por-nó, AD-18 item 2): numa subárvore de flag mista, cada
+    nó recriado herda o PRÓPRIO `waiting_on`, NÃO o do pai. Pai `True` com um
+    filho `False` e um filho `True` → novo pai `True`, filho normal `False` (não
+    contaminado pelo pai), filho aguardando `True`. Espelha
+    `test_migrar_subarvore_status_misto_cada_no_herda_o_proprio_status` (12.1)."""
+    with tenant_context(user):
+        log = LogFactory(user=user)
+        parent = TaskFactory(
+            user=user, log=log, status=Task.Status.PENDING, waiting_on=True, title="Pai aguardando"
+        )
+        TaskFactory(
+            user=user,
+            log=log,
+            parent_task=parent,
+            status=Task.Status.PENDING,
+            waiting_on=False,
+            title="Filho normal",
+        )
+        TaskFactory(
+            user=user,
+            log=log,
+            parent_task=parent,
+            status=Task.Status.PENDING,
+            waiting_on=True,
+            title="Filho aguardando",
+        )
+
+        result = migrate_task(user=user, task_id=parent.id, destination="today")
+
+        new_parent = result.migrated_to_task
+        assert new_parent is not None
+        assert new_parent.waiting_on is True
+        destino_filhos = {c.title: c for c in new_parent.subtasks.all()}
+        assert destino_filhos["Filho normal"].waiting_on is False
+        assert destino_filhos["Filho aguardando"].waiting_on is True
+
+
 # --- recurring.py (AC #1, #2, #3) ----------------------------------------------
 
 

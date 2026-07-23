@@ -49,10 +49,25 @@ def test_task_serializer_expoe_exatamente_os_campos_esperados():
         "category",
         "scheduled_date",
         "subtasks",
+        "waiting_on",
         "migration_count",
         "migrated_to_task",
         "source_template",
     }
+
+
+@pytest.mark.django_db
+def test_task_serializer_waiting_on_e_false_para_tarefa_comum(user):
+    """Story 12.2 (AC2): `waiting_on` sai no read e nasce `False` por default.
+    Chaves de `.data` são snake_case — a camelização (`waitingOn`) só ocorre no
+    render do corpo HTTP, que `.data` não passa."""
+    with tenant_context(user):
+        task = TaskFactory(user=user)
+
+        data = TaskSerializer(task).data
+
+        assert "waiting_on" in data
+        assert data["waiting_on"] is False
 
 
 @pytest.mark.django_db

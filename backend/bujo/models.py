@@ -124,6 +124,12 @@ class Task(TenantModel):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    # "Aguardando Terceiro" (FR-4.15, AD-18 itens 3-5): anotação sobre a tarefa,
+    # NÃO um estado — o enum de 6 estados (`TaskStatus`) permanece congelado
+    # (proibido 7º estado). Ortogonal ao `status` (transições não a alteram e
+    # alterná-la não muda o `status`) e herdada pelo sucessor na migração.
+    waiting_on = models.BooleanField(default=False)
+
     # Congelados/inertes (Épico 4 — linhagem de migração e subtarefas).
     migrated_to_task = models.ForeignKey(
         "self",
