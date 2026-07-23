@@ -1,5 +1,5 @@
 # generated: 2026-06-22
-# last_updated: 2026-07-22
+# last_updated: 2026-07-23
 # project: hmmb-bujo
 # project_key: NOKEY
 # tracking_system: file-system
@@ -33,15 +33,36 @@
 # - Stories can be worked in parallel if team capacity allows
 # - Developer typically creates next story after previous one is 'done' to incorporate learnings
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+#
+# CICLO PÓS-MVP (sprint planning 2026-07-23):
+# ===========================================
+# Fonte: epics.md ([CE] 2026-07-23 + refresh Épico 10) · gate [IR] READY 2026-07-23
+#        (implementation-readiness-report-2026-07-23.md)
+# ORDEM MESTRE (sprint-change-proposal-2026-07-22.md §4 — numeração de épico é
+# IDENTIFICADOR, não ordem). A ordem FÍSICA das entradas abaixo codifica a fila:
+#   12 → 13 → 14 → 15 → 16 → 17 → 18 → 10 → 19 → 20 → 21 (fases a/b: 21.0–21.9)
+#   → 22 → 21 (fase c: 21.10–21.11)
+# - Épico 10 roda DEPOIS do 18 (D8).
+# - Épico 21 PAUSA após a 21.9; stories 21.10/21.11 têm gate ⛔ e só entram após
+#   o Épico 22 completo (D7) — por isso aparecem fisicamente após o bloco do 22.
+# - Stories x.0 de UX são gates human-in-the-loop (rito bmad-ux — NUNCA
+#   dev-story/automator): 13.0, 14.0, 15.0, 16.0, 16.3, 16.10, 17.0, 18.0, 19.0,
+#   20.0, 21.0, 22.0 e 10.3. Nenhuma story de implementação do épico antes da
+#   x.0 done. Épico 12 não tem x.0 (sem UI).
+# - Épicos 1–9 e 11 são HISTÓRICO (MVP) — não entram na fila.
 
 generated: 2026-06-22
-last_updated: 2026-07-22  # CC 2026-07-22 (sprint-change-proposal-2026-07-22.md): housekeeping épicos 1/2/3/7/8/9 → done + Story 10.0 adicionada
+last_updated: 2026-07-23  # sprint planning pós-MVP: fila 12→13→14→15→16→17→18→10→19→20→21a/b→22→21c (epics.md do [CE] 2026-07-23; [IR] READY 2026-07-23)
 project: hmmb-bujo
 project_key: NOKEY
 tracking_system: file-system
 story_location: _bmad-output/implementation-artifacts
 
 development_status:
+  # ============================================================
+  # HISTÓRICO (MVP — Épicos 1–9 e 11): fora da fila pós-MVP
+  # ============================================================
+
   # Epic 1: Fundação de Plataforma
   epic-1: done  # housekeeping CC 2026-07-22 (5/5 stories done; retro optional)
   1-1-scaffold-do-monorepo-e-pipeline-de-ci-base: done
@@ -77,7 +98,7 @@ development_status:
   4-6-fechamento-de-ciclos-e-arquivo: done
   epic-4-retrospective: done
 
-  # Epic 11: Refinamento do Planner & Recorrentes (refina o Épico 4 — roda antes do Épico 5)
+  # Epic 11: Refinamento do Planner & Recorrentes (refinou o Épico 4 — rodou antes do Épico 5)
   epic-11: done  # 3 lotes concluídos (11.1–11.12); retrospectiva 3ª passada fecha o épico em 2026-07-16
   11-1-isolamento-de-teste-via-branch-neon-dedicada: done
   11-2-recorrentes-no-planner-com-abas-e-filtro: done
@@ -128,9 +149,150 @@ development_status:
   9-2-historico-navegavel-por-data-e-mes: done
   epic-9-retrospective: done  # retrospectiva #YOLO concluída 2026-07-20 (epic-9-retro-2026-07-20.md) — Epic 9 fecha o conjunto de features do MVP
 
-  # Epic 10: Gestão de Usuários (pós-MVP — fora da contagem de sprint do MVP)
+  # ============================================================
+  # FILA PÓS-MVP (ordem mestre — a posição abaixo É a ordem)
+  # ============================================================
+
+  # Epic 12: Tier 0 — Plataforma e Quick Wins (sem UI) — 1º da fila; SEM story x.0 de UX
+  epic-12: backlog
+  12-1-heranca-de-status-na-migracao: backlog
+  12-2-flag-waiting-on-no-backend: backlog
+  12-3-manifest-de-collections-fatia-1-pixel-identico: backlog
+  12-4-token-de-automacao-com-autenticacao-dedicada: backlog
+  12-5-captura-externa-post-api-capture: backlog
+  12-6-resumo-do-dia-get-api-summary-today: backlog
+  epic-12-retrospective: optional
+
+  # Epic 13: Onda 2a — App Shell no Sistema Novo
+  epic-13: backlog
+  13-0-ux-spec-do-app-shell-novo: backlog  # ⛔ gate UX human-in-the-loop (rito bmad-ux — NUNCA dev-story/automator); bloqueia 13.1–13.4
+  13-1-fundacao-do-shell-novo-com-coexistencia-por-rota: backlog
+  13-2-sidebar-nova-derivada-do-manifest: backlog
+  13-3-bottom-nav-e-captura-persistente-mobile: backlog
+  13-4-passe-de-paridade-e-acessibilidade-do-shell: backlog
+  epic-13-retrospective: optional
+
+  # Epic 14: Onda 3 — Núcleo BuJo no Sistema Novo (gate vertical)
+  epic-14: backlog
+  14-0-ux-mockups-complementares-do-nucleo-bujo: backlog  # ⛔ gate UX human-in-the-loop (rito bmad-ux — NUNCA dev-story/automator); bloqueia 14.1–14.10
+  14-1-ciclos-de-vida-de-weekly-e-monthly-backend: backlog
+  14-2-fontes-dos-rituais-e-decisoes-snapshot-backend: backlog
+  14-3-fila-unificada-de-migracao-e-aliases-finos-backend: backlog
+  14-4-soft-delete-de-templates-recorrentes-backend: backlog
+  14-5-weekly-board-e-planejamento-semanal-no-sistema-novo: backlog  # [IR] candidata a SPLIT na criação: Task Row base como story própria
+  14-6-monthly-board-e-planejamento-mensal-no-sistema-novo: backlog
+  14-7-future-log-no-sistema-novo: backlog
+  14-8-recorrentes-no-sistema-novo: backlog
+  14-9-migracao-catch-up-como-ritual-no-shell: backlog
+  14-10-arquivo-no-sistema-novo: backlog
+  epic-14-retrospective: optional
+
+  # Epic 15: Onda 4 — Captura no Sistema Novo
+  epic-15: backlog
+  15-0-ux-mockup-da-captura-e-do-brain-dump: backlog  # ⛔ gate UX human-in-the-loop (rito bmad-ux — NUNCA dev-story/automator); bloqueia 15.1–15.3
+  15-1-brain-dump-no-sistema-novo-inbox-e-processamento: backlog
+  15-2-capture-sheet-e-captura-persistente-no-sistema-novo: backlog
+  15-3-passe-de-paridade-estados-e-acessibilidade-da-captura: backlog
+  epic-15-retrospective: optional
+
+  # Epic 16: Onda 5 — Módulos: Migração + Refinos + Journalling
+  # Lotes de automação: 16.0 → [16.1–16.2] · 16.3 → [16.4–16.9] · 16.10 → [16.11–16.14]
+  epic-16: backlog
+  16-0-ux-mockup-de-habitos-no-sistema-novo: backlog  # ⛔ gate UX do lote 1 (rito bmad-ux — NUNCA dev-story/automator); bloqueia 16.1–16.2
+  16-1-habitos-no-sistema-novo: backlog
+  16-2-campo-icon-key-e-catalogo-phosphor: backlog
+  16-3-ux-mockups-de-saude-metricas-e-medicamentos: backlog  # ⛔ gate UX do lote 2 (rito bmad-ux, mesma sessão — NUNCA dev-story/automator); bloqueia 16.4–16.9
+  16-4-saude-metricas-no-sistema-novo: backlog
+  16-5-refinos-c3-reordenar-e-editar-metricas: backlog
+  16-6-refino-c3-tipos-percentual-e-enum-multi-selecao-backend: backlog
+  16-7-refino-c3-percentual-e-enum-multi-na-ui-frontend: backlog
+  16-8-refino-c3-grupos-de-metricas: backlog
+  16-9-medicamentos-no-sistema-novo: backlog
+  16-10-ux-mockup-do-journalling: backlog  # ⛔ gate UX do lote 3 (rito bmad-ux — NUNCA dev-story/automator); bloqueia 16.11–16.14
+  16-11-journalling-backend-app-campos-e-tres-ancoras: backlog
+  16-12-journalling-superficies-config-registro-e-historicos: backlog
+  16-13-migracao-das-gratidoes-e-freeze-de-escrita: backlog
+  16-14-aposentadoria-da-superficie-da-gratidao: backlog
+  epic-16-retrospective: optional
+
+  # Epic 17: Onda 2b — Daily + Home (Dashboard + Hoje)
+  epic-17: backlog
+  17-0-ux-spec-da-nova-home: backlog  # ⛔ gate UX human-in-the-loop (rito bmad-ux — NUNCA dev-story/automator); bloqueia 17.1–17.6 · PODE rodar em paralelo com a cauda do Épico 16 (mitigação registrada no epics.md)
+  17-1-componente-compartilhado-das-tasks-do-dia: backlog
+  17-2-pagina-hoje-trabalhar: backlog
+  17-3-dashboard-panorama-home-pos-login: backlog
+  17-4-daily-log-no-sistema-novo: backlog
+  17-5-ui-da-flag-aguardando-terceiro: backlog
+  17-6-passe-de-paridade-e-acessibilidade-da-onda-2b: backlog
+  epic-17-retrospective: optional
+
+  # Epic 18: Onda 6 — Consolidação e Remoção do Legado
+  epic-18: backlog
+  18-0-ux-mockups-de-configuracoes-e-auth: backlog  # ⛔ gate UX human-in-the-loop (rito bmad-ux — NUNCA dev-story/automator); bloqueia 18.1–18.5
+  18-1-configuracoes-no-sistema-novo: backlog
+  18-2-nome-as-categorias: backlog
+  18-3-auth-no-padrao-limiar-do-workspace: backlog
+  18-4-superficies-residuais-e-remocao-dos-aliases-legados: backlog
+  18-5-remocao-do-legado-tokens-componentes-e-app-gratitude: backlog
+  epic-18-retrospective: optional
+
+  # Epic 10: Gestão de Usuários — ampliado (CC 2026-07-22) — roda DEPOIS do Épico 18 (D8)
+  # Ordem interna: 10.0 → 10.3 → 10.4 → 10.5 → 10.6 → 10.7 → 10.8 → 10.1 → 10.2
   epic-10: backlog
-  10-0-observabilidade-minima-antes-de-usuarios-convidados: backlog  # adicionada pelo CC 2026-07-22 (story já existia no epics.md; pré-requisito de 10.1/10.2)
+  10-0-observabilidade-minima-antes-de-usuarios-convidados: backlog  # pré-requisito de 10.1/10.2 (AR-22)
+  10-3-ux-mockups-do-index-e-da-oferta-no-dashboard: backlog  # ⛔ gate UX human-in-the-loop (x.0 do escopo ampliado; rito bmad-ux — NUNCA dev-story/automator); bloqueia 10.4–10.6
+  10-4-flags-de-ativacao-de-collections-backend-e-granularidade: backlog
+  10-5-index-de-collections-pagina-de-toggles: backlog
+  10-6-empty-state-do-dashboard-como-oferta: backlog
+  10-7-lgpd-consentimento-de-ia-em-nuvem-para-terceiros: backlog
+  10-8-recuperacao-de-senha-por-email: backlog
   10-1-convite-de-novos-usuarios-por-email: backlog
   10-2-onboarding-de-usuario-convidado-com-espaco-isolado: backlog
   epic-10-retrospective: optional
+
+  # Epic 19: Tier 3 · Custom Collections (C6)
+  epic-19: backlog
+  19-0-ux-mockups-de-custom-collections: backlog  # ⛔ gate UX human-in-the-loop (rito bmad-ux — NUNCA dev-story/automator); bloqueia 19.1–19.5
+  19-1-backend-definicao-registros-e-sistema-de-tipos: backlog
+  19-2-backend-edicao-de-schema-segura-x-destrutiva: backlog
+  19-3-container-no-manifest-e-filhas-dinamicas-na-sidebar: backlog
+  19-4-ui-criar-e-evoluir-collections-construtor-de-schema: backlog
+  19-5-ui-registros-lista-criacao-e-detalhe: backlog
+  epic-19-retrospective: optional
+
+  # Epic 20: Tier 3 · Alimentação (#5a)
+  epic-20: backlog
+  20-0-ux-mockup-da-alimentacao: backlog  # ⛔ gate UX human-in-the-loop (rito bmad-ux — NUNCA dev-story/automator); bloqueia 20.1–20.2
+  20-1-backend-espelho-local-sync-on-read-e-credenciais-da-collection: backlog
+  20-2-superficie-resumo-diario-e-janela-de-jejum: backlog
+  epic-20-retrospective: optional
+
+  # Epic 21: Tier 3 · Análises + Configuração de IA — FASES a/b (21.0–21.9)
+  # ⚠️ O épico PAUSA após a 21.9: as stories 21.10/21.11 (fase c) têm gate ⛔ e
+  # estão listadas APÓS o bloco do Épico 22 (só entram com o Épico 22 completo — D7).
+  epic-21: backlog
+  21-0-ux-mockups-de-analises-e-config-de-ia: backlog  # ⛔ gate UX human-in-the-loop (rito bmad-ux — NUNCA dev-story/automator); bloqueia 21.1–21.9
+  21-1-config-de-ia-global-backend-byo-key-e-ai-available: backlog
+  21-2-config-de-ia-ui-e-tag-funcao-de-ia: backlog
+  21-3-catalogo-de-metricas-allowlist-em-codigo: backlog
+  21-4-modelo-de-relatorio-spec-dsl-validada-e-compilada: backlog
+  21-5-fase-a-dicionario-semantico-anotacoes-e-conceitos: backlog
+  21-6-fase-b-geracao-backend-series-e-ia-com-serie-ref: backlog
+  21-7-fase-b-superficie-de-relatorios-recharts-historico-e-exemplar: backlog
+  21-8-badge-dado-lido-por-ia-e-indice-reverso: backlog
+  21-9-relatorio-medico-como-modelo-especializado: backlog  # última story antes da PAUSA do épico (fase c só após o Épico 22)
+
+  # Epic 22: Tier 3 · Pressão Arterial (#20) — roda ENTRE as fases a/b e c do Épico 21
+  epic-22: backlog
+  22-0-ux-mockups-da-pressao-arterial: backlog  # ⛔ gate UX human-in-the-loop (rito bmad-ux — NUNCA dev-story/automator); bloqueia 22.1–22.5
+  22-1-infra-de-midia-django-storages-e-r2-privado: backlog
+  22-2-backend-schema-clinico-e-ingestao: backlog
+  22-3-captura-manual-e-historico: backlog
+  22-4-captura-por-foto-e-ia-human-in-the-loop-obrigatorio: backlog
+  22-5-sessoes-7-2-2-e-dashboard-clinico: backlog
+  epic-22-retrospective: optional
+
+  # Epic 21 — FASE c (21.10–21.11) ⛔ gate D7: só após o Épico 22 completo
+  21-10-fase-c-agendamento-django-q2: backlog  # ⛔ NÃO iniciar antes do Épico 22 done
+  21-11-fase-c-batch-api-cap-mensal-e-skip-por-hash: backlog  # ⛔ NÃO iniciar antes do Épico 22 done
+  epic-21-retrospective: optional  # retro do Épico 21 só após a fase c

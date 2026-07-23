@@ -2,12 +2,14 @@
 title: "BuJo Digital — PRD"
 status: final
 created: 2026-06-15
-updated: 2026-07-22
+updated: 2026-07-23
 ---
 
 # BuJo Digital — Product Requirements Document
 
 > **Revisão CC 2026-07-22** — Seção 5 (Requisitos Funcionais) reorganizada no modelo real do produto (**núcleo BuJo não-gateável + collections opcionais + plataforma**), conforme roteado pelo `sprint-change-proposal-2026-07-22.md`. FRs entregues tiveram o **texto preservado**; a renumeração e o de-para (FR antigo → FR novo) estão no **Anexo A**. As decisões §2/§3 do proposal são vinculantes.
+
+> **Revisão IR 2026-07-23** — 3 correções cirúrgicas roteadas pelo rito [IR] (`implementation-readiness-report-2026-07-23.md`): novo **FR-0.5** (recuperação de senha — issue crítico, pré-requisito do Épico 10); rename **"cardápio" → "Index"** (decisão Hugo 2026-07-23 — FR-1.4, FR-6.4, FR-15.5 e correlatas); **NFR-8** alinhado à decisão do dono de 2026-07-22 (cláusula crop+EXIF removida do NFR transversal; permanece em FR-12.8). Sem renumeração; escopo inalterado.
 
 ---
 
@@ -171,6 +173,8 @@ O app não é um produto SaaS público — mas é arquitetado para escalar dentr
 
 **FR-0.4** — O sistema suporta múltiplos usuários desde o início. A UI de convite e gestão de usuários é entregue em fase posterior (FR-15).
 
+**FR-0.5** — *(novo — IR 2026-07-23)* **Recuperação de senha:** o usuário redefine a própria senha por email — solicita a redefinição ("esqueci minha senha"), recebe um link com token de validade limitada e define uma nova senha. Capacidade de autenticação complementar ao FR-0.2. Entrega obrigatória **antes do Épico 10** (FR-15) — convidado trancado para fora é falha de onboarding. *(Issue crítico do [IR] 2026-07-23; pendência auto-sinalizada no preâmbulo do Épico 10 do `epics.md`.)*
+
 ---
 
 ### FR-1 — Infraestrutura de Collections *(novo)*
@@ -181,9 +185,9 @@ O app não é um produto SaaS público — mas é arquitetado para escalar dentr
 
 **FR-1.2** — **Taxonomia de collections (4 archetypes):** (1) **coded fixa** (ex.: Medicamentos); (2) **coded com campos definidos pelo usuário** (ex.: Saúde-Métricas, Journalling); (3) **coded de integração** (fonte externa + espelho local; ex.: Alimentação); (4) **custom** (schema no banco, criada pelo usuário). As collections coded vivem no manifest (registro em código); as custom vivem como **conteúdo do container coded "Custom Collections"** (FR-14).
 
-**FR-1.3** — **Manifest/registro de collections:** um registro central declara cada collection coded — identidade, nome, ícone, rotas e entrada de navegação (label, grupo, ordem) — e reserva espaço para o card de dashboard e as configurações da collection (sem consumidores na fatia 1). A navegação (sidebar, bottom-nav, roteamento) é derivada desse registro. **Aceite da fatia 1:** a extração não altera nada visível — o app é idêntico antes e depois; adicionar uma collection nova passa a ser uma operação de baixo atrito (atende o "cardápio sem atrito" do Hugo). *(Estrutura do registro e DoD → addendum.)*
+**FR-1.3** — **Manifest/registro de collections:** um registro central declara cada collection coded — identidade, nome, ícone, rotas e entrada de navegação (label, grupo, ordem) — e reserva espaço para o card de dashboard e as configurações da collection (sem consumidores na fatia 1). A navegação (sidebar, bottom-nav, roteamento) é derivada desse registro. **Aceite da fatia 1:** a extração não altera nada visível — o app é idêntico antes e depois; adicionar uma collection nova passa a ser uma operação de baixo atrito (atende o job do Hugo de publicar collections sem atrito — o "cardápio sem atrito" do brainstorming, hoje **Index**, FR-1.4). *(Estrutura do registro e DoD → addendum.)*
 
-**FR-1.4** — **Cardápio (ativação/desativação de collections, #14 peça 2):** superfície onde o usuário liga/desliga cada collection. **Desativar preserva os dados** (filosofia da casa); reativar restaura a superfície. O núcleo (FR-1.1) fica fora do cardápio. O "cardápio" é um ambiente de escolha de collections, não uma loja/marketplace — o job de publicar collections novas é do próprio Hugo e é atendido pelo manifest (baixo atrito), não por infraestrutura de marketplace.
+**FR-1.4** — **Index (ativação/desativação de collections, #14 peça 2):** superfície onde o usuário liga/desliga cada collection. **Desativar preserva os dados** (filosofia da casa); reativar restaura a superfície. O núcleo (FR-1.1) fica fora do Index. O Index é um ambiente de escolha de collections, não uma loja/marketplace — o job de publicar collections novas é do próprio Hugo e é atendido pelo manifest (baixo atrito), não por infraestrutura de marketplace. *(Renomeado de "cardápio" — decisão Hugo 2026-07-23: Index é a estrutura canônica do método Bullet Journal que lista as collections do caderno; o nome dissolve por vocabulário o risco de leitura como loja/marketplace. O rótulo pt-BR final — Index × Índice — é decidido na story x.0 10.3.)*
 
 **FR-1.5** — **Default all-off para convidados (#14 peça 3):** usuário novo (convidado, FR-15) nasce com **todas as collections desligadas** — ambienta-se no núcleo primeiro e ativa collections por escolha deliberada.
 
@@ -308,7 +312,7 @@ O app não é um produto SaaS público — mas é arquitetado para escalar dentr
 
 **FR-6.3** — **Hoje = trabalhar:** superfície dos itens de trabalho do dia (eventos, migrações pendentes, rapid logging). Hoje e Dashboard apresentam a **mesma visão das tasks do dia** (mesma capacidade de visualização e manipulação); diferem apenas pelo **entorno** (Hoje = trabalho; Dashboard = panorama + cards). *(Implementação por componente único compartilhado — decisão de arquitetura.)*
 
-**FR-6.4** — **Empty-state do dashboard = cardápio/oferta:** sem collections ativas, a home mostra o núcleo (o dia) + convite para ativar collections, cada convite ligando ao toggle (FR-1.4). Uma superfície, dois jobs: panorama para quem tem collections ligadas, vitrine para quem não tem nenhuma. Resolve o "primeiro login numa home vazia" do convidado do Épico 10.
+**FR-6.4** — **Empty-state do dashboard = Index/oferta:** sem collections ativas, a home mostra o núcleo (o dia) + convite para ativar collections, cada convite ligando ao toggle (FR-1.4). Uma superfície, dois jobs: panorama para quem tem collections ligadas, vitrine para quem não tem nenhuma. Resolve o "primeiro login numa home vazia" do convidado do Épico 10.
 
 **FR-6.5** — Cada collection ativa contribui com um **card no dashboard** (via `dashboardCard` reservado no manifest); o conteúdo e o layout de cada card são detalhados na spec da home (bmad-ux).
 
@@ -488,7 +492,7 @@ O app não é um produto SaaS público — mas é arquitetado para escalar dentr
 
 **FR-14.7** — **Sem export no MVP** — decisão contra-recomendação preservada (§2.10). Export vira fase 2 se a dor aparecer.
 
-**FR-14.8** — Cidadania no ecossistema (card no dashboard, participação em `contexto_ia`/Análises, listagem no cardápio) é decidida **por feature/story**; default conservador (**off**). *(Nota.)*
+**FR-14.8** — Cidadania no ecossistema (card no dashboard, participação em `contexto_ia`/Análises, listagem no Index) é decidida **por feature/story**; default conservador (**off**). *(Nota.)*
 
 **FR-14.9** — **Caso motor:** logs do Canadá (#1) — Viagens (datas, destinos), Moradias (endereços, períodos), Empregos (empregador, cargo, período): listas estruturadas com colunas tipadas.
 
@@ -506,7 +510,7 @@ O app não é um produto SaaS público — mas é arquitetado para escalar dentr
 
 **FR-15.4** — **[BACKLOG]** Competição entre amigos com base no percentual de completude de hábitos — ranking ou comparativo entre usuários do mesmo círculo.
 
-**FR-15.5** — **[Escopo ampliado — CC 2026-07-22]** O Épico 10 entrega, além de convites e onboarding: observabilidade mínima (antes de convidar externos); e as **peças 2–4 do #14** — o cardápio (FR-1.4), o default all-off para convidados (FR-1.5) e o empty-state do dashboard como superfície de oferta (FR-6.4).
+**FR-15.5** — **[Escopo ampliado — CC 2026-07-22]** O Épico 10 entrega, além de convites e onboarding: observabilidade mínima (antes de convidar externos); e as **peças 2–4 do #14** — o Index (FR-1.4), o default all-off para convidados (FR-1.5) e o empty-state do dashboard como superfície de oferta (FR-6.4).
 
 **FR-15.6** — **[LGPD]** Para dados sensíveis de terceiros, o Épico 10 exige **consentimento explícito** para "leitura por IA em nuvem" e adota **fluxo 100% manual como padrão** (cross-ref FR-12.8, FR-2.4). A **granularidade da flag de ativação** (espaço × usuário) é decidida no desenho deste épico (FR-1.6).
 
@@ -528,7 +532,7 @@ O app não é um produto SaaS público — mas é arquitetado para escalar dentr
 
 **NFR-7 — Segurança de IA:** *(novo)* nenhuma query é gerada ou executada por IA — a IA compõe apenas specs validadas server-side contra catálogo/allowlist. Defesa em profundidade no caminho de leitura de relatórios (role read-only + `statement_timeout`). *(Detalhe → addendum.)*
 
-**NFR-8 — Privacidade de dados sensíveis:** *(novo)* a chave de IA é criptografada em repouso; dados de saúde nunca são enviados a provedores que treinam com o conteúdo (Gemini free tier proibido); fotos de pressão arterial passam por crop do display + strip de EXIF antes do envio.
+**NFR-8 — Privacidade de dados sensíveis:** *(novo)* a chave de IA é criptografada em repouso; dados de saúde nunca são enviados a provedores que treinam com o conteúdo (Gemini free tier proibido). *(Decisão do dono 2026-07-22, registrada no `epics.md` e alinhada aqui pelo [IR] 2026-07-23: a cláusula "crop do display + strip de EXIF antes do envio" foi removida do NFR transversal; o pipeline de foto permanece como requisito de feature em FR-12.8/AD-27.)*
 
 **NFR-9 — Resiliência de integrações externas:** *(novo)* a indisponibilidade de uma fonte externa (ex.: foodLog) nunca quebra o núcleo do bujo; a superfície degrada graciosamente com indicador de última sincronização.
 
@@ -568,10 +572,10 @@ A ordenação de entrega dos FRs novos **por onda** é governada pela **ordem-me
 - Ambientes dev e prod
 
 ### Trabalho novo (pós-MVP — FRs deste rito)
-Os FRs novos (FR-1, FR-2, FR-3, FR-6, FR-10 a FR-14, FR-15.5–15.6 e os refinos FR-4.14–4.16) estão listados com o de-para no **Anexo A**; a ordenação de entrega vive no proposal §4.
+Os FRs novos (FR-1, FR-2, FR-3, FR-6, FR-10 a FR-14, FR-15.5–15.6 e os refinos FR-4.14–4.16) estão listados com o de-para no **Anexo A**; a ordenação de entrega vive no proposal §4. O **FR-0.5** (recuperação de senha) entrou pelo [IR] 2026-07-23 — pré-requisito do Épico 10.
 
 ### Backlog (fora do MVP) — reconciliado pelo CC 2026-07-22
-- ~~Gestão de usuários: convites e onboarding~~ → **promovido a Épico 10 ampliado** (FR-15.5: Story 10.0 observabilidade + cardápio/#14 + defaults all-off + empty-state do dashboard como oferta)
+- ~~Gestão de usuários: convites e onboarding~~ → **promovido a Épico 10 ampliado** (FR-15.5: Story 10.0 observabilidade + Index/#14 + defaults all-off + empty-state do dashboard como oferta)
 - Competição entre amigos por percentual de hábitos (FR-15.4)
 - ~~Dashboard de indicadores de saúde do sistema~~ → **absorvido** pela home-panorama (FR-6.6) + FR-8.3 + FR-7.10
 - ~~Análise de IA de correlações nos dados de saúde~~ → collection **Análises** (FR-13)
@@ -605,6 +609,7 @@ Os FRs novos (FR-1, FR-2, FR-3, FR-6, FR-10 a FR-14, FR-15.5–15.6 e os refinos
 | FR-4.3 (Análises — Modelos de Relatório) | FR-13.1 – FR-13.12 | Realocado e decomposto (era backlog; E1 do proposal) |
 | FR-5.1 – FR-5.4 (Brain Dump) | FR-5.1 – FR-5.4 | Inalterado |
 | FR-6.1 – FR-6.4 (Gestão de Usuários) | FR-15.1 – FR-15.4 | Texto preservado; renumerado |
+| — | FR-0.5 (Recuperação de senha) | Novo (IR 2026-07-23; pré-requisito do Épico 10) |
 | — | FR-1 (Infra Collections) | Novo |
 | — | FR-2 (Config de IA/BYO key) | Novo |
 | — | FR-3 (Plataforma C5) | Novo |

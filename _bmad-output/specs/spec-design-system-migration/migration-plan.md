@@ -25,6 +25,8 @@
 - Não duplicar um padrão compartilhado já aprovado; extensões precisam declarar a variação de domínio que as justifica.
 - Conservar uma rota segura de rollback por superfície enquanto o sistema legado ainda existir.
 
+> **Estratégia de promoção a prod (decisão Hugo 2026-07-23, registrada no epics.md; reconciliação registrada no [IR] 2026-07-23, §Step 4):** durante as ondas, **prod permanece no sistema atual** — todo o trabalho de migração roda na branch `dev` (homologação, fluxo vigente desde 2026-07-22). A coexistência por rota e a "rota segura de rollback por superfície" (critério acima) são mecanismos do ambiente de dev/homologação, não de prod; **o rollback de prod é não promover**. A promoção é única, quando o design system antigo puder ser abandonado (≈ Épico 18 — consolidação); a troca global de tema ao final é aceitável, sem exigência de namespace à prova de troca irreversível.
+
 ## Riscos de desenvolvimento paralelo
 
 | Risco | Controle exigido antes das histórias |
