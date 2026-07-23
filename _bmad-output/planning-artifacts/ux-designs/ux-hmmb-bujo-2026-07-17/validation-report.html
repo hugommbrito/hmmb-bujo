@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Validation Report — hmmb-bujo</title>
+  <style>
+    body { margin: 0; font: 15px/1.55 system-ui, sans-serif; color: #25231f; background: #f5f2ea; }
+    main { max-width: 960px; margin: 40px auto; padding: 32px; background: #fbfaf6; border: 1px solid #d6d1c7; }
+    h1, h2 { line-height: 1.2; } h2 { margin-top: 32px; }
+    .verdict { padding: 16px; border-left: 4px solid #9a493f; background: #f3e1de; }
+    table { width: 100%; border-collapse: collapse; } th, td { padding: 10px; border-bottom: 1px solid #d6d1c7; text-align: left; }
+    .broken { color: #8a3028; font-weight: 700; } .thin { color: #7b5b18; font-weight: 700; } .strong { color: #315f5a; font-weight: 700; }
+    li { margin: 8px 0; } code { background: #eeebe2; padding: 2px 5px; }
+  </style>
+</head>
+<body><main>
+  <h1>Validation Report — hmmb-bujo</h1>
+  <p>Executado em 19/07/2026 sobre <code>DESIGN.md</code> e <code>EXPERIENCE.md</code>.</p>
+  <div class="verdict"><strong>Ainda não liberável.</strong> A direção é coerente, mas existem divergências de produto, cobertura e acessibilidade que precisam ser corrigidas antes do desenvolvimento.</div>
+  <h2>Veredictos</h2>
+  <table><tr><th>Categoria</th><th>Veredito</th></tr>
+    <tr><td>Fluxos</td><td class="broken">broken</td></tr><tr><td>Tokens</td><td class="thin">thin</td></tr>
+    <tr><td>Componentes</td><td class="broken">broken</td></tr><tr><td>Estados</td><td class="broken">broken</td></tr>
+    <tr><td>Referências visuais</td><td class="broken">broken</td></tr><tr><td>Herança</td><td class="broken">broken</td></tr>
+    <tr><td>Shape</td><td class="strong">strong</td></tr><tr><td>Acessibilidade</td><td class="thin">adequate, not releasable</td></tr>
+  </table>
+  <h2>Bloqueadores principais</h2>
+  <ul><li>Recorrentes/navegação e Migração desktop divergem dos contratos vigentes.</li><li>Auth e interações já entregues não estão fechados nos spines.</li><li>Contraste de warning e bordas interativas não fecha AA.</li><li>Faltam jornadas, catálogo bilateral e matriz superfície × estados.</li><li>Dark mode continua requisito vigente.</li></ul>
+  <h2>Próximo gate</h2>
+  <ol><li>Escolher direção visual.</li><li>Corrigir achados críticos/altos.</li><li>Produzir os 24 conjuntos de mockups.</li><li>Promover decisões aos spines.</li><li>Revalidar e só então liberar desenvolvimento.</li></ol>
+  <p>Detalhes: <code>review-rubric.md</code> e <code>review-accessibility-product.md</code>.</p>
+</main></body></html>

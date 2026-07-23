@@ -1,15 +1,21 @@
 ---
 title: "BuJo Digital — EXPERIENCE.md"
-status: final
+status: legacy
 created: 2026-06-15
-updated: 2026-06-15
+updated: 2026-07-17
 sources:
   - prd: "_bmad-output/planning-artifacts/prds/prd-hmmb-bujo-2026-06-15/prd.md"
   - decision-log: ".decision-log.md"
   - design: "DESIGN.md"
+  - spec: "../../../specs/spec-design-system-migration/SPEC.md"
+  - architecture: "../../architecture.md"
+  - epics: "../../epics.md"
+  - handoff: "imports/mybujo-full-handoff/design_handoff_full_app/README.md"
 ---
 
 # BuJo Digital — Experience Document
+
+> **LEGADO — NÃO USAR.** Preservado apenas como registro histórico do planejamento de 15/06. O contrato canônico atual está em `../ux-hmmb-bujo-2026-07-17/EXPERIENCE.md`.
 
 > Documento de experiência de usuário. Define comportamento, fluxos, componentes e estados. Especificações visuais (cores, tipografia, espaçamento) ficam em `DESIGN.md`. Mockups ficam em `mockups/` (a produzir na fase Finalize).
 
@@ -64,7 +70,7 @@ Ambos os modos — claro e escuro — são suportados via `palette.mode` do MUI.
 | Configurações > Métricas de Saúde | Via Configurações | Criação e gestão de campos dinâmicos de saúde (FR-3.1) |
 | Configurações > Medicamentos | Via Configurações | Cadastro de medicamentos com nome, dose e blocos de horário (FR-3.4) |
 | Configurações > Recorrentes | Via Configurações | Templates de tarefas recorrentes: semanais, mensais e anuais (FR-1.11) |
-| Fluxo de Migração | Acionado pelo sistema durante abertura do dia, semana ou mês — nunca navegado diretamente | Modal overlay que apresenta tarefas pendentes uma a uma para decisão explícita do usuário |
+| Fluxo de Migração / Catch-Up | Acionado por pendências na abertura de dia, semana ou mês; retomável a partir de banners contextuais | Ritual full-screen que apresenta tarefas pendentes uma a uma para decisão explícita do usuário |
 
 → Referência de composição: [`mockups/key-daily-log-desktop.html`](mockups/key-daily-log-desktop.html) (Daily Log desktop — sidebar, task rows, habit widget, banner de migração), [`mockups/key-migration-modal-desktop.html`](mockups/key-migration-modal-desktop.html) (Migration Flow modal), [`mockups/key-fab-capture-mobile.html`](mockups/key-fab-capture-mobile.html) (FAB + Capture Sheet mobile). Spines vencem em caso de conflito com os mockups.
 
@@ -191,9 +197,9 @@ A cor do chip é sempre acompanhada do texto abreviado — cor nunca é indicado
 
 → Composição: [`mockups/key-migration-modal-desktop.html`](mockups/key-migration-modal-desktop.html).
 
-### 4.2 Migration Card — cartão de migração
+### 4.2 Migration Card — cartão de migração no ritual full-screen
 
-Componente exclusivo do Fluxo de Migração (modal overlay). Apresentado um por vez, um cartão por tarefa pendente.
+Componente exclusivo do Fluxo de Migração/Catch-Up em tela cheia. Apresentado um por vez, um cartão por tarefa pendente.
 
 **Anatomia:**
 - Título da tarefa (destaque, tamanho maior)
@@ -355,7 +361,7 @@ Aparece na superfície Medicamentos.
 | Estado | Descrição | Indicador visual |
 |---|---|---|
 | Primeiro acesso do dia — migração pendente | App detecta que há tarefas de ontem sem disposição | Banner informativo no topo do Daily Log: "Você tem N tarefas pendentes de ontem. Iniciar migração?" com botão "Iniciar". Não inicia migração automaticamente. |
-| Migração em andamento | Fluxo de Migração ativo (modal overlay) | Modal com Migration Card visível; conteúdo do Daily Log visível atrás (overlay semitransparente) |
+| Migração em andamento | Fluxo de Migração ativo | Ritual full-screen com Migration Card, origem, destino e progresso visíveis; o Daily Log não compete visualmente ao fundo |
 | Migração concluída | Todas as tarefas de ontem têm disposição | Banner some. Daily Log exibe as tarefas migradas para hoje na sua ordem manual. |
 | Dia limpo — sem tarefas migradas | Hugo optou por não migrar nada | Daily Log vazio com texto de estado vazio (veja seção 3.3) |
 | Dia em andamento | Tarefas com vários estados | Log normal; status icons refletem estado atual de cada tarefa |
@@ -548,7 +554,7 @@ Hugo acorda, faz café e abre o BuJo Digital no desktop.
 
 5. **É segunda-feira:** o sistema também detecta que o Weekly Log da semana passada tem 3 tarefas sem disposição. Um segundo banner aparece abaixo do primeiro: "Semana anterior tem 3 tarefas sem disposição. Revisar semanalmente?" + botão "Iniciar revisão semanal".
 
-6. **Hugo inicia a revisão semanal primeiro** (ordem natural do BuJo — semana antes do dia). Clica em "Iniciar revisão semanal". O Fluxo de Migração abre como modal overlay. O Migration Card aparece com a primeira tarefa sem disposição da semana anterior.
+6. **Hugo inicia a revisão semanal primeiro** (ordem natural do BuJo — semana antes do dia). Clica em "Iniciar revisão semanal". O Fluxo de Migração abre como ritual full-screen. O Migration Card aparece com a primeira tarefa sem disposição da semana anterior.
    - Tarefa: "Finalizar relatório Q2". Hugo decide: clica em "Migrar para hoje". Próximo cartão.
    - Tarefa: "Ligar para seguradora". Hugo decide: clica em "Adiar no mês" → picker de data aparece → seleciona 20/jun → confirma. Próximo cartão.
    - Tarefa: "Pesquisar voos para julho". Hugo decide: clica em "Adiar no Futuro" → picker de mês aparece → seleciona "julho" → confirma. Próximo cartão.
@@ -663,7 +669,133 @@ Hugo decidiu que vai rastrear "Leitura" como hábito — mas de forma numérica 
 
 ---
 
-## 10. Rastreamento de Cobertura de Requisitos
+## 10. Contrato operacional da migração visual
+
+### 10.1 Princípios de experiência
+
+1. **Trabalho antes de decoração:** a ação primária, a lista e o estado do ciclo dominam a página; resumos são contexto.
+2. **Denso, claro e calmo:** informação suficiente para decidir sem abrir cada item, com ritmo estável e sem ruído promocional.
+3. **BuJo digital, não dashboard SaaS:** páginas seguem tempo, ritual, coleção e disposição; não uma grade uniforme de KPIs.
+4. **Fricção intencional:** migrar, fazer placement e processar o Brain Dump continuam decisões humanas explícitas.
+5. **Responsividade por recomposição:** mobile ordena as regiões e oferece equivalentes próprios; não reduz a tela desktop.
+6. **Um produto, um destino visual:** o legado só pode coexistir por fronteira técnica temporária, nunca como preferência do usuário.
+7. **Sem escopo por inspiração:** toda ação, estado e dado precisa apontar para PRD, arquitetura, épico ou comportamento implementado aprovado.
+
+### 10.2 App shell e navegação
+
+**Wide (≥ {breakpoints.wide}):** sidebar fixa e colapsável; top bar contém contexto global mínimo; conteúdo usa a largura adequada ao tipo de superfície. A sidebar agrupa Hoje, Planner, Brain Dump, Arquivo e Configurações; módulos só aparecem quando existem no produto. Hábitos, Saúde/Medicamentos e Gratidão entram no mesmo shell ao serem implementados, sem criar navegação paralela.
+
+**Medium ({breakpoints.medium}–{breakpoints.wide}):** sidebar colapsada; subitens abrem em popover acessível; contexto lateral desce para a sequência principal quando não couber.
+
+**Compact (< {breakpoints.medium}):** top bar com título/contexto e menu de destinos; bottom navigation contém somente os destinos frequentes já disponíveis, limitada a quatro; itens restantes ficam no menu. O ponto persistente de captura é exibido somente quando Brain Dump existe. Nenhuma feature futura aparece desabilitada como promessa.
+
+Regras globais:
+
+- O destino ativo é comunicado por texto/ícone e estado selecionado, não apenas cor.
+- Badge do Brain Dump persiste enquanto houver itens e anuncia a contagem sem interromper a tarefa atual.
+- Nenhuma pilha contém mais de um dialog/sheet. Um fluxo complexo muda para tela própria.
+- Navegação de browser, deep links e retorno preservam período, filtros e ponto de origem quando já suportados.
+- O shell não alterna entre “BuJo Legado” e “BuJo Moderno”; rollout é invisível para o usuário.
+
+### 10.3 Padrões por tipo de superfície
+
+| Padrão | Superfícies | Ordem e comportamento |
+|---|---|---|
+| Dia de trabalho | Daily | Period Header → avisos de catch-up → Task List → contexto diário autorizado; ação de criar próxima da lista |
+| Planner | Weekly, Monthly, Future | Period Header → controles/estado do ciclo → representação temporal → itens sem data/contexto |
+| Ritual | Migração, Catch-Up, placement | origem/destino → progresso → item atual → decisão → resumo; retomável e sem decisão automática |
+| Inbox | Brain Dump | contagem → captura → itens pendentes → processamento; vazio é o estado saudável |
+| Coleção | Recorrentes, configurações | filtros/grupos → lista → criar/editar; template nunca se apresenta como tarefa executada |
+| Histórico | Arquivo, históricos futuros | período/filtros → lista/tabela → detalhe; leitura por padrão e edição histórica somente onde o produto autoriza |
+| Registro | Hábitos, Saúde, Medicamentos, Gratidão | data → inputs do dia → feedback local → histórico; campos e cálculos vêm do domínio real |
+
+### 10.4 Padrões por domínio
+
+**Tarefas.** `Task Row` é a unidade comum em Daily, Weekly, Monthly, Future e Arquivo. Preserva status, subtarefas, Eisenhower, ordenação, linhagem e ações autorizadas. Estado terminal na origem nunca parece uma tarefa ativa. Desktop pode expor ações no hover, mas teclado e touch recebem equivalentes explícitos.
+
+**Logs e planners.** `Page/Period Header` governa dia, semana, mês e futuro. Weekly usa grade de sete dias apenas quando legível; em compact vira dias empilhados com seletor, sem scroll horizontal. Monthly mantém calendário como visão geral e oferece lista cronológica no compact. Future agrupa por mês e diferencia data completa de mês parcial com texto e forma.
+
+**Recorrentes.** A superfície gerencia templates e placement manual. Não há status de execução, “synced”, auto-injeção ou histórico de engine por inferência do handoff. Cada placement cria uma tarefa real conforme arquitetura; confirmação do destino é explícita.
+
+**Arquivo.** Semana/mês fechados exibem estado final e linhagem em modo readonly. “Fechado” é estado informativo, não disabled. A UI não oferece mutações proibidas; qualquer edição histórica já autorizada pelo produto deve entrar por ação explícita e auditável, não por edição inline acidental.
+
+**Configurações.** Índice estável com páginas por domínio. Formulários explicam efeitos prospectivos para hábitos, métricas, medicamentos e recorrentes. Desativar é preferido a excluir quando o histórico precisa ser preservado.
+
+**Hábitos (próximo módulo).** Tracker do dia é primário; histórico/gráfico é secundário. Tipos booleano e numérico, pesos, metas, bônus, grupos, snapshots e lacunas honestas vêm dos Épicos 6 e arquitetura. Streaks e ranking não entram.
+
+**Saúde e medicamentos (futuros previstos).** Saúde renderiza campos dinâmicos por tipo, nunca weight/body-fat/fasting fixos do handoff. Medicamentos permanecem domínio separado, agrupados por blocos dinâmicos, com confirmação individual ou em lote e distinção textual de dose perdida.
+
+**Gratidão (futuro previsto).** Composer e entradas do dia dominam a superfície; histórico por data/mês é secundário. Sem streak, insights inventados, prompt obrigatório ou IA no MVP.
+
+### 10.5 Estados obrigatórios
+
+Toda superfície e componente de dados deve especificar os estados abaixo antes da implementação:
+
+| Estado | Contrato |
+|---|---|
+| Loading inicial | skeleton com a geometria da superfície; shell e header permanecem utilizáveis |
+| Loading localizado | ação mantém contexto, comunica progresso sem bloquear regiões independentes |
+| Empty inicial | explica a ausência e oferece no máximo uma ação autorizada; Brain Dump vazio não pede preenchimento |
+| Empty por filtro | mantém filtro visível, informa “Nenhum resultado” e oferece limpar filtro |
+| Error de leitura | mensagem na região, retry e preservação do período/filtros |
+| Error de escrita | conteúdo digitado permanece; rollback seletivo quando houve atualização otimista; retry explícito |
+| Offline | faixa/toast persistente e ações que exigem rede ficam indisponíveis com motivo; o MVP não promete fila local |
+| Disabled | não recebe foco se inoperante; motivo disponível quando depende de regra ou conectividade |
+| Readonly/archive | conteúdo com contraste normal, controles de mutação ausentes e rótulo “Somente leitura”/“Fechado” |
+| Closed cycle | header mostra “Fechado”; pendências não podem existir; navegação e consulta continuam disponíveis |
+| Optimistic | estado provisório distinguível para tecnologia assistiva; confirma ou reverte sem duplicar ação |
+
+### 10.6 Interação, teclado e acessibilidade
+
+- WCAG 2.2 AA é o piso para claro e escuro; pares de token devem ser testados em uso real, inclusive texto pequeno.
+- Alvos de toque têm no mínimo 44×44px; controles frequentes usam 48px no compact.
+- Ordem de tab segue leitura e recomposição visual. Foco nunca entra em conteúdo oculto/colapsado.
+- `Esc` fecha apenas a camada superior ou pausa o ritual; nunca perde dados sem confirmação.
+- Reordenação possui alternativa por teclado e comando “Mover”; drag não é requisito único.
+- Mudanças de status, salvamento, erro e progresso do ritual são anunciados por região viva concisa.
+- Tabelas e grids têm headers programáticos; calendários expõem data completa e estado da célula.
+- Gráficos autorizados sempre têm resumo textual e alternativa tabular; tooltip não é a única fonte de valor.
+- Zoom a 200%, reflow a 320 CSS px, alto contraste e reduced motion não removem ações nem significado.
+- Cor é sempre redundante com texto, ícone, forma ou posição estável.
+
+### 10.7 Estratégia de migração por fases
+
+| Onda | Entrega UX | Gate para avançar |
+|---|---|---|
+| 0 — Inventário | mapa de rotas, ações, estados, componentes e testes atuais | baseline aprovado e divergências classificadas |
+| 1 — Fundação | tokens, tema, shell, headers, surfaces, rows, chips, feedback e overlays | catálogo cobre estados; contraste, teclado e recomposição validados |
+| 2 — Gate vertical | shell + Daily completo em desktop/mobile | paridade funcional e E2E; rollback por superfície comprovado |
+| 3 — Núcleo BuJo | Weekly, Monthly, Future, Migração/Catch-Up, Recorrentes, Arquivo | planners sem scroll proibido; ciclos e placement preservados |
+| 4 — Captura | Brain Dump, badge e Capture Sheet | captura mobile, erros de rede e processamento equivalentes |
+| 5 — Novos módulos | Hábitos, Saúde, Medicamentos, Gratidão | cada módulo nasce apenas no sistema novo e rastreia seu épico |
+| 6 — Consolidação | auth, configurações, resíduos e remoção do legado | nenhuma rota ativa usa fundação antiga; exceções têm remoção datada |
+
+Coexistência é por rota/superfície, incremental e reversível. Não se compartilham tokens globais mutáveis entre fundações sem namespace/limite arquitetural. Uma onda não mistura redesign e mudança de regra de domínio. Depois do gate da Onda 1, story nova de UI referencia somente o sistema novo ou registra exceção temporária com responsável, prazo e remoção.
+
+### 10.8 Critérios de aceite UX para implementação
+
+Uma story visual só está pronta quando todos os critérios aplicáveis são verificáveis:
+
+1. Rastreia CAP da SPEC, FR/épico e padrão deste documento; nada deriva apenas do handoff.
+2. Inventaria ações e estados da superfície existente e demonstra equivalência, inclusive atalhos e feedback.
+3. Usa tokens `{colors.*}`, `{typography.*}`, `{spacing.*}`, `{rounded.*}`, `{density.*}` e componentes documentados, sem valores estruturais locais injustificados.
+4. Cobre wide, medium e compact por recomposição, sem scroll horizontal no fluxo diário mobile.
+5. Cobre loading, empty, error, offline, disabled e readonly/closed quando aplicáveis.
+6. Passa teclado completo, foco visível, screen reader, touch target, zoom/reflow, reduced motion e contraste WCAG 2.2 AA.
+7. Escritas preservam conteúdo em falha e seguem a estratégia otimista já definida na arquitetura.
+8. Ciclos, status, imutabilidade sistêmica, linhagem e placement manual permanecem intactos.
+9. Testes validam semântica/interação e E2E representativo; regressão visual complementa, não substitui, comportamento.
+10. Rollout e rollback por superfície estão descritos; remoção de qualquer dependência legada está rastreada.
+
+### 10.9 Decisões para arquitetura e histórias
+
+**Arquitetura deve decidir antes da implementação:** namespace e fronteira de tema legado/novo; ownership entre `shared`, `features`, `pages` e `app`; ativação/rollback por rota; estratégia de CSS baseline e portais; teste visual; telemetria de regressão; deprecação e remoção; contrato de breakpoints/densidade; política de extensões MUI. Trocar MUI não está autorizado por esta UX.
+
+**Histórias devem carregar:** superfície e onda; inventário de paridade; componentes/tokens consumidos; estados; matriz responsiva; aceite acessível; dependências e ownership; flag/rollback; teste de caracterização e E2E; dívida de legado a remover. Fundação, migração de superfície e feature de domínio não devem alterar o mesmo componente no mesmo sprint sem coordenação explícita.
+
+**Questões reservadas downstream:** mecanismo técnico de coexistência, APIs de componentes, estrutura de pacotes, feature flags, estratégia de testes visuais e sequência final no sprint. Este documento fixa a experiência e a expressão visual, não a implementação.
+
+## 11. Rastreamento de Cobertura de Requisitos
 
 ### FR por superfície
 
@@ -729,7 +861,7 @@ Hugo decidiu que vai rastrear "Leitura" como hábito — mas de forma numérica 
 
 ---
 
-## 11. Inspirações e Anti-padrões
+## 12. Inspirações e Anti-padrões
 
 ### O que o BuJo Digital herda do caderno físico
 

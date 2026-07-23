@@ -7,37 +7,20 @@
 - [ ] Implementação de automações com shortcuts no iphone
 - [ ] AppMobile? É possível fazer widgets sem um app?
 - [ ] Aba de "Histórico", para ver logs, weeks e months passados. (Parcial: navegação livre para trás em Esta Semana/Este Mês/Daily Log entregue pela Story 11.11 — a superfície unificada dedicada segue fora de escopo, registrada como tal nas Dev Notes da própria story.)
+- [ ] Aba de coleções, para poder criar outras novas coleções no padrão do Bullet Journal original.
+- [ ] Adicionar uma aba de análises com IA, onde eu possa colocar explicações sobre as métricas que uso em cada módulo (hábitos, saúde, medicamentos, etc.) para que essas métricas sejam agregadas ao prompt que usa /dataviz para gerar relatórios específicos.
+  - [ ] Seria possível que esse prompt gerasse relatórios periódicos na tela para a pessoa acompanhar no dia a dia? Exemplo, se eu explicasse que três das métricas que eu uso são associadas (produtividade), a IA geraria uma query que ficaria salva no banco, para que um gráfico do meu dashboard ficasse sempre atualizando com ela.
+- [ ] Opção de habilitar/desabilitar um contador de tempo de foco para saber quanto tempo está dedicando ao preenchimento do bujo. Ele inicia/pausa automaticamente quando a janela do bujo entra/sai de foco.
+- [ ] Opção de habilitar/desabilitar todos os módulos, para que caso alguém não queira usar medicamentos, por exemplo, ele não fique aparecendo lá em branco.
+- [ ] Adicionar estado de "Aguardando Terceiro", pode ser um standalone, caso dê muito trabalho mexer na máquina de estados.
+- [ ] METRICAS DE SAÚDE:
+  - [ ] Poder reordenar
+  - [ ] Poder Editar
+  - [ ] Add Prcentual e Enum com mais de uma seleção
+- [ ] Criar um módulo apenas para controle de Pressão Arterial, que recebe foto e interpreta com IA
+- [ ] Um outro padrão de cores para quem não tiver apego à estética do caderno BuJo
+- [ ] Dividir ítens de saúde em grupos
+- [ ] Quando uma task é migrada, ela chega no destino com o mesmo status que tinha na origem.
+- [ ] Opção de dar nomme às categorias
 
 
-BUGs Epico 4 (resolvidos no Épico 11 — ver `_bmad-output/implementation-artifacts/epic-11-retro-*.md`):
-- [x] Testes poluindo o banco de dados. O banco atualmente possui mais de 200 usuários, mas eu sou o único cadastrado na plataforma. — Story 11.1
-- [x] Recorrentes: Remover de dentro de configurações (Criar aba "Recorrentes" dentro de "Planner") — Story 11.2
-- [x] Recorrentes: Filtros e abas (ativo, recorrência, etc.) — Story 11.2
-- [x] Recorrentes: Na aba este mês esta semana, o recorrente deve desaparecer ao ser definido o placemente (Filtro para exibir apenas os recorrentes que não estejam citados como ) — Story 11.3
-- [x] Recorrentes: Exibir no modal as informações daquela recorrência ao fazer o placement e mostrar um calendário do mês com indicador de quantas taks já tem previstas para aquele dia — Story 11.3 (calendário + descrição/recorrência); etiqueta Eisenhower — Story 11.8; categoria — Story 11.12 (3º lote: `RecurringTaskTemplate` ganhou campo `category`, reusando `Task.Category`; exibida em `RecurringPlacementDialog` e `RecurringPlacementSection`, task colocada herda a cor do template).
-- [x] Recorrentes: Na aba Logs Futuros deve conter os Recorrentes anuais que ainda não foram "placed" nesse ano. — Story 11.4
-- [x] Este mês / Esta Semnana: Possibilidade de deletar / editar tasks. — Story 11.5 (deletar); edição agora persiste de fato — Story 11.7
-- [x] Esta Semana: Devo poder adicionar uma task em um dia desta semana. — Story 11.5
-- [x] Uma task em qualquer lugar (log, esta semana, este mês ou futuro) deve poder ser migrada ou adiada — Story 11.6
-  - Premissa: Se eu quero antecipar para hoje uma tarefa de amanhã (esta semana) ou da próxima semana (este mês), devo ter essa opção e o mesmo acontece ao contrário, caso uma tarefa do log deva ser feita amanhã, na próxima semana ou no próximo mês, devo poder adiá-la.
-
-
-Bugs (resolvidos no Épico 11, 2º lote — ver `_bmad-output/implementation-artifacts/epic-11-retro-2026-07-16.md`):
-- [x] Story 11.3 (Falta exibir as informações da task no modal - descrição, categoria, eisenhower, etc.) — Story 11.8 (eisenhower; descrição/recorrência já vinham da 11.3); categoria — Story 11.12, 3º lote (ver `_bmad-output/implementation-artifacts/epic-11-retro-2026-07-16-3a-passada.md`)
-- [x] Story 11.5 (Edição não está salvando). Não tem um botão de salvar e quanto fecho a aba, não está persistindo. — Story 11.7
-- [x] Story 11.6 O modal de migração não está funcionando em Esta Semana — Story 11.10 (causa raiz era um bug de backend em `_migrate_subtree` desde a 11.6, não um bug de frontend)
-- [x] Modal de mover tarefas deve ter as seguintes opções/abas: — Story 11.10
-    - [x] Hoje (mover para o log de hoje)
-    - [x] Esta semana - exibe calendário de densidade do mês (dando a opção de escolher um dia específico ou de alocar na semana sem data certa)
-    - [x] Este mês  - exibe calendário de densidade do mês (dando a opção de escolher um dia específico ou de alocar na semana sem data certa)
-    - [x] Futuro (Como já está)
-
-Melhorias de UX/UI (resolvidas no Épico 11, 2º lote — ver `_bmad-output/implementation-artifacts/epic-11-retro-2026-07-16.md`):
-- [x] O calendário do modal de edição deve mostrar algum tipo de higlight na semana atual e no dia de hoje — Story 11.10
-- [x] Ao clicar em um dia no calendário, ele deve preencer o campo do seletor de data. — Story 11.10
-- [x] Todos os cards de task que possuírem descrição, devem mostar a descrição (mesmo que seja só o início truncado). Isso também serve par os recorrentes. — Story 11.9
-- [x] Na exibição "esta semana", dividir os dias da semana em duas linhas. 7 dias em uma linha só está ficando muito apertado. — Story 11.9
-- [x] Aplicar um hover sobre os cards de tasks — Story 11.9
-- [x] centralizar um pouco mais os carts que se extendem de lado a lado da tela. Os botões e chips estão ficando muito distante do título do card, acabam ficando desconexos. — Story 11.9
-- [x] O modal de migração deve ter um botão "Migrar" para dispara a ação, não só disparar automaticamente no preenchimento. Mudar também o título para Migrar Tarefa. — Story 11.10
-- [x] O modal de migração deve conter mais informações da task (Descrição, data atual, etc.) — Story 11.10

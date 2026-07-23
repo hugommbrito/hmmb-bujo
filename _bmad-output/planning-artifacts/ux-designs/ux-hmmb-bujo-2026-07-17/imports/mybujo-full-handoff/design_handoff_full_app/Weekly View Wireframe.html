@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BuJo Digital — Weekly View Wireframe</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Architects+Daughter&display=swap" rel="stylesheet">
+<style>
+  @font-face { font-family:'Sora'; src:url('fonts/Sora-Regular.ttf') format('truetype'); font-weight:400; font-display:swap; }
+  @font-face { font-family:'Sora'; src:url('fonts/Sora-Medium.ttf') format('truetype'); font-weight:500; font-display:swap; }
+  @font-face { font-family:'Sora'; src:url('fonts/Sora-SemiBold.ttf') format('truetype'); font-weight:600; font-display:swap; }
+  @font-face { font-family:'Sora'; src:url('fonts/Sora-Bold.ttf') format('truetype'); font-weight:700; font-display:swap; }
+
+  :root{
+    --paper:#eceae4; --box:#ffffff;
+    --ink:#2c2a26; --ink-soft:#6f6c64; --ink-faint:#a6a299;
+    --line:#9b978d; --line-soft:#cbc8c0;
+    --fill:#dedbd3; --fill-2:#e8e6df;
+    --red:#d6453c; --orange:#e07b1a; --yellow:#dca200; --green:#3aa861;
+    --purple:#8b5cf6;         /* migration-ritual accent only */
+    --pin:#2f5fa6; --pin-bg:#eaf0fa;
+    --sketch:'Architects Daughter', cursive;
+    --ui:'Sora', system-ui, sans-serif;
+    --r:10px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      repeating-linear-gradient(0deg, transparent, transparent 27px, rgba(155,151,141,.07) 27px, rgba(155,151,141,.07) 28px),
+      var(--paper);
+    color:var(--ink); font-family:var(--ui); -webkit-font-smoothing:antialiased;
+  }
+
+  /* ===== toolbar ===== */
+  .toolbar{ position:sticky; top:0; z-index:50; display:flex; align-items:center; gap:18px; padding:11px 26px;
+    background:rgba(236,234,228,.92); backdrop-filter:blur(6px); border-bottom:1.5px solid var(--line); }
+  .toolbar .brand{ display:flex; align-items:baseline; gap:10px; }
+  .toolbar .brand b{ font-weight:700; font-size:15px; letter-spacing:.02em; }
+  .toolbar .brand span{ font-family:var(--sketch); color:var(--ink-soft); font-size:15px; }
+  .toolbar .spacer{ flex:1; }
+  .tabs{ display:flex; gap:6px; background:#dedbd3; padding:4px; border-radius:9px; border:1.5px solid var(--line-soft); }
+  .tab{ font-family:var(--sketch); font-size:15px; color:var(--ink-soft); padding:5px 14px; border-radius:6px; cursor:pointer; border:none; background:transparent; white-space:nowrap; }
+  .tab.active{ background:var(--box); color:var(--ink); box-shadow:0 1px 2px rgba(0,0,0,.12); }
+  .tab .mo{ color:var(--purple); }
+  .toggle{ display:flex; align-items:center; gap:8px; cursor:pointer; user-select:none; font-family:var(--sketch); font-size:15px; color:var(--ink); }
+  .toggle .sw{ width:38px; height:21px; border-radius:11px; background:var(--line); position:relative; transition:.18s; border:1.5px solid var(--line); }
+  .toggle .sw::after{ content:''; position:absolute; top:1.5px; left:1.5px; width:15px; height:15px; border-radius:50%; background:var(--box); transition:.18s; }
+  .toggle.on .sw{ background:var(--pin); }
+  .toggle.on .sw::after{ left:19px; }
+
+  /* ===== app frame ===== */
+  .stage{ padding:30px 26px 70px; display:flex; justify-content:center; }
+  .app{ width:1440px; max-width:100%; display:grid; grid-template-columns:78px 1fr; position:relative;
+    background:var(--paper); border:2.25px solid var(--ink); border-radius:16px; box-shadow:7px 9px 0 rgba(44,42,38,.13); overflow:hidden; }
+
+  .rail{ background:var(--fill-2); border-right:2px solid var(--ink); display:flex; flex-direction:column; align-items:center; gap:6px; padding:16px 8px; }
+  .rail .logo{ width:42px; height:42px; border:2px solid var(--ink); border-radius:11px; display:grid; place-items:center; font-weight:700; font-size:18px; margin-bottom:12px; background:var(--box); }
+  .navitem{ width:54px; padding:9px 4px 7px; border-radius:10px; border:1.5px solid transparent; display:flex; flex-direction:column; align-items:center; gap:5px; cursor:pointer; text-decoration:none; }
+  .navitem .ic{ width:24px; height:24px; border:1.75px solid var(--ink-soft); border-radius:6px; display:grid; place-items:center; }
+  .navitem .ic svg{ width:15px; height:15px; stroke:var(--ink-soft); fill:none; stroke-width:1.8; }
+  .navitem small{ font-size:9.5px; color:var(--ink-soft); letter-spacing:.01em; font-weight:500; }
+  .navitem.active{ background:var(--box); border-color:var(--ink); }
+  .navitem.active .ic{ border-color:var(--ink); background:var(--ink); }
+  .navitem.active .ic svg{ stroke:var(--box); }
+  .navitem.active small{ color:var(--ink); font-weight:600; }
+
+  .main{ padding:18px 20px 24px; min-width:0; position:relative; }
+
+  /* ===== region wrapper ===== */
+  .region{ position:relative; background:var(--box); border:2px solid var(--ink); border-radius:var(--r); }
+  .rtag{ position:absolute; top:-11px; left:14px; z-index:3; font-family:var(--sketch); font-size:12.5px; line-height:1; letter-spacing:.04em; background:var(--paper); color:var(--ink-soft); padding:1px 8px; text-transform:uppercase; }
+  .pin{ position:absolute; top:-13px; right:-13px; z-index:6; width:27px; height:27px; border-radius:50%; background:var(--pin); color:#fff; border:2px solid var(--box); display:none; place-items:center; font-family:var(--sketch); font-size:14px; box-shadow:0 2px 5px rgba(47,95,166,.4); }
+  body.annotated .pin{ display:grid; }
+
+  .lbl-up{ font-family:var(--sketch); font-size:13px; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.06em; }
+  .ghost{ border:1.75px solid var(--line); background:var(--box); border-radius:8px; padding:7px 12px; font-family:var(--ui); font-size:13px; color:var(--ink); cursor:pointer; font-weight:500; display:inline-flex; align-items:center; gap:7px; text-decoration:none; }
+  .ghost.icon{ padding:7px 9px; }
+  .ghost svg{ width:15px; height:15px; stroke:var(--ink); fill:none; stroke-width:1.9; }
+  .ghost.cta{ background:var(--ink); color:var(--box); border-color:var(--ink); }
+  .ghost.cta svg{ stroke:var(--box); }
+
+  /* ===== layout: main + sidebar ===== */
+  .wrap{ display:grid; grid-template-columns:1fr 286px; gap:16px; align-items:start; }
+
+  /* ===== week header ===== */
+  .whead{ display:flex; align-items:center; gap:18px; padding:15px 18px; margin-bottom:14px; }
+  .whead .wk{ font-size:13px; font-family:var(--sketch); color:var(--ink-soft); letter-spacing:.04em; }
+  .whead .range{ font-size:25px; font-weight:700; letter-spacing:-.01em; }
+  .whead .now-chip{ font-family:var(--sketch); font-size:12.5px; color:var(--green); border:1.5px solid var(--green); border-radius:20px; padding:2px 10px; }
+  .whead .spacer{ flex:1; }
+  /* week position indicators */
+  .wkidx{ position:relative; display:flex; gap:9px; margin-left:4px; }
+  .widx{ border:1.75px solid var(--line); border-radius:9px; padding:6px 12px 7px; background:var(--fill-2); text-align:center; min-width:84px; }
+  .widx .wl{ display:block; font-family:var(--sketch); font-size:10px; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.04em; white-space:nowrap; }
+  .widx .wv{ display:flex; align-items:baseline; justify-content:center; gap:4px; margin-top:2px; }
+  .widx .wv b{ font-size:21px; font-weight:700; line-height:1; }
+  .widx .wv i{ font-style:normal; font-size:11px; color:var(--ink-soft); }
+  .widx .wc{ display:block; font-size:10px; color:var(--ink-soft); margin-top:1px; }
+  .qstats{ display:flex; gap:10px; }
+  .stat{ border:1.75px solid var(--line); border-radius:9px; padding:7px 13px; text-align:center; background:var(--fill-2); }
+  .stat b{ display:block; font-size:19px; font-weight:700; line-height:1; }
+  .stat small{ font-size:10.5px; color:var(--ink-soft); }
+  .daynav{ display:flex; align-items:center; gap:6px; }
+
+  /* ===== monday banner ===== */
+  .mon-banner{ display:flex; align-items:center; gap:13px; padding:12px 16px; margin-bottom:14px; border:2px solid var(--purple); border-radius:11px; background:#f6f1fe; }
+  .mon-banner .mbadge{ font-family:var(--sketch); font-size:12.5px; color:#fff; background:var(--purple); border-radius:7px; padding:3px 10px; white-space:nowrap; }
+  .mon-banner .mtx{ font-size:13.5px; color:#4a3a78; }
+  .mon-banner .mtx b{ color:#33285c; }
+  .mon-banner .mgo{ margin-left:auto; }
+  .mon-banner .mgo .ghost.cta{ background:var(--purple); border-color:var(--purple); }
+
+  /* ===== week grid ===== */
+  .grid-region{ padding:16px 14px 14px; }
+  .grid-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; padding:0 2px; }
+  .grid-head .ttl{ font-weight:600; font-size:15px; }
+  .grid-head .meta{ font-size:12px; color:var(--ink-soft); }
+  .wgrid{ display:grid; grid-template-columns:repeat(5,1fr) .78fr .78fr; gap:9px; }
+  .col{ border:1.75px solid var(--line-soft); border-radius:9px; background:var(--fill-2); display:flex; flex-direction:column; min-height:300px; }
+  .col.today{ border:2.25px solid var(--ink); background:var(--box); box-shadow:0 0 0 3px rgba(44,42,38,.06); }
+  .col-h{ padding:8px 9px 7px; border-bottom:1.5px solid var(--line-soft); display:flex; align-items:baseline; justify-content:space-between; }
+  .col-h .dow{ font-weight:700; font-size:13px; }
+  .col-h .dt{ font-size:11px; color:var(--ink-soft); }
+  .col.today .col-h{ background:var(--ink); border-radius:6px 6px 0 0; margin:-0px; }
+  .col.today .col-h .dow, .col.today .col-h .dt{ color:var(--box); }
+  .col.today .col-h .dt{ opacity:.8; }
+  .col.wknd{ background:#e6e4dd; }
+
+  .dscore{ display:flex; gap:4px; padding:7px 8px; border-bottom:1.5px solid var(--line-soft); }
+  .sc{ flex:1; border:1.5px solid var(--line); border-radius:5px; text-align:center; padding:3px 0 2px; background:var(--box); }
+  .sc .sn{ font-weight:700; font-size:13px; line-height:1; }
+  .sc.na .sn{ color:var(--ink-faint); font-weight:400; font-size:10px; font-family:var(--sketch); }
+  .sc.empty{ border-style:dashed; }
+  .sc .sl{ font-size:8px; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.03em; }
+
+  .ctasks{ padding:7px 7px 4px; display:flex; flex-direction:column; gap:5px; flex:1; }
+  .ct{ display:grid; grid-template-columns:9px 1fr 14px; gap:6px; align-items:start; }
+  .ct .cd{ width:9px; height:9px; border-radius:50%; margin-top:3px; }
+  .cd.red{ background:var(--red); } .cd.orange{ background:var(--orange); }
+  .cd.yellow{ background:var(--yellow); } .cd.green{ background:var(--green); }
+  .ct .cttl{ font-size:11px; line-height:1.25; color:var(--ink); }
+  .ct .crec{ display:inline-block; vertical-align:middle; margin-left:3px; }
+  .ct .crec svg{ width:9px; height:9px; stroke:var(--ink-faint); fill:none; stroke-width:2; }
+  .ct .cs{ justify-self:end; margin-top:1px; }
+  .cbox{ width:13px; height:13px; border:1.6px solid var(--ink); border-radius:4px; display:block; }
+  .cbox.done{ background:var(--ink); }
+  .cbox.doing{ background:linear-gradient(135deg,var(--ink) 0 50%, transparent 50%); }
+  .cmig{ font-family:var(--sketch); font-size:13px; color:var(--ink-soft); line-height:1; }
+  .ct.done .cttl{ color:var(--ink-faint); text-decoration:line-through; }
+  .ct.doing .cttl{ font-weight:600; }
+  .cadd{ margin:4px 7px 8px; border:1.5px dashed var(--line); border-radius:7px; text-align:center; padding:5px; font-family:var(--sketch); font-size:11px; color:var(--ink-soft); cursor:pointer; }
+
+  /* ===== sidebar ===== */
+  .side{ display:grid; gap:14px; align-items:start; }
+  .card{ position:relative; background:var(--box); border:2px solid var(--ink); border-radius:var(--r); padding:14px 14px 13px; }
+  .card h4{ margin:0 0 10px; font-size:13.5px; font-weight:600; display:flex; align-items:center; justify-content:space-between; }
+  .card h4 .fr{ font-family:var(--sketch); font-size:11px; color:var(--ink-faint); font-weight:400; }
+  .wscore{ display:flex; align-items:center; gap:14px; }
+  .wscore .big{ font-family:var(--sketch); font-size:38px; line-height:.9; }
+  .wscore .wsmeta{ font-size:11px; color:var(--ink-soft); line-height:1.5; }
+  .barline{ height:7px; border-radius:4px; background:var(--fill); margin-top:9px; overflow:hidden; }
+  .barline i{ display:block; height:100%; background:var(--ink); border-radius:4px; }
+  .goal{ display:flex; gap:8px; padding:7px 0; border-bottom:1.5px solid var(--line-soft); font-size:12px; color:var(--ink); }
+  .goal:last-of-type{ border-bottom:none; }
+  .goal .gb{ width:6px; height:6px; border:1.5px solid var(--ink-soft); border-radius:2px; margin-top:4px; flex:none; }
+  .goal-add{ margin-top:9px; border:1.5px dashed var(--line); border-radius:8px; padding:8px; font-family:var(--sketch); font-size:12px; color:var(--ink-soft); text-align:center; cursor:pointer; }
+  .recur-row{ display:flex; align-items:center; gap:8px; padding:6px 0; border-bottom:1.5px solid var(--line-soft); font-size:11.5px; }
+  .recur-row:last-of-type{ border-bottom:none; }
+  .recur-row .ri{ width:18px; height:18px; border:1.5px solid var(--line); border-radius:5px; display:grid; place-items:center; flex:none; }
+  .recur-row .ri svg{ width:11px; height:11px; stroke:var(--ink-soft); fill:none; stroke-width:1.8; }
+  .recur-row .rn{ flex:1; color:var(--ink); }
+  .recur-row .rx{ font-family:var(--sketch); font-size:11px; color:var(--ink-soft); }
+  .link{ font-family:var(--sketch); font-size:13px; color:var(--pin); cursor:pointer; display:inline-flex; align-items:center; gap:5px; margin-top:11px; }
+  .link svg{ width:12px; height:12px; stroke:var(--pin); fill:none; stroke-width:2; }
+  .navlist{ display:flex; flex-direction:column; gap:7px; }
+  .navlink{ display:flex; align-items:center; gap:9px; padding:9px 10px; border:1.5px solid var(--line-soft); border-radius:8px; font-size:12.5px; color:var(--ink); cursor:pointer; text-decoration:none; }
+  .navlink .ni{ width:20px; height:20px; border:1.5px solid var(--ink-soft); border-radius:5px; display:grid; place-items:center; flex:none; }
+  .navlink .ni svg{ width:12px; height:12px; stroke:var(--ink-soft); fill:none; stroke-width:1.8; }
+  .navlink .na{ margin-left:auto; color:var(--ink-faint); }
+
+  /* ===== migration overlay ===== */
+  .mig-overlay{ position:absolute; inset:0; z-index:30; display:none; }
+  body.ritual .mig-overlay{ display:flex; }
+  .mig-overlay .scrim{ position:absolute; inset:0; background:rgba(44,42,38,.34); backdrop-filter:blur(1.5px); }
+  .mig-panel{ position:relative; margin:auto; width:760px; max-width:94%; max-height:calc(100% - 36px); margin-top:24px;
+    background:var(--box); border:2.5px solid var(--purple); border-radius:14px; box-shadow:0 22px 50px rgba(44,42,38,.32); display:flex; flex-direction:column; overflow:hidden; }
+  .mig-top{ background:#f6f1fe; border-bottom:2px solid var(--purple); padding:16px 20px; }
+  .mig-top .mt-row{ display:flex; align-items:center; gap:12px; }
+  .mig-top .mt-badge{ font-family:var(--sketch); font-size:13px; color:#fff; background:var(--purple); border-radius:7px; padding:3px 11px; }
+  .mig-top h3{ margin:0; font-size:19px; font-weight:700; color:#33285c; }
+  .mig-top .mt-sub{ margin:7px 0 0; font-size:12.5px; color:#5b4a86; }
+  .mig-prog{ display:flex; align-items:center; gap:11px; margin-top:12px; }
+  .mig-prog .pbar{ flex:1; height:9px; border-radius:5px; background:#e3d8f7; overflow:hidden; }
+  .mig-prog .pbar i{ display:block; height:100%; width:41.6%; background:var(--purple); border-radius:5px; }
+  .mig-prog .pnum{ font-size:12px; color:#4a3a78; font-weight:600; white-space:nowrap; }
+  .mig-list{ padding:8px 14px 12px; overflow:auto; }
+  .mig-item{ display:flex; align-items:center; gap:11px; padding:11px 8px; border-bottom:1.5px solid var(--line-soft); }
+  .mig-item:last-child{ border-bottom:none; }
+  .mig-item .md{ width:12px; height:12px; border-radius:50%; flex:none; }
+  .mig-item .mtxt{ flex:1; min-width:0; }
+  .mig-item .mtt{ font-size:13px; color:var(--ink); }
+  .mig-item .mfrom{ font-size:10.5px; color:var(--ink-faint); font-family:var(--sketch); margin-top:1px; }
+  .mig-actions{ display:flex; gap:6px; flex:none; }
+  .mbtn{ font-size:11.5px; font-family:var(--ui); border:1.6px solid var(--line); background:var(--box); border-radius:7px; padding:5px 9px; cursor:pointer; display:inline-flex; align-items:center; gap:5px; color:var(--ink); }
+  .mbtn svg{ width:12px; height:12px; stroke:var(--ink-soft); fill:none; stroke-width:1.9; }
+  .mbtn.mig:hover{ border-color:var(--green); } .mbtn.sch:hover{ border-color:var(--pin); } .mbtn.can:hover{ border-color:var(--red); }
+  .mig-item.decided{ opacity:.62; }
+  .mig-item.decided .mtt{ text-decoration:line-through; text-decoration-color:var(--line); }
+  .decision{ font-family:var(--sketch); font-size:12px; border-radius:7px; padding:4px 11px; white-space:nowrap; }
+  .decision.mig{ color:var(--green); border:1.5px solid var(--green); background:#eef8f1; }
+  .decision.sch{ color:var(--pin); border:1.5px solid var(--pin); background:var(--pin-bg); }
+  .decision.can{ color:var(--red); border:1.5px solid var(--red); background:#fbeeed; }
+  .mig-foot{ border-top:1.5px solid var(--line-soft); padding:11px 18px; display:flex; align-items:center; gap:12px; background:var(--fill-2); }
+  .mig-foot .lock{ font-family:var(--sketch); font-size:12.5px; color:var(--ink-soft); display:flex; align-items:center; gap:7px; }
+  .mig-foot .lock svg{ width:14px; height:14px; stroke:var(--ink-soft); fill:none; stroke-width:1.8; }
+  .mig-foot .spacer{ flex:1; }
+
+  /* ===== legend ===== */
+  .legend{ position:fixed; right:18px; bottom:18px; z-index:60; width:340px; background:var(--box); border:2px solid var(--pin); border-radius:13px; box-shadow:0 14px 36px rgba(44,42,38,.24); overflow:hidden; display:none; }
+  body.annotated .legend{ display:block; }
+  .legend-h{ background:var(--pin); color:#fff; padding:9px 14px; font-family:var(--sketch); font-size:15px; display:flex; align-items:center; justify-content:space-between; }
+  .legend-h .x{ cursor:pointer; opacity:.85; font-size:18px; line-height:1; }
+  .legend-b{ padding:10px 14px 13px; max-height:46vh; overflow:auto; }
+  .lg{ display:flex; gap:10px; padding:7px 0; border-bottom:1px solid var(--line-soft); }
+  .lg:last-child{ border-bottom:none; }
+  .lg .n{ flex:none; width:21px; height:21px; border-radius:50%; background:var(--pin-bg); color:var(--pin); border:1.5px solid var(--pin); display:grid; place-items:center; font-family:var(--sketch); font-size:12px; }
+  .lg .t{ font-size:12px; color:var(--ink); line-height:1.4; }
+  .lg .t b{ font-weight:600; }
+
+  .keybar{ display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-top:13px; padding:11px 4px 2px; }
+  .keybar .kt{ font-family:var(--sketch); font-size:13px; color:var(--ink-soft); }
+  .keyitem{ display:flex; align-items:center; gap:7px; font-size:12px; color:var(--ink); }
+  .keyitem .cd{ width:11px; height:11px; border-radius:50%; }
+</style>
+</head>
+<body class="annotated">
+
+  <div class="toolbar">
+    <div class="brand"><b>BuJo Digital</b><span>· Weekly View — lo-fi wireframe</span></div>
+    <div class="spacer"></div>
+    <div class="toggle on" id="annoToggle"><span class="sw"></span>Annotations</div>
+  </div>
+
+  <div class="stage">
+    <div class="app">
+      <nav class="rail" id="rail"></nav>
+      <div class="main" id="main"></div>
+    </div>
+  </div>
+
+  <aside class="legend" id="legend">
+    <div class="legend-h">Annotations — what &amp; why <span class="x" id="legendX">×</span></div>
+    <div class="legend-b" id="legendBody"></div>
+  </aside>
+
+<script>
+const ICON = {
+  chevL:'<svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>',
+  chevR:'<svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>',
+  grid:'<svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>',
+  cal:'<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/></svg>',
+  repeat:'<svg viewBox="0 0 24 24"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>',
+  sun:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/></svg>',
+  week:'<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="9" y1="10" x2="9" y2="20"/></svg>',
+  health:'<svg viewBox="0 0 24 24"><path d="M3 12h4l2 5 4-12 2 7h6"/></svg>',
+  arrow:'<svg viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>',
+  forward:'<svg viewBox="0 0 24 24"><line x1="4" y1="12" x2="18" y2="12"/><polyline points="13 7 18 12 13 17"/></svg>',
+  x:'<svg viewBox="0 0 24 24"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>',
+  layers:'<svg viewBox="0 0 24 24"><polygon points="12 2 22 8.5 12 15 2 8.5 12 2"/><polyline points="2 15.5 12 22 22 15.5"/></svg>',
+};
+
+/* nav rail */
+const NAV = [
+  {ic:'sun', label:'Daily', href:'Daily Dashboard Wireframe.html'},
+  {ic:'week', label:'Weekly', active:true},
+  {ic:'cal', label:'Monthly'},
+  {ic:'repeat', label:'Recurr.'},
+  {ic:'health', label:'Health'},
+];
+document.getElementById('rail').innerHTML =
+  '<div class="logo">B</div>' +
+  NAV.map(n=>`<a class="navitem ${n.active?'active':''}" ${n.href?`href="${n.href}"`:''}>
+      <span class="ic">${ICON[n.ic]}</span><small>${n.label}</small></a>`).join('');
+
+/* ---------- week data ---------- */
+const DAYS = [
+  {dow:'Mon', dt:'Jun 8', today:true,
+    sc:[8,5,null], scNA:[false,false,true],
+    tasks:[
+      {p:'red', t:'Finish Q3 board deck', st:'doing'},
+      {p:'orange', t:'Reply to landlord re: lease', st:'open'},
+      {p:'green', t:'30-min walk', rec:true, st:'open'},
+      {p:'yellow', t:'Dentist — 3:00pm', st:'open'},
+    ]},
+  {dow:'Tue', dt:'Jun 9',
+    sc:[null,null,null], scNA:[false,false,false], future:true,
+    tasks:[
+      {p:'red', t:'Prep client call agenda', st:'open'},
+      {p:'green', t:'30-min walk', rec:true, st:'open'},
+      {p:'yellow', t:'Submit expenses', st:'open'},
+    ]},
+  {dow:'Wed', dt:'Jun 10',
+    sc:[null,null,null], scNA:[false,false,false], future:true,
+    tasks:[
+      {p:'orange', t:'Renew passport', st:'open'},
+      {p:'green', t:'30-min walk', rec:true, st:'open'},
+      {p:'green', t:'Call mom', st:'open'},
+    ]},
+  {dow:'Thu', dt:'Jun 11',
+    sc:[null,null,null], scNA:[false,false,false], future:true,
+    tasks:[
+      {p:'yellow', t:'Draft blog post', st:'open'},
+      {p:'green', t:'30-min walk', rec:true, st:'open'},
+      {p:'orange', t:'Email accountant', st:'open'},
+    ]},
+  {dow:'Fri', dt:'Jun 12',
+    sc:[null,null,null], scNA:[false,false,false], future:true,
+    tasks:[
+      {p:'red', t:'Ship release notes', st:'open'},
+      {p:'green', t:'30-min walk', rec:true, st:'open'},
+      {p:'yellow', t:'Team retro 4pm', st:'open'},
+    ]},
+  {dow:'Sat', dt:'Jun 13', wknd:true,
+    sc:[null,null,null], scNA:[true,false,false], future:true,
+    tasks:[
+      {p:'green', t:'Groceries', st:'open'},
+      {p:'green', t:'Water the plants', rec:true, st:'open'},
+    ]},
+  {dow:'Sun', dt:'Jun 14', wknd:true,
+    sc:[null,null,null], scNA:[true,false,false], future:true,
+    tasks:[
+      {p:'green', t:'Meal prep', st:'open'},
+      {p:'yellow', t:'Weekly review & plan', st:'open'},
+    ]},
+];
+const SCL = ['M','A','N'];
+
+/* ---------- week-position rule ----------
+   A week is Mon–Sun. It belongs to whichever cycle (month / year) its
+   SUNDAY (last day) falls in — so a week that contains the 1st of the next
+   cycle counts as week 1 of that next cycle, and a cycle's last week is its
+   last WHOLE week. Numbering = the Sunday's ordinal within the cycle.        */
+const WEEK_SUN = new Date(2026, 5, 14); // Sunday Jun 14, 2026 (end of shown week)
+function weekOfMonth(sun){ return Math.ceil(sun.getDate() / 7); }
+function weeksInMonth(y, m){ return Math.ceil(new Date(y, m+1, 0).getDate() / 7); }
+function firstSundayOfYear(y){ const j = new Date(y,0,1); return new Date(y, 0, 1 + ((7 - j.getDay()) % 7)); }
+function weekOfYear(sun){ const f = firstSundayOfYear(sun.getFullYear());
+  return Math.round((sun - f) / (7*86400000)) + 1; }
+function weeksInYear(y){ const f = firstSundayOfYear(y), end = new Date(y,11,31);
+  return Math.floor((end - f) / (7*86400000)) + 1; }
+
+function dayScore(d){
+  return `<div class="dscore">${d.sc.map((v,i)=>{
+    if(d.scNA[i]) return `<div class="sc na"><div class="sn">NA</div><div class="sl">${SCL[i]}</div></div>`;
+    if(v===null) return `<div class="sc empty"><div class="sn" style="color:var(--ink-faint);font-weight:400">·</div><div class="sl">${SCL[i]}</div></div>`;
+    return `<div class="sc"><div class="sn">${v}</div><div class="sl">${SCL[i]}</div></div>`;
+  }).join('')}</div>`;
+}
+function stMark(st){
+  if(st==='done')  return '<span class="cbox done"></span>';
+  if(st==='doing') return '<span class="cbox doing"></span>';
+  if(st==='mig')   return '<span class="cmig">→</span>';
+  return '<span class="cbox"></span>';
+}
+function dayCol(d){
+  const tasks = d.tasks.map(t=>`
+    <div class="ct ${t.st}">
+      <span class="cd ${t.p}"></span>
+      <span class="cttl">${t.t}${t.rec?`<span class="crec">${ICON.repeat}</span>`:''}</span>
+      <span class="cs">${stMark(t.st)}</span>
+    </div>`).join('');
+  return `<div class="col ${d.today?'today':''} ${d.wknd?'wknd':''}">
+    <div class="col-h"><span class="dow">${d.dow}</span><span class="dt">${d.dt}</span></div>
+    ${dayScore(d)}
+    <div class="ctasks">${tasks}</div>
+    <div class="cadd">+ add</div>
+  </div>`;
+}
+
+/* ---------- main render ---------- */
+function buildMain(){
+  const sun = WEEK_SUN;
+  const wom = weekOfMonth(sun), womTotal = weeksInMonth(sun.getFullYear(), sun.getMonth());
+  const woy = weekOfYear(sun), woyTotal = weeksInYear(sun.getFullYear());
+  const monthNm = sun.toLocaleString('en-US', {month:'long'});
+  return `
+  <section class="region whead">
+    <span class="rtag">Week header</span><span class="pin">1</span>
+    <div>
+      <div class="wk">CURRENT WEEK · MON–SUN</div>
+      <div class="range">Jun 8 – Jun 14, 2026</div>
+    </div>
+    <div class="wkidx">
+      <span class="pin">8</span>
+      <div class="widx">
+        <span class="wl">week of month</span>
+        <span class="wv"><b>${wom}</b><i>of ${womTotal}</i></span>
+        <span class="wc">${monthNm}</span>
+      </div>
+      <div class="widx">
+        <span class="wl">week of year</span>
+        <span class="wv"><b>${woy}</b><i>of ${woyTotal}</i></span>
+        <span class="wc">${sun.getFullYear()}</span>
+      </div>
+    </div>
+    <span class="now-chip">this week</span>
+    <div class="spacer"></div>
+    <div class="qstats">
+      <div class="stat"><b>27</b><small>tasks</small></div>
+      <div class="stat"><b>9</b><small>done</small></div>
+      <div class="stat"><b>33%</b><small>complete</small></div>
+    </div>
+    <div class="daynav">
+      <button class="ghost icon">${ICON.chevL}</button>
+      <button class="ghost icon">${ICON.chevR}</button>
+    </div>
+  </section>
+
+  <div class="region mon-banner" style="border-color:var(--purple)">
+    <span class="rtag" style="color:var(--purple)">Monday · weekly ritual</span><span class="pin">3</span>
+    <span class="mbadge">Ritual pending</span>
+    <span class="mtx"><b>7 of 12</b> unfinished tasks from Week 23 still need a decision. The week stays locked until the <b>migration ritual</b> is done — it now opens on its own screen.</span>
+    <span class="mgo"><a class="ghost cta" href="Migration Ritual Wireframe.html">Start migration ritual →</a></span>
+  </div>
+
+  <div class="wrap">
+    <section class="region grid-region">
+      <span class="rtag">Weekly grid · Mon–Sun</span><span class="pin">2</span>
+      <div class="grid-head">
+        <span class="ttl">Plan the week</span>
+        <span class="meta">drag tasks between days · weekend columns narrower</span>
+      </div>
+      <div class="wgrid">${DAYS.map(dayCol).join('')}</div>
+    </section>
+
+    <div class="side">
+      <div class="card">
+        <span class="pin">6</span>
+        <h4>Week score</h4>
+        <div class="wscore">
+          <div class="big">6.2</div>
+          <div class="wsmeta">avg of all scored periods<br><b>11 / 21</b> periods scored<br>this week</div>
+        </div>
+        <div class="barline"><i style="width:62%"></i></div>
+      </div>
+
+      <div class="card">
+        <span class="pin">4</span>
+        <h4>Week intention <span class="fr">— not tied to a day</span></h4>
+        <div class="goal"><span class="gb"></span>Close out Q3 deck &amp; hand off</div>
+        <div class="goal"><span class="gb"></span>Protect 2 deep-work mornings</div>
+        <div class="goal"><span class="gb"></span>No screens after 22:30</div>
+        <div class="goal-add">+ add a goal for the week</div>
+      </div>
+
+      <div class="card">
+        <span class="pin">5</span>
+        <h4>Recurrents injected <span class="fr">— auto</span></h4>
+        <div class="recur-row"><span class="ri">${ICON.repeat}</span><span class="rn">30-min walk</span><span class="rx">daily ×7</span></div>
+        <div class="recur-row"><span class="ri">${ICON.repeat}</span><span class="rn">Water the plants</span><span class="rx">weekly ×1</span></div>
+        <div class="recur-row"><span class="ri">${ICON.repeat}</span><span class="rn">Weekly review &amp; plan</span><span class="rx">weekly ×1</span></div>
+        <span class="link">Manage recurrents engine ${ICON.arrow}</span>
+      </div>
+
+      <div class="card">
+        <span class="pin">7</span>
+        <h4>Jump to</h4>
+        <div class="navlist">
+          <a class="navlink" href="Daily Dashboard Wireframe.html"><span class="ni">${ICON.sun}</span>Daily Dashboard<span class="na">${ICON.chevR}</span></a>
+          <a class="navlink"><span class="ni">${ICON.cal}</span>Monthly Log<span class="na">${ICON.chevR}</span></a>
+          <a class="navlink"><span class="ni">${ICON.layers}</span>Future Log<span class="na">${ICON.chevR}</span></a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="keybar">
+    <span class="kt">Priority:</span>
+    <span class="keyitem"><span class="cd" style="background:var(--red)"></span>Urgent + Important</span>
+    <span class="keyitem"><span class="cd" style="background:var(--orange)"></span>Urgent</span>
+    <span class="keyitem"><span class="cd" style="background:var(--yellow)"></span>Important</span>
+    <span class="keyitem"><span class="cd" style="background:var(--green)"></span>Personal</span>
+    <span class="keyitem"><span class="cbox" style="position:relative;display:inline-block"></span>open</span>
+    <span class="keyitem"><span class="cbox doing" style="display:inline-block"></span>doing</span>
+    <span class="keyitem"><span class="cbox done" style="display:inline-block"></span>done</span>
+    <span class="keyitem"><span class="cmig">→</span>migrated</span>
+  </div>`;
+}
+
+/* ---------- legend ---------- */
+const LEGEND = [
+  ['Week header','Week number + date range, current-week indicator, prev/next nav, and quick stats (total · done · % complete) for the whole week.'],
+  ['Weekly grid','7 day-columns Mon→Sun (weekend narrower). Each: day label + date, <b>today</b> highlight, compact tasks (priority dot · title · status), a per-day quick-add, and a compact M/A/N productivity score. Tasks drag between days to plan.'],
+  ['Weekly ritual pending','On Monday the week opens <b>locked</b> behind this banner — last week’s unfinished tasks each still need a Migrate / Schedule / Cancel decision. The <b>migration ritual now opens on its own screen</b> (no longer an inline panel here); the banner just shows the pending count and links into it. Intentional friction, never automated.'],
+  ['Week intention','Freeform weekly goals / intentions, not tied to any specific day.'],
+  ['Recurrents injected','Shows which recurring tasks were auto-added this week (with frequency × count). Links to the Recurrents Engine.'],
+  ['Week score','Average of all scored periods this week + how many of the 21 periods (7 days × 3) have been scored.'],
+  ['Jump-to nav','Quick navigation to Daily Dashboard, Monthly Log, and Future Log (left rail mirrors this).'],
+  ['Week position','Two indicators — <b>week-of-month</b> and <b>week-of-year</b>. A Mon–Sun week belongs to whichever cycle its <b>last day (Sunday)</b> falls in: a week containing the <b>start of the next cycle</b> counts as week 1 of that next cycle, so each cycle’s last week is its last <b>whole</b> week.'],
+];
+document.getElementById('legendBody').innerHTML = LEGEND.map((l,i)=>`
+  <div class="lg"><span class="n">${i+1}</span><span class="t"><b>${l[0]}.</b> ${l[1]}</span></div>`).join('');
+
+/* ---------- render + controls ---------- */
+document.getElementById('main').innerHTML = buildMain();
+
+const annoT = document.getElementById('annoToggle');
+annoT.addEventListener('click', ()=>{
+  annoT.classList.toggle('on');
+  document.body.classList.toggle('annotated', annoT.classList.contains('on'));
+});
+document.getElementById('legendX').addEventListener('click', ()=>{
+  annoT.classList.remove('on'); document.body.classList.remove('annotated');
+});
+</script>
+</body>
+</html>
