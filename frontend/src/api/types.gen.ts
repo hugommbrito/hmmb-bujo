@@ -443,6 +443,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/capture": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["capture_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/doctors/": {
         parameters: {
             query?: never;
@@ -1154,6 +1170,15 @@ export interface components {
          * @enum {string}
          */
         BrainDumpItemProcessDestinationEnum: "today" | "week" | "month" | "future";
+        CaptureRequest: {
+            type: string;
+            text: string;
+            value?: string | null;
+        };
+        CaptureResponse: {
+            /** Format: uuid */
+            readonly id: string;
+        };
         CatchUpQueue: {
             monthlyTasks: components["schemas"]["Task"][];
             weeklyTasks: components["schemas"]["Task"][];
@@ -1836,6 +1861,7 @@ export interface components {
             category?: (components["schemas"]["CategoryEnum"] | components["schemas"]["NullEnum"]) | null;
             /** Format: date */
             scheduledDate?: string | null;
+            waitingOn?: boolean;
         };
         PatchedTimeBlockUpdate: {
             name?: string;
@@ -1963,6 +1989,7 @@ export interface components {
             /** Format: date */
             scheduledDate?: string | null;
             readonly subtasks: components["schemas"]["Task"][];
+            waitingOn?: boolean;
             migrationCount?: number;
             /** Format: uuid */
             migratedToTask?: string | null;
@@ -2752,6 +2779,29 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WeeklyReviewQueue"];
+                };
+            };
+        };
+    };
+    capture_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CaptureRequest"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaptureResponse"];
                 };
             };
         };

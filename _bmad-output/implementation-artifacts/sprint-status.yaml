@@ -52,7 +52,7 @@
 # - Épicos 1–9 e 11 são HISTÓRICO (MVP) — não entram na fila.
 
 generated: 2026-06-22
-last_updated: 2026-07-23  # story 12.4 → done (review adversarial aprovado: 26 testes automation verdes, lint/import-linter OK, sem deriva OpenAPI; AutomationToken + auth dedicada, app novo `automation`, backend-only, migration na Neon e2e); 12.3 done; 12.2 done; 12.1 done; fila 12→13→14→15→16→17→18→10→19→20→21a/b→22→21c (epics.md do [CE] 2026-07-23; [IR] READY 2026-07-23)
+last_updated: 2026-07-23  # story 12.5 → done (review adversarial aprovado: ACs 1–4 validadas, suíte completa reexecutada 933 passed, automation/ 41, ruff/lint-imports verdes, schema.yaml+types.gen.ts com 0 diff/gate CI OK; achados só de doc: File List sincronizado com passo de QA que adicionou 1 E2E `external-capture.spec.ts`+seed+14º teste; POST /api/capture no app `automation` — dispatcher match-por-type, CaptureView com auth por token + escopo capture + ScopedRateThrottle + log estruturado); 12.4 done (review adversarial aprovado: 26 testes automation verdes, lint/import-linter OK, sem deriva OpenAPI; AutomationToken + auth dedicada, app novo `automation`, backend-only, migration na Neon e2e); 12.3 done; 12.2 done; 12.1 done; fila 12→13→14→15→16→17→18→10→19→20→21a/b→22→21c (epics.md do [CE] 2026-07-23; [IR] READY 2026-07-23)
 project: hmmb-bujo
 project_key: NOKEY
 tracking_system: file-system
@@ -159,7 +159,7 @@ development_status:
   12-2-flag-waiting-on-no-backend: done
   12-3-manifest-de-collections-fatia-1-pixel-identico: done
   12-4-token-de-automacao-com-autenticacao-dedicada: done
-  12-5-captura-externa-post-api-capture: backlog
+  12-5-captura-externa-post-api-capture: done
   12-6-resumo-do-dia-get-api-summary-today: backlog
   epic-12-retrospective: optional
 

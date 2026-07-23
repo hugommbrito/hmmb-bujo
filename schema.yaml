@@ -616,6 +616,24 @@ paths:
               schema:
                 $ref: '#/components/schemas/WeeklyReviewQueue'
           description: ''
+  /api/capture:
+    post:
+      operationId: capture_create
+      tags:
+      - capture
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CaptureRequest'
+        required: true
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CaptureResponse'
+          description: ''
   /api/doctors/:
     get:
       operationId: doctors_list
@@ -1779,6 +1797,29 @@ components:
         * `week` - week
         * `month` - month
         * `future` - future
+    CaptureRequest:
+      type: object
+      properties:
+        type:
+          type: string
+        text:
+          type: string
+          maxLength: 500
+        value:
+          type: string
+          nullable: true
+      required:
+      - text
+      - type
+    CaptureResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+      required:
+      - id
     CatchUpQueue:
       type: object
       properties:
@@ -3226,6 +3267,8 @@ components:
           type: string
           format: date
           nullable: true
+        waitingOn:
+          type: boolean
     PatchedTimeBlockUpdate:
       type: object
       properties:
@@ -3480,6 +3523,8 @@ components:
           items:
             $ref: '#/components/schemas/Task'
           readOnly: true
+        waitingOn:
+          type: boolean
         migrationCount:
           type: integer
           maximum: 2147483647
