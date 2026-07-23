@@ -52,6 +52,7 @@ INSTALLED_APPS = [
     "health",
     "medications",
     "gratitude",
+    "automation",
 ]
 
 MIDDLEWARE = [

@@ -1,105 +1,117 @@
-# Resumo de Automação de Testes — Story 12.3
+# Test Automation Summary — Story 12.4 (Token de automação com autenticação dedicada)
 
-**Data:** 2026-07-23
-**Story:** 12.3 — Manifest de collections (fatia 1, pixel-idêntico)
-**Framework:** Vitest 4.1 (unit) + Playwright (E2E, projeto `chromium`)
-**Executor:** workflow `bmad-qa-generate-e2e-tests` (QA automation)
+**Data:** 2026-07-23 · **QA:** HugoMMBrito · **Framework:** pytest (Postgres LOCAL via docker-compose)
+**Executor:** workflow `bmad-qa-generate-e2e-tests`
 
 ---
 
-## Decisão: NENHUM teste E2E novo gerado (com justificativa)
+## Decisão de estratégia: sem E2E, sem teste HTTP (justificado)
 
-Esta story é um **refactor de contrato pixel-idêntico** (AC4): extrai o manifest
-estático `app/collections/registry.ts` e faz Sidebar/BottomNav/rotas de collection
-**derivarem** dele, com **zero mudança visível ou comportamental**. Não há
-**nenhuma nova superfície ou fluxo de usuário** para exercitar.
+A Story 12.4 é **infra backend-only**: entrega a espinha de autenticação da
+Plataforma de Automação (modelo `AutomationToken` + admin Django + auth class DRF
+dedicada + permissão de escopo). **Não há superfície de navegador** e **não há
+endpoints HTTP** nesta fatia (`POST /api/capture` e `GET /api/summary/today` são
+as Stories 12.5/12.6; a gestão é via Django admin).
 
-Aplicando o julgamento do próprio workflow ("Keep It Simple" / gerar testes apenas
-para comportamento implementado) e o contrato da AC4 ("a suíte passa **sem update**
-e sem mocks novos"), **fabricar E2E aqui seria contraproducente**: violaria o aceite
-mecânico da story (nenhum teste novo, nenhum mock novo) e criaria cobertura
-redundante para comportamento que já é a rede de segurança pré-existente.
+Seguindo o julgamento do próprio workflow ("Generate E2E Tests **if UI exists**",
+"Generate API Tests **if applicable**") e a instrução explícita do usuário:
 
-O **gate desta fatia é a suíte verde existente**, não testes novos.
-
----
-
-## Verificação do gate (executada nesta sessão)
-
-| Camada | Comando | Resultado |
-|---|---|---|
-| Unit (Vitest) | `nvm use 22.15.1 && npm run test:run` | **81 arquivos / 828 testes — todos verdes** (107s) |
-
-Idêntico ao baseline pré-refactor registrado na story (81 / 828). Confirma que a
-derivação a partir do registro é comportamentalmente indistinguível do hardcode
-anterior.
-
-> E2E (Playwright): as specs de navegação **não foram alteradas** e permanecem o
-> gate E2E. Não foram reexecutadas nesta sessão — exigem backend + branch Neon
-> `e2e` provisionada (setup de integração, não pré-requisito da geração de testes),
-> e a story não introduz fluxo novo que as tornasse insuficientes.
+- **E2E (browser):** NÃO gerado — não existe superfície de UI. Fabricar E2E aqui
+  inventaria uma tela inexistente.
+- **API HTTP:** NÃO gerado — não há endpoint nesta fatia; um teste de nível HTTP
+  exigiria fabricar um endpoint, contradizendo a fronteira da story (endpoints são
+  12.5/12.6, que farão `authentication_classes = [AutomationTokenAuthentication]`).
+- **Gate real = pytest backend** (Postgres LOCAL, gate cross-app do projeto).
 
 ---
 
-## Mapa de cobertura das superfícies refatoradas
+## Análise de cobertura vs. ACs
 
-As superfícies tocadas pelo refactor (rotas de collection, itens de Sidebar, abas
-de BottomNav) **já são exercitadas** pela suíte existente — inalterada:
+Os **20 testes pré-existentes** cobrem: geração/hashing do token (AC1), caminhos de
+auth happy/revogado/hash-desconhecido/sem-header + isolamento de tenant +
+`authenticate_header`→`"Bearer"` (AC3/AC4), opt-in-não-global (AC3), admin
+criação/edição com revelação única (AC2), e a checagem de escopo single (AC4).
 
-### Rotas de collection derivadas (`collections.flatMap(c => c.routes)`)
+Foram encontrados **2 gaps genuínos** de backend (relevantes para segurança,
+dentro da fronteira da fatia) — ambos preenchidos com **pytest** (não E2E):
 
-| Rota derivada | Cobertura E2E existente |
+### Gap A — Ação de admin `revogar_tokens` sem cobertura (AC2)
+A revogação é comportamento de AC e crítico para segurança, mas a ação de admin
+tinha **zero testes**. O filtro `revoked_at__isnull=True` (idempotência) é uma
+propriedade sutil de correção — precisa ser travada para não sobrescrever um
+`revoked_at` já existente.
+
+### Gap B — Semântica AND de multi-escopo não testada (AC4)
+`HasAutomationScope.has_permission` usa `all(scope in token_scopes ...)`. Os
+testes só cobriam escopo único presente/ausente. Uma regressão de `all()` para
+`any()` passaria em todos os testes existentes, mas seria um bug de escalada de
+privilégio. Travado com os dois lados (todos presentes → concede; parcial → nega).
+
+---
+
+## Testes gerados (novos)
+
+### `automation/tests/test_permissions.py` (+2)
+- [x] `test_denies_when_token_has_only_some_of_the_required_scopes` — view exige
+  `[capture, summary]`, token tem só `[capture]` → **nega** (semântica AND).
+- [x] `test_grants_when_token_has_all_of_the_required_scopes` — token com ambos os
+  escopos → **concede** (fixa os dois lados da regra `all`).
+
+### `automation/tests/test_admin.py` (+2)
+- [x] `test_revoke_action_stamps_only_non_revoked_tokens_and_is_idempotent` —
+  revoga só os ativos; preserva o `revoked_at` original dos já revogados; a
+  mensagem reporta a contagem exata (idempotência).
+- [x] `test_token_revoked_via_admin_action_then_fails_authentication` — liga
+  **AC2 → AC3**: token revogado pela ação do admin deixa de autenticar
+  (credencial efetivamente desativada, não flag cosmético).
+
+---
+
+## Mapa de cobertura
+
+| Superfície | Status |
 |---|---|
-| `/gratitude`, `/gratitude` (aba Histórico) | `e2e/gratitude.spec.ts`, `e2e/gratitude-history.spec.ts` (`goto` + assert de `<main>`) |
-| `/health/metrics` (+ histórico) | `e2e/health-metrics.spec.ts`, `e2e/health-history.spec.ts` |
-| `/health/medications` (+ histórico) | `e2e/medications.spec.ts`, `e2e/medications-day.spec.ts`, `e2e/medications-history.spec.ts` |
-| `/habits` (+ `/habits/history`) | `e2e/habit-tracker.spec.ts`, `e2e/habit-history.spec.ts` |
-
-### Navegação derivada (Sidebar / BottomNav)
-
-| Superfície | Cobertura existente |
-|---|---|
-| Sidebar → clique em **"Gratidão"** abre o diário | `e2e/gratitude.spec.ts:177` (clique real no item de Sidebar derivado do registro) |
-| Sidebar → clique em **"Hábitos"** | `e2e/habit-history.spec.ts:36` (clique real no item de Sidebar) |
-| BottomNav (mobile, viewport 390×844) | `e2e/brain-dump.spec.ts:109` exercita o swap Sidebar→BottomNav por viewport |
-| Sidebar/BottomNav/router/RouteAnnouncer/AppLayout | `src/app/layout/{Sidebar,BottomNav,AppLayout,RouteAnnouncer}.test.tsx` + `src/app/router.test.tsx` (comportamental, `getByRole`/`getByText` + `jest-axe`) — parte dos 828 verdes |
-
-### Checkpoint do Risco crítico (React.lazy × RouteAnnouncer mobile)
-
-`RouteAnnouncer.test.tsx › mobile › test_anuncia_mudanca_de_superficie_ao_navegar_via_bottom_nav`
-passou **sem edição** — o `<main aria-label="Hábitos">` monta sincronamente sob
-`act` após `await user.click`. Sem escalação (consistente com o Dev Agent Record).
+| E2E (browser) | N/A — sem UI nesta fatia |
+| API HTTP | N/A — sem endpoint nesta fatia (12.5/12.6) |
+| Modelo `AutomationToken` / `issue` (AC1) | coberto |
+| Auth class `AutomationTokenAuthentication` (AC3/AC4) | coberto |
+| Isolamento de tenant setado pela auth (AC3) | coberto |
+| Permissão `HasAutomationScope` — single + **multi (AND)** (AC4) | coberto (+2 novos) |
+| Admin: criação/revelação única/edição (AC2) | coberto |
+| Admin: **ação `revogar_tokens`** (AC2) | coberto (+2 novos) |
 
 ---
 
-## Lacunas avaliadas (e por que NÃO foram preenchidas)
+## Resultado
 
-- **Clique de Sidebar em "Métricas"/"Medicamentos" via E2E** — só há `goto` direto
-  em E2E, não clique de navegação. **Não preenchido:** já coberto no nível unit por
-  `Sidebar.test.tsx`; adicionar E2E seria comportamento novo além do escopo
-  pixel-idêntico (AC4). Redundante, não uma lacuna real.
-- **Clique nas abas de BottomNav ("Hábitos"/"Saúde") via E2E** — **Não preenchido:**
-  coberto por `BottomNav.test.tsx` (unit). Mesmo raciocínio.
+```
+cd backend && uv run pytest automation/ -q
+24 passed in 7.53s
+```
 
-Nenhuma lacuna preenchível sem fabricar comportamento inexistente. Preencher
-qualquer uma quebraria o aceite mecânico da AC4 (nenhum teste/mocks novos).
+- Baseline: 20 passed · **+4 novos** = **24 passed** ✅
+- `ruff check` + `ruff format --check` nos arquivos tocados: limpos ✅
+- Sem mudança em código de produção — apenas arquivos de teste do app `automation`;
+  o gate de suíte completa (já verde na story: 912 passed) permanece inalterado.
 
 ---
 
 ## Validação contra o checklist
 
-- Testes de API gerados — **N/A** (entrega 100% frontend; sem backend/endpoints).
-- Testes E2E gerados — **intencionalmente nenhum** (sem novo comportamento de
-  usuário; justificado acima).
-- Suíte roda com sucesso — **✅ 828/828 verdes** (executado nesta sessão).
-- Locators semânticos / sem waits fixos / testes independentes — herdado da suíte
-  existente inalterada (`getByRole`/`getByText`).
+- Testes de API gerados — **N/A** (sem endpoint HTTP nesta fatia; gate é pytest).
+- Testes E2E gerados — **intencionalmente nenhum** (sem UI; justificado acima).
+- Testes usam APIs padrão do framework (pytest + DRF `APIRequestFactory`/`Request`) — ✅
+- Cobrem happy path + casos de erro críticos (revogação idempotente, negação de escopo) — ✅
+- Todos os testes rodam com sucesso — **✅ 24/24 verdes**.
+- Locators semânticos — **N/A** (backend); testes independentes, sem waits fixos — ✅
 - Resumo criado com métricas de cobertura — **este documento**.
 
 ---
 
 ## Próximos passos
 
-- Consumidores **reais** do manifest chegam nas Stories **13.2** (sidebar nova) e
-  **13.3** (bottom-nav novo) — aí sim haverá **comportamento novo** para gerar E2E.
-  Revisitar este workflow nessas stories.
+- Os endpoints reais (12.5/12.6) adicionarão testes HTTP de nível de resposta
+  (401 revogado/inválido vs. 403 escopo insuficiente **no fluxo DRF completo**) —
+  hoje cobertos em nível unitário conforme a fronteira desta fatia.
+- Migration `automation.0001_initial` já aplicada à branch Neon e2e (Debug Log da
+  story); sem E2E novo nesta fatia.
