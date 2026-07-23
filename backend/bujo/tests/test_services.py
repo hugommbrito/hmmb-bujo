@@ -12,7 +12,7 @@ from bujo.services.logs import (
     get_or_create_monthly_log,
     get_or_create_weekly_log,
 )
-from bujo.services.migration import migrate_task
+from bujo.services.migration import inherited_successor_status, migrate_task
 from bujo.services.recurring import create_template, place_template, update_template
 from bujo.services.state_machine import ALLOWED, transition_task
 from bujo.services.tasks import create_task, delete_task, reorder_task, update_task
@@ -911,6 +911,195 @@ def test_migrate_task_escopado_por_tenant(user, other_user):
     with tenant_context(other_user):
         with pytest.raises(Task.DoesNotExist):
             migrate_task(user=other_user, task_id=task.id, destination="today")
+
+
+# --- herança de status na migração (Story 12.1 / AD-18 item 1-2, #23) ---------
+
+
+def test_inherited_successor_status_started_carrega_started():
+    """AC4 (regra pura, sem DB): a origem `started` gera sucessor `started`
+    (herança por identidade, AD-18 item 1). Este é o coração do AC4 — a regra
+    é testável em nível unit e reusável (Épico 14) sem tocar o DB."""
+    assert inherited_successor_status(Task.Status.STARTED) == Task.Status.STARTED
+
+
+def test_inherited_successor_status_pending_carrega_pending():
+    """AC4 (regra pura, sem DB): a origem `pending` gera sucessor `pending` —
+    a identidade mantém válidos todos os testes de migração pré-existentes."""
+    assert inherited_successor_status(Task.Status.PENDING) == Task.Status.PENDING
+
+
+@pytest.mark.django_db
+def test_migrar_started_para_today_sucessor_nasce_started_origem_migrated(user):
+    """AC1 (fluxo `today`): uma tarefa `started` migrada gera um sucessor
+    `started` (AD-18 item 1); a origem fica terminal `migrated` com linhagem
+    intacta (`migrated_to_task` + `migration_count == 1`, AD-03)."""
+    with tenant_context(user):
+        log = LogFactory(user=user)
+        task = TaskFactory(user=user, log=log, status=Task.Status.STARTED)
+
+        result = migrate_task(user=user, task_id=task.id, destination="today")
+
+        assert result.status == Task.Status.MIGRATED
+        new_task = result.migrated_to_task
+        assert new_task is not None
+        assert new_task.status == Task.Status.STARTED
+        assert new_task.migration_count == 1
+        assert result.migrated_to_task_id == new_task.id
+
+
+@pytest.mark.django_db
+def test_migrar_started_para_week_sucessor_nasce_started_origem_migrated(user):
+    """AC1 (fluxo `week`): `started` migrada para a Weekly Log corrente gera
+    sucessor `started`; origem `migrated`."""
+    with tenant_context(user):
+        log = LogFactory(user=user)
+        task = TaskFactory(user=user, log=log, status=Task.Status.STARTED)
+
+        result = migrate_task(user=user, task_id=task.id, destination="week")
+
+        current_week_start = week_start_of(today_for(user))
+        weekly_log = get_or_create_weekly_log(user=user, week_start=current_week_start)
+        assert result.status == Task.Status.MIGRATED
+        new_task = result.migrated_to_task
+        assert new_task is not None
+        assert new_task.status == Task.Status.STARTED
+        assert new_task.weekly_log_id == weekly_log.id
+        assert new_task.migration_count == 1
+
+
+@pytest.mark.django_db
+def test_migrar_started_para_month_sucessor_nasce_started_origem_postponed(user):
+    """AC1 (ramo POSTPONED, fluxo `month`): `started` adiada para o mês
+    corrente gera sucessor `started`; origem `postponed`."""
+    with tenant_context(user):
+        log = LogFactory(user=user)
+        task = TaskFactory(user=user, log=log, status=Task.Status.STARTED)
+        current_month_first = today_for(user).replace(day=1)
+
+        result = migrate_task(
+            user=user, task_id=task.id, destination="month", month_first=current_month_first
+        )
+
+        monthly_log = get_or_create_monthly_log(user=user, month_first=current_month_first)
+        assert result.status == Task.Status.POSTPONED
+        new_task = result.migrated_to_task
+        assert new_task is not None
+        assert new_task.status == Task.Status.STARTED
+        assert new_task.monthly_log_id == monthly_log.id
+        assert new_task.migration_count == 1
+
+
+@pytest.mark.django_db
+def test_migrar_started_para_future_sucessor_nasce_started_origem_postponed(user):
+    """AC1 (ramo POSTPONED, fluxo `future`): `started` adiada para um mês
+    futuro gera sucessor `started`; origem `postponed`."""
+    with tenant_context(user):
+        log = LogFactory(user=user)
+        task = TaskFactory(user=user, log=log, status=Task.Status.STARTED)
+        current_month_first = today_for(user).replace(day=1)
+        future_month = date(current_month_first.year + 1, current_month_first.month, 1)
+
+        result = migrate_task(
+            user=user, task_id=task.id, destination="future", month_first=future_month
+        )
+
+        assert result.status == Task.Status.POSTPONED
+        new_task = result.migrated_to_task
+        assert new_task is not None
+        assert new_task.status == Task.Status.STARTED
+
+
+@pytest.mark.django_db
+def test_migrar_subarvore_status_misto_cada_no_herda_o_proprio_status(user):
+    """AC2 (AD-18 item 2): numa subárvore de status misto, cada nó recriado
+    herda o PRÓPRIO status de origem, não o do pai. Pai `started` com um filho
+    `pending` e um filho `started` → novo pai `started`, filho pending
+    permanece `pending` (não é promovido pelo status do pai) e filho started
+    permanece `started` (não é rebaixado pelo status do pai). Filho `completed`
+    fica intocado na origem (comportamento pré-existente). Espelha o padrão de
+    `test_migrar_pai_recria_apenas_filhos_nao_dispostos`."""
+    with tenant_context(user):
+        log = LogFactory(user=user)
+        parent = TaskFactory(user=user, log=log, status=Task.Status.STARTED, title="Pai started")
+        pending_child = TaskFactory(
+            user=user,
+            log=log,
+            parent_task=parent,
+            status=Task.Status.PENDING,
+            title="Filho pending",
+        )
+        started_child = TaskFactory(
+            user=user,
+            log=log,
+            parent_task=parent,
+            status=Task.Status.STARTED,
+            title="Filho started",
+        )
+        completed_child = TaskFactory(
+            user=user,
+            log=log,
+            parent_task=parent,
+            status=Task.Status.COMPLETED,
+            title="Filho concluído",
+        )
+
+        result = migrate_task(user=user, task_id=parent.id, destination="today")
+
+        # Origem terminal; filho concluído intocado (comportamento pré-existente).
+        pending_child.refresh_from_db()
+        started_child.refresh_from_db()
+        completed_child.refresh_from_db()
+        assert result.status == Task.Status.MIGRATED
+        assert pending_child.status == Task.Status.MIGRATED
+        assert started_child.status == Task.Status.MIGRATED
+        assert completed_child.status == Task.Status.COMPLETED
+        assert completed_child.migrated_to_task_id is None
+
+        # Destino: novo pai herda `started`; cada filho recriado herda o próprio.
+        new_parent = result.migrated_to_task
+        assert new_parent is not None
+        assert new_parent.status == Task.Status.STARTED
+        destino_filhos = {c.title: c for c in new_parent.subtasks.all()}
+        assert set(destino_filhos) == {"Filho pending", "Filho started"}
+        assert destino_filhos["Filho pending"].status == Task.Status.PENDING
+        assert destino_filhos["Filho started"].status == Task.Status.STARTED
+
+
+@pytest.mark.django_db
+def test_migrar_subarvore_profunda_cada_nivel_herda_o_proprio_status(user):
+    """AC2 em profundidade (>1 nível): a herança por-nó vale em qualquer nível
+    da subárvore, não só nos filhos diretos. Raiz `started` → filho `pending`
+    → neto `started`. Após migrar, cada nó recriado carrega o PRÓPRIO status
+    (novo pai `started`, novo filho `pending`, novo neto `started`) — guarda a
+    recursão de `_migrate_subtree` contra regressões que assumam profundidade 1."""
+    with tenant_context(user):
+        log = LogFactory(user=user)
+        parent = TaskFactory(user=user, log=log, status=Task.Status.STARTED, title="Raiz started")
+        child = TaskFactory(
+            user=user,
+            log=log,
+            parent_task=parent,
+            status=Task.Status.PENDING,
+            title="Filho pending",
+        )
+        TaskFactory(
+            user=user,
+            log=log,
+            parent_task=child,
+            status=Task.Status.STARTED,
+            title="Neto started",
+        )
+
+        result = migrate_task(user=user, task_id=parent.id, destination="today")
+
+        new_parent = result.migrated_to_task
+        assert new_parent is not None
+        assert new_parent.status == Task.Status.STARTED
+        new_child = new_parent.subtasks.get(title="Filho pending")
+        assert new_child.status == Task.Status.PENDING
+        new_grandchild = new_child.subtasks.get(title="Neto started")
+        assert new_grandchild.status == Task.Status.STARTED
 
 
 # --- recurring.py (AC #1, #2, #3) ----------------------------------------------

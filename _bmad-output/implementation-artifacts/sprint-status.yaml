@@ -52,7 +52,7 @@
 # - Épicos 1–9 e 11 são HISTÓRICO (MVP) — não entram na fila.
 
 generated: 2026-06-22
-last_updated: 2026-07-23  # sprint planning pós-MVP: fila 12→13→14→15→16→17→18→10→19→20→21a/b→22→21c (epics.md do [CE] 2026-07-23; [IR] READY 2026-07-23)
+last_updated: 2026-07-23  # story 12.1 dev concluída (dev-story) → review; fila 12→13→14→15→16→17→18→10→19→20→21a/b→22→21c (epics.md do [CE] 2026-07-23; [IR] READY 2026-07-23)
 project: hmmb-bujo
 project_key: NOKEY
 tracking_system: file-system
@@ -154,8 +154,8 @@ development_status:
   # ============================================================
 
   # Epic 12: Tier 0 — Plataforma e Quick Wins (sem UI) — 1º da fila; SEM story x.0 de UX
-  epic-12: backlog
-  12-1-heranca-de-status-na-migracao: backlog
+  epic-12: in-progress  # 1ª story criada (12.1) via create-story 2026-07-23
+  12-1-heranca-de-status-na-migracao: done
   12-2-flag-waiting-on-no-backend: backlog
   12-3-manifest-de-collections-fatia-1-pixel-identico: backlog
   12-4-token-de-automacao-com-autenticacao-dedicada: backlog

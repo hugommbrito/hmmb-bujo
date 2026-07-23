@@ -60,6 +60,39 @@ test('migra tarefa solta para hoje via atalho "1"; aparece no Daily Log de hoje 
   await expect(page.getByText('tarefas pendentes de ontem')).toHaveCount(0)
 })
 
+test('migra tarefa iniciada (/) para hoje; o sucessor nasce iniciado no Daily Log (Story 12.1 / AD-18 item 1)', async ({
+  page,
+  email,
+}) => {
+  // O bug #23: `create_task` grava `pending` hardcoded, então até esta story a
+  // tarefa `/` (started) renascia `pending` ao ser carregada adiante. Aqui
+  // provamos ponta-a-ponta (UI → migrate_task → UI) que o `/` sobrevive: uma
+  // tarefa INICIADA de ontem, migrada para hoje, aparece no Daily Log ainda
+  // iniciada. Cobre o único efeito observável da story (backend-only), pela
+  // superfície de status já existente em TaskRow — sem UI nova.
+  seedYesterdayQueue(email, [{ title: 'Revisar rascunho começado', status: 'started' }])
+  await page.reload()
+
+  await page.getByRole('button', { name: 'Iniciar' }).click()
+  await expect(page.getByRole('dialog')).toBeVisible()
+
+  await syncAfter(page, async () => page.keyboard.press('1'))
+
+  // Fila esvaziou → modal fecha sozinho e o banner some.
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(page.getByText('tarefas pendentes de ontem')).toHaveCount(0)
+
+  // O sucessor no Daily Log de hoje carrega o status `started` herdado da
+  // origem — não voltou a `pending`. Duas superfícies confirmam: o controle de
+  // status acessível ("Em andamento") e o chip visível ("Iniciada").
+  const successorRow = page
+    .getByTestId('task-row')
+    .filter({ hasText: 'Revisar rascunho começado' })
+  await expect(successorRow).toBeVisible()
+  await expect(successorRow.getByRole('button', { name: 'Em andamento' })).toBeVisible()
+  await expect(successorRow.getByText('Iniciada')).toBeVisible()
+})
+
 test('Esc pausa sem decidir; "Iniciar" retoma a mesma tarefa não decidida (AC1, AC2)', async ({
   page,
   email,

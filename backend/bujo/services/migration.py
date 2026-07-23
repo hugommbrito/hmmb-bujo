@@ -18,6 +18,24 @@ from bujo.services.tasks import create_task, set_lineage_fields
 from core.calendar import today_for, week_start_of
 
 
+def inherited_successor_status(source_status):
+    """Status com que o sucessor de uma migração nasce (AD-18 item 1, FR-4.16).
+
+    Dados puros — sem DB, sem side effects: recebe o status da ORIGEM e devolve
+    o status que o sucessor deve carregar. A regra é identidade para os dois
+    únicos estados migráveis (`pending`→`pending`, `started`→`started`): o `/`
+    iniciado não se perde ao carregar a tarefa adiante.
+
+    Pré-condição: `source_status` é sempre migrável (`pending`/`started`). A
+    matriz AD-02 (`services/state_machine.py`) já barra `completed`/`cancelled`/
+    `migrated`/`postponed` na raiz da migração, e `_migrate_subtree` só recorre
+    em filhos `pending`/`started` — nenhum outro estado chega aqui. Manter esta
+    função como regra nomeada e sem DB é o que o Épico 14 (fila unificada, 14.3)
+    reusa sem duplicação (arch. §3b item 7).
+    """
+    return source_status
+
+
 def _migrate_subtree(
     source, *, user, container_field, container, scheduled_date, parent_task, new_status
 ) -> Task:
@@ -33,7 +51,14 @@ def _migrate_subtree(
     tentando fazer (`ClosedCycleReadOnly`, 409). Criar antes elimina essa
     janela; `migrate_task` é `@transaction.atomic`, então uma falha posterior
     em `transition_task` (não esperada aqui — `source` já passou pela mesma
-    matriz `ALLOWED` na chamada raiz) reverte a criação também, sem órfão."""
+    matriz `ALLOWED` na chamada raiz) reverte a criação também, sem órfão.
+
+    Herança de status (AD-18 item 1): o sucessor herda o status da ORIGEM.
+    `source_status` é lido POR NÓ e ANTES de qualquer transição — é o que
+    garante que cada filho carregue o PRÓPRIO status, não o do pai (AC2 /
+    AD-18 item 2). Não confundir com `new_status`, que é o status TERMINAL da
+    origem (`MIGRATED`/`POSTPONED`), dimensão independente da herança."""
+    source_status = source.status  # AC2: por nó, ANTES de transicionar
     new_task = create_task(
         user=user,
         parent_task=parent_task,
@@ -47,6 +72,13 @@ def _migrate_subtree(
     transition_task(user=user, task_id=source.id, to_status=new_status)
     set_lineage_fields(task_id=new_task.id, migration_count=source.migration_count + 1)
     set_lineage_fields(task_id=source.id, migrated_to_task=new_task)
+
+    # `create_task` sempre nasce `pending`; promover o sucessor a `started`
+    # quando a origem era `started` mantém `state_machine` como autoridade única
+    # sobre status (`pending→started` já é legal na matriz AD-02). `pending`→
+    # `pending` é identidade e não exige transição.
+    if inherited_successor_status(source_status) == Task.Status.STARTED:
+        transition_task(user=user, task_id=new_task.id, to_status=Task.Status.STARTED)
 
     pending_children = source.subtasks.filter(status__in=(Task.Status.PENDING, Task.Status.STARTED))
     for child in list(pending_children):

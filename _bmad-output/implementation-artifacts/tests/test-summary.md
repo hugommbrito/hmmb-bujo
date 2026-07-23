@@ -3096,3 +3096,81 @@ uv run ruff check gratitude/                                → All checks passe
 - Nenhum gap bloqueante para a 9.2 — cobertura completa (7/7 ACs) nas camadas apropriadas, com as páginas agora testadas (paridade com o molde `health/medications`) e o `DayView`/seletor de mês exercitados.
 - Artefatos de teste entram no commit da story; este `test-summary.md` fica fora do commit (artefato de `_bmad-output`).
 - Vitest e Playwright não rodam no CI — rodar as suítes localmente antes do merge.
+
+---
+
+# Resumo de Automação de Testes — Story 12.1: Herança de status na migração (#23)
+
+**Data:** 2026-07-23
+**Feature:** Regra pura de service (`inherited_successor_status` + herança por nó em `_migrate_subtree`, `backend/bujo/services/migration.py`): ao migrar/adiar uma tarefa iniciada (`/`, `started`), o sucessor nasce `started` em vez de `pending`. **Backend-only** — Épico 12 é Tier 0 (DIR-15), nenhuma UI nova; o efeito observável surge pela superfície de status já existente em `TaskRow`. Sem mudança de schema/matriz, sem migration (AC3).
+**Workflow:** bmad-qa-generate-e2e-tests
+**Frameworks:** Playwright (browser real, stack `npm run dev` + `manage.py runserver` sob `config.settings.e2e`, branch Neon `e2e` — Story 11.1)
+
+---
+
+## Gaps descobertos e auto-aplicados
+
+A story entrou em `review` com cobertura **backend forte e completa** — 7 testes novos em `test_services.py`: a regra pura `inherited_successor_status` sem DB (AC4, coração da story), os 4 destinos (`today`/`week`/`month`/`future`) para o caso `started` (AC1), e a subárvore de status misto provando que cada nó herda o **próprio** status, não o do pai (AC2). O mapeamento AC×camada revelou **uma lacuna genuína, na camada E2E**:
+
+| # | Lacuna | Camada | AC | Ação |
+|---|--------|--------|----|------|
+| 1 | **Nenhum teste ponta-a-ponta prova o efeito observável da story.** Todos os E2E de migração existentes (`migration-flow.spec.ts`, `move-task.spec.ts`) usam tarefas `pending`; nenhum migra uma tarefa **iniciada** e verifica que o sucessor surge iniciado no destino — exatamente o bug #23 que a story corrige. | E2E | AC1 | **+1 teste** em `migration-flow.spec.ts` |
+
+**Por que esta camada (e só ela):** a lacuna é o **round-trip real UI → `migrate_task` → UI**. O backend já prova a regra por identidade em todos os destinos no nível de service (rápido/determinístico); o que faltava era provar que o `/` de fato *aparece* no Daily Log de hoje depois de uma migração real pela UI — a única coisa que os testes de service não conseguem afirmar. A superfície de asserção já existe (`TaskRow`: chip "Iniciada" + botão de status `aria-label="Em andamento"`), o helper de seed já aceita `status: 'started'`, e o fluxo (banner → "Iniciar" → atalho "1") já era exercitado — nada frágil ou inventado.
+
+**E2E não inflado (princípio "keep it simple" + instrução do usuário):** **um** teste pelo fluxo canônico de migração diária cobre o efeito de ponta a ponta. Um segundo teste pelo fluxo "Mover" (11.6/11.10) reexercitaria a **mesma** função `migrate_task` por plumbing de UI ligeiramente diferente — os 4 destinos já estão exaustivamente cobertos no service. Não foi adicionado, para não fabricar redundância. Nenhuma outra superfície visível muda (story backend-only).
+
+## Testes Gerados
+
+### E2E — `frontend/e2e/migration-flow.spec.ts` estendido (+1 teste)
+
+- [x] **`migra tarefa iniciada (/) para hoje; o sucessor nasce iniciado no Daily Log (Story 12.1 / AD-18 item 1)`** — seeda uma tarefa `started` no Daily Log de ontem (`seedYesterdayQueue(..., status: 'started')`), migra para hoje via banner → "Iniciar" → atalho "1", e afirma que o sucessor no Daily Log de hoje carrega o status herdado por **duas** superfícies: o controle de status acessível (`getByRole('button', { name: 'Em andamento' })`) e o chip visível (`getByText('Iniciada')`). Prova que o `/` não regride a `pending` ao ser carregado adiante (regressão do bug #23).
+
+## Cobertura por AC (pós-QA)
+
+| AC | Backend (pytest, dev-story) | E2E (esta rodada) |
+|----|------------------------------|--------------------|
+| AC1 — sucessor herda status (todos os fluxos) | ✅ `today`/`week`/`month`/`future` p/ `started` (4 testes) | ✅ **`today` ponta-a-ponta (novo)** |
+| AC2 — subtarefas herdam o próprio status | ✅ subárvore de status misto (pai `started` + filhos `pending`/`started`/`completed`) | — (invariante de service; não alcançável de forma estável/barata no browser) |
+| AC3 — matriz/schema inalterados, sem migration | ✅ regra pura + `git status` limpo em `models.py`/`state_machine.py`/`tasks.py`/migrations | — (invariante backend) |
+| AC4 — regra testável em unit + reuso Épico 14 | ✅ `inherited_successor_status` sem `@pytest.mark.django_db` (2 testes) | — (nível unit por design) |
+
+**ACs cobertas: 4/4 nas camadas apropriadas. Lacunas fechadas nesta rodada: 1 (E2E do efeito observável de AC1).**
+
+## Execução (contagem real observada)
+
+```
+# Frontend/E2E (Node 22.15.1 via nvm)
+npx playwright test migration-flow.spec.ts -g "sucessor nasce iniciado"  → 1 passed (21.9s)
+npx playwright test migration-flow.spec.ts                               → 6 passed (1.6m)   [era 5]
+```
+
+> **Honestidade de contagem (guardrail):** o arquivo E2E completo foi re-executado (6 passed — 5 originais + 1 novo, 0 regressão), provando que o teste novo é independente. **Backend não tocado** por esta rodada de QA (só `frontend/e2e/migration-flow.spec.ts` mudou) → `pytest` não reexecutado; a baseline do dev-story (**879 passed**, Postgres local) segue válida sem mudança esperada.
+> **Node:** `nvm use 22.15.1` antes de todo comando de frontend/e2e.
+> **Sem migration:** AC3 confirma que a story não cria migration — a branch Neon `e2e` já é compatível, nada a aplicar (a fricção recorrente "aplicar migration à branch e2e" não se aplica aqui).
+
+## Checklist de Validação
+
+- [x] API/service tests: já completos no dev-story (7 testes de service/unit cobrindo AC1–AC4) — nenhuma lacuna backend.
+- [x] E2E gerado (UI existe): +1 teste cobrindo o efeito observável de AC1 ponta-a-ponta.
+- [x] Usa APIs padrão do framework (Playwright) — nenhuma ferramenta nova; espelha teste existente do mesmo arquivo.
+- [x] Cobre happy path (migração `started` → hoje) + a regressão crítica (sucessor **não** volta a `pending`).
+- [x] **Todos os testes gerados passam** (E2E: 1 isolado · 6 no arquivo completo).
+- [x] Locators semânticos/acessíveis (`getByRole`/`getByTestId`/`getByText`); sem seletores CSS frágeis.
+- [x] Descrição clara em pt-BR referenciando Story 12.1 / AD-18 item 1.
+- [x] Sem waits/sleeps artificiais (`syncAfter` espera o GET real de `logs/today/`; `expect` com auto-retry).
+- [x] Teste independente (signup real por teste via fixture `page`; verificado: 6 passaram juntos).
+- [x] **Nenhuma migration** criada (AC3).
+- [x] Summary anexado (log cumulativo) em `_bmad-output/implementation-artifacts/tests/test-summary.md`.
+
+## Limites de Cobertura (por design, não gaps)
+
+- **AC2 (subárvore herda o próprio status) no E2E:** invariante de service, provado de forma determinística por `test_migrar_subarvore_status_misto_cada_no_herda_o_proprio_status`. Reproduzir a árvore mista no browser só somaria flake sem sinal novo.
+- **Fluxo "Mover" (11.6/11.10) no E2E:** funde no mesmo `migrate_task` já coberto nos 4 destinos pelo service; um segundo E2E seria redundante (ver "E2E não inflado" acima).
+- **AC3/AC4 (schema/matriz + regra pura):** invariantes de backend/nível-unit, fora do alcance útil de um teste de browser.
+
+## Próximos Passos
+
+- Nenhum gap bloqueante para a 12.1 — 4/4 ACs cobertas nas camadas apropriadas; o efeito observável agora tem prova ponta-a-ponta.
+- Artefatos de teste entram no commit da story; este `test-summary.md` fica fora do commit (artefato de `_bmad-output`).
+- Vitest e Playwright não rodam no CI — rodar as suítes localmente antes do merge.
