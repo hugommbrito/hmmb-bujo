@@ -1,87 +1,151 @@
-# Review — Acessibilidade e fidelidade ao produto
+# Accessibility Review — HMMB BuJo
 
-## Veredito
+Data: 2026-07-24
+Lente: produto consumer, WCAG 2.2 AA
+Escopo revalidado integralmente: `DESIGN.md`, `EXPERIENCE.md`, `.decision-log.md`, `architecture-and-story-handoff.md`, `requirements-traceability.md`, `reconcile-story-13-0-app-shell.md`, Story 13.0, `review-rubric.md` e os mocks promovidos `mockups/key-app-shell-13-0.html` e `mockups/key-settings-appearance-nav-13-0.html`.
 
-**Acessibilidade: adequada, ainda não liberável. Fidelidade ao produto: quebrada em decisões pontuais de alta importância.** A dupla estabelece bons pisos para teclado, touch, reflow, leitores de tela e estados, mas ainda não especifica comportamentos verificáveis para todos os componentes/superfícies. Há também divergências diretas com contratos vigentes dos épicos. Os mockups podem ser produzidos, porém essas divergências precisam ser decididas e registradas antes de os mockups virarem contrato de implementação.
+## Overall verdict
 
-## Achados
+O contrato está **strong** para acessibilidade consumer WCAG 2.2 AA. A revalidação final não encontrou lacunas load-bearing nem divergências remanescentes entre spines, handoff, decisões e mocks: os oito temas passam os pares textuais e não textuais definidos; navegação, estados dinâmicos, foco, reflow, touch, preferências e resiliência estão comprometidos de forma implementável e testável.
 
-### Alta
+Contagem: **0 critical · 0 high · 0 medium · 0 low**.
 
-- **A navegação e a localização de Recorrentes divergem do produto implementado.** A IA cria um destino de primeiro nível `Recorrentes` e admite bottom nav variável + menu (`EXPERIENCE.md` §Information Architecture, linhas 42–57). O Épico 11.2 moveu Recorrentes para abas do Planner e removeu sua gestão de Configurações; UX-DR8 fixa quatro abas mobile (Hoje, Planner, Hábitos, Saúde), FAB e proíbe drawer/hambúrguer. *Correção:* inventariar as rotas reais; fixar Recorrentes dentro do Planner e documentar o acesso aos demais destinos mobile sem contradizer a navegação entregue.
+## 1. Estrutura, landmarks e anúncio de rota — strong
 
-- **Migração troca um contrato de interação vigente sem reconciliação.** O spine exige tela cheia em todas as plataformas (`DESIGN.md` §Dialog, Sheet e Ritual, linhas 188–190; `EXPERIENCE.md` linhas 59 e 101), enquanto UX-DR3 exige modal overlay no desktop e full-screen apenas no mobile, com ações `1`–`4`, pickers e retomada. A SPEC permite recomposição, mas exige equivalência e decisão explícita, não substituição silenciosa. *Correção:* registrar uma decisão de produto/UX: manter modal desktop ou aprovar formalmente full-screen desktop; em ambos, preservar as quatro decisões, ausência de preseleção, pickers, atalhos e pausa.
+### Findings
 
-- **Os contratos de interação já entregues foram reduzidos a “inventariar depois”.** O spine não compromete `[`/`N`/`B`, teclas `1`–`4`, FAB 52 px, long-press, detalhe inline desktop/bottom sheet mobile e drag apenas desktop; deixa atalhos para inventário futuro (`EXPERIENCE.md` linhas 142–153). UX-DR2/3/6/19 e histórias concluídas já os tornam parte da paridade. *Correção:* incorporar os comportamentos existentes como baseline explícita ou registrar, item a item, qual será deliberadamente substituído.
+Nenhum.
 
-- **Auth não tem superfície nem padrão suficiente para mockup/aceite.** A migração inclui auth na Onda 6 (`EXPERIENCE.md` linhas 178–188), mas a IA cobre somente rotas autenticadas; faltam Login, Cadastro, restauração de sessão, erro de credencial e sessão expirada. Isso deixa FR-0.2, UX-DR16 e Epic 2 sem representação. *Correção:* adicionar a família Auth à IA, estados e inventário visual, inclusive preservação de formulário/estado durante expiração.
+### Coverage notes
 
-- **Contraste de tokens semânticos ainda não fecha AA.** Em cálculo sRGB, `{colors.warning}` sobre `{colors.warning-soft}` resulta em aproximadamente **4,21:1**, abaixo de 4,5:1 para labels de 12 px; `{colors.border}` sobre `{colors.surface}` fica abaixo de 3:1 quando a borda é o único contorno de componente. O spine declara AA universal, mas não nomeia combinações válidas nem tokens de borda interativa (`DESIGN.md` linhas 15–38, 112–125). *Correção:* escurecer warning foreground ou trocar o par; criar tokens separados para borda decorativa e contorno de controle, com ≥3:1 para estados necessários; publicar uma matriz de contraste por combinação/estado.
+- `Pular para o conteúdo` é o primeiro controle focável e aponta para a única região `main` ativa, no heading da superfície.
+- Topbar usa `header`; sidebar/rail, bottom nav e sheet usam `nav` com nomes distintos.
+- Mudança de rota e sucesso não bloqueante usam `status`/live polite; erro bloqueante ou de escrita usa `alert` uma única vez.
+- Erro de campo é associado programaticamente; saving combina `Salvando…` e `aria-busy`; progresso determinado usa `progressbar` nomeada.
+- Título e RouteAnnouncer não duplicam anúncio.
 
-### Média
+## 2. Navegação, nomes, estados e badges — strong
 
-- **O catálogo comportamental é insuficiente para testar teclado em grids/calendários.** “teclado, headers, alternativa de lista” (`EXPERIENCE.md` linhas 98–101, 155–165) não define modelo de foco, setas, Home/End, Enter/Space, seleção, anúncio de mudança de período nem saída do grid. *Correção:* definir se o padrão usa tabela com controles tabbáveis ou grid composto/roving tabindex e documentar teclas e nomes acessíveis.
+### Findings
 
-- **Estados globais não estão mapeados por superfície.** A tabela é boa, mas não resolve permission/unauthenticated/session-expired, dados parciais, zero-result de busca, conflito/duplicação de placement, tarefa já alterada, limite/overflow e erro parcial de confirmação em lote (`EXPERIENCE.md` linhas 124–140). *Correção:* anexar uma matriz superfície × estados aplicáveis e dar tratamento específico a auth, rituais, filtros e mutações em lote.
+Nenhum.
 
-- **Target mínimo conflita com chips e linhas densas se forem acionáveis.** `chip.height = 24px` e linha pointer de 36px (`DESIGN.md` linhas 73–87) convivem com piso de 44×44 (`EXPERIENCE.md` linhas 155–159), sem dizer quando chip é somente display nem como controles inline recebem hit-area sem aumentar a linha. *Correção:* separar `Chip` informativo de `Filter/Action Chip`; definir caixa interativa mínima, espaçamento entre alvos e exceção WCAG 2.5.8 somente quando realmente aplicável.
+### Coverage notes
 
-- **Responsividade é macro, não demonstrável para todas as famílias.** Há breakpoints e regras para Weekly/Monthly, mas faltam recomposições específicas para formulários densos, health history, habit grid, medication blocks, arquivo/filtros, settings, teclado virtual e safe areas (`DESIGN.md` linhas 133–144; `EXPERIENCE.md` linhas 167–176). *Correção:* cada mockup deve ter wide, ponto crítico intermediário e 320 CSS px, com anotação de ordem, sticky/scroll e ação principal.
+- Destino ativo usa `aria-current="page"`; agrupadores usam `aria-expanded` e nunca recebem `aria-current`.
+- Grupo recolhido com filho ativo associa `Contém a página atual: {destino ativo}.`.
+- Alternador do Hoje usa `aria-pressed`; família, modo e atalhos formam grupos programáticos.
+- Phosphor `fill` é canal adicional a indicador, fundo, peso textual e estado programático.
+- Labels ocultos no rail/FAB mantêm nome acessível.
+- Badge oculta zero/loading/erro, mostra `1`–`9`/`9+`, e conserva contagem exata e flexão no nome acessível.
+- Nos mocks, os exemplos `9+` usam contagem exata ilustrativa de 17 itens no controle; o badge overlay não altera target ou layout.
 
-- **Tema escuro permanece uma divergência upstream.** O novo spine o exclui da fundação (`DESIGN.md` linha 125), enquanto UX-DR1 dos épicos exige light + dark e preferência em Configurações. Isso não inventa funcionalidade do handoff, mas remove requisito vigente. *Correção:* decidir via correct-course se dark mode foi cancelado; até lá, não marcar o design system como final.
+## 3. Teclado, foco, overlays e movimento — strong
 
-- **Terminologia de Saúde pode reintroduzir “dashboard” sem regra clara.** O spine rejeita dashboard/analytics não previsto, mas o PRD FR-3.3 exige “Dashboard de período”; `EXPERIENCE.md` chama genericamente “histórico em tabela, gráfico e período” (linha 120). *Correção:* nomear explicitamente “Resumo de período previsto em FR-3.3”, listar apenas métricas derivadas autorizadas e manter a rejeição de analytics inventado.
+### Findings
 
-### Baixa
+Nenhum.
 
-- **`ink-disabled` tem contraste aproximado de 3,03:1 sobre surface.** Conteúdo disabled é exceção normativa de contraste, mas o próprio design promete label legível (`DESIGN.md` linhas 20–24 e 192–194). *Correção:* validar com usuários/zoom ou elevar contraste sem confundir disabled com enabled.
+### Coverage notes
 
-- **Faltam preferências de movimento e zoom nos mockups de aceite.** O texto cobre reduced motion e reflow, mas não explicita font scaling, orientação e 400% zoom para conteúdo estreito quando aplicável. *Correção:* adicionar essas evidências ao checklist de validação, sem criar telas novas.
+- Ordem de Tab acompanha leitura/recomposição e conteúdo colapsado não recebe foco.
+- Sheet começa no destino ativo, contém foco, deixa o fundo inerte e retorna a Menu ao fechar sem navegar.
+- Fechar, backdrop e `Escape` complementam o drag; gesto nunca é mecanismo único.
+- Drag/reorder possui comando alternativo.
+- Todo foco deve ficar integralmente visível; scroll padding/margin considera chrome fixo/sticky, FAB, teclado virtual e safe-area.
+- Aceite cobre primeiro/último controles em 320 CSS px e zoom 200%.
+- Reduced motion elimina deslocamentos sem suprimir feedback.
 
-## Fidelidade e contenção de escopo
+## 4. Reflow, zoom, safe-area e targets — strong
 
-O spine está **forte** ao preservar máquina de estados, linhagem, snapshots, placement manual, ciclos, módulos futuros autorizados e MVP sem offline. Também rejeita corretamente streaks, fasting, IA, auto-injeção, campos fixos de saúde e analytics não previsto (`EXPERIENCE.md` linhas 103–122 e 213–217). Não foi encontrada funcionalidade nova claramente importada do handoff. O risco principal não é expansão de escopo; é apagar ou substituir contratos existentes de navegação e interação sem decisão rastreável.
+### Findings
 
-## Inventário obrigatório para cobertura integral de mockups
+Nenhum.
 
-Cada item abaixo precisa de **wide desktop**, **variante intermediária quando a recomposição divergir** e **mobile a 320 CSS px**. Estados podem ser reunidos em boards anotados, mas nenhum estado aplicável pode ficar apenas implícito.
+### Coverage notes
 
-### Fundação e acesso
+- Reflow em 320 CSS px e zoom 200% são obrigatórios sem perda de conteúdo/ação.
+- Weekly/Monthly têm equivalentes compactos sem scroll horizontal da página.
+- FAB, bottom nav e sheet respeitam safe-area.
+- O projeto exige 44×44px para touch, acima do piso normativo de 24×24px; controles frequentes usam 48px e FAB usa 52px.
 
-1. App shell autenticado: sidebar expandida/colapsada, Planner expandido, destino ativo, Brain Dump com badge; bottom nav, FAB/safe-area e acesso aos destinos sem aba.
-2. Login; cadastro; restauração de sessão; credencial inválida; sessão expirada preservando a UI; sem conexão.
-3. Catálogo operacional: tipografia, cores/contraste, botões, inputs, chips informativos/interativos, rows, panels, headers, focus/hover/pressed/selected/disabled/readonly, skeleton/empty/error/offline/toast/dialog/sheet.
+## 5. Cor, contraste e forced-colors — strong
 
-### Núcleo já implementado
+### Findings
 
-4. Hoje/Daily: normal, vazio, skeleton, erro, offline, tarefas/subtarefas, estados completos, criação/edição, detalhe, reordenação e pendências/catch-up.
-5. Semana: sete colunas + pool/sem data + recorrentes; período passado aberto; fechado readonly; versão mobile por dia.
-6. Mês: calendário + itens; CRUD; período passado aberto; fechado readonly; lista cronológica mobile.
-7. Futuro: agrupamento mensal, data completa/parcial, anuais pendentes e placement.
-8. Recorrentes dentro do Planner: abas/filtros, lista, vazio, criar/editar/desativar e categoria.
-9. Placement de recorrentes: informação da recorrência, calendário de densidade, deduplicação, seleção e confirmação/erro.
-10. Mover/Migrar tarefa: abas Hoje/Semana/Mês/Futuro, destino dia/mês, confirmação explícita, conflito/erro e retorno de foco.
-11. Migração diária, semanal, mensal e Catch-Up multinível: uma tarefa, pickers, progresso, pausa/retomada, erro e resumo final; modalidade desktop a decidir.
-12. Arquivo: lista/filtros, vazio/erro, semana fechada, mês fechado, detalhe e linhagem readonly.
-13. Brain Dump: vazio saudável, lista pendente, captura, processamento/mover/descartar, erro e badge atualizado.
-14. Capture Sheet mobile: teclado aberto, destinos, validação, salvando, falha preservando texto e offline/FAB desabilitado.
-15. Configurações/conta atuais e qualquer placeholder realmente roteável, sem antecipar cadastros futuros.
+Nenhum.
 
-### Módulos autorizados futuros
+### Coverage notes
 
-16. Hábitos — configuração de grupos/hábitos, ativos/inativos, booleano/numérico; tracker diário; tipo de dia/pesos; histórico por data; gráfico com eventos + tabela equivalente.
-17. Saúde — configuração de campo dinâmico por tipo; log de ontem/hoje; histórico em tabela, gráfico por campo e resumo de período FR-3.3; inativos no histórico.
-18. Medicamentos — configuração/versionamento e blocos; confirmação diária individual/em lote nos estados pendente/parcial/confirmado; dose perdida; histórico.
-19. Gratidão — composer com múltiplas entradas; dia vazio; histórico por data e mês; erro preservando texto.
-20. Gestão de usuários **pós-MVP**, em board separado e rotulado future: convite, estado do convite e onboarding isolado; não incluir ranking/competição backlog.
+- Todos os 32 pares semânticos `info/success/warning/danger` sobre seus fundos soft passam 4,5:1.
+- Warning Mineral Light corrigido mede aproximadamente 4,76:1.
+- Nas oito paletas, `ink/canvas`, `ink/surface`, `ink-muted` nos fundos usuais, `on-primary/primary`, `primary/surface` e `focus` sobre canvas/surface passam os limiares aplicáveis.
+- `control-border` passa 3:1 contra `surface` e `canvas` em todos os temas. Contra `surface`: Mineral Light 5,88; Mineral Dark 7,94; Horizonte Light 5,70; Horizonte Dark 8,66; Bosque Light 5,74; Bosque Dark 8,68; Ameixa Light 6,01; Ameixa Dark 8,53.
+- Inputs, selects, radios/checkboxes e boundaries necessários usam `control-border`; `border`/`border-strong` permanecem estruturais e não são fallback interativo.
+- Focus ring passa 3:1 nos oito temas.
+- Seleção, categorias, Eisenhower, status, erro e progresso mantêm forma/texto/ícone além da cor.
+- Disabled só admite contraste menor quando realmente indisponível; readonly conserva contraste normal.
+- Forced-colors/high contrast preserva forma, outline, estado e semântica por cores do sistema.
 
-### Boards transversais obrigatórios
+## 6. Estados de dados, rede e preferências — strong
 
-21. Matriz de estados por superfície: initial/local loading, empty inicial/filtro, read/write error, offline, disabled com motivo, optimistic/rollback, readonly/archive e closed cycle.
-22. Teclado e foco: shell, task row, reorder alternativo, grid/calendar, dialog/sheet, ritual e retorno de foco; atalhos existentes anotados.
-23. Acessibilidade de dados: contrastes, não-cor, nomes acessíveis, aria-live, tabela alternativa de gráfico e leitura de linhagem/status.
-24. Reflow/responsividade: 1440+, 1024, 768 e 320 CSS px; zoom 200%; teclado virtual; orientação e safe-area onde aplicável.
+### Findings
 
-## Gate recomendado
+Nenhum.
 
-Não liberar desenvolvimento enquanto os cinco achados altos não forem reconciliados. Depois, produzir os 24 conjuntos acima, executar revisão de paridade produto + teclado/touch/reflow/contraste sobre os mockups e somente então promover ambos os spines de `draft` para `final`.
+### Coverage notes
+
+- Loading preserva geometria; erro é local com retry/preservação; offline mantém leitura/cache disponível e indisponibiliza somente mutações de rede com motivo.
+- Disabled comunica motivo quando necessário; readonly remove mutações sem degradar leitura.
+- Aparência distingue aplicado de draft; saving bloqueia duplicação; erro preserva draft/tema vigente; sucesso aplica após confirmação.
+- Preferência remota usa last-write-wins sem descartar draft local.
+- Atalho inválido bloqueia Salvar; remoção externa usa fallback canônico sem duplicata.
+
+## 7. App Shell mobile, sheet e seam legado — strong
+
+### Findings
+
+Nenhum.
+
+### Coverage notes
+
+- Bottom nav oferece três atalhos configuráveis + Menu fixo; Menu representa rota atual fora dos atalhos.
+- Sheet contém todos os destinos e preserva grupos, ativo e badges.
+- Conteúdo inferior fica inerte; sheet tem rolagem interna, trap, retorno e safe-area.
+- Seam legado é textual, persistente, não dispensável e não depende apenas de cor.
+- Zero/uma/todas collections e Saúde com um filho estão cobertos.
+
+## 8. Semântica dos mocks estáticos — strong para a finalidade
+
+### Findings
+
+Nenhum.
+
+### Coverage notes
+
+- Ambos possuem skip link e uma única `main` de revisão.
+- App Shell usa landmarks nomeados, `aria-current`, `aria-expanded`, descrição do grupo ativo e `inert` sob o sheet.
+- Configurações usa `radiogroup` + `radio`/`aria-checked`, selects nativos, `aria-busy`, `status` e `alert`.
+- Badges truncados preservam o valor exato no nome acessível dos controles.
+- A nota visível impede que o markup estático seja tratado como implementação de comportamentos runtime; esses comportamentos continuam regidos pelo spine.
+
+## Coverage summary
+
+| Área solicitada | Resultado |
+|---|---|
+| Landmarks, nomes, estados e bypass | strong |
+| `aria-current` / `expanded` / `pressed` / live/busy | strong |
+| Anúncio de rota | strong |
+| Teclado, trap, retorno, Escape/backdrop/drag | strong |
+| Foco não encoberto | strong |
+| 320 CSS px, zoom, reflow e scroll horizontal | strong |
+| Safe-area e targets 44/24 | strong |
+| Oito paletas: contraste textual e não textual | strong |
+| Forced-colors/high contrast | strong |
+| Informação além da cor | strong |
+| Badge `9+`, valor exato e overlay compacto | strong |
+| Loading/error/offline/disabled/readonly | strong |
+| Reduced motion | strong |
+| Draft/saving/error/configuração | strong |
+| Seam legado | strong |
+| Bottom nav + sheet | strong |

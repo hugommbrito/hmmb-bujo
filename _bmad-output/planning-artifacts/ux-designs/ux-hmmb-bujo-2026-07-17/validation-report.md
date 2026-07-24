@@ -1,81 +1,60 @@
-# Validation Report — hmmb-bujo
+# Validation Report — HMMB BuJo
 
-- **DESIGN.md:** `DESIGN.md`
-- **EXPERIENCE.md:** `EXPERIENCE.md`
-- **Run at:** 2026-07-19
+- **DESIGN.md:** `_bmad-output/planning-artifacts/ux-designs/ux-hmmb-bujo-2026-07-17/DESIGN.md`
+- **EXPERIENCE.md:** `_bmad-output/planning-artifacts/ux-designs/ux-hmmb-bujo-2026-07-17/EXPERIENCE.md`
+- **Run at:** 2026-07-24T08:53:52-03:00 (America/Fortaleza)
 
 ## Overall verdict
 
-O par define uma direção coerente, mas ainda não está liberável para desenvolvimento nem para produção indiscriminada de todos os mockups. Primeiro é necessário escolher a direção visual e corrigir divergências funcionais, tokens, catálogo bilateral de componentes, jornadas e matriz de estados.
+O par está forte como contrato para arquitetura e story-dev: referências resolvem, decisões load-bearing estão comprometidas, deferimentos possuem gates e a rastreabilidade cobre os 111 requisitos do PRD. O Rubric Walker não encontrou misses mecânicos nem findings de julgamento com impacto downstream.
 
-A revisão de produto confirmou que o maior risco não é expansão pelo handoff, mas substituição silenciosa de contratos já entregues. O produto real vence: Recorrentes permanece no Planner, migração desktop preserva o padrão aprovado, interações existentes viram baseline explícita e dark mode continua no escopo até correct-course em contrário.
+A lente consumer WCAG 2.2 AA também concluiu strong, sem divergências remanescentes entre spines, handoff, decisões e mocks. Os oito temas passam os pares textuais e não textuais definidos; estrutura, navegação, foco, estados dinâmicos, reflow, touch, preferências e resiliência estão especificados de forma implementável e testável.
 
 ## Category verdicts
 
-- Flow coverage — broken
-- Token completeness — thin
-- Component coverage — broken
-- State coverage — broken
-- Visual reference coverage — broken
+- Flow coverage — strong
+- Token completeness — strong
+- Component coverage — strong
+- State coverage — strong
+- Visual reference coverage — strong
 - Bloat & overspecification — adequate
-- Inheritance discipline — broken
+- Inheritance discipline — strong
 - Shape fit — strong
-- Accessibility — adequate, not releasable
-- Product fidelity — broken in specific load-bearing decisions
+- Accessibility: estrutura, landmarks e anúncio de rota — strong
+- Accessibility: navegação, nomes, estados e badges — strong
+- Accessibility: teclado, foco, overlays e movimento — strong
+- Accessibility: reflow, zoom, safe-area e targets — strong
+- Accessibility: cor, contraste e forced-colors — strong
+- Accessibility: estados de dados, rede e preferências — strong
+- Accessibility: App Shell mobile, sheet e seam legado — strong
+- Accessibility: semântica dos mocks estáticos — strong para a finalidade
 
 ## Findings by severity
 
-### Critical (4)
+### Critical (0)
 
-- **Flow coverage:** UJ-1–UJ-8 não possuem cobertura completa por jornadas nomeadas. Fix: adicionar mapa UJ/FR → Key Flow, clímax e falhas.
-- **Token completeness:** `{colors.overlay}` usa formato incompatível com a especificação. Fix: hexadecimal de oito dígitos.
-- **Component coverage:** nomes divergem entre YAML, DESIGN e EXPERIENCE. Fix: glossário bilateral canônico.
-- **Visual references:** nenhum mockup novo estava promovido. Fix: escolher direção e executar plano integral de cobertura.
+Nenhum.
 
-### High (21)
+### High (0)
 
-- Auth ausente da IA e dos estados.
-- Recorrentes e navegação contradizem Epic 11/UX-DR8.
-- Migração full-screen desktop contradiz UX-DR3.
-- Atalhos, FAB, long-press, detalhe responsivo e drag existentes não estão comprometidos como baseline.
-- Warning foreground/soft e bordas interativas não cumprem contraste necessário.
-- Tokens de densidade, breakpoints, estado, elevação e borda estão incompletos.
-- Page Header, Item Row, Section Header, Date/Range, Grid/Calendar, overlays e feedback não possuem contratos bilaterais completos.
-- Falta declaração precisa do que é herdado e sobrescrito em MUI.
-- Estados globais não estão mapeados por superfície.
-- Estados específicos de ritual, placement, ciclos, recorrentes e medicação estão incompletos.
-- Fontes dos dois spines e identificadores UJ/CAP/FR não estão alinhados.
-- Imports do handoff não estão referenciados/rejeitados arquivo a arquivo.
+Nenhum.
 
-### Medium (12)
+### Medium (0)
 
-- Falhas ausentes em vários Key Flows.
-- Inter/fallback ainda sem contrato de carregamento.
-- Modelo de teclado de grids/calendários indefinido.
-- Chips/rows densos conflitam com hit-area mínima sem distinção display/action.
-- Responsividade por família de superfície ainda não é demonstrável.
-- Dark mode diverge de UX-DR1 e deve permanecer até decisão upstream.
-- Saúde deve nomear o Resumo de período de FR-3.3 sem importar analytics.
-- Estados interativos não têm matriz por componente.
-- Parte da estratégia de migração repete fontes upstream.
+Nenhum.
 
-### Low (4)
+### Low (0)
 
-- `ink-disabled` merece maior contraste operacional.
-- Validar orientação, font scaling e zoom estreito nos boards.
-- Breakpoints estão repetidos entre spines.
-- Seções downstream podem ser reduzidas após fechamento da rastreabilidade.
+Nenhum.
+
+## Validation synthesis
+
+- Rubric: 8 categorias revisadas; 7 strong e 1 adequate; 0 findings.
+- Accessibility: 8 áreas revisadas; 8 strong, sendo a semântica dos mocks strong para a finalidade; 0 findings.
+- Consolidado: 0 critical · 0 high · 0 medium · 0 low.
+- Evidências mecânicas: frontmatter e referências resolvem; 111/111 IDs FR; catálogo bilateral de 30 componentes; 5/5 mocks promovidos; 9/9 wireframes importados; dois key mocks aprovados; oito paletas validadas.
 
 ## Reviewer files
 
 - `review-rubric.md`
 - `review-accessibility-product.md`
-
-## Gate
-
-1. Escolher uma das quatro direções visuais.
-2. Corrigir achados críticos e altos independentes de estética.
-3. Completar/prometer dark mode e matriz de contraste.
-4. Produzir os 24 conjuntos do plano de cobertura.
-5. Promover os mockups e reler decisões para os spines.
-6. Revalidar antes de mudar `status: draft` para `final`.

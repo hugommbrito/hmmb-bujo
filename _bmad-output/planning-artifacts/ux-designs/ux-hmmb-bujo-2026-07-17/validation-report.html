@@ -1,33 +1,86 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Validation Report — hmmb-bujo</title>
+  <title>UX Design Validation — HMMB BuJo</title>
   <style>
-    body { margin: 0; font: 15px/1.55 system-ui, sans-serif; color: #25231f; background: #f5f2ea; }
-    main { max-width: 960px; margin: 40px auto; padding: 32px; background: #fbfaf6; border: 1px solid #d6d1c7; }
-    h1, h2 { line-height: 1.2; } h2 { margin-top: 32px; }
-    .verdict { padding: 16px; border-left: 4px solid #9a493f; background: #f3e1de; }
-    table { width: 100%; border-collapse: collapse; } th, td { padding: 10px; border-bottom: 1px solid #d6d1c7; text-align: left; }
-    .broken { color: #8a3028; font-weight: 700; } .thin { color: #7b5b18; font-weight: 700; } .strong { color: #315f5a; font-weight: 700; }
-    li { margin: 8px 0; } code { background: #eeebe2; padding: 2px 5px; }
+    :root{--bg:#fafaf9;--surface:#fff;--border:#e7e5e4;--text:#1c1917;--muted:#6b6561;--strong:#16733a;--adequate:#5f6f16}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.6 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    .container{max-width:980px;margin:auto;padding:32px 24px 64px}header{padding-bottom:16px;border-bottom:1px solid var(--border);margin-bottom:24px}
+    h1{margin:0;font-size:24px}.subtitle,.source,footer{color:var(--muted);font:12px ui-monospace,"SFMono-Regular",Consolas,monospace}
+    .synthesis,.counts{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:18px 22px;margin-bottom:24px}.synthesis{border-left:3px solid var(--strong)}
+    .synthesis p{margin:0 0 10px}.synthesis p:last-child{margin-bottom:0}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;margin-bottom:24px}
+    .card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 14px}.name{font-size:13px;color:var(--muted)}.verdict{font-weight:700;color:var(--strong)}
+    .verdict.adequate{color:var(--adequate)}details{background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-bottom:12px;overflow:hidden}
+    summary{padding:14px 18px;cursor:pointer;display:flex;gap:12px;align-items:center}summary h2{font-size:16px;margin:0;flex:1}.pill{font-size:11px;text-transform:uppercase;font-weight:700;color:#fff;background:var(--strong);border-radius:999px;padding:3px 9px}
+    .pill.adequate{background:var(--adequate)}.body{padding:0 18px 14px}.body p{margin:0}.counts h2{font-size:16px;margin-top:0}.counts ul{margin-bottom:0}footer{margin-top:36px;padding-top:16px;border-top:1px solid var(--border)}
   </style>
 </head>
-<body><main>
-  <h1>Validation Report — hmmb-bujo</h1>
-  <p>Executado em 19/07/2026 sobre <code>DESIGN.md</code> e <code>EXPERIENCE.md</code>.</p>
-  <div class="verdict"><strong>Ainda não liberável.</strong> A direção é coerente, mas existem divergências de produto, cobertura e acessibilidade que precisam ser corrigidas antes do desenvolvimento.</div>
-  <h2>Veredictos</h2>
-  <table><tr><th>Categoria</th><th>Veredito</th></tr>
-    <tr><td>Fluxos</td><td class="broken">broken</td></tr><tr><td>Tokens</td><td class="thin">thin</td></tr>
-    <tr><td>Componentes</td><td class="broken">broken</td></tr><tr><td>Estados</td><td class="broken">broken</td></tr>
-    <tr><td>Referências visuais</td><td class="broken">broken</td></tr><tr><td>Herança</td><td class="broken">broken</td></tr>
-    <tr><td>Shape</td><td class="strong">strong</td></tr><tr><td>Acessibilidade</td><td class="thin">adequate, not releasable</td></tr>
-  </table>
-  <h2>Bloqueadores principais</h2>
-  <ul><li>Recorrentes/navegação e Migração desktop divergem dos contratos vigentes.</li><li>Auth e interações já entregues não estão fechados nos spines.</li><li>Contraste de warning e bordas interativas não fecha AA.</li><li>Faltam jornadas, catálogo bilateral e matriz superfície × estados.</li><li>Dark mode continua requisito vigente.</li></ul>
-  <h2>Próximo gate</h2>
-  <ol><li>Escolher direção visual.</li><li>Corrigir achados críticos/altos.</li><li>Produzir os 24 conjuntos de mockups.</li><li>Promover decisões aos spines.</li><li>Revalidar e só então liberar desenvolvimento.</li></ol>
-  <p>Detalhes: <code>review-rubric.md</code> e <code>review-accessibility-product.md</code>.</p>
-</main></body></html>
+<body>
+  <main class="container">
+    <header>
+      <h1>HMMB BuJo — UX Design Validation Report</h1>
+      <div class="subtitle">DESIGN.md + EXPERIENCE.md · 2026-07-24T08:53:52-03:00 · America/Fortaleza</div>
+    </header>
+
+    <section class="synthesis" aria-labelledby="synthesis-title">
+      <h2 id="synthesis-title">Síntese</h2>
+      <p>O par está <strong>forte</strong> como contrato para arquitetura e story-dev: referências resolvem, decisões load-bearing estão comprometidas, deferimentos possuem gates e a rastreabilidade cobre os 111 requisitos do PRD. O Rubric Walker não encontrou misses mecânicos nem findings de julgamento com impacto downstream.</p>
+      <p>A lente consumer WCAG 2.2 AA também concluiu <strong>strong</strong>, sem divergências remanescentes entre spines, handoff, decisões e mocks. Os oito temas passam os pares textuais e não textuais definidos; estrutura, navegação, foco, estados dinâmicos, reflow, touch, preferências e resiliência estão especificados de forma implementável e testável.</p>
+    </section>
+
+    <section aria-labelledby="categories-title">
+      <h2 id="categories-title">Category verdicts</h2>
+      <div class="grid">
+        <div class="card"><div class="name">Flow coverage</div><div class="verdict">strong</div></div>
+        <div class="card"><div class="name">Token completeness</div><div class="verdict">strong</div></div>
+        <div class="card"><div class="name">Component coverage</div><div class="verdict">strong</div></div>
+        <div class="card"><div class="name">State coverage</div><div class="verdict">strong</div></div>
+        <div class="card"><div class="name">Visual reference coverage</div><div class="verdict">strong</div></div>
+        <div class="card"><div class="name">Bloat &amp; overspecification</div><div class="verdict adequate">adequate</div></div>
+        <div class="card"><div class="name">Inheritance discipline</div><div class="verdict">strong</div></div>
+        <div class="card"><div class="name">Shape fit</div><div class="verdict">strong</div></div>
+      </div>
+    </section>
+
+    <section aria-labelledby="rubric-title">
+      <h2 id="rubric-title">Rubric Walker</h2>
+      <details><summary><h2>1. Flow coverage</h2><span class="pill">strong</span></summary><div class="body"><p>Oito jornadas e 111 requisitos foram cobertos ou diferidos com gates explícitos; todos os fluxos possuem failure path próprio ou Resiliência canônica.</p></div></details>
+      <details><summary><h2>2. Token completeness</h2><span class="pill">strong</span></summary><div class="body"><p>Tokens e referências resolvem, sem curingas; oito paletas completas e critérios de contraste load-bearing declarados.</p></div></details>
+      <details><summary><h2>3. Component coverage</h2><span class="pill">strong</span></summary><div class="body"><p>Catálogo bilateral idêntico de 30 componentes, na mesma ordem e hierarquia, com três aliases controlados.</p></div></details>
+      <details><summary><h2>4. State coverage</h2><span class="pill">strong</span></summary><div class="body"><p>Estados transversais, resiliência, preferências, ciclos e deferimentos estão cobertos.</p></div></details>
+      <details><summary><h2>5. Visual reference coverage</h2><span class="pill">strong</span></summary><div class="body"><p>5/5 mocks, 9/9 wireframes importados e dois key mocks aprovados estão ligados com precedência dos spines declarada.</p></div></details>
+      <details><summary><h2>6. Bloat &amp; overspecification</h2><span class="pill adequate">adequate</span></summary><div class="body"><p>A extensão acompanha a complexidade load-bearing; detalhes puramente técnicos permanecem no companion.</p></div></details>
+      <details><summary><h2>7. Inheritance discipline</h2><span class="pill">strong</span></summary><div class="body"><p>Sources, 111 IDs, nomes, aliases e referências de tokens resolvem sem inconsistências.</p></div></details>
+      <details><summary><h2>8. Shape fit</h2><span class="pill">strong</span></summary><div class="body"><p>Os dois spines seguem suas estruturas canônicas e as seções adicionais têm função downstream clara.</p></div></details>
+    </section>
+
+    <section aria-labelledby="accessibility-title">
+      <h2 id="accessibility-title">Accessibility reviewer</h2>
+      <details>
+        <summary><h2>Consumer WCAG 2.2 AA</h2><span class="pill">strong</span><span class="source">review-accessibility-product.md</span></summary>
+        <div class="body">
+          <p>A revisão adversarial revalidou integralmente estrutura e landmarks; navegação, nomes, estados e badges; teclado, foco, overlays e movimento; reflow, zoom, safe-area e targets; cor, contraste e forced-colors; dados, rede e preferências; shell mobile, sheet e seam; e a semântica demonstrativa dos mocks. Nenhum finding permaneceu.</p>
+        </div>
+      </details>
+    </section>
+
+    <section class="counts" aria-labelledby="counts-title">
+      <h2 id="counts-title">Findings</h2>
+      <ul>
+        <li>Critical: 0</li>
+        <li>High: 0</li>
+        <li>Medium: 0</li>
+        <li>Low: 0</li>
+        <li>Rubric: 0 findings; Accessibility: 0 findings; Consolidado: 0 findings.</li>
+      </ul>
+    </section>
+
+    <footer>
+      <div>Reviewers: review-rubric.md · review-accessibility-product.md</div>
+      <div>Generated: 2026-07-24T08:53:52-03:00 (America/Fortaleza)</div>
+    </footer>
+  </main>
+</body>
+</html>

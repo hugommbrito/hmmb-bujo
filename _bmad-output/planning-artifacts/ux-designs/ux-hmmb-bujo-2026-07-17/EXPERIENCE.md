@@ -2,7 +2,7 @@
 name: HMMB BuJo — Sistema Operacional Visual
 status: final
 created: 2026-07-17
-updated: 2026-07-21
+updated: 2026-07-24
 sources:
   - ../../../specs/spec-design-system-migration/SPEC.md
   - ../../../specs/spec-design-system-migration/design-system-contract.md
@@ -11,6 +11,7 @@ sources:
   - ../../prds/prd-hmmb-bujo-2026-06-15/addendum.md
   - ../../architecture.md
   - ../../epics.md
+  - ../../../implementation-artifacts/13-0-ux-spec-do-app-shell-novo.md
   - ../../../implementation-artifacts/sprint-status.yaml
   - imports/mybujo-full-handoff/design_handoff_full_app/README.md
 ---
@@ -21,7 +22,7 @@ sources:
 
 ## Foundation
 
-Aplicação web responsiva, desktop-first para planejamento denso e mobile real para os fluxos cotidianos. React SPA + MUI permanecem a fundação técnica. O produto atual é brownfield: redesign preserva domínio, URLs, dados, máquina de estados, contratos de API e funcionalidades implementadas.
+Aplicação web responsiva, desktop-first para planejamento denso e mobile real para os fluxos cotidianos. React SPA + MUI permanecem a fundação técnica. O produto atual é brownfield: o redesign preserva domínio, URLs, dados, máquina de estados, contratos de API e funcionalidades implementadas.
 
 Princípios:
 
@@ -34,6 +35,8 @@ Princípios:
 7. Nenhuma funcionalidade nasce do handoff sem requisito upstream.
 
 O MVP requer rede; a UX não promete modo offline ou fila local. Escritas seguem o otimismo seletivo e rollback definidos na arquitetura.
+
+Os sources são intencionalmente assimétricos em relação a `DESIGN.md`: `addendum.md` e `sprint-status.yaml` sustentam comportamento, sequência e gates deste spine, sem originar a identidade visual.
 
 ## Information Architecture
 
@@ -54,7 +57,15 @@ O MVP requer rede; a UX não promete modo offline ou fila local. Escritas seguem
 | Medicamentos | confirmação e histórico | previsto no Épico 8 |
 | Gratidão | entradas e histórico | previsto no Épico 9 |
 
-O shell mostra somente destinos implementados. Módulos futuros não aparecem desabilitados. Desktop wide usa sidebar expandida/colapsável; tablet usa sidebar colapsada; mobile usa top bar, até quatro destinos frequentes na bottom nav e menu para os demais. Brain Dump mantém indicador persistente enquanto possuir itens.
+O shell mostra somente destinos disponíveis. Módulos futuros não aparecem desabilitados. Hoje, Brain Dump, Arquivo e Configurações formam o núcleo; Planner permanece completo com Esta Semana, Este Mês, Futuro e Recorrentes mesmo quando zero collections estão ligadas. Hábitos e Gratidão são destinos diretos quando disponíveis. Saúde é agrupador não navegável de Métricas e Medicamentos: permanece com apenas um filho e desaparece quando não possui nenhum.
+
+Wide e medium iniciam com a sidebar expandida na largura `{components.app-shell.sidebar-expanded}`; tablet inicia com o rail na largura `{components.app-shell.sidebar-collapsed}`. A pessoa pode recolher/expandir durante a sessão; nada é persistido no banco ou navegador. Planner e Saúde iniciam expandidos em nova sessão e preservam seu estado ao trocar de rota. Se um filho fica ativo com o grupo recolhido, o grupo permanece recolhido e indica que contém a rota ativa sem receber `aria-current`. As faixas exatas vivem em **Responsive & Platform**.
+
+Compact usa topbar, três atalhos configuráveis e um quarto item fixo **Menu**. Se a rota atual não estiver entre os atalhos, Menu aparece selecionado. O sheet alto aberto por Menu lista **todos** os destinos disponíveis na ordem e nos agrupamentos canônicos, inclusive os três atalhos. Abre com foco no destino ativo; fecha por Fechar, backdrop, `Escape` ou arrastar para baixo e, sem navegação, devolve foco a Menu.
+
+Brain Dump mantém badge persistente: zero/loading/erro ficam ocultos; 1–9 aparecem literalmente; acima disso, `9+`, preservando a contagem exata no nome acessível. Falha do contador não bloqueia navegação ou captura. Captura fica ancorada na navegação em desktop/tablet e vira FAB circular icon-only no mobile, acima da bottom nav e safe-area.
+
+→ Composições aprovadas: [`mockups/key-app-shell-13-0.html`](mockups/key-app-shell-13-0.html) e [`mockups/key-settings-appearance-nav-13-0.html`](mockups/key-settings-appearance-nav-13-0.html). Os spines vencem em conflito.
 
 Migração/Catch-Up é um **ritual contextual dentro do shell** (reusa a estrutura do planejamento), retomável, não item permanente de navegação nem camada full-screen própria. Detecção segue a arquitetura: pendências, não dia específico; fila unificada na ordem mês → semana → dia.
 
@@ -91,10 +102,19 @@ Empty states explicam a ausência e oferecem no máximo uma ação pertinente. C
 
 | Padrão | Consumidores | Regras comportamentais |
 |---|---|---|
-| App Shell | rotas autenticadas | um destino ativo; estado colapsado preservado; sem toggle legado/moderno |
+| App Shell | rotas autenticadas | um destino ativo; estado colapsado preservado somente na sessão; sem toggle legado/moderno |
+| App Shell Navigation | shell desktop/tablet/mobile | deriva destinos disponíveis; grupos preservam estado na sessão; bottom nav usa três atalhos + Menu; menu completo repete todos os destinos |
+| App Shell Badge | Brain Dump e captura | oculta 0/loading/erro; mostra 1–9/9+; nome acessível conserva valor exato; falha não bloqueia |
+| Persistent Capture | shell | abre Capture Sheet; ancorada na navegação em desktop/tablet e FAB circular no compact; indisponibilidade offline comunica motivo |
+| Mobile Navigation Sheet | compact | sheet alto com lista completa; foco inicial no destino ativo; trap, rolagem interna e retorno a Menu |
+| Legacy Seam Notice | superfície ainda legada | aviso editorial persistente no início do conteúdo; sem dispensar e sem toggle |
+| Appearance Settings | Configurações | quatro famílias × Light/Dark; Claro/Escuro/Sistema; aplica e persiste por conta somente após Salvar |
+| Mobile Shortcut Settings | Configurações | três destinos disponíveis, sem duplicatas; Menu fixo; valida collection usada antes de salvar |
+| Access Surface | Login e Signup | formulário em primeiro plano; silhueta contextual não interativa |
 | Page/Period Header | todos os logs e arquivo | anterior/próximo, Atual/Hoje, seletor e status temporal |
+| Workspace Surface | todas as superfícies autenticadas | principal obrigatória; contexto apenas quando necessário à decisão |
 | Task Row | logs, migração, arquivo | ícone de status vigente, título, descrição, indicador/subárvore de subtarefas, borda de categoria, Eisenhower e ações autorizadas |
-| Domain Pictogram | hábitos, saúde e domínios aprovados | Phosphor monocromático identifica a entidade; label e estado permanecem semanticamente independentes |
+| Domain Pictogram | toda a plataforma | Phosphor monocromático identifica destino, ação ou entidade; label e estado permanecem semanticamente independentes |
 | Item Row | recorrentes, Brain Dump, settings | mesma anatomia; variantes de domínio explícitas |
 | Panel | contexto secundário | uma função; não aninhar por decoração |
 | Section Header | listas agrupadas | label, contagem/progresso, collapse e ações |
@@ -102,17 +122,36 @@ Empty states explicam a ausência e oferecem no máximo uma ação pertinente. C
 | Date/Range Control | logs/históricos | locale pt-BR; accessible name com data completa |
 | Grid/Calendar | Weekly, Monthly, hábitos, saúde | teclado, headers, alternativa de lista e sem scroll diário mobile |
 | Dialog/Sheet | ações curtas/detalhe | uma camada; mantém dados digitados em erro |
+| Feedback | qualquer superfície | estado junto ao dado/ação; retry e preservação de entrada |
 | Ritual de migração | Migração/Catch-Up | reusa o ritual (fontes = níveis mês→semana→dia) dentro do shell; fila unificada; decisão individual; retomável pelos itens restantes; progresso; resumo |
 | Weekly Board | Semana | dias em múltiplas faixas + pool sem data; filtros globais; scroll interno por painel |
+| Weekly Planning Workspace | Planejamento semanal | composição pai de sources, decisões e density |
 | Weekly Planning Sources | Planejamento semanal | ordem fixa, navegação livre, contagem/aviso/bloqueio por fonte |
 | Week Density | Planejamento semanal | registros reais do Weekly, incluindo subtarefas, segmentados por status |
 | Monthly Board | Mês | calendário completo com tarefas nas células + pool sem dia; lista diária equivalente no compact |
+| Monthly Planning Workspace | Planejamento mensal | composição pai de sources, decisões e density |
 | Monthly Planning Sources | Planejamento mensal | recorrentes → Future Log → Monthly anterior; navegação livre e decisões próprias por fonte |
 | Month Density | Planejamento mensal | minicalendário real, total e distribuição textual por status em cada dia e no pool sem dia |
+
+### App Shell, aparência e atalhos
+
+O catálogo fechado usa Phosphor `regular` em destinos inativos e `fill` no destino ativo, sem substituir indicador lateral, fundo, peso do label ou `aria-current`. Saúde apenas expande/recolhe; não abre superfície. Os nomes e ícones canônicos vivem em `DESIGN.md.Catálogo Phosphor do App Shell`.
+
+Aliases controlados, sem criar componentes: **Capture Sheet** = `Dialog/Sheet — variante Capture`; **alternador do Hoje** = `Page/Period Header — variante alternador`; **card/detalhe de tarefa** = composição `Task Row + Dialog/Sheet — variante detalhe`.
+
+Em **Configurações → Aparência**, a pessoa escolhe Mineral, Horizonte Azul, Bosque Sálvia ou Ameixa Editorial e um modo Claro, Escuro ou Sistema. O modo **Sistema** mantém a família escolhida e acompanha somente a preferência Light/Dark do sistema operacional. A seleção é um draft: não altera o shell até **Salvar** concluir. O sucesso aplica a aparência e persiste no banco por conta, sincronizada em todos os dispositivos. Durante saving, o envio duplicado fica indisponível. Em erro, o tema aplicado não muda, o draft permanece e `Não foi possível salvar. Tente novamente.` é anunciado junto à ação.
+
+Sincronização entre dispositivos usa **last write wins**, sem UI de conflito. Atualização remota é aplicada automaticamente apenas quando não existe alteração local pendente. Um draft local nunca é descartado por atualização remota; ao ser salvo, torna-se a preferência vigente da conta.
+
+Em **Configurações → Navegação mobile**, a pessoa escolhe três destinos disponíveis e distintos; **Menu** é o quarto slot fixo e não configurável. Conta sem preferência recebe os três primeiros destinos disponíveis na ordem canônica, sem duplicatas. Se a pessoa tenta desligar uma collection usada em um atalho, Salvar fica bloqueado até escolher um substituto. Se o destino desaparece por mudança externa à tela, o sistema escolhe automaticamente o primeiro destino disponível na ordem canônica que não esteja nos outros dois atalhos.
+
+O seam legado permanece visível enquanto a rota usa a superfície anterior. Ele comunica coexistência, não oferece ação e não muda o domínio interno. A topbar continua pertencendo ao shell novo e anuncia a superfície atual.
 
 ### Signup e confirmação de senha
 
 Signup contém Email, Senha, Confirmar senha e a ação Criar conta. A confirmação é uma validação local: divergência impede o envio, preserva os valores e mostra `As senhas não coincidem.` junto ao campo de confirmação. O erro é anunciado e programaticamente associado ao campo; não se bloqueia colar nem o preenchimento por gerenciador de senhas. Somente Email, Senha e timezone detectado compõem a requisição existente.
+
+Cold-load, sessão expirada, credencial inválida, recuperação e demais estados específicos do sistema novo de Auth estão diferidos à **x.0 do Épico 18**. Este spine não presume seus fluxos.
 
 ### Alternador de visualização do Hoje
 
@@ -168,7 +207,7 @@ Navegação oferece Semana em andamento, Semana em planejamento, anterior/próxi
 | Estado | Entrada | Saída e restrições |
 |---|---|---|
 | Em planejamento | registro-alvo criado enquanto outro Weekly está em andamento | plenamente operável; sai somente por **Iniciar semana** |
-| Em andamento | confirmação explícita após `week_start`, planejamento concluído e Weekly anterior finalizado | um único Weekly simultâneo; quando não há `pending`/`started` e já existe o próximo Weekly em planejamento, oferece **Finalizar semana** |
+| Em andamento | confirmação explícita após `week_start`, planejamento concluído e Weekly anterior finalizado | um único Weekly pode estar **Em andamento**; quando não há `pending`/`started` e já existe o próximo Weekly em planejamento, oferece **Finalizar semana** |
 | Finalizada | confirmação irreversível de **Finalizar semana**, com próximo Weekly já registrado | somente leitura, nunca reabre |
 
 **Concluir planejamento** é uma declaração não bloqueante: pode ocorrer a qualquer momento, não exige abrir/zerar fontes, não congela o ritual e não precisa ser repetida após novas decisões. **Revisar planejamento** permanece disponível. **Iniciar semana** exige data igual/posterior à segunda-feira-alvo, planejamento concluído e Weekly imediatamente anterior finalizado. Daily, Monthly e recorrentes podem manter avisos, mas não bloqueiam. **Finalizar semana** e **Iniciar semana** permanecem ações separadas.
@@ -217,7 +256,7 @@ Fontes carregam/falham independentemente. Offline mantém consulta ao cache e de
 
 Planner / Mês abre o Monthly operacional **Em andamento**, mesmo quando o calendário avançou. A navegação mensal contém somente ciclos operacionais — o mês em andamento, o único mês em planejamento e meses finalizados — com retorno direto aos ciclos ativos, anterior/próximo cronológico e seleção por mês. Monthlies futuros usados apenas como armazenamento do Future Log não aparecem nessa navegação e consultá-los no Future Log não cria nem inicia um ciclo operacional.
 
-O alvo de **Planejar próximo mês** é sempre o mês cronologicamente seguinte ao Monthly em andamento; não existe escolha ou retargeting. A janela regular começa na segunda-feira da semana segunda→domingo que contém a virada do mês — simultaneamente a última semana do anterior e a primeira do novo. Depois dela, o mesmo ritual permanece disponível como regularização atrasada. `today_for(user)` governa a janela e o gate de início.
+O alvo de **Planejar próximo mês** é sempre o mês cronologicamente seguinte ao Monthly em andamento; não existe escolha ou retargeting. A janela regular começa na segunda-feira da semana segunda→domingo que contém a virada do mês — simultaneamente a última semana do anterior e a primeira do novo. Depois do fim dessa janela, o mesmo ritual permanece disponível como regularização atrasada. `today_for(user)` governa a janela e o gate de início.
 
 #### Ciclo de vida e continuidade
 
@@ -257,7 +296,7 @@ O planejamento mensal nunca envia uma tarefa diretamente ao Weekly. Cada decisã
 
 O rail sticky mostra minicalendário completo do alvo, total e distribuição por status em cada dia, faixa **Sem dia definido**, totais, itens decididos, fontes revisadas, avisos e ações. Conta somente Tasks reais já materializadas no Monthly, incluindo subtarefas; recorrentes ainda não alocados não são projeção. Depois da persistência, destino e contagens atualizam imediatamente e o dia recebe destaque perceptível além da cor.
 
-A área central alterna **Pendentes de decisão / Tudo**. Decisão persistida sai da primeira e permanece na segunda com decisão/destino; **Tudo** cobre somente o planejamento atual. Fonte vazia ou sem item elegível sem decisão fica revisada automaticamente. Novos itens preservam o marco anterior e reativam o aviso da própria fonte. **Já alocados no ano** não entra em progresso nem avisos.
+A área central alterna **Pendentes de decisão / Tudo**. Decisão persistida sai da primeira e permanece na segunda com decisão/destino; **Tudo** cobre somente o planejamento atual. Uma fonte vazia, ou sem itens elegíveis que ainda aguardem decisão, fica marcada como revisada automaticamente. Novos itens preservam o marco anterior e reativam o aviso da própria fonte. **Já alocados no ano** não entra em progresso nem avisos.
 
 Avisos são persistentes, não dispensáveis e acionáveis: abrem a fonte em Pendentes e posicionam o primeiro item relevante. O Monthly anterior usa semântica bloqueante distinta; recorrentes e Future Log são informativos. No mobile, o header/densidade resume quantidade e a lista detalhada abre em sheet.
 
@@ -283,11 +322,11 @@ Meses além do horizonte não poluem o trilho. **Ir para mês…** abre um selet
 
 #### Captura, data e ordenação
 
-A captura fica no topo, no molde do `FutureLogItemForm`: título com data completa ou apenas mês. Item com dia exibe o prefixo `(14)`; item só com mês exibe `— ago` (data parcial, FR-1.2). Dentro do mês, itens datados vêm ordenados por dia e os sem dia depois deles.
+A captura fica no topo, no molde do `FutureLogItemForm`: título com data completa ou apenas mês. Item com dia exibe o prefixo `(14)`; item só com mês exibe `— ago` (data parcial, FR-4.2). Dentro do mês, itens datados vêm ordenados por dia e os sem dia depois deles.
 
 #### Datear e mover no lugar
 
-Fora dos rituais, o Futuro permite datear ou mover um item na própria tela. **Definir dia** e **Mover** abrem o seletor de destino: dias do mês em foco, **Manter sem dia definido** e a aba **Outro mês**. Confirmar nomeia o destino (por exemplo **Datar em 14 de agosto**) e usa migração — a origem fica terminal `migrated` (readonly, com seta navegável ao sucessor) e nasce um sucessor no destino, preservando a linhagem, mesmo padrão do ritual mensal. Concluir e cancelar não aparecem nesta superfície; permanecem no contexto operacional/ritual.
+Fora dos rituais, o Futuro permite atribuir uma data ou mover um item na própria tela. As ações **Definir dia** e **Mover** abrem o seletor de destino, que oferece os dias do mês em foco, **Manter sem dia definido** e a aba **Outro mês**. Confirmar nomeia o destino (por exemplo **Datar em 14 de agosto**) e usa migração — a origem fica terminal `migrated` (readonly, com seta navegável ao sucessor) e nasce um sucessor no destino, preservando a linhagem, mesmo padrão do ritual mensal. Concluir e cancelar não aparecem nesta superfície; permanecem no contexto operacional/ritual.
 
 #### Anuais pendentes
 
@@ -299,7 +338,7 @@ Estados seguem o contrato global: skeleton preserva a geometria trilho + foco; e
 
 ### Pictogramas de hábitos e saúde
 
-Hábitos e métricas de Saúde adotam Phosphor como linguagem pictográfica conforme `{components.domain-icon.*}`. O mesmo `iconKey` representa a entidade no cadastro, no Hoje, em trackers, grids e históricos. O catálogo é fechado e pesquisável por nome; não aceita nome arbitrário de componente nem transforma o ícone em campo de texto livre.
+Hábitos e métricas de Saúde adotam Phosphor como linguagem pictográfica conforme `{components.domain-icon}`. O mesmo `iconKey` representa a entidade no cadastro, no Hoje, em trackers, grids e históricos. O catálogo é fechado e pesquisável por nome; não aceita nome arbitrário de componente nem transforma o ícone em campo de texto livre.
 
 Quando o label está visível, o pictograma é decorativo e não é anunciado duas vezes. Em uma apresentação somente por ícone, o controle recebe nome acessível e tooltip. Conclusão de hábito, valor preenchido, alerta e readonly são anunciados separadamente; nunca se deduz estado pela forma ou cor do pictograma.
 
@@ -327,12 +366,11 @@ Uma **fila unificada** reúne as pendências dos três níveis, ordenadas **mês
 
 Ciclo finalizado permanece navegável e legível, em readonly. Controles de mutação desaparecem; conteúdo não recebe aparência disabled. Weekly só finaliza explicitamente sem tarefas `pending`/`started` e nunca reabre.
 
-### Módulos futuros previstos
+### Módulos futuros previstos e estados diferidos
 
-- **Hábitos:** tracker diário com booleanos/numéricos, grupos, pesos, metas, bônus, snapshots e lacunas honestas. Sem streaks/ranking.
-- **Saúde:** campos dinâmicos renderizados pelo tipo; histórico em tabela, gráfico e período somente como definido no PRD. Sem fasting/BMI fixo.
-- **Medicamentos:** domínio separado, blocos configuráveis, confirmação individual/em lote e dose perdida textual.
-- **Gratidão:** composer e entradas do dia dominantes; histórico por data/mês. Sem insights, streak ou IA no MVP.
+- **Hábitos — Story 16.0:** tracker diário e configuração; estados específicos de vazio, inativo, histórico, falha e offline serão fechados nesse gate. Sem streaks/ranking.
+- **Saúde-Métricas + Medicamentos — Story 16.3:** campos dinâmicos, histórico e confirmações; estados de métrica sem valor, histórico vazio, dose perdida/readonly e falha parcial serão fechados na mesma sessão.
+- **Journalling/Gratidões — Story 16.10:** composer e histórico; vazio, salvamento, falha preservando texto e offline serão fechados nesse gate. Sem insights, streak ou IA.
 
 ## State Patterns
 
@@ -362,10 +400,33 @@ Ciclo finalizado permanece navegável e legível, em readonly. Controles de muta
 | Partial source error | erro/retry local; demais fontes do planejamento continuam operáveis |
 | Migração pausada | decisões persistidas por item; retoma pela faixa com os itens restantes; sem posição salva |
 | Migração concluída | resumo factual (migradas/adiadas/canceladas) antes de voltar ao Hoje |
+| Nav sem collections | núcleo + Planner completo; nenhum heading de collections, Saúde vazio ou item desabilitado |
+| Nav com uma collection | destino direto ou Saúde com um único filho; hierarquia não é achatada |
+| Grupo com filho ativo recolhido | permanece recolhido; indicador no grupo; filho conserva rota ativa; grupo não recebe `aria-current` |
+| Badge Brain Dump 0/loading/error | badge oculto; navegação e captura continuam funcionais |
+| Badge Brain Dump 1–9/maior | valor literal até 9; `9+` acima; nome acessível anuncia contagem exata |
+| Captura offline | ação indisponível com motivo acessível; conteúdo e navegação continuam; contador não determina disponibilidade |
+| Menu mobile aberto | sheet alto; foco inicial no destino ativo, foco contido, rolagem interna e conteúdo inferior inerte |
+| Aparência dirty | draft visível; aparência aplicada permanece inalterada; Salvar habilitado |
+| Aparência saving | progresso anunciado; envio duplicado indisponível; tema anterior continua aplicado |
+| Aparência saved | nova família/modo aplicada após confirmação; preferência por conta sincronizada |
+| Aparência save error | tema anterior aplicado; draft e erro preservados; retry disponível |
+| Atalho usa collection desligada | validação bloqueia Salvar até substituição por destino disponível |
+| Atalho desaparece externamente | fallback automático pelo primeiro destino canônico disponível, sem duplicar |
+| Seam legado | aviso editorial sempre visível no início do conteúdo até a rota ser migrada; não dispensável |
 
 Estados são parte do aceite de cada superfície, não casos posteriores.
 
 No detalhe de tarefa, falha de escrita preserva todo o rascunho e exibe `Não foi possível salvar. Tente novamente.` junto às ações, com nova tentativa disponível.
+
+### Resiliência canônica
+
+| Situação | Regra transversal | Exceção nomeada |
+|---|---|---|
+| Offline | mantém dado carregado; leitura/navegação seguem; mutação de rede fica indisponível com motivo | Fluxos 1 e 4 distinguem cache ausente de vazio |
+| Read error | erro junto à região; retry local; período, filtros e posição preservados | fonte parcial de ritual não bloqueia demais fontes |
+| Write error | draft/entrada preservado; retry explícito; estado confirmado anterior permanece | Appearance Settings mantém tema aplicado |
+| Retorno de foco | camada devolve foco ao acionador quando fecha sem navegar | Mobile Navigation Sheet retorna a Menu |
 
 ## Interaction Primitives
 
@@ -382,16 +443,29 @@ No detalhe de tarefa, falha de escrita preserva todo o rascunho e exibe `Não fo
 - No Monthly, cabeçalho/número da data abre o Daily Log; Task Row abre o detalhe sem navegar de período.
 - Drag no Monthly reordena somente dentro do mesmo dia; mudança de dia usa migração explícita.
 - Navegação de linhagem leva ao sucessor imediato, posiciona e destaca sem abrir detalhe.
+- `[` alterna sidebar expandida/rail nas faixas que permitem; `B` abre Brain Dump. Ambos respeitam foco em campo editável e o inventário vigente.
+- Menu mobile abre um sheet alto com foco no destino ativo. `Tab` fica contido; Fechar, backdrop, `Escape` e gesto de arrastar para baixo encerram. Sem navegação, foco retorna a Menu.
+- Alterar família, modo ou atalhos modifica somente o draft de Configurações. `Salvar` é o único commit; falha nunca descarta escolhas.
 
 Atalhos existentes devem ser inventariados antes de cada migração e preservados. Adições aprovadas: salvamento por Enter no detalhe de tarefa e seleção `1`–`7`/`0` + confirmação por Enter no destino semanal, com escopo restrito aos respectivos controles.
+
+Retorno de foco segue a tabela **Resiliência canônica**; se a ação navega, foco vai ao heading/destino resultante em vez de retornar ao acionador desmontado.
 
 ## Accessibility Floor
 
 - WCAG 2.2 AA em todos os estados e temas efetivamente entregues.
+- Contraste de texto normal é no mínimo 4,5:1; texto grande, no mínimo 3:1. Foco, limites necessários e indicadores de estado alcançam 3:1 contra cores adjacentes; hover/seleção também alcançam 3:1 quando identificam o estado. Contraste reduzido só é admitido em controles realmente indisponíveis, mantendo legíveis o rótulo e o motivo.
+- Boundaries necessários para reconhecer controles interativos usam o papel `{colors.control-border}` contra a surface correspondente. `{colors.border}` permanece estrutural e `{colors.border-strong}` não é fallback para boundary interativo.
+- Em cores forçadas/alto contraste, forma, contorno, estado e semântica permanecem reconhecíveis com cores do sistema; nenhum significado depende dos fills do tema.
 - Target mínimo 44×44px; controles frequentes compactos usam 48px.
-- Focus ring visível conforme `{components.focus-ring.*}`.
+- Focus ring visível conforme `{components.focus-ring}`.
 - Zoom 200% e reflow em 320 CSS px sem perda de conteúdo/ação.
+- O primeiro controle focável é `Pular para o conteúdo`, apontando para o único `main` ativo da rota, no início do heading da superfície. Topbar usa `header`; sidebar/rail usa `nav` com nome `Navegação principal`; bottom nav, `Atalhos de navegação`; e o sheet, `Navegação completa`.
+- Ao receber foco, qualquer controle fica totalmente visível. O shell reserva espaço e ajusta scroll padding/margin para topbar, bottom nav, FAB, regiões sticky e safe-area; no final do workspace há espaço suficiente para elevar a última ação. A rolagem move somente o necessário, e sheets recompõem com teclado virtual.
+- O aceite testa primeiro e último controles a 320 CSS px e zoom de 200%, com chrome fixo/sticky ativo.
 - Screen reader anuncia superfície, período, mudança de status, erro e progresso do ritual.
+- Mudança de rota e sucesso não bloqueante usam `role="status"`/`aria-live="polite"`; erro de escrita ou bloqueante usa `role="alert"` e é anunciado uma única vez. Erro de campo associa-se por `aria-describedby` ou `aria-errormessage`, sem duplicação.
+- Durante persistência, a ação exibe `Salvando…` e a região recebe `aria-busy="true"`. Progresso determinado usa `progressbar` com nome, valor atual e total; apenas marcos úteis são anunciados. Título visual e RouteAnnouncer nunca repetem a mesma mensagem.
 - Grids e calendars possuem headers programáticos; cells anunciam data e estado.
 - Célula mensal com overflow só captura rolagem após interação explícita, é alcançável por teclado e mantém foco visível.
 - Cabeçalho do dia e Task Rows na célula mensal têm nomes, papéis e foco independentes.
@@ -399,15 +473,21 @@ Atalhos existentes devem ser inventariados antes de cada migração e preservado
 - Gráficos previstos têm resumo textual e tabela equivalente.
 - Cor nunca comunica sozinha; ícone decorativo fica fora da árvore acessível.
 - Conteúdo colapsado não recebe foco; sheets/dialogs contêm foco e devolvem ao acionador.
+- O menu completo usa `nav` nomeada; destino ativo recebe `aria-current="page"` e o agrupador Saúde expõe `aria-expanded`, nunca `aria-current`.
+- Grupo recolhido que contém a rota ativa mantém nome estável, `aria-expanded="false"`, não recebe `aria-current` e associa a descrição dinâmica `Contém a página atual: {destino ativo}.`; a descrição é removida quando nenhum filho está ativo.
+- O foco inicial do menu mobile vai ao destino ativo e não fica encoberto por topbar, sheet, FAB, bottom nav ou safe-area.
+- Labels ocultos no rail e no FAB preservam nome acessível. O badge anuncia a contagem exata mesmo quando mostra `9+`.
+- Alterações de rota anunciam o nome completo da superfície; títulos longos podem truncar visualmente, nunca no nome acessível.
+- Família/modo e slots de atalho formam grupos programáticos; erros associam-se ao controle e à ação Salvar. Estados dirty/saving/success/error são anunciados.
 
 ## Responsive & Platform
 
 | Faixa | Navegação | Conteúdo |
 |---|---|---|
-| ≥1440px | sidebar expandida | principal + contexto quando necessário |
-| 1024–1439px | sidebar expandida/colapsada | reduz colunas; preserva densidade legível |
-| 768–1023px | sidebar colapsada | uma coluna; contexto abaixo |
-| <768px | top bar + bottom nav/menu | sequência vertical, sheets e telas próprias |
+| ≥1440px | sidebar inicia expandida em `{components.app-shell.sidebar-expanded}` | workspace até `{components.app-shell.workspace-max-width}`; gutter `{components.app-shell.gutter-wide}` |
+| 1024–1439px | sidebar inicia expandida; pode virar rail `{components.app-shell.sidebar-collapsed}` | reduz colunas; gutter `{components.app-shell.gutter-medium}` |
+| 768–1023px | rail `{components.app-shell.sidebar-collapsed}` | uma coluna; contexto abaixo; gutter `{components.app-shell.gutter-medium}` |
+| <768px | topbar + três atalhos + Menu; FAB separado | sequência vertical; gutter `{components.app-shell.gutter-compact}`; sheets e safe-area |
 
 O fluxo diário mobile não usa scroll horizontal. Tabelas históricas podem oferecer rolagem controlada apenas quando também existe resumo/lista utilizável; ações essenciais não ficam fora da viewport.
 
@@ -446,21 +526,14 @@ Uma story de implementação precisa:
 
 ## Decisions for Architecture and Stories
 
-Arquitetura deve definir: namespace/fronteira dos temas, ownership entre `app/pages/features/shared`, ativação e rollback por rota, CSS baseline/portals, política de extensão MUI, fronteira MUI/Phosphor, catálogo e persistência de `iconKey`, fallback de `emoticon`, visual regression, feature flags, deprecação e remoção.
-
-Para M06, arquitetura e histórias devem ainda definir: persistência/transações dos estados semanais e do marco de planejamento; constraint de um Weekly **Em andamento** e um **Em planejamento**; criação/cancelamento do alvo vazio; registro de decisões `manter`/`não alocar` e snapshots de revisão; agregação independente de Monthly/Weekly/Daily/recorrentes; migração para semana-alvo explícita sem fallback indevido à semana do calendário; finalização/início idempotentes; localizador de sucessor por tarefa que resolva rota/período/dia; exposição readonly da origem no sucessor; contagens de densidade incluindo subtarefas e todos os status; semana ISO e posição nos dois meses. Essas mudanças de domínio/API precisam de histórias próprias e não podem ser tratadas como CSS do redesign.
-
-Para M07, arquitetura e histórias devem definir: persistência/transações dos estados mensais e do marco de planejamento; constraints de um Monthly **Em andamento** e um **Em planejamento**; materialização sequencial obrigatória de meses ausentes; cálculo da janela regular pela semana segunda→domingo que contém a virada; gate idempotente de concluir/finalizar/iniciar; registro de decisões **Manter sem dia** e snapshots de revisão; agregação independente das três fontes; distinção operacional entre Monthly e a visão Future sobre a mesma entidade; elegibilidade de anual pela ausência de instância no ano do alvo, sem parsing de `recurrence_text`; destino anual restrito ao mesmo ano; múltiplas instâncias conscientes por template; migração/linhagem ao trocar dia dentro do mês; seletor validado para 28–31 dias; densidade com subtarefas e todos os status; navegação cabeçalho do dia → Daily e Task Row → detalhe. Os deltas que excedem o contrato implementado dos Épicos 4/11 exigem histórias próprias e não podem ser tratados como CSS do redesign.
-
-Reconciliação upstream de M07: o calendário, `month_first`, Future Log como visão dos próprios `monthly_log`, snapshots de recorrentes, `recurrence_text` livre, linhagem e readonly preservam PRD/arquitetura/Épicos 4 e 11. Estados explícitos do ciclo, continuidade sem lacunas, decisões-snapshot, anuais lembrados também no ritual mensal, conclusão direta no Monthly anterior e planejamento integral no mobile ampliam o contrato implementado — inclusive a restrição de UJ-4 — e precisam passar por Correct Course/arquitetura antes de implementação.
-
-Para M08, arquitetura e histórias devem definir: o horizonte rolante fixo de oito meses (os oito seguintes ao operacional, com vazios materializados na visão e sem o corrente); o seletor de meses distantes filtrando `monthly_log` futuros com itens e expondo suas contagens; datear/mover no lugar fora do ritual com migração/linhagem (origem `migrated` + sucessor) e localizador de sucessor; ordenação por dia com itens sem dia ao final; e os estados offline/erro na própria superfície. Reconciliação vs. `FuturePage.tsx`: preservam o contrato o Future Log como visão dos próprios `monthly_log`, o agrupamento por mês, a data parcial/completa (FR-1.2), a captura via `FutureLogItemForm`, a seção de anuais pendentes com placement e o skeleton. Ampliam o contrato — e exigem Correct Course/arquitetura antes de implementação — o horizonte de oito meses com vazios, a composição híbrida trilho + foco, o seletor "Ir para mês", o datear/mover no lugar e os estados offline/erro explícitos. Concluir/cancelar seguem fora desta superfície.
-
-Para M09, arquitetura e histórias devem definir: **soft delete** de template recorrente (flag lógica de exclusão + filtro padrão nas queries, preservando a FK `source_template` das tarefas já alocadas para rastreabilidade); edição completa do template (hoje o inline só cobre título+recorrência) mantendo `recurrence_group` imutável após a criação; a mudança dos controles Categoria/Eisenhower de `Select` para swatches/checkboxes; e os estados offline/erro/validação explícitos (hoje o submit inválido aborta em silêncio). Reconciliação vs. `RecurringTemplateManager` implementado: preservam o contrato a rota `/planner/recurring`, o agrupamento por abas, o filtro "Mostrar inativos", o modelo `RecurringTaskTemplate` (categoria = cor, `recurrence_text` livre nunca parseado, sem ícone), o Ativar/Desativar prospectivo e a alocação exclusiva dos rituais. Ampliam o contrato — e exigem Correct Course/arquitetura antes de implementação — o soft delete (não há delete algum hoje), a edição completa no card de detalhe, os novos controles e os estados explícitos. O termo do ato de alocação é padronizado como **Alocar** (o Future Log deixa de usar "Definir placement").
-
-Para M10, arquitetura e histórias devem definir: a **fila unificada** de migração, mesclando as filas hoje separadas (`/migration/queue/` de ontem + `/catch-up/queue/` de mês/semana/dia) numa lista ordenada mês→semana→dia com rótulo e contagem por fonte; a apresentação como **ritual dentro do shell** (não Dialog nem tela cheia), reusando a estrutura do planejamento; o **seletor de destino** com aba "Esta semana" (destino `week`) além de dia-no-mês/outro-mês/hoje/sem-dia; **pausar/retomar** sem persistir posição (as decisões já persistem por item; retoma com os restantes); o **resumo** factual ao fim; e o **estado de erro no fluxo** (hoje só no `TaskDestinationDialog`). Reconciliação vs. `MigrationBanner`/`CatchUpBanner`/`MigrationFlow`/`MigrationCard`: preservam o contrato a detecção por pendências, a ordem mês→semana→dia, a decisão individual, os destinos `today/week/month/future/cancel` via `/migrate/`, os atalhos e a ausência de toast. Ampliam o contrato — e exigem Correct Course/arquitetura — a unificação num banner/fluxo, a apresentação como ritual, o seletor rico com "Esta semana", o pausar/retomar, o resumo e o erro no fluxo. Não há "concluir tarefa" dentro da migração.
-
-Cada história deve carregar: onda, superfície, paridade, tokens/componentes, matriz responsiva, estados, aceite acessível, ownership, dependências, rollout/rollback, testes e dívida legada removida. Trocar MUI ou regras de domínio não é autorizado por esta UX. A eventual inclusão de `iconKey` é uma decisão arquitetural e uma mudança de contrato isolada, retrocompatível e explicitamente aprovada.
+| Área | Decisão UX | Obrigação downstream | Fonte/detalhe |
+|---|---|---|---|
+| Fundação | temas, MUI/Phosphor, ownership e rollout por rota | definir fronteiras, persistência, flags e remoção | [`architecture-and-story-handoff.md`](architecture-and-story-handoff.md#fundação-transversal) |
+| Weekly | ciclos, planejamento, densidade e linhagem | transações, constraints, idempotência e localizador | [M06](architecture-and-story-handoff.md#m06--weekly) |
+| Monthly | continuidade, fontes, anuais e densidade | materialização, gates e snapshots | [M07](architecture-and-story-handoff.md#m07--monthly) |
+| Future | horizonte, meses distantes e datear/mover | queries, linhagem e estados | [M08](architecture-and-story-handoff.md#m08--future-log) |
+| Recorrentes | biblioteca, edição e soft delete | preservar `source_template` e alocação | [M09](architecture-and-story-handoff.md#m09--recorrentes) |
+| Migração | fila unificada e ritual no shell | unificação, retomada, resumo e erro | [M10](architecture-and-story-handoff.md#m10--migraçãocatch-up) |
 
 ## Inspiration & Anti-patterns
 
@@ -468,9 +541,52 @@ Do MyBujo são aproveitados: hierarquia de regiões, headers temporais, superfí
 
 São rejeitados: papel/caderno literal, annotation layer, toolbar, fontes/ícones/CSS/JS, dashboards genéricos, produtividade, streaks, fasting, analytics não previsto, auto-injeção de recorrentes e health fields fixos. A premissa do journal é comportamental: itens só entram no Weekly/Monthly após decisão explícita; fontes e projeções não fingem que já foram alocadas.
 
+| Wireframe MyBujo | O que ilustra | Disposição canônica |
+|---|---|---|
+| [Daily Dashboard](<imports/mybujo-full-handoff/design_handoff_full_app/Daily Dashboard Wireframe.html>) | hierarquia de Hoje/dashboard | diferido à x.0 do Épico 17; sem antecipar home |
+| [Weekly View](<imports/mybujo-full-handoff/design_handoff_full_app/Weekly View Wireframe.html>) | faixas semanais | substituído por [`mockups/key-weekly.html`](mockups/key-weekly.html) |
+| [Monthly & Future Log](<imports/mybujo-full-handoff/design_handoff_full_app/Monthly & Future Log Wireframe.html>) | calendário e horizonte | substituído por [`mockups/key-monthly.html`](mockups/key-monthly.html) e [`mockups/key-future-log.html`](mockups/key-future-log.html) |
+| [Migration Ritual](<imports/mybujo-full-handoff/design_handoff_full_app/Migration Ritual Wireframe.html>) | ritual de decisão | substituído por [`mockups/key-migracao.html`](mockups/key-migracao.html) |
+| [Recurrents Engine](<imports/mybujo-full-handoff/design_handoff_full_app/Recurrents Engine Wireframe.html>) | biblioteca de templates | substituído por [`mockups/key-recorrentes.html`](mockups/key-recorrentes.html) |
+| [Habits Tracker](<imports/mybujo-full-handoff/design_handoff_full_app/Habits Tracker Wireframe.html>) | tracker/configuração | diferido à Story 16.0 |
+| [Gratitude Journal](<imports/mybujo-full-handoff/design_handoff_full_app/Gratitude Journal Wireframe.html>) | escrita e histórico | absorvido por Journalling; diferido à Story 16.10 |
+| [Health Tracking](<imports/mybujo-full-handoff/design_handoff_full_app/Health Tracking Wireframe.html>) | métricas e histórico | diferido à Story 16.3 |
+| [Analytics Dashboard](<imports/mybujo-full-handoff/design_handoff_full_app/Analytics Dashboard Wireframe.html>) | análises de período | diferido à x.0 do Épico 21 |
+
+Os nove HTMLs são referências ilustrativas: os spines vencem em conflito. Scripts e fontes no pacote são dependências internas do import, não referências visuais autônomas.
+
+### Rastreabilidade UJ e aliases
+
+| Jornada upstream verbatim | Nome canônico/alias | Destino |
+|---|---|---|
+| UJ-1 — O Dia de Hugo | Dashboard-panorama + Hoje | diferido à x.0 ampliada do Épico 17; Fluxo 1 é somente subfluxo Hoje |
+| UJ-2 — A Semana de Hugo | Planejar a semana | Fluxo 2 |
+| UJ-3 — Abertura do Mês | Planejar o próximo mês | Fluxo 5 |
+| UJ-4 — Captura Rápida no Mobile | Capturar no mobile | Fluxo 3 |
+| UJ-5 — Future Log | Capturar longe e reencontrar | Fluxo 6 |
+| UJ-6 — Diário de Gratidão | Journalling · campo seed “Gratidões” | diferido à Story 16.10 |
+| UJ-7 — Saúde e Medicamentos | Saúde agrupador → Métricas + Medicamentos | diferido à Story 16.3 |
+| UJ-8 — Configuração de Hábitos | Hábitos | diferido à Story 16.0 |
+
+### Rastreabilidade FR agrupada
+
+| Faixa de requisitos | Superfície/fluxo | Status | Fonte/gate |
+|---|---|---|---|
+| FR-0–FR-3 | Fundação, collections, IA e automação | plataforma/handoff | PRD + arquitetura |
+| FR-4 | Núcleo BuJo | Fluxos 1, 2 e 5 | PRD/épicos |
+| FR-5 | Brain Dump/captura | Fluxo 3 | PRD/Story 13.0 |
+| FR-6 | Home/dashboard | diferido | x.0 do Épico 17 |
+| FR-7 | Hábitos | diferido | Story 16.0 |
+| FR-8–FR-9 | Saúde-Métricas + Medicamentos | diferido | Story 16.3 |
+| FR-10 | Journalling/Gratidões | diferido | Story 16.10 |
+| FR-11–FR-13 | Alimentação, Pressão e Análises | diferido | gates dos épicos correspondentes; Análises na x.0 do Épico 21 |
+| FR-14–FR-15 | Custom Collections e usuários | backlog/handoff | PRD + épicos |
+
+Detalhamento completo, com cada ID e nomenclatura upstream: [`requirements-traceability.md`](requirements-traceability.md).
+
 ## Key Flows
 
-### Fluxo 1 — Começar o dia (Hugo, manhã, desktop)
+### Fluxo 1 — Subfluxo Hoje (Hugo, manhã, desktop)
 
 1. Hugo abre Hoje; shell e período atual aparecem imediatamente.
 2. Se existem pendências, uma faixa discreta informa a quantidade e a contagem por fonte (meses/semanas/dias).
@@ -478,6 +594,8 @@ São rejeitados: papel/caderno literal, annotation layer, toolbar, fontes/ícone
 4. Para cada tarefa, lê origem/linhagem e decide: migrar para hoje, escolher outro destino (esta semana, dia no mês, outro mês ou sem dia) ou cancelar. Cada decisão persiste e o progresso avança.
 5. Pode pausar e sair sem perder nada; ao retomar, continua com os itens restantes.
 6. **Clímax:** decidida a última, um resumo factual mostra o que foi migrado, adiado e cancelado; Hugo volta ao Hoje e vê apenas as tarefas realmente trazidas, na superfície pronta para trabalhar.
+
+Falha: erro de leitura fica na região de conteúdo com retry e shell navegável. Offline mantém dados já carregados, sem prometer carregar um dia ausente do cache; mutações ficam indisponíveis com motivo. Este fluxo não define o ponto de entrada pós-login nem cobre integralmente UJ-1.
 
 ### Fluxo 2 — Planejar a semana (Hugo, entre sexta e terça, laptop)
 
@@ -489,7 +607,7 @@ São rejeitados: papel/caderno literal, annotation layer, toolbar, fontes/ícone
 6. A partir da segunda-feira-alvo, abre o painel de verificação e confirma **Iniciar semana**.
 7. **Clímax:** a nova semana entra **Em andamento** com cada registro apenas onde Hugo decidiu colocá-lo; a anterior está finalizada e somente leitura, sem dois ciclos ativos nem auto-injeção.
 
-Falha: uma fonte indisponível mostra erro/retry local e não bloqueia as demais. Offline preserva consulta e desabilita decisões. Retomar devolve Hugo à fonte, lista e posição anteriores.
+Falha: aplica **Resiliência canônica**; a exceção do ritual é que uma fonte indisponível não bloqueia as demais e retomar devolve Hugo à fonte, lista e posição anteriores.
 
 ### Fluxo 3 — Capturar no mobile (Hugo, em deslocamento)
 
@@ -505,6 +623,8 @@ Falha: uma fonte indisponível mostra erro/retry local e não bloqueia as demais
 3. Navega entre detalhes sem controles de mutação acidental.
 4. **Clímax:** entende o destino de uma tarefa migrada e retorna ao período sem perder filtro ou posição.
 
+Falha: erro preserva período, filtros e posição com retry local. Offline mantém ciclos já carregados; ciclo não disponível localmente comunica indisponibilidade sem simular vazio.
+
 ### Fluxo 5 — Planejar o próximo mês (Hugo, na semana da virada, laptop)
 
 1. Hugo abre Mês e vê o Monthly **Em andamento**; aciona **Planejar próximo mês**, cujo alvo sequencial já está determinado.
@@ -514,7 +634,7 @@ Falha: uma fonte indisponível mostra erro/retry local e não bloqueia as demais
 5. Conclui o planejamento mesmo se restarem avisos. Quando o Monthly anterior fica sem tarefas abertas, finaliza-o explicitamente; a partir do dia 1, verifica o gate e confirma **Iniciar mês**.
 6. **Clímax:** a fila ideal está sem decisões pendentes e Hugo retorna ao calendário mensal, pronto para iniciar separadamente o planejamento da primeira semana, sem tarefa inserida automaticamente no Weekly.
 
-Falha: uma fonte indisponível mostra erro/retry local e não bloqueia as demais. Offline preserva consulta e desabilita decisões. Retomar devolve Hugo à fonte, lista e posição anteriores. Se houver meses ausentes, o mesmo fluxo se repete integralmente, um mês por vez.
+Falha: aplica **Resiliência canônica**; uma fonte indisponível não bloqueia as demais e retomar preserva fonte/lista/posição. Meses ausentes repetem o fluxo integralmente, um por vez.
 
 ### Fluxo 6 — Capturar longe e reencontrar (Hugo, organizando o ano, laptop)
 
@@ -525,4 +645,25 @@ Falha: uma fonte indisponível mostra erro/retry local e não bloqueia as demais
 5. De volta a agosto, resolve o dia da consulta que estava só no mês: **Definir dia** → 14 de agosto; a origem vira migrada e o sucessor nasce datado, com a seta ligando os dois.
 6. **Clímax:** nada do que Hugo lançou meses à frente se perdeu — o horizonte próximo está à mão, o distante está a um seletor de distância com a contagem à vista, e datar preservou a linhagem.
 
-Falha: erro de leitura fica junto ao dado com retry sem trocar de mês. Offline mantém a consulta e desabilita capturar, datar e mover com o motivo. Retomar preserva mês em foco, posição e o item que estava sendo decidido.
+Falha: aplica **Resiliência canônica**; retry não troca o mês e retomar preserva mês em foco, posição e item em decisão.
+
+### Fluxo 7 — Ajustar aparência em todos os dispositivos (Hugo, à noite, desktop)
+
+1. Hugo abre Configurações → Aparência; Mineral · Claro aparece como aplicado.
+2. Escolhe Horizonte Azul e Sistema. O formulário marca alterações não salvas, mas o shell continua Mineral · Claro.
+3. Revisa a amostra e aciona **Salvar**.
+4. O botão comunica `Salvando…` e impede um segundo envio.
+5. **Clímax:** após confirmação do banco, o shell passa para Horizonte Azul na variante do sistema; ao abrir a conta em outro dispositivo, a mesma família e modo estão ativos.
+
+Falha: o salvamento falha; Mineral · Claro permanece aplicado, Horizonte Azul · Sistema continua selecionado no formulário e `Não foi possível salvar. Tente novamente.` oferece nova tentativa.
+
+### Fluxo 8 — Configurar e usar a navegação mobile (Hugo, preparando acesso rápido, mobile)
+
+1. Hugo abre Configurações → Navegação mobile.
+2. Escolhe Hoje, Brain Dump e Esta Semana nos três slots; Menu permanece fixo.
+3. Salva e volta ao shell; a bottom nav mostra os três atalhos e Menu.
+4. Abre Métricas pelo Menu. Como Métricas não está entre os atalhos, Menu fica selecionado na bottom nav.
+5. Abre Menu novamente; o sheet alto foca Métricas na lista completa, que também repete os três atalhos.
+6. **Clímax:** Hugo navega para Arquivo sem perder acesso à captura; ao fechar o sheet sem navegar, foco retorna a Menu.
+
+Falha: ao tentar desligar uma collection que ocupa um atalho, Salvar permanece bloqueado e indica qual slot exige substituição. Se um destino desaparece externamente, o primeiro destino canônico disponível e não duplicado ocupa a lacuna.

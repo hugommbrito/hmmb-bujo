@@ -52,7 +52,7 @@
 # - Épicos 1–9 e 11 são HISTÓRICO (MVP) — não entram na fila.
 
 generated: 2026-06-22
-last_updated: 2026-07-23  # story 13.0 → ready-for-dev (create-story: gate UX do App Shell novo; executar somente via bmad-ux human-in-the-loop, nunca dev-story/automator; bloqueia 13.1–13.4 até done). | story 12.6 → review (dev-story concluída; GET /api/summary/today — composição bujo+habits+gratitude, campo genérico lastJournalEntry, throttle automation-summary; suíte completa 952 passed, schema.yaml+types.gen.ts 0 drift, ruff/lint-imports verdes; última story do Épico 12). | story 12.5 → done (review adversarial aprovado: ACs 1–4 validadas, suíte completa reexecutada 933 passed, automation/ 41, ruff/lint-imports verdes, schema.yaml+types.gen.ts com 0 diff/gate CI OK; achados só de doc: File List sincronizado com passo de QA que adicionou 1 E2E `external-capture.spec.ts`+seed+14º teste; POST /api/capture no app `automation` — dispatcher match-por-type, CaptureView com auth por token + escopo capture + ScopedRateThrottle + log estruturado); 12.4 done (review adversarial aprovado: 26 testes automation verdes, lint/import-linter OK, sem deriva OpenAPI; AutomationToken + auth dedicada, app novo `automation`, backend-only, migration na Neon e2e); 12.3 done; 12.2 done; 12.1 done; fila 12→13→14→15→16→17→18→10→19→20→21a/b→22→21c (epics.md do [CE] 2026-07-23; [IR] READY 2026-07-23)
+last_updated: 2026-07-24  # story 13.1 → ready-for-dev: create-story concluída (13-1-fundacao-do-shell-novo-com-coexistencia-por-rota.md). | story 13.0 → done: gate bmad-ux aprovado e promovido; ACs 1–4 e Tasks 1–5 validados; Stories 13.1–13.4 liberadas para o ciclo normal, respeitando a ordem do sprint. | story 12.6 → done; stories 12.1–12.5 → done; fila 12→13→14→15→16→17→18→10→19→20→21a/b→22→21c.
 project: hmmb-bujo
 project_key: NOKEY
 tracking_system: file-system
@@ -165,8 +165,8 @@ development_status:
 
   # Epic 13: Onda 2a — App Shell no Sistema Novo
   epic-13: in-progress  # 1ª story criada (13.0) via create-story 2026-07-23; execução permanece exclusiva do rito bmad-ux
-  13-0-ux-spec-do-app-shell-novo: ready-for-dev  # ⛔ gate UX human-in-the-loop (rito bmad-ux — NUNCA dev-story/automator); bloqueia 13.1–13.4
-  13-1-fundacao-do-shell-novo-com-coexistencia-por-rota: backlog
+  13-0-ux-spec-do-app-shell-novo: done  # gate UX bmad-ux aprovado e promovido em 2026-07-24; libera 13.1–13.4
+  13-1-fundacao-do-shell-novo-com-coexistencia-por-rota: ready-for-dev  # story criada 2026-07-24; 1ª story de implementação do Épico 13
   13-2-sidebar-nova-derivada-do-manifest: backlog
   13-3-bottom-nav-e-captura-persistente-mobile: backlog
   13-4-passe-de-paridade-e-acessibilidade-do-shell: backlog
