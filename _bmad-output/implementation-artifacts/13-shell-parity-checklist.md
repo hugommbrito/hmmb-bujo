@@ -15,23 +15,30 @@
 
 ## A. Navegação — Sidebar (desktop/tablet)
 
+> **Atualizado na Story 13.2 (2026-07-24):** a `ShellSidebar` nova
+> (`frontend/src/app/layout/shell/ShellSidebar.tsx`) substitui a `Sidebar` legada
+> DENTRO do `ShellLayout`. A `Sidebar.tsx` legada permanece intocada como
+> rollback. Os itens abaixo passam a ser entregues pela `ShellSidebar`
+> (derivação por map puro do registro + núcleo hardcoded, catálogo Phosphor,
+> tokens `--ds-*`).
+
 | ID | Item | Comportamento atual | Origem | Status |
 |---|---|---|---|---|
-| SB-01 | Destino "Hoje" | `/today`, ícone `TodayIcon`, topo da lista | `Sidebar.tsx:59` | parity |
-| SB-02 | Grupo colapsável "Planner" | cabeçalho com `EventNoteIcon` + chevron; inicia aberto (`plannerOpen=true`) | `Sidebar.tsx:88,168-192` | parity |
-| SB-03 | Filhos de Planner e ordem | Esta Semana → Este Mês → Futuro → Recorrentes | `Sidebar.tsx:62-67` | parity |
-| SB-04 | Destino "Gratidão" (avulso) | derivado do registro (`collectionNavItem('gratitude')`) | `Sidebar.tsx:80` | parity |
-| SB-05 | Grupo colapsável "Saúde" | cabeçalho `FavoriteBorder` + chevron; inicia aberto (`healthOpen=true`); agrupador **não** recebe `aria-current` | `Sidebar.tsx:89,197-221` | parity |
-| SB-06 | Filhos de Saúde e ordem | grupo `saude` por `nav.order`: Métricas → Medicamentos | `Sidebar.tsx:71-74` | parity |
-| SB-07 | Destino "Hábitos" (avulso) | derivado do registro (`collectionNavItem('habits')`) | `Sidebar.tsx:79` | parity |
-| SB-08 | Destino "Brain Dump" | `/brain-dump`, ícone `InboxIcon` envolto por `BrainDumpBadge` | `Sidebar.tsx:81` | parity |
-| SB-09 | Destino "Arquivo" | `/archive`, ícone `FolderOpenIcon` | `Sidebar.tsx:82` | parity |
-| SB-10 | Divisor + "Configurações" | `Divider` seguido de `/settings` com `SettingsIcon` | `Sidebar.tsx:225-227` | parity |
-| SB-11 | Indicação de ativo | borda-esquerda 3px `primary` + fundo `alpha(primary,0.10)` + peso 700 + `aria-current="page"` | `Sidebar.tsx:101-110,119` | parity |
-| SB-12 | Colapso 240↔56px | `DRAWER_WIDTH=240` / `COLLAPSED_WIDTH=56`; transição `width 0.2s`; oculta labels | `Sidebar.tsx:34-35,138-146` | parity (largura muda p/ 64 → **13.2**) |
-| SB-13 | Grupos fecham ao colapsar | `useEffect` fecha Planner/Saúde quando `collapsed` | `Sidebar.tsx:91-96` | parity |
-| SB-14 | Landmark da navegação | `<nav aria-label="Navegação principal">` (único; não duplicado pelo shell) | `Sidebar.tsx:148` | parity |
-| SB-15 | Botão colapsar/expandir | `IconButton` com aria-label alternando; `MenuOpen`/`Menu` | `Sidebar.tsx:159-161` | parity (ícone → `sidebar-simple` na **13.2**) |
+| SB-01 | Destino "Hoje" | `/today`, ícone `calendar-dot` (Phosphor), topo da lista | `ShellSidebar.tsx:TODAY,renderDestination` | ✅ 13.2 |
+| SB-02 | Grupo colapsável "Planner" | cabeçalho `Notebook` (Q.A. 1) + chevron unicode; inicia aberto (`plannerOpen=true`) | `ShellSidebar.tsx:renderGroup` | ✅ 13.2 |
+| SB-03 | Filhos de Planner e ordem | Esta Semana → Este Mês → Futuro → Recorrentes | `ShellSidebar.tsx:PLANNER_CHILDREN` | ✅ 13.2 |
+| SB-04 | Destino "Gratidão" (avulso) | derivado do registro (`toDestination`, avulso após Saúde) | `ShellSidebar.tsx:gratitude` | ✅ 13.2 |
+| SB-05 | Grupo colapsável "Saúde" | cabeçalho `first-aid-kit` (Phosphor) + chevron; inicia aberto; agrupador **nunca** `aria-current` | `ShellSidebar.tsx:renderGroup` | ✅ 13.2 (DIV-4) |
+| SB-06 | Filhos de Saúde e ordem | grupo `saude` por `nav.order`: Métricas → Medicamentos | `ShellSidebar.tsx:healthChildren` | ✅ 13.2 |
+| SB-07 | Destino "Hábitos" (avulso) | derivado do registro (`toDestination`, avulso antes de Saúde) | `ShellSidebar.tsx:habits` | ✅ 13.2 |
+| SB-08 | Destino "Brain Dump" | `/brain-dump`, ícone `brain` (Phosphor) envolto por `BrainDumpBadge` | `ShellSidebar.tsx:BRAIN_DUMP` | ✅ 13.2 |
+| SB-09 | Destino "Arquivo" | `/archive`, ícone `archive` (Phosphor) | `ShellSidebar.tsx:ARCHIVE` | ✅ 13.2 |
+| SB-10 | Divisor + "Configurações" | `Divider` seguido de `/settings` com `gear` (Phosphor) | `ShellSidebar.tsx:SETTINGS` | ✅ 13.2 |
+| SB-11 | Indicação de ativo | borda-esquerda 3px `--ds-primary` + fundo `--ds-primary-soft` + peso 700 + ícone `fill` + `aria-current="page"` | `ShellSidebar.tsx:destinationSx,renderDestination` | ✅ 13.2 |
+| SB-12 | Colapso 240↔**64px** | `var(--ds-sidebar-expanded)` / `var(--ds-sidebar-collapsed)`; transição `width 0.2s`; oculta labels | `ShellSidebar.tsx:Drawer sx` | ✅ 13.2 (DIV-1: 56→64) |
+| SB-13 | Grupos fecham ao colapsar | `Collapse in={open && !collapsed}`; estado preservado na sessão (reabre ao expandir) | `ShellSidebar.tsx:renderGroup` | ✅ 13.2 |
+| SB-14 | Landmark da navegação | `<nav aria-label="Navegação principal">` (único; não duplicado pelo shell) | `ShellSidebar.tsx:nav` | ✅ 13.2 |
+| SB-15 | Botão colapsar/expandir | `IconButton` com aria-label alternando; ícone `sidebar-simple` (Phosphor) | `ShellSidebar.tsx:ToggleIcon` | ✅ 13.2 (DIV-1) |
 
 ## B. Navegação — BottomNav (compact <768px)
 
@@ -58,10 +65,10 @@
 
 | ID | Item | Comportamento atual | Origem | Status |
 |---|---|---|---|---|
-| BD-01 | Badge MUI `color="primary"` | `badgeContent={count}` | `BrainDumpBadge.tsx:14` | parity (token `app-shell-badge` na **13.2**) |
-| BD-02 | Oculto em zero | `invisible={count === 0}` | `BrainDumpBadge.tsx:14` | parity |
-| BD-03 | Nome acessível com contagem exata | `aria-label="Brain Dump: N item(ns) pendente(s)"` | `BrainDumpBadge.tsx:12,14` | parity |
-| BD-04 | `9+` acima de 9 preservando contagem | **não implementado hoje** (Badge MUI usa `max`? não configurado) — cap `9+` é da **13.2** | `BrainDumpBadge.tsx:9-14` | 13.2 |
+| BD-01 | Badge do App Shell com token | shell passa `badgeSx` (`--ds-primary`/`--ds-on-primary`/`--ds-badge-min-height`/`--ds-radius-full`) via `slotProps`; uso legado permanece `color="primary"` | `BrainDumpBadge.tsx`; `ShellSidebar.tsx:SHELL_BADGE_SX` | ✅ 13.2 |
+| BD-02 | Oculto em zero | `invisible={count === 0}` | `BrainDumpBadge.tsx` | parity |
+| BD-03 | Nome acessível com contagem exata | `aria-label="Brain Dump: N item(ns) pendente(s)"` (independe do cap `max`) | `BrainDumpBadge.tsx` | parity |
+| BD-04 | `9+` acima de 9 preservando contagem | prop `max={9}` (só o shell); `aria-label` mantém a contagem EXATA | `BrainDumpBadge.tsx`; `ShellSidebar.tsx:BRAIN_DUMP` | ✅ 13.2 (DIV-6) |
 
 ## E. Atalhos de teclado
 
@@ -107,12 +114,31 @@ Comportamento **atual** de cada estado no chrome/superfícies (base para a matri
 
 | # | Hoje | Contrato novo | Resolve em |
 |---|---|---|---|
-| DIV-1 | Sidebar colapsada `56px` (`COLLAPSED_WIDTH`) | rail `64px` (`{components.app-shell.sidebar-collapsed}`) | 13.2 |
+| DIV-1 | Sidebar colapsada `56px` (`COLLAPSED_WIDTH`) | rail `64px` (`{components.app-shell.sidebar-collapsed}`) | ✅ **13.2** (`var(--ds-sidebar-collapsed)`) |
 | DIV-2 | Bottom nav = 4 destinos fixos | 3 configuráveis + item fixo **Menu** | 13.3 |
 | DIV-3 | Mobile **sem** topbar (`AppLayout` renderiza só `Outlet` + `BottomNav`) | compact **tem** topbar (superfície protagonista) | **13.1 (feito)** |
-| DIV-4 | Saúde usa ícone `FavoriteBorder` | catálogo novo usa `first-aid-kit` (Phosphor) | 13.2 |
-| DIV-5 | Ícones MUI (`@mui/icons-material`) | catálogo `@phosphor-icons/react` | 13.2/13.3 |
-| DIV-6 | Badge sem cap visual | `9+` acima de 9, contagem exata no nome acessível | 13.2 |
+| DIV-4 | Saúde usa ícone `FavoriteBorder` | catálogo novo usa `first-aid-kit` (Phosphor) | ✅ **13.2** (`navIcons.saude = FirstAidKit`) |
+| DIV-5 | Ícones MUI (`@mui/icons-material`) | catálogo `@phosphor-icons/react` | ✅ **13.2** (sidebar; bottom nav segue na 13.3) |
+| DIV-6 | Badge sem cap visual | `9+` acima de 9, contagem exata no nome acessível | ✅ **13.2** (`max={9}` só no shell) |
+
+### Notas / dívidas registradas na Story 13.2
+
+- **Q.A. 1 — ícone do cabeçalho do grupo `Planner`.** O catálogo Phosphor
+  **fechado** dá ícone de agrupador só a `Saúde` (`first-aid-kit`); a seção
+  "GRUPO Planner" cataloga só os filhos, sem glyph para o cabeçalho. Decisão
+  **interina** desta story: `Notebook` (`navIcons.planner`) — não colide com
+  nenhum destino/controle catalogado (em especial `Calendar` de "Este Mês") e
+  lê como "agenda/planner". **A confirmar com UX/Hugo** no passe da 13.4; troca
+  de uma linha em `navIcons.tsx` se UX definir outro glyph.
+- **Chevron do agrupador (DIV-5 / AC4).** O catálogo fechado **não define**
+  chevron e o AC4 proíbe `@mui/icons-material` na `ShellSidebar`. Reconciliação:
+  o chevron é um **glyph unicode decorativo** (`⌄`/`⌃`, `aria-hidden`), como no
+  mockup (`&#8964;`) — não é ícone de nenhuma das bibliotecas. Substitui os
+  `ExpandLess`/`ExpandMore` MUI do legado (o botão já expõe `aria-expanded`).
+- **Nav mínima (AC3).** A `ShellSidebar` deriva as collections da lista
+  **filtrada** (não hardcoda as 4): grupo `Saúde` só renderiza com ≥1 filho,
+  destinos avulsos só se presentes, `Planner` sempre completo, nunca há heading
+  "Collections". Preparado para o default all-off de convidados (Épico 10).
 
 ## Dívidas de acessibilidade (deferidas para a 13.4)
 

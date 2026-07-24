@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Box, useMediaQuery, useTheme } from '@mui/material'
 import { Outlet, useNavigate } from 'react-router-dom'
 
-import { Sidebar } from '../Sidebar'
+import { ShellSidebar } from './ShellSidebar'
 import { BottomNav } from '../BottomNav'
 import { RouteAnnouncer } from '../RouteAnnouncer'
 import { ShellTopbar } from './ShellTopbar'
@@ -38,9 +38,10 @@ interface ShellLayoutProps {
  * `position: fixed`, então uma topbar full-width cobriria o botão de colapso
  * (mockup `key-app-shell-13-0.html`, `.browser`/`.shellbody`).
  *
- * `AppLayout.tsx` permanece intocado como casca de rollback; `Sidebar` e
- * `BottomNav` são renderizados **sem alteração** (a sidebar derivada do
- * manifest é a Story 13.2; a bottom nav de 3 atalhos + Menu é a 13.3).
+ * `AppLayout.tsx` permanece intocado como casca de rollback (segue renderizando
+ * a `Sidebar` legada). O shell novo renderiza a `ShellSidebar` derivada do
+ * manifest (Story 13.2); a `BottomNav` segue **sem alteração** (a bottom nav de
+ * 3 atalhos + Menu é a 13.3).
  *
  * Zero literais estruturais: toda a geometria vem de `--ds-*`
  * (`shared/design/tokens.ts`), aplicadas inline na raiz do shell. CSS custom
@@ -130,9 +131,9 @@ export function ShellLayout({ surfaceMigrated = false }: ShellLayoutProps) {
       <SkipLink targetId={SHELL_CONTENT_ID} />
       <RouteAnnouncer />
 
-      {/* A `nav` "Navegação principal" já existe na Sidebar — não duplicar. */}
+      {/* A `nav` "Navegação principal" já existe na ShellSidebar — não duplicar. */}
       {!isCompact && (
-        <Sidebar
+        <ShellSidebar
           collapsed={sidebarCollapsed}
           onToggle={() => setSidebarCollapsed((prev) => !prev)}
         />
