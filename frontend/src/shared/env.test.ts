@@ -27,11 +27,13 @@ describe('env branding', () => {
 
   it('test_prod_seta_titulo_bujo_favicon_prod_sem_classe_dev', async () => {
     seedIconLink('/favicon.svg')
-    const { applyEnvBranding, IS_PROD_DEPLOY, APP_TITLE } = await loadEnv('production')
+    const { applyEnvBranding, APP_ENV, HAS_ENV_BANNER, APP_TITLE } =
+      await loadEnv('production')
 
     applyEnvBranding()
 
-    expect(IS_PROD_DEPLOY).toBe(true)
+    expect(APP_ENV).toBe('production')
+    expect(HAS_ENV_BANNER).toBe(false)
     expect(APP_TITLE).toBe('BuJo')
     expect(document.title).toBe('BuJo')
     const link = document.querySelector<HTMLLinkElement>("link[rel~='icon']")
@@ -39,13 +41,15 @@ describe('env branding', () => {
     expect(document.body.classList.contains('dev-env')).toBe(false)
   })
 
-  it('test_dev_seta_titulo_devbujo_favicon_atual_com_classe_dev', async () => {
+  it('test_development_seta_titulo_devbujo_favicon_dev_com_classe_dev', async () => {
     seedIconLink('/favicon-prod.svg')
-    const { applyEnvBranding, IS_PROD_DEPLOY, APP_TITLE } = await loadEnv('development')
+    const { applyEnvBranding, APP_ENV, HAS_ENV_BANNER, APP_TITLE } =
+      await loadEnv('development')
 
     applyEnvBranding()
 
-    expect(IS_PROD_DEPLOY).toBe(false)
+    expect(APP_ENV).toBe('development')
+    expect(HAS_ENV_BANNER).toBe(true)
     expect(APP_TITLE).toBe('DEV-bujo')
     expect(document.title).toBe('DEV-bujo')
     const link = document.querySelector<HTMLLinkElement>("link[rel~='icon']")
@@ -53,11 +57,40 @@ describe('env branding', () => {
     expect(document.body.classList.contains('dev-env')).toBe(true)
   })
 
-  it('test_valor_desconhecido_trata_como_dev_fail_safe', async () => {
-    const { IS_PROD_DEPLOY, APP_TITLE } = await loadEnv('staging')
+  it('test_local_seta_titulo_localbujo_favicon_dev_com_classe_dev', async () => {
+    seedIconLink('/favicon-prod.svg')
+    const { applyEnvBranding, APP_ENV, HAS_ENV_BANNER, APP_TITLE } =
+      await loadEnv('local')
 
-    expect(IS_PROD_DEPLOY).toBe(false)
-    expect(APP_TITLE).toBe('DEV-bujo')
+    applyEnvBranding()
+
+    expect(APP_ENV).toBe('local')
+    expect(HAS_ENV_BANNER).toBe(true)
+    expect(APP_TITLE).toBe('LOCAL-bujo')
+    expect(document.title).toBe('LOCAL-bujo')
+    const link = document.querySelector<HTMLLinkElement>("link[rel~='icon']")
+    expect(link?.getAttribute('href')).toBe('/favicon.svg')
+    expect(document.body.classList.contains('dev-env')).toBe(true)
+  })
+
+  it('test_vazio_trata_como_prod_neutro', async () => {
+    const { applyEnvBranding, APP_ENV, HAS_ENV_BANNER, APP_TITLE } =
+      await loadEnv('')
+
+    applyEnvBranding()
+
+    expect(APP_ENV).toBe('production')
+    expect(HAS_ENV_BANNER).toBe(false)
+    expect(APP_TITLE).toBe('BuJo')
+    expect(document.body.classList.contains('dev-env')).toBe(false)
+  })
+
+  it('test_valor_desconhecido_trata_como_prod_neutro', async () => {
+    const { APP_ENV, HAS_ENV_BANNER, APP_TITLE } = await loadEnv('staging')
+
+    expect(APP_ENV).toBe('production')
+    expect(HAS_ENV_BANNER).toBe(false)
+    expect(APP_TITLE).toBe('BuJo')
   })
 
   it('test_cria_link_icon_quando_ausente', async () => {

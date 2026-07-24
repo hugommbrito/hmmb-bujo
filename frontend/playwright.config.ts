@@ -32,7 +32,7 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: 'npm run dev -- --port 5173 --strictPort',
+      command: 'npm run dev -- --mode e2e --port 5173 --strictPort',
       cwd: '.',
       url: 'http://localhost:5173',
       reuseExistingServer: !process.env.CI,

@@ -1,24 +1,37 @@
-// Distinção deploy DEV × PROD.
+// Branding do ambiente em 3 estados, sinalizado por VITE_APP_ENV.
 //
-// Os dois deploys (dev e prod) rodam o MESMO build de produção do Vite
+// Os deploys dev e prod rodam o MESMO build de produção do Vite
 // (`npm run build`), então `import.meta.env.PROD`/`MODE` não os distinguem.
-// O sinal é a variável `VITE_APP_ENV`, injetada no build:
-//   - Os arquivos .env commitados usam 'development' como default fail-safe.
-//   - O ambiente PROD do Railway seta VITE_APP_ENV=production (sobrescreve o
-//     valor do .env, como já acontece com VITE_API_BASE_URL).
-// Assim, só um deploy explicitamente marcado como produção perde o banner e o
-// branding de dev — um deploy mal configurado aparece como DEV, nunca o contrário.
-export const IS_PROD_DEPLOY = import.meta.env.VITE_APP_ENV === 'production'
+// O sinal é a variável VITE_APP_ENV, injetada no build (ou no dev server):
+//   - 'local'        → faixa AZUL "Ambiente local", aba LOCAL-bujo, favicon.svg
+//                      (dev local via .env.development.local, não versionado).
+//   - 'development'  → faixa MARROM de deploy DEV, aba DEV-bujo, favicon.svg.
+//   - vazio ou qualquer outro valor (incl. 'production') → SEM faixa, aba BuJo,
+//     favicon-prod.svg. A aparência de produção é o estado neutro: só ambientes
+//     explicitamente marcados como local/development ganham branding de dev.
+
+type AppEnv = 'local' | 'development' | 'production'
+
+const RAW_ENV = import.meta.env.VITE_APP_ENV
+
+/** Ambiente de branding; qualquer valor fora de local/development é 'production'. */
+export const APP_ENV: AppEnv =
+  RAW_ENV === 'local' || RAW_ENV === 'development' ? RAW_ENV : 'production'
+
+/** Há faixa de ambiente (local OU development)? Também dita `body.dev-env`. */
+export const HAS_ENV_BANNER = APP_ENV !== 'production'
 
 /** Nome exibido na aba do navegador. */
-export const APP_TITLE = IS_PROD_DEPLOY ? 'BuJo' : 'DEV-bujo'
+export const APP_TITLE =
+  APP_ENV === 'local' ? 'LOCAL-bujo' : APP_ENV === 'development' ? 'DEV-bujo' : 'BuJo'
 
 /** Favicon por ambiente (arquivos em /public). */
-const FAVICON_HREF = IS_PROD_DEPLOY ? '/favicon-prod.svg' : '/favicon.svg'
+const FAVICON_HREF = HAS_ENV_BANNER ? '/favicon.svg' : '/favicon-prod.svg'
 
 /**
  * Aplica o branding do ambiente no DOM: título da aba, favicon e a classe
- * `dev-env` no <body> (que ativa o offset do banner em index.css).
+ * `dev-env` no <body> (que ativa o offset da faixa em index.css quando há
+ * faixa — local OU development; sem faixa, sem offset).
  * Idempotente. Chamado uma vez em main.tsx, antes do render.
  */
 export function applyEnvBranding(): void {
@@ -33,5 +46,5 @@ export function applyEnvBranding(): void {
   link.type = 'image/svg+xml'
   link.href = FAVICON_HREF
 
-  document.body.classList.toggle('dev-env', !IS_PROD_DEPLOY)
+  document.body.classList.toggle('dev-env', HAS_ENV_BANNER)
 }
