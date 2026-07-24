@@ -101,7 +101,7 @@ describe('RouteAnnouncer', () => {
   })
 })
 
-describe('RouteAnnouncer — mobile (BottomNav)', () => {
+describe('RouteAnnouncer — mobile (ShellBottomNav + sheet de navegação)', () => {
   beforeEach(() => {
     vi.resetAllMocks()
     vi.mocked(useAuth).mockReturnValue({ ...mockAuthBase, isAuthenticated: true })
@@ -115,10 +115,14 @@ describe('RouteAnnouncer — mobile (BottomNav)', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Hoje')
   })
 
-  it('test_anuncia_mudanca_de_superficie_ao_navegar_via_bottom_nav', async () => {
+  it('test_anuncia_mudanca_de_superficie_ao_navegar_via_sheet_do_menu', async () => {
     const user = userEvent.setup()
     renderRouter('/today')
 
+    // Desde a Story 13.3 a bottom nav nova tem 3 atalhos + Menu; Hábitos não é
+    // atalho default — o caminho mobile canônico é o sheet de navegação
+    // completa (o anúncio segue exclusivo do RouteAnnouncer ao navegar por ele).
+    await user.click(screen.getByRole('button', { name: 'Menu' }))
     await user.click(screen.getByText('Hábitos'))
 
     expect(screen.getByRole('status')).toHaveTextContent('Hábitos')
@@ -131,6 +135,7 @@ describe('RouteAnnouncer — mobile (BottomNav)', () => {
     const user = userEvent.setup()
     renderRouter('/today')
 
+    await user.click(screen.getByRole('button', { name: 'Menu' }))
     await user.click(screen.getByText('Hábitos'))
 
     expect(await axe(document.body)).toHaveNoViolations()

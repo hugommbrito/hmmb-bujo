@@ -28,7 +28,12 @@ import {
   FirstAidKit,
   Gear,
   Heart,
+  // Colisão de nome: o MUI exporta `List` (componente de lista) e o Phosphor
+  // também (ícone `list`) — alias LOCAL no catálogo; consumidores usam só
+  // `navIcons['menu']` (escopo 13.3).
+  List as ListIcon,
   Notebook,
+  NotePencil,
   Pill,
   Repeat,
   SidebarSimple,
@@ -55,6 +60,8 @@ export type NavIconKey =
   | 'saude'
   // Controles
   | 'sidebar-toggle'
+  | 'capture'
+  | 'menu'
   // Collections (por `id` do registro)
   | 'habits'
   | 'health-metrics'
@@ -87,6 +94,8 @@ export const navIcons: Record<NavIconKey, Icon> = {
   saude: FirstAidKit,
   // Controles
   'sidebar-toggle': SidebarSimple,
+  capture: NotePencil,
+  menu: ListIcon,
   // Collections (por `id`)
   habits: CheckSquare,
   'health-metrics': ChartLine,

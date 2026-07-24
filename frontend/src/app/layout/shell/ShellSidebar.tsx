@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import {
   Box,
+  ButtonBase,
   Collapse,
   Divider,
   Drawer,
@@ -9,15 +10,22 @@ import {
   ListItemButton,
   ListItemIcon,
   ListItemText,
+  Tooltip,
 } from '@mui/material'
 import { useLocation, useNavigate } from 'react-router-dom'
 
 import { BrainDumpBadge } from '../../../features/braindump'
-import { collections as registryCollections } from '../../collections/registry'
+import { useOnlineStatus } from '../../../shared/hooks/useOnlineStatus'
 import type { CollectionManifestEntry } from '../../collections/registry'
 import type { Icon } from '@phosphor-icons/react'
 
 import { navIcons, NAV_ICON_SIZE, type NavIconKey } from './navIcons'
+import {
+  deriveShellNavItems,
+  SHELL_BADGE_SX,
+  type ShellDestination,
+  type ShellDestinationGroup,
+} from './shellDestinations'
 
 /**
  * Sidebar do shell novo (240px expandida / 64px rail) derivada do registro de
@@ -29,8 +37,8 @@ import { navIcons, NAV_ICON_SIZE, type NavIconKey } from './navIcons'
  *     EXCLUSIVAMENTE encapsulada no `BrainDumpBadge` do barrel
  *     `features/braindump` — já mockado como passthrough nos 3 testes de chrome
  *     (`AppLayout`/`router`/`RouteAnnouncer`), que montam a árvore SEM
- *     `QueryClientProvider`. Nenhum hook de Query nem `BrainDumpCaptureSheet`
- *     aqui (a captura persistente é a Story 13.3).
+ *     `QueryClientProvider`. Nenhum hook de Query aqui; a captura abre pelo
+ *     `BrainDumpCaptureSheet` único do `ShellLayout` via `onOpenCapture` (13.3).
  *
  *   ▶ Zero literais estruturais (AC6): larguras/espaços vêm de `var(--ds-*)`
  *     (`shared/design/tokens.ts`, aplicados na raiz do shell pelo `ShellLayout`).
@@ -40,56 +48,29 @@ import { navIcons, NAV_ICON_SIZE, type NavIconKey } from './navIcons'
  *     (o catálogo fechado não define chevron; o mockup usa `&#8964;`), não um
  *     ícone de nenhuma das bibliotecas.
  *
- * [Source: Story 13.2; DESIGN.md §App Shell / §Catálogo Phosphor; mockup
- * key-app-shell-13-0.html; 13-shell-parity-checklist.md SB-01…SB-15]
+ *   ▶ A ordem/estrutura canônica vem de `shellDestinations.ts` (Story 13.3) —
+ *     a MESMA fonte da `ShellBottomNav` e do `ShellNavigationSheet`.
+ *
+ * [Source: Story 13.2; Story 13.3 AC5/AC6; DESIGN.md §App Shell / §Catálogo
+ * Phosphor; mockup key-app-shell-13-0.html; 13-shell-parity-checklist.md]
  */
 interface ShellSidebarProps {
   collapsed: boolean
   onToggle: () => void
   /**
+   * Abre o `BrainDumpCaptureSheet` único do `ShellLayout` (âncora de captura —
+   * `{components.capture-action}`, `desktop-anchor: navigation`).
+   */
+  onOpenCapture?: () => void
+  /**
    * Seam de teste (Testing Requirements da 13.2): lista de collections a
    * derivar. PRODUÇÃO NUNCA passa isto — o `ShellLayout` chama só
-   * `{ collapsed, onToggle }` e a derivação usa o registro puro. Existe apenas
-   * para provar a "nav mínima" (zero/uma collection são estados reais com o
-   * default all-off de convidados do Épico 10) por injeção, sem mock de módulo.
+   * `{ collapsed, onToggle, onOpenCapture }` e a derivação usa o registro puro.
+   * Existe apenas para provar a "nav mínima" (zero/uma collection são estados
+   * reais com o default all-off de convidados do Épico 10) por injeção, sem
+   * mock de módulo.
    */
   collections?: CollectionManifestEntry[]
-}
-
-interface NavDestination {
-  key: NavIconKey
-  label: string
-  path: string
-}
-
-interface NavGroup {
-  key: NavIconKey
-  label: string
-  children: NavDestination[]
-}
-
-// ─── Núcleo / chrome (fora do registro — AD-17) ──────────────────────────────
-const TODAY: NavDestination = { key: 'today', label: 'Hoje', path: '/today' }
-const PLANNER_CHILDREN: NavDestination[] = [
-  { key: 'planner-week', label: 'Esta Semana', path: '/planner/week' },
-  { key: 'planner-month', label: 'Este Mês', path: '/planner/month' },
-  { key: 'planner-future', label: 'Futuro', path: '/planner/future' },
-  { key: 'planner-recurring', label: 'Recorrentes', path: '/planner/recurring' },
-]
-const BRAIN_DUMP: NavDestination = { key: 'brain-dump', label: 'Brain Dump', path: '/brain-dump' }
-const ARCHIVE: NavDestination = { key: 'archive', label: 'Arquivo', path: '/archive' }
-const SETTINGS: NavDestination = { key: 'settings', label: 'Configurações', path: '/settings' }
-
-/**
- * Estilo do `.MuiBadge-badge` do App Shell (`{components.app-shell-badge}`).
- * Aplicado SÓ pelo shell via `badgeSx` — o uso legado (`Sidebar`/`BottomNav`)
- * permanece com `color="primary"`, sem regressão visual.
- */
-const SHELL_BADGE_SX = {
-  backgroundColor: 'var(--ds-primary)',
-  color: 'var(--ds-on-primary)',
-  minHeight: 'var(--ds-badge-min-height)',
-  borderRadius: 'var(--ds-radius-full)',
 }
 
 /** Mantém o nome/descrição no accessibility tree sem ocupar espaço no rail. */
@@ -105,35 +86,21 @@ const VISUALLY_HIDDEN = {
   border: 0,
 } as const
 
-/** Deriva o `NavDestination` de uma entrada do registro (map puro). */
-function toDestination(entry: CollectionManifestEntry): NavDestination {
-  return {
-    key: entry.id as NavIconKey,
-    label: entry.nav.label,
-    path: `/${entry.routes[0].path}`,
-  }
-}
-
 export function ShellSidebar({
   collapsed,
   onToggle,
-  collections = registryCollections,
+  onOpenCapture,
+  collections,
 }: ShellSidebarProps) {
   const location = useLocation()
   const navigate = useNavigate()
-  const [plannerOpen, setPlannerOpen] = useState(true)
-  const [healthOpen, setHealthOpen] = useState(true)
+  const isOnline = useOnlineStatus()
+  // Estado de expansão por agrupador — só na sessão, nada persistido. Todo
+  // grupo inicia aberto (paridade 13.2: `plannerOpen`/`healthOpen` = true).
+  const [closedGroups, setClosedGroups] = useState<Partial<Record<NavIconKey, boolean>>>({})
 
-  // ── Derivação das collections a partir da lista FILTRADA (nav mínima) ───────
-  // Não hardcodar as 4: filtra a lista derivada. O gateamento futuro (Épico 10)
-  // vai FILTRAR o registro; zero/uma collection já são toleradas por construção.
-  const standalone = collections.filter((c) => !c.nav.group)
-  const habits = standalone.find((c) => c.id === 'habits')
-  const gratitude = standalone.find((c) => c.id === 'gratitude')
-  const healthChildren = collections
-    .filter((c) => c.nav.group === 'saude')
-    .sort((a, b) => a.nav.order - b.nav.order)
-    .map(toDestination)
+  // ── Estrutura canônica (núcleo + collections filtradas — nav mínima) ────────
+  const navItems = deriveShellNavItems(collections)
 
   const isActive = (path: string) => location.pathname === path
   const containsRoute = (path: string) =>
@@ -163,7 +130,7 @@ export function ShellSidebar({
 
   // Um destino ativo combina 4+ canais (WCAG 1.4.1): indicador lateral 3px +
   // fundo primary-soft + label em peso forte + ícone `fill` + aria-current.
-  const renderDestination = (dest: NavDestination, opts: { badge?: boolean } = {}) => {
+  const renderDestination = (dest: ShellDestination) => {
     const active = isActive(dest.path)
     const icon = iconFor(dest.key, active)
     return (
@@ -175,7 +142,7 @@ export function ShellSidebar({
         sx={destinationSx(active)}
       >
         <ListItemIcon sx={iconSx}>
-          {opts.badge ? (
+          {dest.badge ? (
             <BrainDumpBadge badgeSx={SHELL_BADGE_SX} max={9}>
               {icon}
             </BrainDumpBadge>
@@ -196,7 +163,10 @@ export function ShellSidebar({
   // Agrupador (Planner/Saúde): expõe aria-expanded, NUNCA aria-current. Quando
   // recolhido contendo a rota ativa, indica por indicador lateral + fundo sutil
   // (`.contains`) + descrição acessível — sem aria-current no agrupador (AC5).
-  const renderGroup = (group: NavGroup, open: boolean, onToggleGroup: () => void) => {
+  const renderGroup = (group: ShellDestinationGroup) => {
+    const open = !closedGroups[group.key]
+    const onToggleGroup = () =>
+      setClosedGroups((prev) => ({ ...prev, [group.key]: !prev[group.key] }))
     const groupVisuallyOpen = open && !collapsed
     const activeChild = group.children.find((c) => containsRoute(c.path))
     const showContains = Boolean(activeChild) && !groupVisuallyOpen
@@ -266,6 +236,8 @@ export function ShellSidebar({
   }
 
   const ToggleIcon = navIcons['sidebar-toggle']
+  const CaptureIcon = navIcons['capture']
+  const captureLabel = isOnline ? 'Abrir captura rápida' : 'Abrir captura rápida (sem conexão)'
 
   return (
     <Drawer
@@ -284,7 +256,11 @@ export function ShellSidebar({
         },
       }}
     >
-      <Box component="nav" aria-label="Navegação principal">
+      <Box
+        component="nav"
+        aria-label="Navegação principal"
+        sx={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}
+      >
         <Box
           sx={{
             display: 'flex',
@@ -306,32 +282,68 @@ export function ShellSidebar({
         </Box>
 
         <List disablePadding component="div">
-          {renderDestination(TODAY)}
-
-          {renderGroup(
-            { key: 'planner', label: 'Planner', children: PLANNER_CHILDREN },
-            plannerOpen,
-            () => setPlannerOpen((p) => !p),
-          )}
-
-          {habits && renderDestination(toDestination(habits))}
-
-          {healthChildren.length > 0 &&
-            renderGroup(
-              { key: 'saude', label: 'Saúde', children: healthChildren },
-              healthOpen,
-              () => setHealthOpen((h) => !h),
-            )}
-
-          {gratitude && renderDestination(toDestination(gratitude))}
-
-          {renderDestination(BRAIN_DUMP, { badge: true })}
-          {renderDestination(ARCHIVE)}
-
-          <Divider sx={{ my: 'var(--ds-space-1)', borderColor: 'var(--ds-border)' }} />
-
-          {renderDestination(SETTINGS)}
+          {navItems.map((item) => {
+            if (item.kind === 'group') return renderGroup(item.group)
+            // Divisor de chrome antes de Configurações (paridade com a Sidebar
+            // legada) — chrome da sidebar, não dado da derivação canônica.
+            if (item.destination.key === 'settings') {
+              return (
+                <Box key={item.destination.path}>
+                  <Divider sx={{ my: 'var(--ds-space-1)', borderColor: 'var(--ds-border)' }} />
+                  {renderDestination(item.destination)}
+                </Box>
+              )
+            }
+            return renderDestination(item.destination)
+          })}
         </List>
+
+        {/* Âncora de captura ao fim da navegação (`{components.capture-action}`,
+            decisão Captura A da 13.0): spacer + botão com borda
+            `{components.interactive-control}`. Offline: aria-disabled + guard no
+            click (nunca `disabled` nativo — AC6: foco e identidade preservados),
+            com motivo acessível no nome e no Tooltip. */}
+        <Box sx={{ flexGrow: 1 }} />
+        <Box sx={{ px: collapsed ? 'var(--ds-space-1)' : 'var(--ds-space-2)', pb: 'var(--ds-space-2)' }}>
+          <Tooltip title={isOnline ? '' : 'Sem conexão'}>
+            <ButtonBase
+              onClick={() => {
+                if (!isOnline) return
+                onOpenCapture?.()
+              }}
+              aria-disabled={isOnline ? undefined : true}
+              aria-label={captureLabel}
+              sx={{
+                width: '100%',
+                minHeight: 'var(--ds-touch-target-min)',
+                border: '1px solid var(--ds-control-border)',
+                borderRadius: 'var(--ds-radius-md)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 'var(--ds-space-2)',
+                px: collapsed ? 0 : 'var(--ds-space-2)',
+                fontFamily: 'inherit',
+                fontSize: 14,
+                ...(isOnline
+                  ? {
+                      color: 'var(--ds-ink)',
+                      backgroundColor: 'transparent',
+                      '&:hover': { backgroundColor: 'var(--ds-surface-subtle)' },
+                    }
+                  : {
+                      color: 'var(--ds-ink-disabled)',
+                      backgroundColor: 'var(--ds-surface-subtle)',
+                    }),
+              }}
+            >
+              <BrainDumpBadge badgeSx={SHELL_BADGE_SX} max={9}>
+                <CaptureIcon size={NAV_ICON_SIZE} weight="regular" />
+              </BrainDumpBadge>
+              {!collapsed && <span>Abrir captura rápida</span>}
+            </ButtonBase>
+          </Tooltip>
+        </Box>
       </Box>
     </Drawer>
   )

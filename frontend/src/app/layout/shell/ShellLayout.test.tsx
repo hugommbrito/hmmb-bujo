@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { axe } from 'jest-axe'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
@@ -126,7 +126,8 @@ describe('ShellLayout — topbar e workspace', () => {
     renderShell()
 
     expect(screen.getByRole('navigation', { name: 'Navegação principal' })).toBeInTheDocument()
-    expect(screen.queryByRole('navigation', { name: 'Navegação mobile' })).not.toBeInTheDocument()
+    // Landmark da ShellBottomNav nova (13.3) — "Navegação mobile" era a legada.
+    expect(screen.queryByRole('navigation', { name: 'Atalhos de navegação' })).not.toBeInTheDocument()
   })
 
   it('test_compact_tem_topbar_e_bottom_nav_e_nao_tem_sidebar', () => {
@@ -134,9 +135,36 @@ describe('ShellLayout — topbar e workspace', () => {
     renderShell()
 
     // Regressão de contrato: o mobile do AppLayout legado NÃO tinha topbar.
+    // Troca contratada de landmark (AC4 da 13.3): a bottom nav nova é
+    // "Atalhos de navegação" ("Navegação mobile" era a BottomNav legada).
     expect(screen.getByRole('banner')).toHaveTextContent('Hoje')
-    expect(screen.getByRole('navigation', { name: 'Navegação mobile' })).toBeInTheDocument()
+    expect(screen.getByRole('navigation', { name: 'Atalhos de navegação' })).toBeInTheDocument()
+    expect(screen.queryByRole('navigation', { name: 'Navegação mobile' })).not.toBeInTheDocument()
     expect(screen.queryByRole('navigation', { name: 'Navegação principal' })).not.toBeInTheDocument()
+  })
+
+  it('test_compact_tem_fab_de_captura_que_abre_o_capture_sheet_unico', async () => {
+    mockMatchMedia(false, true)
+    const user = userEvent.setup()
+    renderShell()
+
+    const fab = screen.getByRole('button', { name: 'Captura rápida' })
+    expect(fab).toBeInTheDocument()
+    expect(screen.queryByText('capture sheet aberto')).not.toBeInTheDocument()
+
+    await user.click(fab)
+    expect(screen.getByText('capture sheet aberto')).toBeInTheDocument()
+  })
+
+  it('test_desktop_nao_tem_fab_mas_a_ancora_da_sidebar_abre_o_mesmo_sheet', async () => {
+    mockMatchMedia(true, false)
+    const user = userEvent.setup()
+    renderShell()
+
+    expect(screen.queryByRole('button', { name: 'Captura rápida' })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Abrir captura rápida' }))
+    expect(screen.getByText('capture sheet aberto')).toBeInTheDocument()
   })
 
   it('test_compact_reserva_padding_bottom_para_bottom_nav_e_safe_area', () => {
@@ -144,8 +172,9 @@ describe('ShellLayout — topbar e workspace', () => {
     renderShell()
 
     const workspace = screen.getByTestId('shell-workspace')
-    // Paridade literal com AppLayout.tsx:55 — calc(56px + safe-area + 8px),
-    // aqui via tokens: bottom-nav-height (56px) + safe-area + space-2 (8px).
+    // Paridade de FÓRMULA com AppLayout.tsx:55 — calc(bottom-nav + safe-area +
+    // 8px), aqui via tokens: bottom-nav-height (64px desde a 13.3) + safe-area
+    // + space-2 (8px).
     const paddingBottom = workspace.style.paddingBottom
     expect(paddingBottom).toContain('var(--ds-bottom-nav-height)')
     expect(paddingBottom).toContain('env(safe-area-inset-bottom, 0px)')
@@ -162,6 +191,55 @@ describe('ShellLayout — topbar e workspace', () => {
     expect(workspace.style.scrollPaddingBottom).toContain('--ds-capture-fab-size')
   })
 
+  it('test_sair_do_compact_fecha_o_sheet_e_voltar_nao_o_reabre_sozinho', async () => {
+    // O mock padrão do arquivo devolve um objeto novo (com `matches` congelado)
+    // a cada chamada; `useMediaQuery` captura UM MediaQueryList por query, então
+    // simular a troca de faixa exige `matches` como getter + o listener de
+    // `change` guardado para ser disparado.
+    const listeners: Array<() => void> = []
+    let compact = true
+    ;(window.matchMedia as ReturnType<typeof vi.fn>).mockImplementation((query: string) => ({
+      get matches() {
+        return query === '(max-width: 767px)' ? compact : false
+      },
+      media: query,
+      onchange: null,
+      addListener: (cb: () => void) => listeners.push(cb),
+      removeListener: vi.fn(),
+      addEventListener: (_event: string, cb: () => void) => listeners.push(cb),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }))
+    const changeBreakpoint = (toCompact: boolean) => {
+      compact = toCompact
+      act(() => {
+        listeners.forEach((notify) => notify())
+      })
+    }
+
+    const user = userEvent.setup()
+    renderShell()
+
+    await user.click(screen.getByRole('button', { name: 'Menu' }))
+    expect(screen.getByRole('navigation', { name: 'Navegação completa' })).toBeInTheDocument()
+
+    // Sair do compact desmonta o chrome mobile inteiro (barra + sheet).
+    changeBreakpoint(false)
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('navigation', { name: 'Navegação completa' }),
+      ).not.toBeInTheDocument()
+    })
+
+    // Voltar ao compact traz a barra de volta — mas NÃO o sheet: reabrir um
+    // Modal sem ação do usuário prenderia o foco sem aviso.
+    changeBreakpoint(true)
+    await waitFor(() => {
+      expect(screen.getByRole('navigation', { name: 'Atalhos de navegação' })).toBeInTheDocument()
+    })
+    expect(screen.queryByRole('navigation', { name: 'Navegação completa' })).not.toBeInTheDocument()
+  })
+
   it('test_tablet_inicia_com_a_sidebar_colapsada', async () => {
     mockMatchMedia(false, false, true)
     renderShell()
@@ -169,7 +247,7 @@ describe('ShellLayout — topbar e workspace', () => {
     await waitFor(() => {
       expect(screen.queryByText('Planner')).not.toBeInTheDocument()
     })
-    expect(screen.queryByRole('navigation', { name: 'Navegação mobile' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('navigation', { name: 'Atalhos de navegação' })).not.toBeInTheDocument()
   })
 })
 

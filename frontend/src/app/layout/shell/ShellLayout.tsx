@@ -1,14 +1,19 @@
 import { useEffect, useState } from 'react'
-import { Box, useMediaQuery, useTheme } from '@mui/material'
+import { Box, ButtonBase, Tooltip, useMediaQuery, useTheme } from '@mui/material'
 import { Outlet, useNavigate } from 'react-router-dom'
 
 import { ShellSidebar } from './ShellSidebar'
-import { BottomNav } from '../BottomNav'
+import { ShellBottomNav } from './ShellBottomNav'
+import { ShellNavigationSheet } from './ShellNavigationSheet'
 import { RouteAnnouncer } from '../RouteAnnouncer'
 import { ShellTopbar } from './ShellTopbar'
 import { SkipLink } from './SkipLink'
 import { LegacySeamNotice } from './LegacySeamNotice'
+import { BrainDumpBadge, BrainDumpCaptureSheet } from '../../../features/braindump'
+import { useOnlineStatus } from '../../../shared/hooks/useOnlineStatus'
 import { mediaQueries, shellCssVariables } from '../../../shared/design/tokens'
+import { navIcons } from './navIcons'
+import { SHELL_BADGE_SX } from './shellDestinations'
 
 /**
  * `id` do wrapper de conteúdo do shell — alvo do skip link.
@@ -20,6 +25,15 @@ import { mediaQueries, shellCssVariables } from '../../../shared/design/tokens'
  * "um único `main` por rota" e ainda entrega o pulo de foco.
  */
 export const SHELL_CONTENT_ID = 'conteudo-da-superficie'
+
+/**
+ * Ícone do FAB de captura maior que o `NAV_ICON_SIZE` (20px) dos itens de nav:
+ * o mockup usa ~24px no FAB para presença visual na área de 52px
+ * (`--ds-capture-fab-size`). Decisão interina da Questão Aberta 2 da story,
+ * registrada no checklist de paridade — constante nomeada, nunca literal solto.
+ */
+const CAPTURE_FAB_ICON_SIZE = 24
+const CaptureFabIcon = navIcons['capture']
 
 interface ShellLayoutProps {
   /**
@@ -39,9 +53,12 @@ interface ShellLayoutProps {
  * (mockup `key-app-shell-13-0.html`, `.browser`/`.shellbody`).
  *
  * `AppLayout.tsx` permanece intocado como casca de rollback (segue renderizando
- * a `Sidebar` legada). O shell novo renderiza a `ShellSidebar` derivada do
- * manifest (Story 13.2); a `BottomNav` segue **sem alteração** (a bottom nav de
- * 3 atalhos + Menu é a 13.3).
+ * a `Sidebar` e a `BottomNav` legadas). O shell novo renderiza a `ShellSidebar`
+ * derivada do manifest (Story 13.2) e, no compact, a `ShellBottomNav` (3
+ * atalhos + Menu), o sheet de navegação completa e o FAB de captura (13.3). A
+ * captura persistente usa UMA instância do `BrainDumpCaptureSheet` (superfície
+ * legada até a Onda 4 — Épico 15) para todos os breakpoints: FAB no compact,
+ * âncora na navegação em desktop/tablet.
  *
  * Zero literais estruturais: toda a geometria vem de `--ds-*`
  * (`shared/design/tokens.ts`), aplicadas inline na raiz do shell. CSS custom
@@ -55,6 +72,11 @@ export function ShellLayout({ surfaceMigrated = false }: ShellLayoutProps) {
   const isCompact = useMediaQuery(mediaQueries.compact)
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  // Captura persistente (13.3): UMA instância do BrainDumpCaptureSheet para
+  // todos os breakpoints, aberta pelo FAB (compact) ou pela âncora da sidebar.
+  const [captureOpen, setCaptureOpen] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const isOnline = useOnlineStatus()
   const navigate = useNavigate()
 
   // Tablet: sidebar começa colapsada (paridade com o AppLayout legado).
@@ -63,6 +85,16 @@ export function ShellLayout({ surfaceMigrated = false }: ShellLayoutProps) {
       setSidebarCollapsed(true)
     }
   }, [isTablet])
+
+  // O sheet de navegação é chrome EXCLUSIVO do compact: sair da faixa o
+  // desmonta, e sem este reset `menuOpen` continuaria true — ao voltar para o
+  // compact (girar o dispositivo, redimensionar a janela) o sheet reapareceria
+  // sozinho, sem ação do usuário, com o foco preso no Modal.
+  useEffect(() => {
+    if (!isCompact) {
+      setMenuOpen(false)
+    }
+  }, [isCompact])
 
   // Atalho [ para toggle da sidebar / B para o Brain Dump — ambos globais,
   // só no desktop. Guards idênticos aos do AppLayout legado: sem o guard de
@@ -136,6 +168,7 @@ export function ShellLayout({ surfaceMigrated = false }: ShellLayoutProps) {
         <ShellSidebar
           collapsed={sidebarCollapsed}
           onToggle={() => setSidebarCollapsed((prev) => !prev)}
+          onOpenCapture={() => setCaptureOpen(true)}
         />
       )}
 
@@ -185,7 +218,57 @@ export function ShellLayout({ surfaceMigrated = false }: ShellLayoutProps) {
         </Box>
       </Box>
 
-      {isCompact && <BottomNav />}
+      {isCompact && (
+        <>
+          <ShellBottomNav menuOpen={menuOpen} onOpenMenu={() => setMenuOpen(true)} />
+
+          {/* FAB de captura (`{components.capture-action}`): circular, FORA da
+              bottom nav (mockup), acima dela e da safe-area (paridade FAB-01,
+              via tokens). Offline: aria-disabled + guard no click — divergência
+              contratada vs `disabled` nativo do legado FAB-03 (foco e
+              identidade preservados, motivo acessível — AC6). */}
+          <Tooltip title={isOnline ? '' : 'Sem conexão'}>
+            <ButtonBase
+              aria-label={isOnline ? 'Captura rápida' : 'Captura rápida (sem conexão)'}
+              aria-disabled={isOnline ? undefined : true}
+              onClick={() => {
+                if (!isOnline) return
+                setCaptureOpen(true)
+              }}
+              sx={{
+                position: 'fixed',
+                right: 'var(--ds-space-4)',
+                bottom:
+                  'calc(var(--ds-bottom-nav-height) + env(safe-area-inset-bottom, 0px) + var(--ds-space-4))',
+                width: 'var(--ds-capture-fab-size)',
+                height: 'var(--ds-capture-fab-size)',
+                borderRadius: 'var(--ds-radius-full)',
+                zIndex: 'appBar',
+                boxShadow: 4,
+                ...(isOnline
+                  ? {
+                      backgroundColor: 'var(--ds-primary)',
+                      color: 'var(--ds-on-primary)',
+                    }
+                  : {
+                      backgroundColor: 'var(--ds-surface-subtle)',
+                      color: 'var(--ds-ink-disabled)',
+                    }),
+              }}
+            >
+              <BrainDumpBadge badgeSx={SHELL_BADGE_SX} max={9}>
+                <CaptureFabIcon size={CAPTURE_FAB_ICON_SIZE} weight="regular" />
+              </BrainDumpBadge>
+            </ButtonBase>
+          </Tooltip>
+
+          <ShellNavigationSheet open={menuOpen} onClose={() => setMenuOpen(false)} />
+        </>
+      )}
+
+      {/* ÚNICA instância do sheet de captura no shell (FAB-05 sobe do BottomNav
+          legado para cá): compartilhada por FAB (compact) e âncora da sidebar. */}
+      <BrainDumpCaptureSheet open={captureOpen} onClose={() => setCaptureOpen(false)} />
     </Box>
   )
 }

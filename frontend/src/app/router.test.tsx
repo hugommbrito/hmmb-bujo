@@ -41,8 +41,12 @@ vi.mock('../features/bujo/components/TaskDetailPanel', () => ({
 
 // BrainDumpBadge (Sidebar/BottomNav, Story 5.2) usa TanStack Query direto —
 // mesmo motivo do mock de TaskDetailPanel acima, sem QueryClientProvider aqui.
+// BrainDumpCaptureSheet idem: o ShellLayout (Story 13.3) importa a instância
+// única do sheet do barrel — sem o stub, o import vira `undefined` no chrome.
 vi.mock('../features/braindump', () => ({
   BrainDumpBadge: ({ children }: { children: React.ReactNode }) => children,
+  BrainDumpCaptureSheet: ({ open }: { open: boolean }) =>
+    open ? <div>capture sheet aberto</div> : null,
 }))
 
 // HabitTracker (DailyPage, Story 6.2) e useHabitDayQuery (via useDailyData) usam

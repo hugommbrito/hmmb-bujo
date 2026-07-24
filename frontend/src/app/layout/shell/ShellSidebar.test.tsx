@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { axe } from 'jest-axe'
@@ -28,6 +28,10 @@ vi.mock('../../../features/braindump', () => ({
       {children}
     </span>
   ),
+  // Stub contratado pela Story 13.3 (o barrel inteiro é substituído pelo mock;
+  // qualquer import futuro do sheet no chrome viraria `undefined` sem ele).
+  BrainDumpCaptureSheet: ({ open }: { open: boolean }) =>
+    open ? <div>capture sheet aberto</div> : null,
 }))
 
 import { ShellSidebar } from './ShellSidebar'
@@ -262,16 +266,93 @@ describe('ShellSidebar — Brain Dump (AC7)', () => {
   it('passa o cap max={9} e o estilo app-shell-badge ao BrainDumpBadge (integração do shell)', () => {
     renderSidebar({ initialPath: '/today' })
 
-    const badge = screen.getByTestId('brain-dump-badge')
-    expect(badge).toHaveAttribute('data-max', '9')
-    // Os 4 tokens do `{components.app-shell-badge}` entram pelo `badgeSx`
+    // Desde a Story 13.3 a sidebar carrega DOIS badges (AC5): o do destino
+    // Brain Dump e o da âncora de captura — ambos com o mesmo contrato
+    // `max={9}` + tokens `{components.app-shell-badge}` via `badgeSx`
     // (o comportamento visual `9+`/oculto fica em BrainDumpBadge.test.tsx).
-    expect(JSON.parse(badge.getAttribute('data-badge-sx') as string)).toEqual({
-      backgroundColor: 'var(--ds-primary)',
-      color: 'var(--ds-on-primary)',
-      minHeight: 'var(--ds-badge-min-height)',
-      borderRadius: 'var(--ds-radius-full)',
+    const badges = screen.getAllByTestId('brain-dump-badge')
+    expect(badges).toHaveLength(2)
+    for (const badge of badges) {
+      expect(badge).toHaveAttribute('data-max', '9')
+      expect(JSON.parse(badge.getAttribute('data-badge-sx') as string)).toEqual({
+        backgroundColor: 'var(--ds-primary)',
+        color: 'var(--ds-on-primary)',
+        minHeight: 'var(--ds-badge-min-height)',
+        borderRadius: 'var(--ds-radius-full)',
+      })
+    }
+  })
+})
+
+describe('ShellSidebar — âncora de captura rápida (Story 13.3, AC5/AC6)', () => {
+  function setNavigatorOnLine(value: boolean) {
+    Object.defineProperty(navigator, 'onLine', {
+      configurable: true,
+      get: () => value,
     })
+  }
+
+  afterEach(() => {
+    // Restaura o default de jsdom (online) — useOnlineStatus lê navigator.onLine
+    // na montagem, e um teste offline não pode vazar para os demais.
+    setNavigatorOnLine(true)
+  })
+
+  it('âncora nominal na sidebar expandida, ao fim da navegação', () => {
+    renderSidebar({ initialPath: '/today' })
+
+    const anchor = screen.getByRole('button', { name: 'Abrir captura rápida' })
+    expect(anchor).toBeInTheDocument()
+    // Nominal: o label é visível quando expandida.
+    expect(screen.getByText('Abrir captura rápida')).toBeInTheDocument()
+    // Ao fim da navegação: depois de Configurações no DOM.
+    expect(precedes(screen.getByText('Configurações'), anchor)).toBe(true)
+  })
+
+  it('âncora icon-only no rail preserva o nome acessível e o badge', () => {
+    renderSidebar({ collapsed: true, initialPath: '/today' })
+
+    const anchor = screen.getByRole('button', { name: 'Abrir captura rápida' })
+    expect(anchor).toBeInTheDocument()
+    // Icon-only: sem o label de texto no rail.
+    expect(screen.queryByText('Abrir captura rápida')).not.toBeInTheDocument()
+    // Badge ligado ao ícone (um badge no destino Brain Dump + um na âncora).
+    expect(screen.getAllByTestId('brain-dump-badge')).toHaveLength(2)
+  })
+
+  it('click chama onOpenCapture quando online', async () => {
+    const user = userEvent.setup()
+    const onOpenCapture = vi.fn()
+    render(
+      <MemoryRouter initialEntries={['/today']}>
+        <ShellSidebar collapsed={false} onToggle={vi.fn()} onOpenCapture={onOpenCapture} />
+      </MemoryRouter>,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Abrir captura rápida' }))
+    expect(onOpenCapture).toHaveBeenCalledTimes(1)
+  })
+
+  it('offline: aria-disabled + motivo acessível, continua focável e NÃO chama onOpenCapture', async () => {
+    setNavigatorOnLine(false)
+    const user = userEvent.setup()
+    const onOpenCapture = vi.fn()
+    render(
+      <MemoryRouter initialEntries={['/today']}>
+        <ShellSidebar collapsed={false} onToggle={vi.fn()} onOpenCapture={onOpenCapture} />
+      </MemoryRouter>,
+    )
+
+    // Divergência contratada vs `disabled` nativo do legado (FAB-03 → AC6):
+    // aria-disabled preserva foco e identidade, com motivo no nome acessível.
+    const anchor = screen.getByRole('button', { name: 'Abrir captura rápida (sem conexão)' })
+    expect(anchor).toHaveAttribute('aria-disabled', 'true')
+
+    anchor.focus()
+    expect(anchor).toHaveFocus()
+
+    await user.click(anchor)
+    expect(onOpenCapture).not.toHaveBeenCalled()
   })
 })
 

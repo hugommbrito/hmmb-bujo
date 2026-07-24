@@ -31,16 +31,14 @@ test.describe('Shell a11y — compact', () => {
   test('axe sem violações no chrome do shell em /today (compact)', async ({ page }) => {
     // No compact o shell novo passa a ter topbar (o AppLayout legado não tinha).
     await expect(page.getByRole('banner')).toContainText('Hoje')
-    await expect(page.getByRole('navigation', { name: 'Navegação mobile' })).toBeVisible()
+    await expect(page.getByRole('navigation', { name: 'Atalhos de navegação' })).toBeVisible()
 
-    // O `BottomNav` LEGADO é renderizado sem alteração nesta story (seu contrato
-    // novo — 3 atalhos + Menu — é a Story 13.3). O label de aba não-selecionada
-    // reprova `color-contrast` (dívida preexistente do componente legado, não
-    // regressão do shell): fica FORA do gate aqui e registrada no
-    // `13-shell-parity-checklist.md` (SHELL-DEBT-01). O gate compact cobre o
-    // resto do chrome novo — topbar, skip link e seam.
+    // SHELL-DEBT-01 FECHADA (Story 13.3): a `ShellBottomNav` nova entra no gate
+    // — o label não-selecionado usa `--ds-ink-muted` sobre `--ds-surface`
+    // (≥4.5:1) e precisa passar `color-contrast` no axe real. Só o `<main>` da
+    // superfície legada permanece fora (SHELL-DEBT-02, matriz completa na 13.4).
     await expectNoAxeViolations(page, {
-      exclude: 'main, nav[aria-label="Navegação mobile"]',
+      exclude: 'main',
       label: 'compact · /today',
     })
   })

@@ -152,11 +152,12 @@ test.describe('Shell novo — comportamento (compact 320×720)', () => {
   test.use({ viewport: { width: 320, height: 720 } })
 
   // G7 · AC4 — regressão de contrato: o mobile do AppLayout legado NÃO tinha
-  // topbar. No shell novo a topbar passa a existir no compact, o BottomNav é
-  // renderizado e o skip link continua sendo o primeiro focável.
+  // topbar. No shell novo a topbar passa a existir no compact, a ShellBottomNav
+  // ("Atalhos de navegação" — troca contratada de landmark na 13.3) é
+  // renderizada e o skip link continua sendo o primeiro focável.
   test('compact: topbar passa a existir, bottom nav presente e skip link primeiro focável', async ({ page }) => {
     await expect(page.getByRole('banner')).toContainText('Hoje')
-    await expect(page.getByRole('navigation', { name: 'Navegação mobile' })).toBeVisible()
+    await expect(page.getByRole('navigation', { name: 'Atalhos de navegação' })).toBeVisible()
     await expect(page.getByRole('navigation', { name: 'Navegação principal' })).toHaveCount(0)
 
     await page.keyboard.press('Tab')

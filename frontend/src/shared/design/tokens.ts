@@ -108,12 +108,14 @@ export const appShell = {
   bottomNavConfigurableItems: 3,
 
   /**
-   * Altura ATUAL do `BottomNavigation` do MUI, reproduzida para preservar a
-   * reserva de `padding-bottom` do compact (`AppLayout.tsx:55`). Não é um token
-   * do `DESIGN.md`: o contrato novo da bottom nav (3 atalhos + Menu) chega na
-   * Story 13.3, que substitui este valor pelo do mockup.
+   * Altura da bottom nav nova (3 atalhos + Menu, Story 13.3) — valor do mockup
+   * aprovado (`key-app-shell-13-0.html`, `.bottom`). Consumida via
+   * `--ds-bottom-nav-height` pelo `ShellLayout` (reserva de `padding-bottom`/
+   * `scroll-padding` do compact), pela `ShellBottomNav`, pelo FAB e pelo
+   * `ShellNavigationSheet` (o sheet termina acima da barra). A altura cobre o
+   * alvo ≥48px dos itens frequentes (EXPERIENCE §Accessibility Floor).
    */
-  bottomNavHeight: '56px',
+  bottomNavHeight: '64px',
 
   // `{components.app-shell-badge}` — consumido pela Story 13.2.
   badge: {
