@@ -1,11 +1,13 @@
 /* eslint-disable react-refresh/only-export-components */
 import { Suspense } from 'react'
-import { createBrowserRouter, Navigate, useNavigate } from 'react-router-dom'
+import { createBrowserRouter, Navigate, useMatches, useNavigate } from 'react-router-dom'
 import type { RouteObject } from 'react-router-dom'
 import { LoginPage } from '../features/auth/components/LoginPage'
 import { SignupPage } from '../features/auth/components/SignupPage'
 import { useAuth } from '../shared/hooks/useAuth'
 import { AppLayout } from './layout/AppLayout'
+import { ShellLayout } from './layout/shell/ShellLayout'
+import { resolveShellRoute } from './layout/shell/shellRouting'
 import { collections } from './collections/registry'
 import { DailyPage } from '../pages/daily/DailyPage'
 import { WeeklyPage } from '../pages/planner/WeeklyPage'
@@ -41,14 +43,27 @@ function SignupPageRoute() {
   return <SignupPage onSuccess={() => navigate('/today', { replace: true })} />
 }
 
+// Coexistência por rota (Story 13.1): o registro puro `shellRouting.ts` decide,
+// rota a rota, qual casca monta — o shell novo ou o `AppLayout` legado, que
+// permanece intocado como rota de rollback. O match ativo vem de `useMatches()`,
+// o MESMO mecanismo do `RouteAnnouncer`. Rollback de uma superfície = trocar
+// `shell: 'new'` por `'legacy'` naquela entrada (uma linha) — procedimento em
+// `13-shell-parity-checklist.md`, seção "Rollback por superfície".
 function ProtectedLayout() {
   const { isAuthenticated } = useAuth()
+  const matches = useMatches()
+  const activePathname = matches[matches.length - 1]?.pathname ?? '/'
+  const shellRoute = resolveShellRoute(activePathname)
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />
   }
 
-  return <AppLayout />
+  if (shellRoute.shell === 'legacy') {
+    return <AppLayout />
+  }
+
+  return <ShellLayout surfaceMigrated={shellRoute.surfaceMigrated} />
 }
 
 // Rotas de collection derivadas do registro por map puro (Story 12.3). Cada

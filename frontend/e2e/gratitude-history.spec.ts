@@ -59,7 +59,9 @@ test('navega o histórico por mês (agrupado por dia) e por data (AC1, AC2, AC3,
   await expect(page).toHaveURL('/gratitude/history')
   await expect(page.getByRole('heading', { name: 'Histórico', level: 2 })).toBeVisible()
   // O RouteAnnouncer anuncia o handle.title da rota (região visualmente oculta).
-  await expect(page.getByText('Histórico de Gratidão')).toBeAttached()
+  // Escopamos ao live region `role="status"` do RouteAnnouncer para não colidir com o
+  // título estático homônimo que o ShellTopbar (shell novo) renderiza no `role="banner"`.
+  await expect(page.getByRole('status').filter({ hasText: 'Histórico de Gratidão' })).toBeAttached()
 
   // AC1/AC2 — mês corrente agrupado por dia: as duas entradas de hoje, em ordem
   // cronológica ascendente, sob o cabeçalho do dia.

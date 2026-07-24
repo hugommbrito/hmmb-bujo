@@ -52,7 +52,7 @@
 # - Épicos 1–9 e 11 são HISTÓRICO (MVP) — não entram na fila.
 
 generated: 2026-06-22
-last_updated: 2026-07-24  # story 13.1 → ready-for-dev: create-story concluída (13-1-fundacao-do-shell-novo-com-coexistencia-por-rota.md). | story 13.0 → done: gate bmad-ux aprovado e promovido; ACs 1–4 e Tasks 1–5 validados; Stories 13.1–13.4 liberadas para o ciclo normal, respeitando a ordem do sprint. | story 12.6 → done; stories 12.1–12.5 → done; fila 12→13→14→15→16→17→18→10→19→20→21a/b→22→21c.
+last_updated: 2026-07-24  # story 13.1 → done: re-review (story-automator, 2ª passada) — 0 críticos; Vitest 85/881 + typecheck + lint verdes; E2E dos specs da 13.1 (shell + shell-a11y + gratitude-history) = 10 passed contra Neon e2e; tokens conferidos vs DESIGN.md; status/doc sincronizados. | story 13.2 → ready-for-dev: create-story concluída (13-2-sidebar-nova-derivada-do-manifest.md); catálogo Phosphor + sidebar 240/64 derivada do manifest, badge 9+, nav mínima; 1 questão aberta (ícone do agrupador Planner). | story 13.1 → code review (story-automator): 0 críticos, 1 médio + 2 baixos corrigidos (File List + contagem de testes); permanece in-progress — E2E é o único gate aberto. | story 13.1 → in-progress: dev-story iniciado (baseline vitest 81 arquivos / 828 testes). | story 13.1 → ready-for-dev: create-story concluída (13-1-fundacao-do-shell-novo-com-coexistencia-por-rota.md). | story 13.0 → done: gate bmad-ux aprovado e promovido; ACs 1–4 e Tasks 1–5 validados; Stories 13.1–13.4 liberadas para o ciclo normal, respeitando a ordem do sprint. | story 12.6 → done; stories 12.1–12.5 → done; fila 12→13→14→15→16→17→18→10→19→20→21a/b→22→21c.
 project: hmmb-bujo
 project_key: NOKEY
 tracking_system: file-system
@@ -166,8 +166,8 @@ development_status:
   # Epic 13: Onda 2a — App Shell no Sistema Novo
   epic-13: in-progress  # 1ª story criada (13.0) via create-story 2026-07-23; execução permanece exclusiva do rito bmad-ux
   13-0-ux-spec-do-app-shell-novo: done  # gate UX bmad-ux aprovado e promovido em 2026-07-24; libera 13.1–13.4
-  13-1-fundacao-do-shell-novo-com-coexistencia-por-rota: ready-for-dev  # story criada 2026-07-24; 1ª story de implementação do Épico 13
-  13-2-sidebar-nova-derivada-do-manifest: backlog
+  13-1-fundacao-do-shell-novo-com-coexistencia-por-rota: done  # dev-story 2026-07-24; baseline_commit ee50f10 | re-review (story-automator) 2026-07-24: 0 críticos; Vitest 85/881 + typecheck + lint verdes; E2E dos specs da 13.1 (shell + shell-a11y + gratitude-history) 10 passed contra Neon e2e; tokens conferidos vs DESIGN.md canônico; status sincronizado
+  13-2-sidebar-nova-derivada-do-manifest: ready-for-dev  # create-story concluída 2026-07-24 (13-2-sidebar-nova-derivada-do-manifest.md)
   13-3-bottom-nav-e-captura-persistente-mobile: backlog
   13-4-passe-de-paridade-e-acessibilidade-do-shell: backlog
   epic-13-retrospective: optional
