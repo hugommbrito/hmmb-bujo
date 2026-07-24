@@ -4,15 +4,15 @@
 - [ ] Seção de observação nos logs diários, para eventos importantes que devam ser lavdos em consideração na análise.
 - [ ] Fundir com o foodLog ou consumir dele.
 - [ ] Fazer uma segunda opção de UI ( Mais moderna e atrativa para quem não tiver necessidade de conexão com o caderno físico )
-- [ ] Implementação de automações com shortcuts no iphone
-- [ ] AppMobile? É possível fazer widgets sem um app?
+- [ ] Implementação de automações com shortcuts no iphone (Parcial: espinha backend entregue no Épico 12 — `AutomationToken` escopado/revogável (12.4), `POST /api/capture` (12.5) e `GET /api/summary/today` (12.6). Os atalhos iOS/Back Tap e o widget ficam do lado do usuário; o produto entrega só a API — AD-19.)
+- [ ] AppMobile? É possível fazer widgets sem um app? (Parcial: sim — o widget Scriptable consome `GET /api/summary/today` (Épico 12.6) autenticado por AutomationToken, sem app nativo. Resumo do dia em 1 chamada; refresh 15–60 min.)
 - [ ] Aba de "Histórico", para ver logs, weeks e months passados. (Parcial: navegação livre para trás em Esta Semana/Este Mês/Daily Log entregue pela Story 11.11 — a superfície unificada dedicada segue fora de escopo, registrada como tal nas Dev Notes da própria story.)
 - [ ] Aba de coleções, para poder criar outras novas coleções no padrão do Bullet Journal original.
 - [ ] Adicionar uma aba de análises com IA, onde eu possa colocar explicações sobre as métricas que uso em cada módulo (hábitos, saúde, medicamentos, etc.) para que essas métricas sejam agregadas ao prompt que usa /dataviz para gerar relatórios específicos.
   - [ ] Seria possível que esse prompt gerasse relatórios periódicos na tela para a pessoa acompanhar no dia a dia? Exemplo, se eu explicasse que três das métricas que eu uso são associadas (produtividade), a IA geraria uma query que ficaria salva no banco, para que um gráfico do meu dashboard ficasse sempre atualizando com ela.
 - [ ] Opção de habilitar/desabilitar um contador de tempo de foco para saber quanto tempo está dedicando ao preenchimento do bujo. Ele inicia/pausa automaticamente quando a janela do bujo entra/sai de foco.
 - [ ] Opção de habilitar/desabilitar todos os módulos, para que caso alguém não queira usar medicamentos, por exemplo, ele não fique aparecendo lá em branco.
-- [ ] Adicionar estado de "Aguardando Terceiro", pode ser um standalone, caso dê muito trabalho mexer na máquina de estados.
+- [ ] Adicionar estado de "Aguardando Terceiro", pode ser um standalone, caso dê muito trabalho mexer na máquina de estados. (Parcial: backend entregue no Épico 12.2 (#15) exatamente como o standalone sugerido — flag `waiting_on` booleana ortogonal, **sem** criar 7º estado; PATCH + filtro `?waitingOn=` + herança na migração. UI (indicador + filtro) fica na Onda 2b — Épico 17.5.)
 - [ ] METRICAS DE SAÚDE:
   - [ ] Poder reordenar
   - [ ] Poder Editar
@@ -20,7 +20,7 @@
 - [ ] Criar um módulo apenas para controle de Pressão Arterial, que recebe foto e interpreta com IA
 - [ ] Um outro padrão de cores para quem não tiver apego à estética do caderno BuJo
 - [ ] Dividir ítens de saúde em grupos
-- [ ] Quando uma task é migrada, ela chega no destino com o mesmo status que tinha na origem.
+- [x] Quando uma task é migrada, ela chega no destino com o mesmo status que tinha na origem. (Entregue integralmente no Épico 12.1 (#23, AD-18 itens 1-2): sucessor herda o status da origem em todos os fluxos de migração; subtarefas herdam o próprio status. Backend-only — o efeito é visível pela superfície de status já existente do `TaskRow`.)
 - [ ] Opção de dar nomme às categorias
 
 

@@ -161,7 +161,7 @@ development_status:
   12-4-token-de-automacao-com-autenticacao-dedicada: done
   12-5-captura-externa-post-api-capture: done
   12-6-resumo-do-dia-get-api-summary-today: done
-  epic-12-retrospective: optional
+  epic-12-retrospective: done  # retrospectiva #YOLO concluída 2026-07-23 (epic-12-retro-2026-07-23.md) — 6/6 stories done, 0 CRITICAL/HIGH; fecha o 1º épico da fila pós-MVP. Ações de doc executadas: temporal-pattern.md (core.calendar.now()), futureIdeas.md (#23/#15/shortcuts). Epic Update Required p/ Épico 13: NÃO.
 
   # Epic 13: Onda 2a — App Shell no Sistema Novo
   epic-13: in-progress  # 1ª story criada (13.0) via create-story 2026-07-23; execução permanece exclusiva do rito bmad-ux
