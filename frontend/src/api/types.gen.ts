@@ -1066,6 +1066,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/summary/today": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description Resumo do dia (`GET /api/summary/today`, AC1/AC3).
+         *
+         *     View fina (§6.2) e **somente leitura**: compõe o resumo via `build_today_summary`
+         *     (3 apps de domínio, read-only) → serializa a resposta agregada. Mesma espinha da
+         *     `CaptureView`: auth por token opt-in per-view + escopo `summary` + `ScopedRateThrottle`
+         *     (`automation-summary`) + log estruturado de auditoria. **Sem payload de entrada** →
+         *     não há caminho 400 de validação; só 200 (+ 401/403/429 antes/fora do handler).
+         */
+        get: operations["summary_today_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/time-blocks/": {
         parameters: {
             query?: never;
@@ -1969,6 +1994,34 @@ export interface components {
             laboratory?: string | null;
             /** Format: uuid */
             prescribedById?: string | null;
+        };
+        SummaryHabits: {
+            readonly total: number;
+            readonly groups: components["schemas"]["SummaryHabitsGroup"][];
+        };
+        SummaryHabitsGroup: {
+            /** Format: uuid */
+            readonly id: string;
+            readonly name: string;
+            readonly completion: number;
+        };
+        SummaryJournalEntry: {
+            readonly text: string;
+            /** Format: date */
+            readonly date: string;
+        };
+        SummaryResponse: {
+            /** Format: date */
+            readonly date: string;
+            readonly pendingTasks: components["schemas"]["SummaryTask"][];
+            readonly habits: components["schemas"]["SummaryHabits"];
+            readonly lastJournalEntry: components["schemas"]["SummaryJournalEntry"] | null;
+        };
+        SummaryTask: {
+            /** Format: uuid */
+            readonly id: string;
+            readonly title: string;
+            readonly status: string;
         };
         /**
          * @description * `today` - Today
@@ -3683,6 +3736,25 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MedicationDay"];
+                };
+            };
+        };
+    };
+    summary_today_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SummaryResponse"];
                 };
             };
         };

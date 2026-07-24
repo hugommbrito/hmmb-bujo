@@ -36,6 +36,25 @@ def get_gratitude_day(*, user, date) -> dict:
     }
 
 
+def get_latest_gratitude_entry(*, user) -> GratitudeEntry | None:
+    """A entrada de gratidão MAIS RECENTE do tenant, ou ``None`` se não houver nenhuma.
+
+    Fonte **temporária** do campo genérico ``lastJournalEntry`` do resumo de
+    automação (``GET /api/summary/today``, Story 12.6). Enquanto o Journalling não
+    existir (Épico 16), a "última reflexão" é a última gratidão (AD-19); quando o
+    Journalling existir (Story 16.11), o resumo troca a fonte para o service do
+    journalling **sem** mudar o contrato — este é o ponto de troca único (por isso é
+    um service de domínio, não uma query ad-hoc montada dentro do ``automation``).
+
+    O ``Meta.ordering=["created_at"]`` (cronológico ascendente) é **sobrescrito** aqui
+    de propósito por ``order_by("-date", "-created_at")``: queremos a última entrada
+    (maior ``date``; empate resolvido pelo ``created_at`` mais recente), não a primeira.
+    Leitura pura (sem ``@transaction.atomic``, como ``get_gratitude_day``); auto-escopado
+    por tenant (``GratitudeEntry.objects`` — nunca ``all_objects``, nunca ``user_id`` cru).
+    """
+    return GratitudeEntry.objects.order_by("-date", "-created_at").first()
+
+
 def get_gratitude_month(*, user, month) -> dict:
     """Read-model do mês (9.2 AC1/AC2): ``{month, days:[{date, entries}]}`` com todas as
     entradas do mês agrupadas por dia, em ordem cronológica ascendente.

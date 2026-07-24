@@ -160,11 +160,14 @@ REST_FRAMEWORK = {
     # Schema (drf-spectacular)
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     # Rate limiting — SÓ as taxas nomeadas; NÃO setar DEFAULT_THROTTLE_CLASSES
-    # global (throttlaria toda a API). O ScopedRateThrottle é aplicado per-view
-    # (ex.: automation.views.CaptureView, escopo "automation-capture"). A taxa é
-    # configurável por ambiente via AUTOMATION_CAPTURE_THROTTLE (default 60/min).
+    # global (throttlaria toda a API). O ScopedRateThrottle é aplicado per-view:
+    #   - "automation-capture" → automation.views.CaptureView (POST /api/capture)
+    #   - "automation-summary" → automation.views.SummaryView (GET /api/summary/today)
+    # Cada taxa é configurável por ambiente (AUTOMATION_CAPTURE_THROTTLE /
+    # AUTOMATION_SUMMARY_THROTTLE), default 60/min.
     "DEFAULT_THROTTLE_RATES": {
         "automation-capture": env("AUTOMATION_CAPTURE_THROTTLE", default="60/min"),
+        "automation-summary": env("AUTOMATION_SUMMARY_THROTTLE", default="60/min"),
     },
 }
 

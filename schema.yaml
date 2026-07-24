@@ -1586,6 +1586,26 @@ paths:
               schema:
                 $ref: '#/components/schemas/MedicationDay'
           description: ''
+  /api/summary/today:
+    get:
+      operationId: summary_today_retrieve
+      description: |-
+        Resumo do dia (`GET /api/summary/today`, AC1/AC3).
+
+        View fina (§6.2) e **somente leitura**: compõe o resumo via `build_today_summary`
+        (3 apps de domínio, read-only) → serializa a resposta agregada. Mesma espinha da
+        `CaptureView`: auth por token opt-in per-view + escopo `summary` + `ScopedRateThrottle`
+        (`automation-summary`) + log estruturado de auditoria. **Sem payload de entrada** →
+        não há caminho 400 de validação; só 200 (+ 401/403/429 antes/fora do handler).
+      tags:
+      - summary
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SummaryResponse'
+          description: ''
   /api/time-blocks/:
     get:
       operationId: time_blocks_list
@@ -3475,6 +3495,93 @@ components:
           type: string
           format: uuid
           nullable: true
+    SummaryHabits:
+      type: object
+      properties:
+        total:
+          type: integer
+          readOnly: true
+        groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/SummaryHabitsGroup'
+          readOnly: true
+      required:
+      - groups
+      - total
+    SummaryHabitsGroup:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          readOnly: true
+        completion:
+          type: integer
+          readOnly: true
+      required:
+      - completion
+      - id
+      - name
+    SummaryJournalEntry:
+      type: object
+      properties:
+        text:
+          type: string
+          readOnly: true
+        date:
+          type: string
+          format: date
+          readOnly: true
+      required:
+      - date
+      - text
+    SummaryResponse:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+          readOnly: true
+        pendingTasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/SummaryTask'
+          readOnly: true
+        habits:
+          allOf:
+          - $ref: '#/components/schemas/SummaryHabits'
+          readOnly: true
+        lastJournalEntry:
+          allOf:
+          - $ref: '#/components/schemas/SummaryJournalEntry'
+          readOnly: true
+          nullable: true
+      required:
+      - date
+      - habits
+      - lastJournalEntry
+      - pendingTasks
+    SummaryTask:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        title:
+          type: string
+          readOnly: true
+        status:
+          type: string
+          readOnly: true
+      required:
+      - id
+      - status
+      - title
     TargetLogEnum:
       enum:
       - today

@@ -16,10 +16,14 @@ from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from automation.authentication import AutomationTokenAuthentication
-from automation.models import SCOPE_CAPTURE
+from automation.models import SCOPE_CAPTURE, SCOPE_SUMMARY
 from automation.permissions import HasAutomationScope
-from automation.serializers import CaptureRequestSerializer, CaptureResponseSerializer
-from automation.services import UnknownCaptureType, dispatch_capture
+from automation.serializers import (
+    CaptureRequestSerializer,
+    CaptureResponseSerializer,
+    SummaryResponseSerializer,
+)
+from automation.services import UnknownCaptureType, build_today_summary, dispatch_capture
 
 # Precedente: `core/exceptions.py:25` usa `logging.getLogger(__name__)`.
 logger = logging.getLogger(__name__)
@@ -80,6 +84,57 @@ class CaptureView(APIView):
             extra={
                 "token_prefix": request.auth.token_prefix,
                 "endpoint": "/api/capture",
+                "status": status_code,
+            },
+        )
+
+
+class SummaryView(APIView):
+    """Resumo do dia (`GET /api/summary/today`, AC1/AC3).
+
+    View fina (§6.2) e **somente leitura**: compõe o resumo via `build_today_summary`
+    (3 apps de domínio, read-only) → serializa a resposta agregada. Mesma espinha da
+    `CaptureView`: auth por token opt-in per-view + escopo `summary` + `ScopedRateThrottle`
+    (`automation-summary`) + log estruturado de auditoria. **Sem payload de entrada** →
+    não há caminho 400 de validação; só 200 (+ 401/403/429 antes/fora do handler).
+    """
+
+    # Opt-in per-view: a auth class NÃO está no DEFAULT_AUTHENTICATION_CLASSES.
+    authentication_classes = [AutomationTokenAuthentication]
+    # Só `HasAutomationScope` (sem `IsAuthenticated`, redundante — mesmo racional
+    # 401/403 da `CaptureView`): sem header/token inválido/revogado → 401 (a auth
+    # class define `authenticate_header` → "Bearer"); autenticado sem escopo `summary`
+    # → 403; com escopo → handler.
+    permission_classes = [HasAutomationScope]
+    required_scopes = [SCOPE_SUMMARY]
+    # Rate limiting per-view: taxa de
+    # REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]["automation-summary"] (env-configurável).
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "automation-summary"
+
+    @extend_schema(responses={200: SummaryResponseSerializer})
+    def get(self, request):
+        data = build_today_summary(user=request.user)
+        self._audit(request, status.HTTP_200_OK)
+        return Response(SummaryResponseSerializer(data).data)
+
+    def _audit(self, request, status_code: int) -> None:
+        """Log estruturado de auditoria (AC3), gêmeo do `CaptureView._audit`.
+
+        Emite `{token_prefix, endpoint, status}` no mesmo logger `automation.views`,
+        mas com mensagem **distinta** (`"automation summary"`) — de propósito: o teste de
+        `caplog` da 12.5 filtra por `getMessage() == "automation capture"` e afirma
+        `len == 1`, então uma mensagem distinta garante zero colisão (mesmo logger,
+        mensagens diferentes). O **token pleno NUNCA é logado**: `request.auth` é o
+        `AutomationToken`, que só guarda `token_prefix`/`token_hash` — o segredo pleno
+        sequer está acessível aqui. `_audit` próprio (não helper compartilhado) mantém o
+        blast radius mínimo na fatia final do épico (ver Dev Notes).
+        """
+        logger.info(
+            "automation summary",
+            extra={
+                "token_prefix": request.auth.token_prefix,
+                "endpoint": "/api/summary/today",
                 "status": status_code,
             },
         )
