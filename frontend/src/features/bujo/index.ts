@@ -22,6 +22,16 @@ export {
   usePlaceRecurringTemplateMutation,
   useTaskDensityQuery,
   useArchiveQuery,
+  invalidateRitualQueries,
+  useWeeklyCycleReadinessQuery,
+  useWeeklyCycleActionMutation,
+  useRitualTaskTransitionMutation,
+  useMonthlyInWeekSourceQuery,
+  useWeeklyRecurringSourceQuery,
+  usePreviousWeeklySourceQuery,
+  usePendingDailiesSourceQuery,
+  useWeeklyDensityQuery,
+  useRitualDecisionMutation,
 } from './api'
 export { MigrationBanner } from './components/MigrationBanner'
 export { WeeklyReviewBanner } from './components/WeeklyReviewBanner'
@@ -30,6 +40,9 @@ export { CatchUpBanner } from './components/CatchUpBanner'
 export { RecurringTemplateManager } from './components/RecurringTemplateManager'
 export { RecurringPlacementSection } from './components/RecurringPlacementSection'
 export { MonthDensityCalendar } from './components/MonthDensityCalendar'
+export { TaskRowBase } from './components/TaskRowBase'
+export { TaskDetailCard } from './components/TaskDetailCard'
+export { taskStatusIconFor, taskStatusIcons, TASK_STATUS_ICON_SIZE } from './components/taskStatusIcons'
 export type { MigrationDestination } from './api'
 export type {
   Log,
@@ -50,4 +63,24 @@ export type {
   TaskDensityEntry,
   TaskDensityResponse,
   ArchiveEntry,
+  WeeklyCycle,
+  WeeklyCycleAction,
+  WeeklyCycleReadiness,
+  TaskSource,
+  BlockingTaskSource,
+  WeeklyRecurringSource,
+  PendingDailiesSource,
+  RitualTaskItem,
+  RitualTemplateItem,
+  _TemplateBucket,
+  DensityResponse,
+  DensityDay,
+  DensityCell,
+  DensityStatusBreakdown,
+  RitualDecision,
+  RitualDecisionCreate,
+  DecisionEnum,
+  CycleStatus,
+  WeeklySourceId,
+  RitualDecisionKind,
 } from './types'

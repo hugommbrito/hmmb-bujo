@@ -256,13 +256,29 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * @description Ações do ciclo semanal (Story 14.1, AC8) — espelha `tasks/<pk>/transition/`.
+         *
+         *     Erros de gate e de matriz sobem como `InvalidTransition`/`CycleTargetConflict`
+         *     (ambos `DomainError`) e viram 409 pelo handler central; nada é tratado aqui.
+         *
+         *     `get` é NOVO (Story 14.5, AC4) — mesma rota, método novo, sem rota nova:
+         *     leitura pura e agregada de prontidão do ciclo (qual semana está `active`/
+         *     `planning`, quais gates de `start`/`finalize` faltam). Zero regra de
+         *     domínio na view: `weekly_cycle_readiness` decide tudo.
+         */
+        get: operations["bujo_logs_weekly_cycle_retrieve"];
         put?: never;
         /**
          * @description Ações do ciclo semanal (Story 14.1, AC8) — espelha `tasks/<pk>/transition/`.
          *
          *     Erros de gate e de matriz sobem como `InvalidTransition`/`CycleTargetConflict`
          *     (ambos `DomainError`) e viram 409 pelo handler central; nada é tratado aqui.
+         *
+         *     `get` é NOVO (Story 14.5, AC4) — mesma rota, método novo, sem rota nova:
+         *     leitura pura e agregada de prontidão do ciclo (qual semana está `active`/
+         *     `planning`, quais gates de `start`/`finalize` faltam). Zero regra de
+         *     domínio na view: `weekly_cycle_readiness` decide tudo.
          */
         post: operations["bujo_logs_weekly_cycle_create"];
         delete?: never;
@@ -1441,7 +1457,11 @@ export interface components {
             timeBlockId: string;
             confirmed: boolean;
         };
-        /** @description `previous-weekly`/`previous-monthly`: acrescentam `readyToFinalize`. */
+        /**
+         * @description `previous-weekly`/`previous-monthly`: acrescentam `readyToFinalize` e,
+         *     aditivamente (Story 14.5, AC4), `previousPeriodStart` — a chave de período
+         *     do log anterior, nome neutro porque serve as duas fontes.
+         */
         BlockingTaskSource: {
             sourceId: string;
             blocking: boolean;
@@ -1451,6 +1471,8 @@ export interface components {
             reviewed: boolean;
             items: components["schemas"]["RitualTaskItem"][];
             readyToFinalize: boolean;
+            /** Format: date */
+            previousPeriodStart: string | null;
         };
         BrainDumpCount: {
             count: number;
@@ -2599,10 +2621,32 @@ export interface components {
          * @enum {string}
          */
         WeeklyCycleActionActionEnum: "open_planning_target" | "complete_planning" | "start" | "finalize" | "cancel_planning_target";
+        /**
+         * @description Resposta de `GET /api/bujo/logs/weekly/cycle/` (AC4) — os quatro blocos,
+         *     `null` nos inexistentes. Cada booleano REUSA o predicado do serviço de
+         *     transição (ver `services/cycles.weekly_cycle_readiness`); este serializer
+         *     só projeta, nunca decide.
+         */
+        WeeklyCycleReadiness: {
+            active: components["schemas"]["_WeeklyCycleSnapshot"] | null;
+            planning: components["schemas"]["_WeeklyCycleSnapshot"] | null;
+            start: components["schemas"]["WeeklyStartReadiness"] | null;
+            finalize: components["schemas"]["WeeklyFinalizeReadiness"] | null;
+        };
         WeeklyDay: {
             /** Format: date */
             date: string;
             tasks: components["schemas"]["Task"][];
+        };
+        WeeklyFinalizeGates: {
+            noOpenTasks: boolean;
+            nextPlanningExists: boolean;
+        };
+        WeeklyFinalizeReadiness: {
+            allowed: boolean;
+            /** Format: date */
+            target: string;
+            gates: components["schemas"]["WeeklyFinalizeGates"];
         };
         WeeklyLog: {
             status: string | null;
@@ -2629,6 +2673,18 @@ export interface components {
             weekStart: string;
             tasks: components["schemas"]["Task"][];
         };
+        /** @description Os TRÊS gates de `start` — hoje indistinguíveis no `detail` do 409. */
+        WeeklyStartGates: {
+            dateReached: boolean;
+            planningCompleted: boolean;
+            previousFinalized: boolean;
+        };
+        WeeklyStartReadiness: {
+            allowed: boolean;
+            /** Format: date */
+            target: string;
+            gates: components["schemas"]["WeeklyStartGates"];
+        };
         WeeklyTaskCreate: {
             /** Format: date */
             weekStart: string;
@@ -2646,6 +2702,14 @@ export interface components {
         _TemplateBucket: {
             countsTowardProgress: boolean;
             items: components["schemas"]["RitualTemplateItem"][];
+        };
+        /** @description Projeção mínima de um `WeeklyLog` operacional (`active` ou `planning`). */
+        _WeeklyCycleSnapshot: {
+            /** Format: date */
+            weekStart: string;
+            status: string;
+            /** Format: date-time */
+            planningCompletedAt: string | null;
         };
     };
     responses: never;
@@ -2969,7 +3033,9 @@ export interface operations {
     };
     bujo_logs_weekly_retrieve: {
         parameters: {
-            query?: never;
+            query?: {
+                week_start?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -3005,6 +3071,25 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Task"];
+                };
+            };
+        };
+    };
+    bujo_logs_weekly_cycle_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WeeklyCycleReadiness"];
                 };
             };
         };

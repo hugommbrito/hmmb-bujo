@@ -13,6 +13,17 @@ import { expect, type Locator, type Page } from '@playwright/test'
 
 // ─── Locators do chrome ──────────────────────────────────────────────────────
 
+/**
+ * Navega pelo item de menu com nome acessível `destination` (sidebar/bottom
+ * nav) e espera a superfície de destino aparecer (`<main aria-label>`).
+ * Promovido na Story 14.5 — a mesma função existia DUPLICADA em
+ * `weekly-monthly-cycle.spec.ts` (:68-71) e `ritual-sources.spec.ts` (:132-135).
+ */
+export async function navigate(page: Page, destination: string): Promise<void> {
+  await page.getByRole('button', { name: destination }).click()
+  await expect(page.getByLabel(destination)).toBeVisible()
+}
+
 /** A nav principal (sidebar de wide/medium/tablet), onde vive a âncora de captura. */
 export function mainNav(page: Page): Locator {
   return page.getByRole('navigation', { name: 'Navegação principal' })
@@ -95,4 +106,21 @@ export async function waitForSheetSettled(page: Page): Promise<void> {
   await expect
     .poll(async () => computed(sheetPaper(page), 'transform'))
     .toMatch(/^(none|matrix\(1, 0, 0, 1, 0, 0\))$/)
+}
+
+/**
+ * Espera o Fade de entrada de um `<Dialog>` (MUI) ASSENTAR. `toBeVisible()`
+ * resolve assim que o elemento entra no DOM, muito antes da opacidade do
+ * `.MuiDialog-container` (onde o `Fade` injeta `style.opacity`, NÃO no
+ * `.MuiDialog-paper`) chegar a 1 — qualquer `analyze()` do axe tirado antes
+ * disso mede o card translúcido em transição e acusa `color-contrast` falso
+ * (achado real da Story 14.5, QA e2e: o `TaskDetailCard` some quase por
+ * completo se medido a ~14ms da abertura). Mesmo padrão de `waitForSheetSettled`.
+ */
+export async function waitForDialogSettled(page: Page): Promise<void> {
+  await expect
+    .poll(async () =>
+      page.locator('.MuiDialog-container').evaluate((el) => getComputedStyle(el).opacity),
+    )
+    .toBe('1')
 }

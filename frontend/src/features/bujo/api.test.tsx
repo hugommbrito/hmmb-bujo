@@ -32,17 +32,31 @@ import {
   useUpdateRecurringTemplateMutation,
   usePlaceRecurringTemplateMutation,
   useArchiveQuery,
+  useWeeklyCycleReadinessQuery,
+  useWeeklyCycleActionMutation,
+  useMonthlyInWeekSourceQuery,
+  useWeeklyRecurringSourceQuery,
+  usePreviousWeeklySourceQuery,
+  usePendingDailiesSourceQuery,
+  useWeeklyDensityQuery,
+  useRitualDecisionMutation,
 } from './api'
 import type {
   ArchiveEntry,
+  BlockingTaskSource,
   CatchUpQueue,
+  DensityResponse,
   FutureLogMonthGroup,
   Log,
   MigrationQueue,
   MonthlyLog,
   MonthlyReviewQueue,
+  PendingDailiesSource,
   RecurringTaskTemplate,
+  TaskSource,
+  WeeklyCycleReadiness,
   WeeklyLog,
+  WeeklyRecurringSource,
   WeeklyReviewQueue,
 } from './types'
 
@@ -453,6 +467,8 @@ describe('useUpdateTaskMutation (AC2)', () => {
 })
 
 const WEEKLY_LOG: WeeklyLog = {
+  status: null,
+  planningCompletedAt: null,
   weekStart: '2026-07-13',
   days: [
     { date: '2026-07-13', tasks: [] },
@@ -468,6 +484,8 @@ const WEEKLY_LOG: WeeklyLog = {
 }
 
 const MONTHLY_LOG: MonthlyLog = {
+  status: null,
+  planningCompletedAt: null,
   monthFirst: '2026-07-01',
   tasks: [],
   closed: false,
@@ -532,6 +550,15 @@ describe('useMonthlyLogQuery (AC2)', () => {
     expect(mockGet).toHaveBeenCalledWith('/api/bujo/logs/monthly/', {
       params: { month_first: '2026-07-01' },
     })
+  })
+
+  it('enabled: false NÃO consulta (Story 14.5, Task 8 — "Monthly ampliado" só sob seleção)', async () => {
+    const { wrapper } = makeWrapper()
+
+    renderHook(() => useMonthlyLogQuery('2026-07-01', { enabled: false }), { wrapper })
+
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(mockGet).not.toHaveBeenCalled()
   })
 })
 
@@ -600,7 +627,11 @@ describe('useCreateWeeklyTaskMutation (Story 11.5, AC1)', () => {
       title: 'Nova tarefa',
       scheduledDate: '2026-07-14',
     })
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.bujo.weeklyLog('2026-07-13') })
+    // Por PREFIXO (Story 14.5, Task 12 — gap real): a chave exata
+    // `keys.bujo.weeklyLog('2026-07-13')` nunca bate com a view sem
+    // navegação explícita, que usa o sentinel 'current' — invalidar por
+    // prefixo alcança as duas.
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'weeklyLog'] })
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'taskDensity'] })
   })
 })
@@ -1072,5 +1103,277 @@ describe('useArchiveQuery (AC2)', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
     expect(result.current.data).toEqual(ARCHIVE_ENTRIES)
     expect(mockGet).toHaveBeenCalledWith('/api/bujo/archive/')
+  })
+})
+
+// =============================================================================
+// Épico 14 (Story 14.5) — ciclo, fontes do ritual e densidade real
+// =============================================================================
+
+const READINESS: WeeklyCycleReadiness = {
+  active: null,
+  planning: null,
+  start: null,
+  finalize: null,
+}
+
+describe('useWeeklyCycleReadinessQuery (Story 14.5, AC4)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+  })
+
+  it('busca a prontidão do ciclo sem nenhum param (o alvo é sempre do servidor)', async () => {
+    mockGet.mockResolvedValueOnce({ data: READINESS })
+    const { wrapper } = makeWrapper()
+
+    const { result } = renderHook(() => useWeeklyCycleReadinessQuery(), { wrapper })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data).toEqual(READINESS)
+    expect(mockGet).toHaveBeenCalledWith('/api/bujo/logs/weekly/cycle/')
+  })
+})
+
+describe('useWeeklyCycleActionMutation (Story 14.5, AC4/AC5)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+  })
+
+  it('posta a ação e invalida os 5 prefixos do ritual (sem otimismo)', async () => {
+    const { qc, wrapper } = makeWrapper()
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+    mockPost.mockResolvedValueOnce({
+      data: { status: 'planning', planningCompletedAt: null, weekStart: '2026-07-27' },
+    })
+
+    const { result } = renderHook(() => useWeeklyCycleActionMutation(), { wrapper })
+    result.current.mutate({ action: 'open_planning_target', weekStart: '2026-07-27' })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(mockPost).toHaveBeenCalledWith('/api/bujo/logs/weekly/cycle/', {
+      action: 'open_planning_target',
+      weekStart: '2026-07-27',
+    })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'weeklyLog'] })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.bujo.weeklyCycle() })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'ritualWeeklySource'] })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'ritualWeeklyDensity'] })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'taskDensity'] })
+  })
+})
+
+const MONTHLY_IN_WEEK_SOURCE: TaskSource = {
+  sourceId: 'monthly-in-week',
+  blocking: false,
+  countsTowardProgress: true,
+  eligibleCount: 0,
+  pendingDecisionCount: 0,
+  reviewed: true,
+  items: [],
+}
+
+describe('useMonthlyInWeekSourceQuery (Story 14.5, AC5)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+  })
+
+  it('busca a fonte com week_start em snake_case e chave escopada por fonte+semana', async () => {
+    mockGet.mockResolvedValueOnce({ data: MONTHLY_IN_WEEK_SOURCE })
+    const { wrapper } = makeWrapper()
+
+    const { result } = renderHook(() => useMonthlyInWeekSourceQuery('2026-07-20'), { wrapper })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data).toEqual(MONTHLY_IN_WEEK_SOURCE)
+    expect(mockGet).toHaveBeenCalledWith('/api/bujo/rituals/weekly/sources/monthly-in-week/', {
+      params: { week_start: '2026-07-20' },
+    })
+  })
+
+  it('enabled: false NÃO consulta (a página do ritual guarda até o weekStart do alvo existir)', async () => {
+    const { wrapper } = makeWrapper()
+    renderHook(() => useMonthlyInWeekSourceQuery('2026-07-20', { enabled: false }), { wrapper })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(mockGet).not.toHaveBeenCalled()
+  })
+})
+
+const WEEKLY_RECURRING_SOURCE: WeeklyRecurringSource = {
+  sourceId: 'recurring',
+  blocking: false,
+  countsTowardProgress: true,
+  eligibleCount: 0,
+  pendingDecisionCount: 0,
+  reviewed: true,
+  items: [],
+  alreadyPlaced: { countsTowardProgress: false, items: [] },
+}
+
+describe('useWeeklyRecurringSourceQuery (Story 14.5, AC5)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+  })
+
+  it('busca a fonte de recorrentes com week_start em snake_case', async () => {
+    mockGet.mockResolvedValueOnce({ data: WEEKLY_RECURRING_SOURCE })
+    const { wrapper } = makeWrapper()
+
+    const { result } = renderHook(() => useWeeklyRecurringSourceQuery('2026-07-20'), { wrapper })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data).toEqual(WEEKLY_RECURRING_SOURCE)
+    expect(mockGet).toHaveBeenCalledWith('/api/bujo/rituals/weekly/sources/recurring/', {
+      params: { week_start: '2026-07-20' },
+    })
+  })
+})
+
+const PREVIOUS_WEEKLY_SOURCE: BlockingTaskSource = {
+  sourceId: 'previous-weekly',
+  blocking: true,
+  countsTowardProgress: true,
+  eligibleCount: 0,
+  pendingDecisionCount: 0,
+  reviewed: true,
+  items: [],
+  readyToFinalize: true,
+  previousPeriodStart: '2026-07-13',
+}
+
+describe('usePreviousWeeklySourceQuery (Story 14.5, AC5)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+  })
+
+  it('busca a fonte bloqueante, incluindo previousPeriodStart (AC4)', async () => {
+    mockGet.mockResolvedValueOnce({ data: PREVIOUS_WEEKLY_SOURCE })
+    const { wrapper } = makeWrapper()
+
+    const { result } = renderHook(() => usePreviousWeeklySourceQuery('2026-07-20'), { wrapper })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data?.previousPeriodStart).toBe('2026-07-13')
+    expect(mockGet).toHaveBeenCalledWith('/api/bujo/rituals/weekly/sources/previous-weekly/', {
+      params: { week_start: '2026-07-20' },
+    })
+  })
+})
+
+const PENDING_DAILIES_SOURCE: PendingDailiesSource = {
+  sourceId: 'pending-dailies',
+  blocking: false,
+  countsTowardProgress: true,
+  eligibleCount: 0,
+  pendingDecisionCount: 0,
+  reviewed: true,
+  groups: [],
+}
+
+describe('usePendingDailiesSourceQuery (Story 14.5, AC5)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+  })
+
+  it('busca a fonte com groups (não items)', async () => {
+    mockGet.mockResolvedValueOnce({ data: PENDING_DAILIES_SOURCE })
+    const { wrapper } = makeWrapper()
+
+    const { result } = renderHook(() => usePendingDailiesSourceQuery('2026-07-20'), { wrapper })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data).toEqual(PENDING_DAILIES_SOURCE)
+    expect('items' in (result.current.data ?? {})).toBe(false)
+    expect(mockGet).toHaveBeenCalledWith('/api/bujo/rituals/weekly/sources/pending-dailies/', {
+      params: { week_start: '2026-07-20' },
+    })
+  })
+})
+
+const WEEKLY_DENSITY: DensityResponse = {
+  days: Array.from({ length: 7 }, (_, index) => ({
+    date: `2026-07-${20 + index}`,
+    total: 0,
+    byStatus: {
+      pending: 0,
+      started: 0,
+      completed: 0,
+      cancelled: 0,
+      migrated: 0,
+      postponed: 0,
+    },
+  })),
+  undated: {
+    total: 0,
+    byStatus: { pending: 0, started: 0, completed: 0, cancelled: 0, migrated: 0, postponed: 0 },
+  },
+  total: 0,
+}
+
+describe('useWeeklyDensityQuery (Story 14.5, AC6)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+  })
+
+  it('busca a densidade real (8 faixas: 7 dias + undated)', async () => {
+    mockGet.mockResolvedValueOnce({ data: WEEKLY_DENSITY })
+    const { wrapper } = makeWrapper()
+
+    const { result } = renderHook(() => useWeeklyDensityQuery('2026-07-20'), { wrapper })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data).toEqual(WEEKLY_DENSITY)
+    expect(mockGet).toHaveBeenCalledWith('/api/bujo/rituals/weekly/density/', {
+      params: { week_start: '2026-07-20' },
+    })
+  })
+})
+
+describe('useRitualDecisionMutation (Story 14.5, AC5)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+  })
+
+  it('posta a decisão (corpo em camelCase) e invalida os 5 prefixos do ritual', async () => {
+    const { qc, wrapper } = makeWrapper()
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+    mockPost.mockResolvedValueOnce({
+      data: {
+        id: 'decision-1',
+        decision: 'keep',
+        weekStart: '2026-07-20',
+        monthFirst: null,
+        taskId: 'task-1',
+        recurringTemplateId: null,
+        createdAt: '2026-07-18T12:00:00Z',
+        updatedAt: '2026-07-18T12:00:00Z',
+      },
+    })
+
+    const { result } = renderHook(() => useRitualDecisionMutation(), { wrapper })
+    result.current.mutate({ decision: 'keep', weekStart: '2026-07-20', taskId: 'task-1' })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(mockPost).toHaveBeenCalledWith('/api/bujo/ritual-decisions/', {
+      decision: 'keep',
+      weekStart: '2026-07-20',
+      taskId: 'task-1',
+    })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'weeklyLog'] })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.bujo.weeklyCycle() })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'ritualWeeklySource'] })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'ritualWeeklyDensity'] })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'taskDensity'] })
+  })
+
+  it('falha preserva o item (a mutação não muda cache nenhum otimisticamente)', async () => {
+    const { qc, wrapper } = makeWrapper()
+    mockPost.mockRejectedValueOnce(new Error('409'))
+
+    const { result } = renderHook(() => useRitualDecisionMutation(), { wrapper })
+    result.current.mutate({ decision: 'keep', weekStart: '2026-07-20', taskId: 'task-1' })
+
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    // Sem otimismo: nenhuma entrada de cache foi escrita para esta mutação.
+    expect(qc.getQueryData(keys.bujo.ritualWeeklySource('monthly-in-week', '2026-07-20'))).toBeUndefined()
   })
 })

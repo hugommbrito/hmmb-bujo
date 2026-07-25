@@ -1,6 +1,7 @@
 import { test, expect, E2E_PASSWORD } from './fixtures'
 import { countRitualContainers } from './countRitualContainers'
-import type { APIRequestContext, Page } from '@playwright/test'
+import { navigate } from './shellHelpers'
+import type { APIRequestContext } from '@playwright/test'
 
 // Cobre a Story 14.2 (fontes dos rituais, decisões-snapshot e densidade real)
 // contra o backend REAL da branch Neon `e2e`, onde a migration
@@ -127,11 +128,6 @@ async function ritualApi(request: APIRequestContext, email: string) {
       return request.post(`${API}/api/bujo/recurring-templates/`, { headers, data })
     },
   }
-}
-
-async function navigate(page: Page, destination: string) {
-  await page.getByRole('button', { name: destination }).click()
-  await expect(page.getByLabel(destination)).toBeVisible()
 }
 
 function addDays(iso: string, days: number): string {

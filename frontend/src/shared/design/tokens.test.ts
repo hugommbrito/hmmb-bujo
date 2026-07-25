@@ -3,20 +3,26 @@ import { describe, it, expect } from 'vitest'
 import {
   appShell,
   breakpoints,
+  chip,
   colorModes,
   colorRoles,
   colorTokenName,
+  domainIcon,
   focusRing,
   legacySeam,
   mediaQueries,
   mineralDark,
   mineralLight,
   palettes,
+  panel,
   radius,
   resolvePalette,
   shellCssVariables,
   spacing,
+  taskRow,
   typography,
+  weeklyBoard,
+  weeklyPlanning,
 } from './tokens'
 
 describe('tokens — estruturais do App Shell', () => {
@@ -93,6 +99,72 @@ describe('tokens — estruturais do App Shell', () => {
     expect(legacySeam.background).toBe('info-soft')
     expect(legacySeam.foreground).toBe('info')
     expect(legacySeam.borderLeftWidth).toBe('3px')
+  })
+})
+
+describe('tokens — componentes do Épico 14 (Story 14.5)', () => {
+  it('test_task_row_bate_com_o_design_md', () => {
+    expect(taskRow.minHeightPointer).toBe('36px')
+    expect(taskRow.minHeightTouch).toBe('48px')
+    expect(taskRow.padding).toBe('8px 12px')
+    expect(taskRow.radius).toBe(radius.sm)
+    expect(taskRow.hover).toBe('surface-subtle')
+    expect(taskRow.categoryBorderWidth).toBe('3px')
+    expect(taskRow.categoryBorderFallback).toBe('border')
+    expect(taskRow.description).toBe(typography.meta)
+    expect(taskRow.statusIconSize).toBe('20px')
+  })
+
+  it('test_weekly_board_bate_com_o_design_md', () => {
+    expect(weeklyBoard.gap).toBe('8px')
+    expect(weeklyBoard.weekdayMinWidth).toBe('240px')
+    expect(weeklyBoard.unscheduledMinWidth).toBe('235px')
+    expect(weeklyBoard.dayScroll).toBe('internal')
+    expect(weeklyBoard.terminalOpacity).toBe(0.58)
+  })
+
+  it('test_weekly_planning_bate_com_o_design_md', () => {
+    expect(weeklyPlanning.sourceRail).toBe('190px')
+    expect(weeklyPlanning.contextRail).toBe('315px')
+    expect(weeklyPlanning.densityPosition).toBe('sticky')
+  })
+
+  it('test_panel_bate_com_o_design_md', () => {
+    expect(panel.background).toBe('surface')
+    expect(panel.borderWidth).toBe('1px')
+    expect(panel.borderColor).toBe('border')
+    expect(panel.radius).toBe(radius.md)
+    expect(panel.padding).toBe(spacing[4])
+  })
+
+  it('test_chip_bate_com_o_design_md', () => {
+    expect(chip.height).toBe('24px')
+    expect(chip.radius).toBe(radius.sm)
+    expect(chip.typography).toBe(typography.label)
+  })
+
+  it('test_domain_icon_bate_com_o_design_md', () => {
+    expect(domainIcon.library).toBe('@phosphor-icons/react')
+    expect(domainIcon.weight).toBe('regular')
+    expect(domainIcon.sizeCompact).toBe('18px')
+    expect(domainIcon.sizeDefault).toBe('20px')
+    expect(domainIcon.color).toBe('currentColor')
+  })
+
+  it('test_cada_token_de_componente_novo_aparece_em_shellCssVariables', () => {
+    const vars = shellCssVariables('light')
+    expect(vars['--ds-task-row-min-height-pointer']).toBe(taskRow.minHeightPointer)
+    expect(vars['--ds-task-row-min-height-touch']).toBe(taskRow.minHeightTouch)
+    expect(vars['--ds-task-row-category-border-width']).toBe(taskRow.categoryBorderWidth)
+    expect(vars['--ds-task-row-status-icon-size']).toBe(taskRow.statusIconSize)
+    expect(vars['--ds-task-row-terminal-opacity']).toBe(String(weeklyBoard.terminalOpacity))
+    expect(vars['--ds-weekly-board-gap']).toBe(weeklyBoard.gap)
+    expect(vars['--ds-weekly-board-weekday-min-width']).toBe(weeklyBoard.weekdayMinWidth)
+    expect(vars['--ds-weekly-board-unscheduled-min-width']).toBe(weeklyBoard.unscheduledMinWidth)
+    expect(vars['--ds-weekly-planning-source-rail']).toBe(weeklyPlanning.sourceRail)
+    expect(vars['--ds-weekly-planning-context-rail']).toBe(weeklyPlanning.contextRail)
+    expect(vars['--ds-panel-padding']).toBe(panel.padding)
+    expect(vars['--ds-chip-height']).toBe(chip.height)
   })
 })
 

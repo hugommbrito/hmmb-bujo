@@ -46,7 +46,9 @@ from bujo.serializers import (
     TaskUpdateSerializer,
     UnifiedMigrationQueueSerializer,
     WeeklyCycleActionSerializer,
+    WeeklyCycleReadinessSerializer,
     WeeklyCycleSerializer,
+    WeeklyLogQuerySerializer,
     WeeklyLogSerializer,
     WeeklyRecurringSourceSerializer,
     WeeklyReviewQueueSerializer,
@@ -64,6 +66,7 @@ from bujo.services.cycles import (
     open_weekly_planning_target,
     start_monthly,
     start_weekly,
+    weekly_cycle_readiness,
 )
 from bujo.services.density import compute_month_density, compute_week_density
 from bujo.services.logs import (
@@ -304,7 +307,11 @@ class RecurringTaskTemplatePlaceView(APIView):
 
 
 class WeeklyLogView(APIView):
-    @extend_schema(responses=WeeklyLogSerializer)
+    # `week_start` era omitido do OpenAPI (`query?: never` no tipo gerado) —
+    # `WeeklyLogQuerySerializer` só DECLARA o parâmetro (opcional, normalizado
+    # em silêncio); a validação/normalização real permanece manual abaixo, sem
+    # mudança de comportamento (Story 14.5, AC4).
+    @extend_schema(parameters=[WeeklyLogQuerySerializer], responses=WeeklyLogSerializer)
     def get(self, request):
         week_start_param = request.query_params.get("week_start")
         if week_start_param:
@@ -432,7 +439,17 @@ class WeeklyCycleView(APIView):
 
     Erros de gate e de matriz sobem como `InvalidTransition`/`CycleTargetConflict`
     (ambos `DomainError`) e viram 409 pelo handler central; nada é tratado aqui.
+
+    `get` é NOVO (Story 14.5, AC4) — mesma rota, método novo, sem rota nova:
+    leitura pura e agregada de prontidão do ciclo (qual semana está `active`/
+    `planning`, quais gates de `start`/`finalize` faltam). Zero regra de
+    domínio na view: `weekly_cycle_readiness` decide tudo.
     """
+
+    @extend_schema(responses=WeeklyCycleReadinessSerializer)
+    def get(self, request):
+        readiness = weekly_cycle_readiness(user=request.user)
+        return Response(WeeklyCycleReadinessSerializer(readiness).data)
 
     @extend_schema(request=WeeklyCycleActionSerializer, responses=WeeklyCycleSerializer)
     def post(self, request):

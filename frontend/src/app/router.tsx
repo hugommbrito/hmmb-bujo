@@ -11,6 +11,8 @@ import { resolveShellRoute } from './layout/shell/shellRouting'
 import { collections } from './collections/registry'
 import { DailyPage } from '../pages/daily/DailyPage'
 import { WeeklyPage } from '../pages/planner/WeeklyPage'
+import { WeeklyBoardPage } from '../pages/planner/WeeklyBoardPage'
+import { WeeklyPlanningPage } from '../pages/planner/WeeklyPlanningPage'
 import { MonthlyPage } from '../pages/planner/MonthlyPage'
 import { FuturePage } from '../pages/planner/FuturePage'
 import { RecurringPage } from '../pages/planner/RecurringPage'
@@ -103,9 +105,21 @@ export const routeDefinitions: RouteObject[] = [
       { path: 'today', element: <DailyPage />, handle: { title: 'Hoje' } },
       { path: 'daily/:date', element: <DailyPage />, handle: { title: 'Daily Log' } },
       {
+        // Story 14.5: `WeeklyPage` legada continua servindo só
+        // `archive/weekly/:weekStart` (a variante de Arquivo é da 14.10) —
+        // `planner/week` passa a montar o Weekly Board do sistema novo.
         path: 'planner/week',
-        element: <WeeklyPage />,
+        element: <WeeklyBoardPage />,
         handle: { title: 'Esta Semana' },
+      },
+      {
+        // Segmentos diferentes de `planner/week` ⇒ precisa de entrada própria
+        // em `shellRouting.ts` (matchesPattern exige igualdade de contagem de
+        // segmentos). A sidebar continua marcando "Esta Semana" como ativa
+        // (isDestinationActive é por prefixo) — correto, não regressão.
+        path: 'planner/week/planning',
+        element: <WeeklyPlanningPage />,
+        handle: { title: 'Planejar a semana' },
       },
       {
         path: 'planner/month',

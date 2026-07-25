@@ -2770,6 +2770,96 @@ def test_post_weekly_cycle_acoes_nao_abertura_exigem_week_start(auth_client, act
 
 
 @pytest.mark.django_db
+def test_get_weekly_cycle_sem_ciclo_nenhum_devolve_os_quatro_blocos_nulos(auth_client):
+    response = auth_client.get(WEEKLY_CYCLE_URL)
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "active": None,
+        "planning": None,
+        "start": None,
+        "finalize": None,
+    }
+
+
+@pytest.mark.django_db
+def test_get_weekly_cycle_devolve_os_quatro_blocos_no_fio_camelcase(auth_client, user):
+    """Story 14.5, AC4: forma exata da projeção — os 3 gates de `start`, os 2 de
+    `finalize`, e nenhuma escrita (o endpoint é `GET`, mas provado no fio: repetir
+    a chamada devolve exatamente o mesmo corpo)."""
+    semana = week_start_of(today_for(user))
+    proxima = semana + timedelta(days=7)
+    auth_client.post(
+        WEEKLY_CYCLE_URL,
+        {"action": "open_planning_target", "weekStart": semana.isoformat()},
+        format="json",
+    )
+    auth_client.post(
+        WEEKLY_CYCLE_URL,
+        {"action": "complete_planning", "weekStart": semana.isoformat()},
+        format="json",
+    )
+    auth_client.post(
+        WEEKLY_CYCLE_URL, {"action": "start", "weekStart": semana.isoformat()}, format="json"
+    )
+    auth_client.post(
+        WEEKLY_CYCLE_URL,
+        {"action": "open_planning_target", "weekStart": proxima.isoformat()},
+        format="json",
+    )
+
+    corpo = auth_client.get(WEEKLY_CYCLE_URL).json()
+
+    assert corpo["active"]["weekStart"] == semana.isoformat()
+    assert corpo["active"]["status"] == "active"
+    assert corpo["planning"]["weekStart"] == proxima.isoformat()
+    assert corpo["planning"]["status"] == "planning"
+    assert corpo["planning"]["planningCompletedAt"] is None
+    assert corpo["start"] == {
+        "allowed": False,
+        "target": proxima.isoformat(),
+        "gates": {
+            "dateReached": False,
+            "planningCompleted": False,
+            # `semana` (a corrente, `active`) É o anterior operacional de
+            # `proxima` e ainda não está finalizada.
+            "previousFinalized": False,
+        },
+    }
+    assert corpo["finalize"] == {
+        "allowed": True,
+        "target": semana.isoformat(),
+        "gates": {"noOpenTasks": True, "nextPlanningExists": True},
+    }
+    # Repetir a leitura devolve exatamente o mesmo corpo — nenhuma escrita no GET.
+    assert auth_client.get(WEEKLY_CYCLE_URL).json() == corpo
+
+
+@pytest.mark.django_db
+def test_get_weekly_cycle_isolamento_entre_tenants_com_bearer_real(user, other_user):
+    with tenant_context(other_user):
+        semana = week_start_of(today_for(other_user))
+        WeeklyLogFactory(user=other_user, week_start=semana, status=WeeklyLog.Status.ACTIVE)
+
+    client = APIClient()
+    client.credentials(HTTP_AUTHORIZATION=f"Bearer {AccessToken.for_user(user)}")
+
+    assert client.get(WEEKLY_CYCLE_URL).json() == {
+        "active": None,
+        "planning": None,
+        "start": None,
+        "finalize": None,
+    }
+
+
+@pytest.mark.django_db
+def test_get_weekly_cycle_sem_autenticacao_retorna_401():
+    client = APIClient()
+
+    assert client.get(WEEKLY_CYCLE_URL).status_code == 401
+
+
+@pytest.mark.django_db
 def test_post_monthly_cycle_abrir_planejamento_devolve_janela_regular(auth_client, user):
     mes = today_for(user).replace(day=1)
     janela_inicio = week_start_of(mes)
@@ -3481,6 +3571,35 @@ def test_fontes_bloqueantes_no_fio_expoem_ready_to_finalize(auth_client, user):
         assert corpo["blocking"] is True, param
         assert corpo["readyToFinalize"] is False, param
         assert corpo["sourceId"] == f"previous-{param}", param
+        # Story 14.5, AC4: campo aditivo, `null` sem anterior operacional.
+        assert corpo["previousPeriodStart"] is None, param
+
+
+@pytest.mark.django_db
+def test_fontes_bloqueantes_no_fio_expoem_previous_period_start(auth_client, user):
+    """Story 14.5, AC4: `previousPeriodStart` no fio, camelCase, com o valor real
+    do anterior operacional (não `null`) quando ele existe."""
+    with tenant_context(user):
+        WeeklyLogFactory(
+            user=user, week_start=_R_SEMANA + timedelta(weeks=1), status=WeeklyLog.Status.PLANNING
+        )
+        WeeklyLogFactory(user=user, week_start=_R_SEMANA, status=WeeklyLog.Status.ACTIVE)
+        MonthlyLogFactory(
+            user=user, month_first=add_months(_R_MES, 1), status=MonthlyLog.Status.PLANNING
+        )
+        MonthlyLogFactory(user=user, month_first=_R_MES, status=MonthlyLog.Status.ACTIVE)
+
+    semana_alvo = (_R_SEMANA + timedelta(weeks=1)).isoformat()
+    semanal = auth_client.get(
+        f"/api/bujo/rituals/weekly/sources/previous-weekly/?week_start={semana_alvo}"
+    ).json()
+    mes_alvo = add_months(_R_MES, 1).isoformat()
+    mensal = auth_client.get(
+        f"/api/bujo/rituals/monthly/sources/previous-monthly/?month_first={mes_alvo}"
+    ).json()
+
+    assert semanal["previousPeriodStart"] == _R_SEMANA.isoformat()
+    assert mensal["previousPeriodStart"] == _R_MES.isoformat()
 
 
 @pytest.mark.django_db

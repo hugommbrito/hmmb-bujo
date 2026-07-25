@@ -277,6 +277,12 @@ paths:
   /api/bujo/logs/weekly/:
     get:
       operationId: bujo_logs_weekly_retrieve
+      parameters:
+      - in: query
+        name: week_start
+        schema:
+          type: string
+          format: date
       tags:
       - bujo
       security:
@@ -308,6 +314,29 @@ paths:
                 $ref: '#/components/schemas/Task'
           description: ''
   /api/bujo/logs/weekly/cycle/:
+    get:
+      operationId: bujo_logs_weekly_cycle_retrieve
+      description: |-
+        Ações do ciclo semanal (Story 14.1, AC8) — espelha `tasks/<pk>/transition/`.
+
+        Erros de gate e de matriz sobem como `InvalidTransition`/`CycleTargetConflict`
+        (ambos `DomainError`) e viram 409 pelo handler central; nada é tratado aqui.
+
+        `get` é NOVO (Story 14.5, AC4) — mesma rota, método novo, sem rota nova:
+        leitura pura e agregada de prontidão do ciclo (qual semana está `active`/
+        `planning`, quais gates de `start`/`finalize` faltam). Zero regra de
+        domínio na view: `weekly_cycle_readiness` decide tudo.
+      tags:
+      - bujo
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeeklyCycleReadiness'
+          description: ''
     post:
       operationId: bujo_logs_weekly_cycle_create
       description: |-
@@ -315,6 +344,11 @@ paths:
 
         Erros de gate e de matriz sobem como `InvalidTransition`/`CycleTargetConflict`
         (ambos `DomainError`) e viram 409 pelo handler central; nada é tratado aqui.
+
+        `get` é NOVO (Story 14.5, AC4) — mesma rota, método novo, sem rota nova:
+        leitura pura e agregada de prontidão do ciclo (qual semana está `active`/
+        `planning`, quais gates de `start`/`finalize` faltam). Zero regra de
+        domínio na view: `weekly_cycle_readiness` decide tudo.
       tags:
       - bujo
       requestBody:
@@ -2083,7 +2117,10 @@ components:
       - timeBlockId
     BlockingTaskSource:
       type: object
-      description: '`previous-weekly`/`previous-monthly`: acrescentam `readyToFinalize`.'
+      description: |-
+        `previous-weekly`/`previous-monthly`: acrescentam `readyToFinalize` e,
+        aditivamente (Story 14.5, AC4), `previousPeriodStart` — a chave de período
+        do log anterior, nome neutro porque serve as duas fontes.
       properties:
         sourceId:
           type: string
@@ -2103,12 +2140,17 @@ components:
             $ref: '#/components/schemas/RitualTaskItem'
         readyToFinalize:
           type: boolean
+        previousPeriodStart:
+          type: string
+          format: date
+          nullable: true
       required:
       - blocking
       - countsTowardProgress
       - eligibleCount
       - items
       - pendingDecisionCount
+      - previousPeriodStart
       - readyToFinalize
       - reviewed
       - sourceId
@@ -4605,6 +4647,35 @@ components:
         * `start` - start
         * `finalize` - finalize
         * `cancel_planning_target` - cancel_planning_target
+    WeeklyCycleReadiness:
+      type: object
+      description: |-
+        Resposta de `GET /api/bujo/logs/weekly/cycle/` (AC4) — os quatro blocos,
+        `null` nos inexistentes. Cada booleano REUSA o predicado do serviço de
+        transição (ver `services/cycles.weekly_cycle_readiness`); este serializer
+        só projeta, nunca decide.
+      properties:
+        active:
+          allOf:
+          - $ref: '#/components/schemas/_WeeklyCycleSnapshot'
+          nullable: true
+        planning:
+          allOf:
+          - $ref: '#/components/schemas/_WeeklyCycleSnapshot'
+          nullable: true
+        start:
+          allOf:
+          - $ref: '#/components/schemas/WeeklyStartReadiness'
+          nullable: true
+        finalize:
+          allOf:
+          - $ref: '#/components/schemas/WeeklyFinalizeReadiness'
+          nullable: true
+      required:
+      - active
+      - finalize
+      - planning
+      - start
     WeeklyDay:
       type: object
       properties:
@@ -4618,6 +4689,30 @@ components:
       required:
       - date
       - tasks
+    WeeklyFinalizeGates:
+      type: object
+      properties:
+        noOpenTasks:
+          type: boolean
+        nextPlanningExists:
+          type: boolean
+      required:
+      - nextPlanningExists
+      - noOpenTasks
+    WeeklyFinalizeReadiness:
+      type: object
+      properties:
+        allowed:
+          type: boolean
+        target:
+          type: string
+          format: date
+        gates:
+          $ref: '#/components/schemas/WeeklyFinalizeGates'
+      required:
+      - allowed
+      - gates
+      - target
     WeeklyLog:
       type: object
       properties:
@@ -4691,6 +4786,35 @@ components:
       required:
       - tasks
       - weekStart
+    WeeklyStartGates:
+      type: object
+      description: Os TRÊS gates de `start` — hoje indistinguíveis no `detail` do
+        409.
+      properties:
+        dateReached:
+          type: boolean
+        planningCompleted:
+          type: boolean
+        previousFinalized:
+          type: boolean
+      required:
+      - dateReached
+      - planningCompleted
+      - previousFinalized
+    WeeklyStartReadiness:
+      type: object
+      properties:
+        allowed:
+          type: boolean
+        target:
+          type: string
+          format: date
+        gates:
+          $ref: '#/components/schemas/WeeklyStartGates'
+      required:
+      - allowed
+      - gates
+      - target
     WeeklyTaskCreate:
       type: object
       properties:
@@ -4735,6 +4859,23 @@ components:
       required:
       - countsTowardProgress
       - items
+    _WeeklyCycleSnapshot:
+      type: object
+      description: Projeção mínima de um `WeeklyLog` operacional (`active` ou `planning`).
+      properties:
+        weekStart:
+          type: string
+          format: date
+        status:
+          type: string
+        planningCompletedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - planningCompletedAt
+      - status
+      - weekStart
   securitySchemes:
     jwtAuth:
       type: http

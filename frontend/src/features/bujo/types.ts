@@ -18,3 +18,40 @@ export type RecurrenceGroup = components['schemas']['RecurrenceGroupEnum']
 export type TaskDensityEntry = components['schemas']['TaskDensityEntry']
 export type TaskDensityResponse = components['schemas']['TaskDensityResponse']
 export type ArchiveEntry = components['schemas']['ArchiveEntry']
+
+// --- Épico 14 (Story 14.5): ciclo, rituais, decisões e densidade real --------
+export type WeeklyCycle = components['schemas']['WeeklyCycle']
+export type WeeklyCycleAction = components['schemas']['WeeklyCycleAction']
+export type WeeklyCycleReadiness = components['schemas']['WeeklyCycleReadiness']
+export type TaskSource = components['schemas']['TaskSource']
+export type BlockingTaskSource = components['schemas']['BlockingTaskSource']
+export type WeeklyRecurringSource = components['schemas']['WeeklyRecurringSource']
+export type PendingDailiesSource = components['schemas']['PendingDailiesSource']
+export type RitualTaskItem = components['schemas']['RitualTaskItem']
+export type RitualTemplateItem = components['schemas']['RitualTemplateItem']
+export type _TemplateBucket = components['schemas']['_TemplateBucket']
+export type DensityResponse = components['schemas']['DensityResponse']
+export type DensityDay = components['schemas']['DensityDay']
+export type DensityCell = components['schemas']['DensityCell']
+export type DensityStatusBreakdown = components['schemas']['DensityStatusBreakdown']
+export type RitualDecision = components['schemas']['RitualDecision']
+export type RitualDecisionCreate = components['schemas']['RitualDecisionCreate']
+export type DecisionEnum = components['schemas']['DecisionEnum']
+
+// Uniões que o gerador NÃO produz — `openapi-typescript` não estreita campos
+// declarados como `CharField(allow_null=True)` no backend (não `ChoiceField`),
+// então `WeeklyLog.status`/`WeeklyCycle.status` chegam como `string | null` e
+// `RitualTaskItem.decision`/`RitualTemplateItem.decision` como `string | null`.
+export type CycleStatus = 'planning' | 'active' | 'finalized' | null
+
+/** As 4 fontes do ritual semanal com endpoint próprio (`Monthly ampliado` não
+ * tem fonte dedicada — usa `GET /logs/monthly/` direto). */
+export type WeeklySourceId =
+  | 'monthly-in-week'
+  | 'recurring'
+  | 'previous-weekly'
+  | 'pending-dailies'
+
+/** Estreitamento nomeado de `DecisionEnum` para os campos `decision` de item
+ * de fonte (`string | null` no tipo gerado). */
+export type RitualDecisionKind = DecisionEnum

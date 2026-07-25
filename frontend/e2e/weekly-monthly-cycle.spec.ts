@@ -1,6 +1,7 @@
 import { test, expect, E2E_PASSWORD } from './fixtures'
 import { seedFinalizedEmptyWeekly } from './seedFinalizedEmptyCycle'
-import type { APIRequestContext, Page } from '@playwright/test'
+import { navigate } from './shellHelpers'
+import type { APIRequestContext } from '@playwright/test'
 
 // Cobre a Story 14.1 (ciclos de vida de Weekly e Monthly) contra o backend REAL
 // da branch Neon `e2e`, onde a migration `0007_weekly_monthly_cycle_status` já
@@ -63,11 +64,6 @@ async function cycleApi(request: APIRequestContext, email: string) {
       })
     },
   }
-}
-
-async function navigate(page: Page, destination: string) {
-  await page.getByRole('button', { name: destination }).click()
-  await expect(page.getByLabel(destination)).toBeVisible()
 }
 
 test('navegar o app real não cria nem altera ciclo operacional (AC4)', async ({
@@ -190,12 +186,17 @@ test('ciclo finalized VAZIO entra no Arquivo e a semana fica readonly (AC6)', as
   await expect(page.getByRole('link', { name: `Semana de ${weekStart}` })).toBeVisible()
   await expect(page.getByText('Nenhuma semana ou mês fechado ainda.')).toHaveCount(0)
 
-  // Página da semana: indicador de fechada e nenhuma affordance de escrita —
-  // mesma expectativa do ciclo fechado por conteúdo (`weekly-monthly-task-crud`),
-  // agora para um ciclo que só o estado explícito fecha.
+  // Página da semana (Weekly Board, Story 14.5): indicador "Finalizada" e
+  // nenhuma affordance de escrita — mesma expectativa do ciclo fechado por
+  // conteúdo (`weekly-monthly-task-crud`), agora para um ciclo que só o
+  // estado explícito fecha. Escopado ao `main` — sem isso, `getByLabel('Título')`
+  // resolveria para o `Título *` oculto do BrainDumpCaptureSheet, portalizado em
+  // toda rota desde a Story 13.3.
   await navigate(page, 'Esta Semana')
-  await expect(page.getByText('Fechada')).toBeVisible()
-  await expect(page.getByLabel('Adicionar tarefa à semana')).toHaveCount(0)
+  const main = page.getByRole('main', { name: 'Esta Semana' })
+  await expect(main.getByText('Finalizada')).toBeVisible()
+  await expect(main.getByLabel('Título')).toHaveCount(0)
+  await expect(main.getByRole('button', { name: 'Reordenar tarefa' })).toHaveCount(0)
 
   // E o readonly é de fato garantido pelo domínio, não só pela ausência de botão.
   const criacao = await api.createWeeklyTask(weekStart, 'Não deveria entrar')

@@ -32,6 +32,7 @@ from bujo.services.cycles import (
     open_weekly_planning_target,
     start_monthly,
     start_weekly,
+    weekly_cycle_readiness,
 )
 from bujo.services.density import compute_month_density, compute_week_density
 from bujo.services.logs import (
@@ -2424,6 +2425,220 @@ def test_ciclo_idempotencia_dos_nove_servicos(user):
         )
 
 
+# --- Story 14.5, AC4: prontidão agregada do ciclo semanal (leitura pura) -------
+@pytest.mark.django_db
+def test_readiness_sem_nenhum_ciclo_operacional_devolve_os_quatro_blocos_nulos(user):
+    with tenant_context(user):
+        assert weekly_cycle_readiness(user=user) == {
+            "active": None,
+            "planning": None,
+            "start": None,
+            "finalize": None,
+        }
+
+
+@pytest.mark.django_db
+def test_readiness_reflete_active_e_planning_com_os_tres_gates_de_start(user):
+    """Espelha o exemplo da AC4: `active` presente, `planning` presente, os três
+    gates de `start` computados — sem nenhum planejamento concluído nem semana
+    anterior finalizada, os três falham."""
+    with tenant_context(user):
+        semana = _current_week(user)
+        proxima = semana + timedelta(days=7)
+        ativo = WeeklyLogFactory(
+            user=user,
+            week_start=semana,
+            status=CycleStatus.ACTIVE,
+            planning_completed_at=cal_now(),
+        )
+        planejamento = WeeklyLogFactory(user=user, week_start=proxima, status=CycleStatus.PLANNING)
+
+        readiness = weekly_cycle_readiness(user=user)
+
+        assert readiness["active"] == {
+            "week_start": semana,
+            "status": CycleStatus.ACTIVE,
+            "planning_completed_at": ativo.planning_completed_at,
+        }
+        assert readiness["planning"] == {
+            "week_start": proxima,
+            "status": CycleStatus.PLANNING,
+            "planning_completed_at": None,
+        }
+        assert readiness["start"] == {
+            "allowed": False,
+            "target": proxima,
+            "gates": {
+                # `proxima` é uma semana futura: hoje ainda não a alcançou.
+                "date_reached": False,
+                "planning_completed": False,
+                # O `active` de HOJE é o anterior OPERACIONAL de `proxima` (é o
+                # ciclo operacional mais recente antes dela) e ainda não está
+                # `finalized` — não dá pra Iniciar a próxima antes de Finalizar
+                # a corrente.
+                "previous_finalized": False,
+            },
+        }
+        assert readiness["finalize"] == {
+            # Sem tarefa aberta e com `proxima` já em planejamento, os dois
+            # gates de `finalize` passam (seria o momento de Finalizar, ainda
+            # que `start` da PRÓXIMA semana continue bloqueado).
+            "allowed": True,
+            "target": semana,
+            "gates": {"no_open_tasks": True, "next_planning_exists": True},
+        }
+        assert planejamento.status == CycleStatus.PLANNING  # sanity: nada escreveu
+
+
+@pytest.mark.django_db
+def test_readiness_start_allowed_true_quando_os_tres_gates_passam(user):
+    with tenant_context(user):
+        semana = _current_week(user)
+        anterior = semana - timedelta(days=7)
+        WeeklyLogFactory(user=user, week_start=anterior, status=CycleStatus.FINALIZED)
+        WeeklyLogFactory(
+            user=user,
+            week_start=semana,
+            status=CycleStatus.PLANNING,
+            planning_completed_at=cal_now(),
+        )
+
+        readiness = weekly_cycle_readiness(user=user)
+
+        assert readiness["start"]["allowed"] is True
+        assert readiness["start"]["gates"] == {
+            "date_reached": True,
+            "planning_completed": True,
+            "previous_finalized": True,
+        }
+
+
+@pytest.mark.django_db
+def test_readiness_finalize_allowed_true_quando_os_dois_gates_passam(user):
+    with tenant_context(user):
+        semana = _current_week(user)
+        log = WeeklyLogFactory(user=user, week_start=semana, status=CycleStatus.ACTIVE)
+        WeeklyLogFactory(
+            user=user, week_start=semana + timedelta(days=7), status=CycleStatus.PLANNING
+        )
+
+        readiness = weekly_cycle_readiness(user=user)
+
+        assert readiness["finalize"] == {
+            "allowed": True,
+            "target": semana,
+            "gates": {"no_open_tasks": True, "next_planning_exists": True},
+        }
+        assert log.status == CycleStatus.ACTIVE  # nada escreveu por trás
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "gate_alterado,setup,esperado_start,esperado_post",
+    [
+        ("date_reached", "futuro", False, 409),
+        ("planning_completed", "sem_marco", False, 409),
+        ("previous_finalized", "anterior_nao_finalizado", False, 409),
+    ],
+)
+def test_readiness_start_e_o_gate_real_nao_podem_divergir(
+    user, gate_alterado, setup, esperado_start, esperado_post
+):
+    """AC4: 'um teste prova que o painel e o gate não podem divergir (mesma
+    condição → mesma resposta em GET e em POST)'. Para cada gate isolado (os
+    outros dois satisfeitos), a leitura e a transição real concordam."""
+    with tenant_context(user):
+        hoje = today_for(user)
+        if setup == "futuro":
+            semana = hoje + timedelta(days=14)
+            semana = week_start_of(semana)
+        else:
+            semana = _current_week(user)
+
+        if setup != "anterior_nao_finalizado":
+            anterior = semana - timedelta(days=7)
+            if setup == "futuro":
+                # A semana-alvo é futura: qualquer "anterior" cronológico real
+                # já finalizado satisfaz o terceiro gate sem interferir no que
+                # está sob teste (date_reached).
+                WeeklyLogFactory(user=user, week_start=anterior, status=CycleStatus.FINALIZED)
+        else:
+            anterior = semana - timedelta(days=7)
+            WeeklyLogFactory(user=user, week_start=anterior, status=CycleStatus.ACTIVE)
+
+        marco = None if setup == "sem_marco" else cal_now()
+        WeeklyLogFactory(
+            user=user, week_start=semana, status=CycleStatus.PLANNING, planning_completed_at=marco
+        )
+
+        readiness = weekly_cycle_readiness(user=user)
+        assert readiness["start"]["gates"][gate_alterado] is esperado_start
+        assert readiness["start"]["allowed"] is False
+
+        if esperado_post == 409:
+            with pytest.raises(InvalidTransition):
+                start_weekly(user=user, week_start=semana)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "gate_alterado,setup",
+    [
+        ("no_open_tasks", "tarefa_aberta"),
+        ("next_planning_exists", "sem_proxima_planning"),
+    ],
+)
+def test_readiness_finalize_e_o_gate_real_nao_podem_divergir(user, gate_alterado, setup):
+    """Mesma prova de `test_readiness_start_e_o_gate_real_nao_podem_divergir`,
+    agora do lado de `finalize` (AC4: 'painel e gate não podem divergir') — a
+    divergência-side de `start` sozinha não provava o lado de `finalize`, que
+    tem seus PRÓPRIOS dois gates (`no_open_tasks`/`next_planning_exists`)."""
+    with tenant_context(user):
+        semana = _current_week(user)
+        ativo = WeeklyLogFactory(user=user, week_start=semana, status=CycleStatus.ACTIVE)
+
+        if setup == "tarefa_aberta":
+            TaskFactory(user=user, weekly_log=ativo, status=Task.Status.PENDING)
+            # `next_planning_exists` satisfeito (o gate SOB TESTE é o outro):
+            # existe uma PRÓXIMA semana em planning.
+            WeeklyLogFactory(
+                user=user, week_start=semana + timedelta(days=7), status=CycleStatus.PLANNING
+            )
+        # else ("sem_proxima_planning"): nenhuma tarefa criada ⇒ `no_open_tasks`
+        # satisfeito; nenhuma PRÓXIMA semana em planning ⇒ `next_planning_exists`
+        # falha — é o gate sob teste.
+
+        readiness = weekly_cycle_readiness(user=user)
+        assert readiness["finalize"]["gates"][gate_alterado] is False
+        assert readiness["finalize"]["allowed"] is False
+
+        with pytest.raises(InvalidTransition):
+            finalize_weekly(user=user, week_start=semana)
+
+
+@pytest.mark.django_db
+def test_readiness_e_leitura_pura_sem_escrita_nem_get_or_create(user):
+    """Zero efeito colateral: `WeeklyLog.objects.count()` inalterado e nenhum
+    INSERT/UPDATE/DELETE emitido, provado no SQL (molde de `_sem_escrita`)."""
+    with tenant_context(user):
+        semana = _current_week(user)
+        WeeklyLogFactory(
+            user=user,
+            week_start=semana,
+            status=CycleStatus.ACTIVE,
+            planning_completed_at=cal_now(),
+        )
+        WeeklyLogFactory(
+            user=user, week_start=semana + timedelta(days=7), status=CycleStatus.PLANNING
+        )
+        antes = WeeklyLog.objects.count()
+
+        resultado = _sem_escrita(weekly_cycle_readiness, user=user)
+
+        assert WeeklyLog.objects.count() == antes
+        assert resultado["active"]["status"] == CycleStatus.ACTIVE
+
+
 # --- AC4: materialização NUNCA atribui estado ----------------------------------
 @pytest.mark.django_db
 def test_ac4_get_or_create_logs_nascem_fora_do_regime_operacional(user):
@@ -3218,6 +3433,48 @@ def test_fonte_weekly_anterior_usa_o_anterior_OPERACIONAL_ignorando_ciclos_null(
         assert fonte["blocking"] is True
         assert fonte["ready_to_finalize"] is False
         assert fonte["reviewed"] is False
+
+
+@pytest.mark.django_db
+def test_fonte_weekly_anterior_previous_period_start_ignora_ciclo_null_intermediario(user):
+    """Story 14.5, AC4: `previousPeriodStart` é a chave do anterior OPERACIONAL,
+    nunca `week_start − 7 dias` — o mesmo cenário do teste acima (ciclo `NULL`
+    entre o alvo e o `active`) prova que a aritmética erraria o alvo."""
+    with tenant_context(user):
+        alvo = _SEMANA + timedelta(weeks=2)
+        WeeklyLogFactory(user=user, week_start=alvo, status=CycleStatus.PLANNING)
+        WeeklyLogFactory(user=user, week_start=_SEMANA + timedelta(weeks=1))  # ciclo NULL
+        operacional = WeeklyLogFactory(user=user, week_start=_SEMANA, status=CycleStatus.ACTIVE)
+
+        fonte = list_previous_weekly_pendings(user=user, week_start=alvo)
+
+        assert fonte["previous_period_start"] == operacional.week_start
+        assert fonte["previous_period_start"] != alvo - timedelta(days=7)  # `weekStart - 7` erraria
+
+
+@pytest.mark.django_db
+def test_fonte_weekly_anterior_ausente_previous_period_start_e_none(user):
+    with tenant_context(user):
+        WeeklyLogFactory(user=user, week_start=_SEMANA, status=CycleStatus.PLANNING)
+
+        fonte = list_previous_weekly_pendings(user=user, week_start=_SEMANA)
+
+        assert fonte["previous_period_start"] is None
+
+
+@pytest.mark.django_db
+def test_fonte_monthly_anterior_previous_period_start_usa_month_first(user):
+    """Gêmea mensal: a mesma mecânica (`_blocking_previous_source`) devolve
+    `previousPeriodStart` como `month_first`, não `week_start`."""
+    with tenant_context(user):
+        alvo = date(_MES.year, _MES.month, 1) + timedelta(days=62)
+        alvo = alvo.replace(day=1)
+        MonthlyLogFactory(user=user, month_first=alvo, status=CycleStatus.PLANNING)
+        anterior = MonthlyLogFactory(user=user, month_first=_MES, status=CycleStatus.ACTIVE)
+
+        fonte = list_previous_monthly_pendings(user=user, month_first=alvo)
+
+        assert fonte["previous_period_start"] == anterior.month_first
 
 
 @pytest.mark.django_db

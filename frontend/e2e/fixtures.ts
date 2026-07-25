@@ -64,6 +64,9 @@ export async function syncAfter(page: Page, action: () => Promise<void>) {
   ])
 }
 
+// `.MuiDrawer-paper` cobre o painel legado (Daily/Monthly/Future/Arquivo,
+// intocados); `.MuiDialog-paper` cobre o `TaskDetailCard` novo (Story 14.5,
+// Weekly Board) — o mesmo texto "Detalhe da tarefa" identifica ambos.
 export function detailPanel(page: Page) {
-  return page.locator('.MuiDrawer-paper').filter({ hasText: 'Detalhe da tarefa' })
+  return page.locator('.MuiDrawer-paper, .MuiDialog-paper').filter({ hasText: 'Detalhe da tarefa' })
 }

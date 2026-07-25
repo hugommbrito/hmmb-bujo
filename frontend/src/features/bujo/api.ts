@@ -1,25 +1,35 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import client from '../../api/client'
 import { keys } from '../../api/keys'
 import { useOptimisticMutation } from '../../shared/hooks/useOptimisticMutation'
 import { mapTaskTree, reorderTaskTree } from './taskTree'
 import type {
   ArchiveEntry,
+  BlockingTaskSource,
   CatchUpQueue,
+  DensityResponse,
   FutureLogMonthGroup,
   Log,
   MigrationQueue,
   MonthlyLog,
   MonthlyReviewQueue,
+  PendingDailiesSource,
   RecurrenceGroup,
   RecurringTaskTemplate,
+  RitualDecision,
+  RitualDecisionCreate,
   Task,
   TaskCategory,
   TaskDensityEntry,
   TaskDensityResponse,
   TaskEisenhower,
+  TaskSource,
   TaskStatus,
+  WeeklyCycle,
+  WeeklyCycleAction,
+  WeeklyCycleReadiness,
   WeeklyLog,
+  WeeklyRecurringSource,
   WeeklyReviewQueue,
 } from './types'
 
@@ -221,8 +231,13 @@ export function useCreateWeeklyTaskMutation() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: createWeeklyTask,
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: keys.bujo.weeklyLog(variables.weekStart) })
+    onSuccess: () => {
+      // Prefixo (não a chave exata `keys.bujo.weeklyLog(variables.weekStart)`):
+      // a view SEM navegação explícita usa a chave sentinel 'current'
+      // (`useWeeklyLogQuery()`), que nunca bate com a data real devolvida pelo
+      // servidor — invalidar por prefixo alcança as duas (Story 14.5, Task 12,
+      // gap real: criar tarefa na semana corrente não atualizava a lista).
+      queryClient.invalidateQueries({ queryKey: ['bujo', 'weeklyLog'] })
       queryClient.invalidateQueries({ queryKey: ['bujo', 'taskDensity'] })
     },
   })
@@ -261,10 +276,15 @@ async function fetchMonthlyLog(monthFirst?: string): Promise<MonthlyLog> {
   return response.data
 }
 
-export function useMonthlyLogQuery(monthFirst?: string) {
+// `enabled` (Story 14.5, Task 8): a fonte `Monthly ampliado` do ritual só
+// consulta SOB SELEÇÃO — o endpoint materializa o Monthly Log (`get_or_create`
+// de propósito), e uma leitura eager a cada abertura do ritual materializaria
+// meses que o usuário nunca visitou.
+export function useMonthlyLogQuery(monthFirst?: string, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: keys.bujo.monthlyLog(monthFirst),
     queryFn: () => fetchMonthlyLog(monthFirst),
+    enabled: options?.enabled ?? true,
   })
 }
 
@@ -546,5 +566,167 @@ export function useArchiveQuery() {
   return useQuery({
     queryKey: keys.bujo.archive(),
     queryFn: fetchArchive,
+  })
+}
+
+// ─── Épico 14 (Story 14.5): ciclo, fontes do ritual e densidade real ─────────
+//
+// Sem otimismo (Dev Notes, ambiguidade #4): `useOptimisticMutation` cobre a
+// forma do Brain Dump/Daily Log, diferente da forma de `WeeklyLog`
+// (`days[]`+`unscheduled`), e o NFR de <2s não se aplica ao planejamento
+// (AD-14). Falha de escrita deve preservar item/densidade/foco — invalidação
+// por prefixo em `onSettled` é suficiente e mais simples.
+
+/**
+ * Invalidação única pós-decisão do ritual: cobre os 5 prefixos que qualquer
+ * ação do ritual pode afetar — `weeklyLog` (o board), `weeklyCycle` (o painel
+ * de prontidão), `ritualWeeklySource`/`ritualWeeklyDensity` (as fontes e o
+ * rail) e `taskDensity` (densidade legada, ainda consumida pelo Mês).
+ *
+ * Exportada para os call sites do ritual (Tasks 8-10) que reusam
+ * `useMigrateTaskMutation`/`useRitualTaskTransitionMutation`/
+ * `usePlaceRecurringTemplateMutation` para as ações mutantes (Migrar/Adiar/
+ * Concluir/Cancelar/Alocar): passar esta função ao `onSuccess`/`onSettled` do
+ * `mutate(...)» garante que nenhum call site esqueça um dos 5 alvos.
+ */
+export function invalidateRitualQueries(queryClient: QueryClient) {
+  queryClient.invalidateQueries({ queryKey: ['bujo', 'weeklyLog'] })
+  queryClient.invalidateQueries({ queryKey: keys.bujo.weeklyCycle() })
+  queryClient.invalidateQueries({ queryKey: ['bujo', 'ritualWeeklySource'] })
+  queryClient.invalidateQueries({ queryKey: ['bujo', 'ritualWeeklyDensity'] })
+  queryClient.invalidateQueries({ queryKey: ['bujo', 'taskDensity'] })
+}
+
+/**
+ * Transição de status para o RITUAL (Concluir/Cancelar em `WeeklyPlanningPage`)
+ * — reusa a mesma `mutationFn` de `transitionTask`, mas SEM `useOptimisticMutation`
+ * (Dev Notes, ambiguidade #4: "nenhuma mutação otimista nesta story"). A versão
+ * otimista (`useTransitionTaskMutation`) escreve direto no cache de
+ * `keys.bujo.todayLog`, o que é errado aqui: um item do ritual (ex.: um Daily
+ * pendente de `pending-dailies`) pode ser de qualquer dia, não necessariamente
+ * "hoje", e o board/planejamento não usam esse cache.
+ */
+export function useRitualTaskTransitionMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: transitionTask,
+    onSuccess: () => invalidateRitualQueries(queryClient),
+  })
+}
+
+async function fetchWeeklyCycleReadiness(): Promise<WeeklyCycleReadiness> {
+  const response = await client.get<WeeklyCycleReadiness>('/api/bujo/logs/weekly/cycle/')
+  return response.data
+}
+
+export function useWeeklyCycleReadinessQuery() {
+  return useQuery({
+    queryKey: keys.bujo.weeklyCycle(),
+    queryFn: fetchWeeklyCycleReadiness,
+  })
+}
+
+async function runWeeklyCycleAction(variables: WeeklyCycleAction): Promise<WeeklyCycle> {
+  const response = await client.post<WeeklyCycle>('/api/bujo/logs/weekly/cycle/', variables)
+  return response.data
+}
+
+export function useWeeklyCycleActionMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: runWeeklyCycleAction,
+    onSettled: () => invalidateRitualQueries(queryClient),
+  })
+}
+
+async function fetchMonthlyInWeekSource(weekStart: string): Promise<TaskSource> {
+  const response = await client.get<TaskSource>(
+    '/api/bujo/rituals/weekly/sources/monthly-in-week/',
+    { params: { week_start: weekStart } },
+  )
+  return response.data
+}
+
+export function useMonthlyInWeekSourceQuery(weekStart: string, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: keys.bujo.ritualWeeklySource('monthly-in-week', weekStart),
+    queryFn: () => fetchMonthlyInWeekSource(weekStart),
+    enabled: options?.enabled ?? true,
+  })
+}
+
+async function fetchWeeklyRecurringSource(weekStart: string): Promise<WeeklyRecurringSource> {
+  const response = await client.get<WeeklyRecurringSource>(
+    '/api/bujo/rituals/weekly/sources/recurring/',
+    { params: { week_start: weekStart } },
+  )
+  return response.data
+}
+
+export function useWeeklyRecurringSourceQuery(weekStart: string, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: keys.bujo.ritualWeeklySource('recurring', weekStart),
+    queryFn: () => fetchWeeklyRecurringSource(weekStart),
+    enabled: options?.enabled ?? true,
+  })
+}
+
+async function fetchPreviousWeeklySource(weekStart: string): Promise<BlockingTaskSource> {
+  const response = await client.get<BlockingTaskSource>(
+    '/api/bujo/rituals/weekly/sources/previous-weekly/',
+    { params: { week_start: weekStart } },
+  )
+  return response.data
+}
+
+export function usePreviousWeeklySourceQuery(weekStart: string, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: keys.bujo.ritualWeeklySource('previous-weekly', weekStart),
+    queryFn: () => fetchPreviousWeeklySource(weekStart),
+    enabled: options?.enabled ?? true,
+  })
+}
+
+async function fetchPendingDailiesSource(weekStart: string): Promise<PendingDailiesSource> {
+  const response = await client.get<PendingDailiesSource>(
+    '/api/bujo/rituals/weekly/sources/pending-dailies/',
+    { params: { week_start: weekStart } },
+  )
+  return response.data
+}
+
+export function usePendingDailiesSourceQuery(weekStart: string, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: keys.bujo.ritualWeeklySource('pending-dailies', weekStart),
+    queryFn: () => fetchPendingDailiesSource(weekStart),
+    enabled: options?.enabled ?? true,
+  })
+}
+
+async function fetchWeeklyDensity(weekStart: string): Promise<DensityResponse> {
+  const response = await client.get<DensityResponse>('/api/bujo/rituals/weekly/density/', {
+    params: { week_start: weekStart },
+  })
+  return response.data
+}
+
+export function useWeeklyDensityQuery(weekStart: string, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: keys.bujo.ritualWeeklyDensity(weekStart),
+    queryFn: () => fetchWeeklyDensity(weekStart),
+    enabled: options?.enabled ?? true,
+  })
+}
+
+async function createRitualDecision(variables: RitualDecisionCreate): Promise<RitualDecision> {
+  const response = await client.post<RitualDecision>('/api/bujo/ritual-decisions/', variables)
+  return response.data
+}
+
+export function useRitualDecisionMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: createRitualDecision,
+    onSettled: () => invalidateRitualQueries(queryClient),
   })
 }

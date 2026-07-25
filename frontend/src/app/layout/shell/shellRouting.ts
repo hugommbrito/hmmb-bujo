@@ -49,7 +49,12 @@ export const shellRoutes: readonly ShellRouteEntry[] = [
   // ─── Núcleo ────────────────────────────────────────────────────────────────
   { routeId: 'today', shell: 'new', surfaceMigrated: false },
   { routeId: 'daily/:date', shell: 'new', surfaceMigrated: false },
-  { routeId: 'planner/week', shell: 'new', surfaceMigrated: false },
+  // Story 14.5: PRIMEIRA superfície interna migrada — `LegacySeamNotice`
+  // desaparece só nesta rota (e na do ritual, abaixo).
+  { routeId: 'planner/week', shell: 'new', surfaceMigrated: true },
+  // Segmentos diferentes de `planner/week` — `matchesPattern` exige
+  // igualdade de contagem de segmentos, então precisa de entrada própria.
+  { routeId: 'planner/week/planning', shell: 'new', surfaceMigrated: true },
   { routeId: 'planner/month', shell: 'new', surfaceMigrated: false },
   { routeId: 'planner/future', shell: 'new', surfaceMigrated: false },
   { routeId: 'planner/recurring', shell: 'new', surfaceMigrated: false },

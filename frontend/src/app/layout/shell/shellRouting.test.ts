@@ -58,11 +58,21 @@ describe('shellRouting — registro por rota', () => {
     }
   })
 
-  it('test_estado_inicial_desta_story_shell_novo_em_tudo_e_nenhuma_superficie_migrada', () => {
+  // A partir da Story 14.5, `planner/week` é a PRIMEIRA superfície migrada —
+  // o nome do teste original ("nenhuma superfície migrada") descrevia o
+  // estado inicial da Story 13.1 e deixou de ser verdade por construção.
+  const MIGRATED_ROUTE_IDS = new Set(['planner/week', 'planner/week/planning'])
+
+  it('test_shell_e_novo_em_tudo_e_apenas_as_rotas_migradas_tem_surfaceMigrated_true', () => {
     for (const entry of shellRoutes) {
       expect(entry.shell).toBe('new')
-      expect(entry.surfaceMigrated).toBe(false)
+      expect(entry.surfaceMigrated).toBe(MIGRATED_ROUTE_IDS.has(entry.routeId))
     }
+  })
+
+  it('test_planner_week_e_a_primeira_rota_migrada_desta_story', () => {
+    const entry = shellRoutes.find((route) => route.routeId === 'planner/week')
+    expect(entry?.surfaceMigrated).toBe(true)
   })
 
   it('test_resolve_rota_estatica_e_rota_parametrizada', () => {

@@ -199,6 +199,61 @@ class WeeklyCycleSerializer(_CycleFieldsMixin, serializers.Serializer):
     week_start = serializers.DateField()
 
 
+# --- Prontidão do ciclo semanal (Story 14.5, AC4) — GET novo, leitura pura -----
+class _WeeklyCycleSnapshotSerializer(serializers.Serializer):
+    """Projeção mínima de um `WeeklyLog` operacional (`active` ou `planning`)."""
+
+    week_start = serializers.DateField()
+    status = serializers.CharField()
+    planning_completed_at = serializers.DateTimeField(allow_null=True)
+
+
+class WeeklyStartGatesSerializer(serializers.Serializer):
+    """Os TRÊS gates de `start` — hoje indistinguíveis no `detail` do 409."""
+
+    date_reached = serializers.BooleanField()
+    planning_completed = serializers.BooleanField()
+    previous_finalized = serializers.BooleanField()
+
+
+class WeeklyStartReadinessSerializer(serializers.Serializer):
+    allowed = serializers.BooleanField()
+    target = serializers.DateField()
+    gates = WeeklyStartGatesSerializer()
+
+
+class WeeklyFinalizeGatesSerializer(serializers.Serializer):
+    no_open_tasks = serializers.BooleanField()
+    next_planning_exists = serializers.BooleanField()
+
+
+class WeeklyFinalizeReadinessSerializer(serializers.Serializer):
+    allowed = serializers.BooleanField()
+    target = serializers.DateField()
+    gates = WeeklyFinalizeGatesSerializer()
+
+
+class WeeklyCycleReadinessSerializer(serializers.Serializer):
+    """Resposta de `GET /api/bujo/logs/weekly/cycle/` (AC4) — os quatro blocos,
+    `null` nos inexistentes. Cada booleano REUSA o predicado do serviço de
+    transição (ver `services/cycles.weekly_cycle_readiness`); este serializer
+    só projeta, nunca decide."""
+
+    active = _WeeklyCycleSnapshotSerializer(allow_null=True)
+    planning = _WeeklyCycleSnapshotSerializer(allow_null=True)
+    start = WeeklyStartReadinessSerializer(allow_null=True)
+    finalize = WeeklyFinalizeReadinessSerializer(allow_null=True)
+
+
+# `week_start` é OPCIONAL aqui (default = semana corrente, normalizado em
+# silêncio) — ao contrário de `WeekSourceQuerySerializer`, que o exige. Serve
+# só para a declaração de OpenAPI de `WeeklyLogView.get` (AC4): a validação
+# real continua manual na view, que já normaliza e devolve 400 com mensagem
+# própria — duplicá-la aqui mudaria comportamento existente sem necessidade.
+class WeeklyLogQuerySerializer(serializers.Serializer):
+    week_start = serializers.DateField(required=False)
+
+
 class MonthlyCycleSerializer(_CycleFieldsMixin, serializers.Serializer):
     month_first = serializers.DateField()
     # Janela regular da virada (`core.calendar.month_turn_week`) — leitura
@@ -540,9 +595,12 @@ class TaskSourceSerializer(_SourceEnvelopeSerializer):
 
 
 class BlockingTaskSourceSerializer(TaskSourceSerializer):
-    """`previous-weekly`/`previous-monthly`: acrescentam `readyToFinalize`."""
+    """`previous-weekly`/`previous-monthly`: acrescentam `readyToFinalize` e,
+    aditivamente (Story 14.5, AC4), `previousPeriodStart` — a chave de período
+    do log anterior, nome neutro porque serve as duas fontes."""
 
     ready_to_finalize = serializers.BooleanField()
+    previous_period_start = serializers.DateField(allow_null=True)
 
 
 class WeeklyRecurringSourceSerializer(_SourceEnvelopeSerializer):

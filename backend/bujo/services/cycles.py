@@ -288,6 +288,63 @@ def has_undisposed(log) -> bool:
     return _has_undisposed(log)
 
 
+def _cycle_snapshot(log) -> dict | None:
+    """Projeção mínima de um `WeeklyLog` para o painel de prontidão (Story 14.5,
+    AC4), ou ``None`` quando o log não existe/não está no regime operacional."""
+    if log is None:
+        return None
+    return {
+        "week_start": log.week_start,
+        "status": log.status,
+        "planning_completed_at": log.planning_completed_at,
+    }
+
+
+def weekly_cycle_readiness(*, user) -> dict:
+    """Leitura pura e agregada do ciclo semanal (Story 14.5, AC4).
+
+    Fecha as lacunas B1-B4 das Dev Notes da 14.5: sem este endpoint, o cliente
+    não sabe qual semana está `active`/`planning`, qual dos três gates de
+    `start` falhou (os três emitem `detail` byte-a-byte idêntico) nem se o
+    próximo Weekly já está em planejamento (2º gate de `finalize`).
+
+    Cada booleano REUSA o predicado que o serviço de transição já usa —
+    `_previous_operational`, `_weekly_next_planning_exists`, `_has_undisposed`,
+    `today_for` — para que o painel de verificação (AC3) e o gate real de
+    `POST /logs/weekly/cycle/` não possam divergir (mesma condição, mesma
+    resposta). Zero condição nova, zero escrita, zero `get_or_create`: só
+    `objects.filter(...).first()`, como o resto do módulo de leitura.
+    """
+    today = today_for(user)
+    active = WeeklyLog.objects.filter(status=CycleStatus.ACTIVE).first()
+    planning = WeeklyLog.objects.filter(status=CycleStatus.PLANNING).first()
+
+    start = None
+    if planning is not None:
+        previous = _previous_operational(_WEEKLY, key=planning.week_start)
+        gates = {
+            "date_reached": today >= planning.week_start,
+            "planning_completed": planning.planning_completed_at is not None,
+            "previous_finalized": previous is None or previous.status == CycleStatus.FINALIZED,
+        }
+        start = {"allowed": all(gates.values()), "target": planning.week_start, "gates": gates}
+
+    finalize = None
+    if active is not None:
+        gates = {
+            "no_open_tasks": not _has_undisposed(active),
+            "next_planning_exists": _weekly_next_planning_exists(active.week_start),
+        }
+        finalize = {"allowed": all(gates.values()), "target": active.week_start, "gates": gates}
+
+    return {
+        "active": _cycle_snapshot(active),
+        "planning": _cycle_snapshot(planning),
+        "start": start,
+        "finalize": finalize,
+    }
+
+
 # --- Weekly (M06) --------------------------------------------------------------
 @transaction.atomic
 def open_weekly_planning_target(*, user, week_start) -> WeeklyLog:

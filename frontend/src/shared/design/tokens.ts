@@ -169,6 +169,69 @@ export const legacySeam = {
   borderLeftColor: 'info',
 } as const
 
+// ─── Componentes do sistema novo (Épico 14, Story 14.5) ──────────────────────
+// [Source: DESIGN.md#components — task-row L395-404, weekly-board L363-368,
+// weekly-planning L369-372, panel L411-415, chip L416-419, domain-icon L405-410]
+
+/** `{components.task-row}` — anatomia canônica da Task Row (AC2/AC8). */
+export const taskRow = {
+  minHeightPointer: '36px',
+  minHeightTouch: '48px',
+  padding: `${spacing[2]} ${spacing[3]}`,
+  radius: radius.sm,
+  hover: 'surface-subtle',
+  categoryBorderWidth: '3px',
+  categoryBorderFallback: 'border',
+  description: typography.meta,
+  statusIconSize: '20px',
+} as const
+
+/**
+ * `{components.weekly-board}`. `terminalOpacity` nasce aqui — DESIGN.md agrupa
+ * o valor por superfície (idêntico em `monthly-board`/`future-board`), mas a
+ * AC8 pede a CSS var na Task Row (`--ds-task-row-terminal-opacity`): é o
+ * elemento que recebe a de-ênfase, não a grade que a declara.
+ */
+export const weeklyBoard = {
+  gap: spacing[2],
+  weekdayMinWidth: '240px',
+  unscheduledMinWidth: '235px',
+  dayScroll: 'internal',
+  terminalOpacity: 0.58,
+} as const
+
+/** `{components.weekly-planning}` — rails do ritual (AC5). */
+export const weeklyPlanning = {
+  sourceRail: '190px',
+  contextRail: '315px',
+  densityPosition: 'sticky',
+} as const
+
+/** `{components.panel}` — painel diário/pool e cartões do rail. */
+export const panel = {
+  background: 'surface',
+  borderWidth: '1px',
+  borderColor: 'border',
+  radius: radius.md,
+  padding: spacing[4],
+} as const
+
+/** `{components.chip}` */
+export const chip = {
+  height: '24px',
+  radius: radius.sm,
+  typography: typography.label,
+} as const
+
+/** `{components.domain-icon}` — catálogo fechado de ícones de status (AC8). */
+export const domainIcon = {
+  library: '@phosphor-icons/react',
+  weight: 'regular',
+  sizeCompact: '18px',
+  sizeDefault: '20px',
+  color: 'currentColor',
+} as const
+
 // ─── Papéis semânticos de cor ────────────────────────────────────────────────
 
 export const colorRoles = [
@@ -362,6 +425,18 @@ const structuralCssVariables: Readonly<Record<string, string>> = {
   '--ds-radius-md': radius.md,
   '--ds-radius-lg': radius.lg,
   '--ds-radius-full': radius.full,
+  '--ds-task-row-min-height-pointer': taskRow.minHeightPointer,
+  '--ds-task-row-min-height-touch': taskRow.minHeightTouch,
+  '--ds-task-row-category-border-width': taskRow.categoryBorderWidth,
+  '--ds-task-row-status-icon-size': taskRow.statusIconSize,
+  '--ds-task-row-terminal-opacity': String(weeklyBoard.terminalOpacity),
+  '--ds-weekly-board-gap': weeklyBoard.gap,
+  '--ds-weekly-board-weekday-min-width': weeklyBoard.weekdayMinWidth,
+  '--ds-weekly-board-unscheduled-min-width': weeklyBoard.unscheduledMinWidth,
+  '--ds-weekly-planning-source-rail': weeklyPlanning.sourceRail,
+  '--ds-weekly-planning-context-rail': weeklyPlanning.contextRail,
+  '--ds-panel-padding': panel.padding,
+  '--ds-chip-height': chip.height,
   ...Object.fromEntries(
     Object.entries(spacing).map(([step, value]) => [`--ds-space-${step}`, value]),
   ),

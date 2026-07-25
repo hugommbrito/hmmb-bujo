@@ -257,6 +257,19 @@ def _by_day_then_undated(queryset):
     return queryset.order_by(F("scheduled_date").asc(nulls_last=True), "order_index")
 
 
+def _period_start_of(log):
+    """Chave de período de um log de ciclo — ``week_start`` (`WeeklyLog`) ou
+    ``month_first`` (`MonthlyLog`), ou ``None`` sem log.
+
+    Nome NEUTRO (Story 14.5, AC4) porque serve as DUAS fontes bloqueantes
+    (`previous-weekly` → `week_start`; `previous-monthly` → `month_first`), no
+    molde de `period_start` da fila unificada (14.3).
+    """
+    if log is None:
+        return None
+    return getattr(log, "week_start", None) or getattr(log, "month_first", None)
+
+
 def _blocking_previous_source(source_id: str, previous) -> dict:
     """Fonte bloqueante ("Weekly anterior" / "Monthly anterior") — mecânica ÚNICA.
 
@@ -281,6 +294,12 @@ def _blocking_previous_source(source_id: str, previous) -> dict:
     False`` — e o gate de Iniciar passa por vacuidade, que é o comportamento
     contratado na AC7 da Story 14.1. ``ready_to_finalize`` é o MESMO predicado do
     gate de finalizar (``has_undisposed``), não uma reimplementação.
+
+    ``previous_period_start`` (Story 14.5, AC4) é a chave de período do log
+    anterior — necessária porque ``finalize`` exige um alvo e ``week_start - 7
+    dias``/``month anterior por aritmética`` está ERRADO quando um ciclo ``NULL``
+    intermediário existe (``previous_operational_*`` já pula esses ciclos; a
+    aritmética não pularia).
     """
     tasks = [] if previous is None else _by_day_then_undated(undisposed_roots(previous.tasks))
     return _envelope(
@@ -288,6 +307,7 @@ def _blocking_previous_source(source_id: str, previous) -> dict:
         items=_task_items(tasks, {}),
         blocking=True,
         ready_to_finalize=previous is not None and not has_undisposed(previous),
+        previous_period_start=_period_start_of(previous),
     )
 
 

@@ -17,3 +17,32 @@ describe('query-key factory (AC2)', () => {
     expect(keys.brainDump.count('u')[0]).toBe('brainDump')
   })
 })
+
+describe('bujo.weeklyCycle / ritualWeeklySource / ritualWeeklyDensity (Story 14.5)', () => {
+  it('weeklyCycle é uma chave fixa (sem discriminador)', () => {
+    expect(keys.bujo.weeklyCycle()).toEqual(['bujo', 'weeklyCycle'])
+  })
+
+  it('ritualWeeklySource discrimina por sourceId e weekStart', () => {
+    expect(keys.bujo.ritualWeeklySource('recurring', '2026-07-20')).toEqual([
+      'bujo',
+      'ritualWeeklySource',
+      'recurring',
+      '2026-07-20',
+    ])
+    expect(keys.bujo.ritualWeeklySource('recurring', '2026-07-27')).not.toEqual(
+      keys.bujo.ritualWeeklySource('recurring', '2026-07-20'),
+    )
+    expect(keys.bujo.ritualWeeklySource('previous-weekly', '2026-07-20')).not.toEqual(
+      keys.bujo.ritualWeeklySource('recurring', '2026-07-20'),
+    )
+  })
+
+  it('ritualWeeklyDensity discrimina por weekStart', () => {
+    expect(keys.bujo.ritualWeeklyDensity('2026-07-20')).toEqual([
+      'bujo',
+      'ritualWeeklyDensity',
+      '2026-07-20',
+    ])
+  })
+})

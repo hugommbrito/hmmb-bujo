@@ -28,6 +28,13 @@ export const keys = {
     taskDensity: (monthFirst?: string) =>
       ['bujo', 'taskDensity', monthFirst ?? 'current'] as const,
     archive: () => ['bujo', 'archive', 'list'] as const,
+    // Épico 14 (Story 14.5) — ciclo, fontes de ritual e densidade real. Sem
+    // userId (mesmo racional do resto de `bujo.*`).
+    weeklyCycle: () => ['bujo', 'weeklyCycle'] as const,
+    ritualWeeklySource: (sourceId: string, weekStart: string) =>
+      ['bujo', 'ritualWeeklySource', sourceId, weekStart] as const,
+    ritualWeeklyDensity: (weekStart: string) =>
+      ['bujo', 'ritualWeeklyDensity', weekStart] as const,
   },
   // Sem userId (mesmo racional de bujo.*): logout limpa o cache inteiro.
   habits: {
