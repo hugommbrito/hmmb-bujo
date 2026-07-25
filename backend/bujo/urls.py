@@ -5,6 +5,7 @@ from bujo.views import (
     CatchUpQueueView,
     FutureLogView,
     MigrationQueueView,
+    MonthlyCycleView,
     MonthlyLogView,
     MonthlyReviewQueueView,
     RecurringTaskTemplateDetailView,
@@ -18,6 +19,7 @@ from bujo.views import (
     TaskReorderView,
     TaskTransitionView,
     TodayLogView,
+    WeeklyCycleView,
     WeeklyLogView,
     WeeklyReviewQueueView,
 )
@@ -26,6 +28,9 @@ urlpatterns = [
     path("logs/today/", TodayLogView.as_view(), name="bujo-today-log"),
     path("logs/weekly/", WeeklyLogView.as_view(), name="bujo-weekly-log"),
     path("logs/monthly/", MonthlyLogView.as_view(), name="bujo-monthly-log"),
+    # Ciclo operacional (Story 14.1, AC8) — um endpoint de ação por tipo.
+    path("logs/weekly/cycle/", WeeklyCycleView.as_view(), name="bujo-weekly-cycle"),
+    path("logs/monthly/cycle/", MonthlyCycleView.as_view(), name="bujo-monthly-cycle"),
     path("archive/", ArchiveView.as_view(), name="bujo-archive"),
     path("future-log/", FutureLogView.as_view(), name="bujo-future-log"),
     path("migration/queue/", MigrationQueueView.as_view(), name="bujo-migration-queue"),

@@ -229,6 +229,31 @@ paths:
               schema:
                 $ref: '#/components/schemas/Task'
           description: ''
+  /api/bujo/logs/monthly/cycle/:
+    post:
+      operationId: bujo_logs_monthly_cycle_create
+      description: |-
+        Ações do ciclo mensal (Story 14.1, AC8).
+
+        `open_planning_target` não recebe alvo: ele é determinístico (mês seguinte ao
+        `active`), sem escolha nem retargeting (M07).
+      tags:
+      - bujo
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MonthlyCycleAction'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MonthlyCycle'
+          description: ''
   /api/bujo/logs/today/:
     get:
       operationId: bujo_logs_today_retrieve
@@ -275,6 +300,31 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Task'
+          description: ''
+  /api/bujo/logs/weekly/cycle/:
+    post:
+      operationId: bujo_logs_weekly_cycle_create
+      description: |-
+        Ações do ciclo semanal (Story 14.1, AC8) — espelha `tasks/<pk>/transition/`.
+
+        Erros de gate e de matriz sobem como `InvalidTransition`/`CycleTargetConflict`
+        (ambos `DomainError`) e viram 409 pelo handler central; nada é tratado aqui.
+      tags:
+      - bujo
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WeeklyCycleAction'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeeklyCycle'
           description: ''
   /api/bujo/migration/queue/:
     get:
@@ -3048,9 +3098,63 @@ components:
       required:
       - logDate
       - tasks
+    MonthlyCycle:
+      type: object
+      properties:
+        status:
+          type: string
+          nullable: true
+        planningCompletedAt:
+          type: string
+          format: date-time
+          nullable: true
+        monthFirst:
+          type: string
+          format: date
+        regularWindowStart:
+          type: string
+          format: date
+        regularWindowEnd:
+          type: string
+          format: date
+      required:
+      - monthFirst
+      - planningCompletedAt
+      - regularWindowEnd
+      - regularWindowStart
+      - status
+    MonthlyCycleAction:
+      type: object
+      properties:
+        action:
+          $ref: '#/components/schemas/MonthlyCycleActionActionEnum'
+        monthFirst:
+          type: string
+          format: date
+      required:
+      - action
+    MonthlyCycleActionActionEnum:
+      enum:
+      - open_planning_target
+      - complete_planning
+      - start
+      - finalize
+      type: string
+      description: |-
+        * `open_planning_target` - open_planning_target
+        * `complete_planning` - complete_planning
+        * `start` - start
+        * `finalize` - finalize
     MonthlyLog:
       type: object
       properties:
+        status:
+          type: string
+          nullable: true
+        planningCompletedAt:
+          type: string
+          format: date-time
+          nullable: true
         monthFirst:
           type: string
           format: date
@@ -3063,6 +3167,8 @@ components:
       required:
       - closed
       - monthFirst
+      - planningCompletedAt
+      - status
       - tasks
     MonthlyReviewQueue:
       type: object
@@ -3821,6 +3927,47 @@ components:
       description: |-
         * `weekly` - weekly
         * `monthly` - monthly
+    WeeklyCycle:
+      type: object
+      properties:
+        status:
+          type: string
+          nullable: true
+        planningCompletedAt:
+          type: string
+          format: date-time
+          nullable: true
+        weekStart:
+          type: string
+          format: date
+      required:
+      - planningCompletedAt
+      - status
+      - weekStart
+    WeeklyCycleAction:
+      type: object
+      properties:
+        action:
+          $ref: '#/components/schemas/WeeklyCycleActionActionEnum'
+        weekStart:
+          type: string
+          format: date
+      required:
+      - action
+    WeeklyCycleActionActionEnum:
+      enum:
+      - open_planning_target
+      - complete_planning
+      - start
+      - finalize
+      - cancel_planning_target
+      type: string
+      description: |-
+        * `open_planning_target` - open_planning_target
+        * `complete_planning` - complete_planning
+        * `start` - start
+        * `finalize` - finalize
+        * `cancel_planning_target` - cancel_planning_target
     WeeklyDay:
       type: object
       properties:
@@ -3837,6 +3984,13 @@ components:
     WeeklyLog:
       type: object
       properties:
+        status:
+          type: string
+          nullable: true
+        planningCompletedAt:
+          type: string
+          format: date-time
+          nullable: true
         weekStart:
           type: string
           format: date
@@ -3853,6 +4007,8 @@ components:
       required:
       - closed
       - days
+      - planningCompletedAt
+      - status
       - unscheduled
       - weekStart
     WeeklyReviewQueue:

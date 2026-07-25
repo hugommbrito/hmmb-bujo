@@ -188,6 +188,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/bujo/logs/monthly/cycle/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description Ações do ciclo mensal (Story 14.1, AC8).
+         *
+         *     `open_planning_target` não recebe alvo: ele é determinístico (mês seguinte ao
+         *     `active`), sem escolha nem retargeting (M07).
+         */
+        post: operations["bujo_logs_monthly_cycle_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/bujo/logs/today/": {
         parameters: {
             query?: never;
@@ -214,6 +236,28 @@ export interface paths {
         get: operations["bujo_logs_weekly_retrieve"];
         put?: never;
         post: operations["bujo_logs_weekly_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bujo/logs/weekly/cycle/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description Ações do ciclo semanal (Story 14.1, AC8) — espelha `tasks/<pk>/transition/`.
+         *
+         *     Erros de gate e de matriz sobem como `InvalidTransition`/`CycleTargetConflict`
+         *     (ambos `DomainError`) e viram 409 pelo handler central; nada é tratado aqui.
+         */
+        post: operations["bujo_logs_weekly_cycle_create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1772,7 +1816,34 @@ export interface components {
             logDate: string;
             tasks: components["schemas"]["Task"][];
         };
+        MonthlyCycle: {
+            status: string | null;
+            /** Format: date-time */
+            planningCompletedAt: string | null;
+            /** Format: date */
+            monthFirst: string;
+            /** Format: date */
+            regularWindowStart: string;
+            /** Format: date */
+            regularWindowEnd: string;
+        };
+        MonthlyCycleAction: {
+            action: components["schemas"]["MonthlyCycleActionActionEnum"];
+            /** Format: date */
+            monthFirst?: string;
+        };
+        /**
+         * @description * `open_planning_target` - open_planning_target
+         *     * `complete_planning` - complete_planning
+         *     * `start` - start
+         *     * `finalize` - finalize
+         * @enum {string}
+         */
+        MonthlyCycleActionActionEnum: "open_planning_target" | "complete_planning" | "start" | "finalize";
         MonthlyLog: {
+            status: string | null;
+            /** Format: date-time */
+            planningCompletedAt: string | null;
             /** Format: date */
             monthFirst: string;
             tasks: components["schemas"]["Task"][];
@@ -2124,12 +2195,36 @@ export interface components {
          * @enum {string}
          */
         TypeEnum: "weekly" | "monthly";
+        WeeklyCycle: {
+            status: string | null;
+            /** Format: date-time */
+            planningCompletedAt: string | null;
+            /** Format: date */
+            weekStart: string;
+        };
+        WeeklyCycleAction: {
+            action: components["schemas"]["WeeklyCycleActionActionEnum"];
+            /** Format: date */
+            weekStart?: string;
+        };
+        /**
+         * @description * `open_planning_target` - open_planning_target
+         *     * `complete_planning` - complete_planning
+         *     * `start` - start
+         *     * `finalize` - finalize
+         *     * `cancel_planning_target` - cancel_planning_target
+         * @enum {string}
+         */
+        WeeklyCycleActionActionEnum: "open_planning_target" | "complete_planning" | "start" | "finalize" | "cancel_planning_target";
         WeeklyDay: {
             /** Format: date */
             date: string;
             tasks: components["schemas"]["Task"][];
         };
         WeeklyLog: {
+            status: string | null;
+            /** Format: date-time */
+            planningCompletedAt: string | null;
             /** Format: date */
             weekStart: string;
             days: components["schemas"]["WeeklyDay"][];
@@ -2429,6 +2524,29 @@ export interface operations {
             };
         };
     };
+    bujo_logs_monthly_cycle_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MonthlyCycleAction"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MonthlyCycle"];
+                };
+            };
+        };
+    };
     bujo_logs_today_retrieve: {
         parameters: {
             query?: never;
@@ -2486,6 +2604,29 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Task"];
+                };
+            };
+        };
+    };
+    bujo_logs_weekly_cycle_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WeeklyCycleAction"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WeeklyCycle"];
                 };
             };
         };

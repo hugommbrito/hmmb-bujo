@@ -138,15 +138,22 @@ errado), não o banco.
 
 ### Sintoma: credencial da branch `e2e` stale
 
-Desde **2026-07-24** a connection string em `backend/.env.e2e` está inválida: o
-`webServer` do backend não sobe e o Playwright falha antes do primeiro teste
-(`authentication failed` no log do Django). A correção definitiva é o passo de ops
-manual do §2 (renovar a connection string da branch Neon `e2e`) — o dev agent não
-tem credenciais do Neon.
+> **Status em 2026-07-25 (Story 14.1): RESOLVIDO — a credencial atual é válida.**
+> A connection string de `backend/.env.e2e` foi renovada e verificada:
+> `DJANGO_SETTINGS_MODULE=config.settings.e2e uv run python manage.py migrate` aplica
+> normalmente contra a branch Neon `e2e` (a `0007_weekly_monthly_cycle_status` foi
+> aplicada por esse caminho). O fallback local abaixo permanece documentado porque a
+> credencial **já expirou uma vez** e pode expirar de novo — não porque esteja
+> inválida agora.
+
+O sintoma, quando a credencial expira: o `webServer` do backend não sobe e o
+Playwright falha antes do primeiro teste (`authentication failed` no log do Django).
+A correção definitiva é o passo de ops manual do §2 (renovar a connection string da
+branch Neon `e2e`) — o dev agent não tem credenciais do Neon.
 
 ### Fallback validado: Postgres local `bujo_e2e`
 
-Enquanto a credencial não é renovada, aponte o `DATABASE_URL` **numa execução só**
+Se a credencial voltar a expirar, aponte o `DATABASE_URL` **numa execução só**
 para um banco dedicado no Postgres local do `docker-compose.yml` (o mesmo container
 `hmmb-test-db` usado pelo `pytest`):
 

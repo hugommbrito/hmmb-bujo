@@ -110,17 +110,96 @@ class WeeklyDaySerializer(serializers.Serializer):
     tasks = TaskSerializer(many=True)
 
 
-class WeeklyLogSerializer(serializers.Serializer):
+# Campos ADITIVOS de ciclo (Story 14.1, AC8) nas duas respostas de log. `closed`
+# permanece com o mesmo nome e tipo — o contrato do Daily legado não muda (AC5).
+# Ambos nuláveis: `null` = ciclo fora do regime operacional / planejamento nunca
+# declarado, que é o estado de todo log materializado sob demanda (AC4).
+class _CycleFieldsMixin(metaclass=serializers.SerializerMetaclass):
+    status = serializers.CharField(allow_null=True)
+    planning_completed_at = serializers.DateTimeField(allow_null=True)
+
+
+class WeeklyLogSerializer(_CycleFieldsMixin, serializers.Serializer):
     week_start = serializers.DateField()
     days = WeeklyDaySerializer(many=True)
     unscheduled = TaskSerializer(many=True)
     closed = serializers.BooleanField()
 
 
-class MonthlyLogSerializer(serializers.Serializer):
+class MonthlyLogSerializer(_CycleFieldsMixin, serializers.Serializer):
     month_first = serializers.DateField()
     tasks = TaskSerializer(many=True)
     closed = serializers.BooleanField()
+
+
+# --- Ciclo operacional (Story 14.1, AC8) ---------------------------------------
+# Um endpoint de ação por tipo, com campo `action`, espelhando
+# `tasks/<pk>/transition/` (que já recebe `to_status`): mantém a superfície de URL
+# e o diff de OpenAPI mínimos. O serializer valida FORMA; toda regra de transição
+# vive em `services/cycles.py` (§6.6 — nunca `validate_status()` em serializer).
+WEEKLY_CYCLE_ACTIONS = [
+    "open_planning_target",
+    "complete_planning",
+    "start",
+    "finalize",
+    "cancel_planning_target",
+]
+# Sem `cancel_planning_target`: "O Monthly não herda a ação Cancelar planejamento
+# vazio do Weekly" (M07). A ausência é regra de produto, não omissão.
+MONTHLY_CYCLE_ACTIONS = [
+    "open_planning_target",
+    "complete_planning",
+    "start",
+    "finalize",
+]
+
+
+class WeeklyCycleActionSerializer(serializers.Serializer):
+    action = serializers.ChoiceField(choices=WEEKLY_CYCLE_ACTIONS)
+    # Opcional: `open_planning_target` aceita omitir para mirar a semana corrente.
+    week_start = serializers.DateField(required=False)
+
+    def validate(self, attrs):
+        week_start = attrs.get("week_start")
+        if week_start is not None and week_start.isoweekday() != 1:
+            raise serializers.ValidationError({"week_start": "Deve ser uma segunda-feira."})
+        if attrs["action"] != "open_planning_target" and week_start is None:
+            raise serializers.ValidationError(
+                {"week_start": "Obrigatório para esta ação."}
+            )
+        return attrs
+
+
+class MonthlyCycleActionSerializer(serializers.Serializer):
+    action = serializers.ChoiceField(choices=MONTHLY_CYCLE_ACTIONS)
+    # `open_planning_target` IGNORA este campo: o alvo mensal é determinístico
+    # (mês seguinte ao `active`), sem escolha nem retargeting (M07).
+    month_first = serializers.DateField(required=False)
+
+    def validate(self, attrs):
+        month_first = attrs.get("month_first")
+        if month_first is not None and month_first.day != 1:
+            raise serializers.ValidationError(
+                {"month_first": "Deve ser o primeiro dia do mês."}
+            )
+        if attrs["action"] != "open_planning_target" and month_first is None:
+            raise serializers.ValidationError(
+                {"month_first": "Obrigatório para esta ação."}
+            )
+        return attrs
+
+
+class WeeklyCycleSerializer(_CycleFieldsMixin, serializers.Serializer):
+    week_start = serializers.DateField()
+
+
+class MonthlyCycleSerializer(_CycleFieldsMixin, serializers.Serializer):
+    month_first = serializers.DateField()
+    # Janela regular da virada (`core.calendar.month_turn_week`) — leitura
+    # INFORMATIVA: fora dela o mesmo ritual segue disponível como regularização
+    # atrasada, e nenhum serviço a usa como pré-condição (AC3).
+    regular_window_start = serializers.DateField()
+    regular_window_end = serializers.DateField()
 
 
 class ArchiveEntrySerializer(serializers.Serializer):

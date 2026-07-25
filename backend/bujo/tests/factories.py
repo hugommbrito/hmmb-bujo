@@ -45,6 +45,11 @@ class WeeklyLogFactory(DjangoModelFactory):
     week_start = factory.Sequence(
         lambda n: week_start_of(date(2026, 1, 1) + timedelta(weeks=n))
     )
+    # `status` fica no default `None` (fora do regime operacional) DE PROPÓSITO e
+    # nunca deve receber outro default: as uniques parciais da Story 14.1 admitem
+    # no máximo um `active` e um `planning` por usuário, então um default não-nulo
+    # estouraria `IntegrityError` em massa nos testes que criam vários logs para o
+    # mesmo `user`. Quem precisa de estado passa `status=` explicitamente.
 
 
 class MonthlyLogFactory(DjangoModelFactory):
@@ -58,6 +63,7 @@ class MonthlyLogFactory(DjangoModelFactory):
     month_first = factory.Sequence(
         lambda n: date(2026, 1, 1).replace(year=2026 + (n // 12), month=(n % 12) + 1)
     )
+    # Mesmo motivo do `WeeklyLogFactory`: `status` permanece no default `None`.
 
 
 class TaskFactory(DjangoModelFactory):
@@ -109,6 +115,16 @@ register_isolation_case(
         "title": "Tarefa de isolamento",
         "order_index": 0.0,
     },
+)
+register_isolation_case(
+    id="bujo.WeeklyLog",
+    model=WeeklyLog,
+    make=lambda: {"week_start": week_start_of(date(2026, 1, 5))},
+)
+register_isolation_case(
+    id="bujo.MonthlyLog",
+    model=MonthlyLog,
+    make=lambda: {"month_first": date(2026, 1, 1)},
 )
 register_isolation_case(
     id="bujo.RecurringTaskTemplate",

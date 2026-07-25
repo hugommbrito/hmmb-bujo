@@ -1,5 +1,11 @@
 import { test as base, expect, type Page } from '@playwright/test'
 
+// Senha usada por TODO usuário criado pela fixture. Exportada para specs que
+// precisam falar HTTP direto com o backend real na sessão do próprio usuário
+// (obtendo um JWT em `/api/accounts/token/`), como `weekly-monthly-cycle.spec.ts`
+// faz para exercitar endpoints que ainda não têm superfície de UI.
+export const E2E_PASSWORD = 'SenhaE2e!2026'
+
 // Um usuário novo por teste (signup real via UI) garante um Daily Log de hoje
 // vazio e isola os testes entre si — nenhum reaproveita tarefas de outro.
 // Exportada (não só usada pela fixture `page`) para specs que precisam de um
@@ -7,7 +13,7 @@ import { test as base, expect, type Page } from '@playwright/test'
 // isolamento de cache entre usuários da Story 5.2).
 export async function signUpAndLandOnToday(page: Page): Promise<string> {
   const email = `e2e-${crypto.randomUUID()}@e2e.test`
-  const password = 'SenhaE2e!2026'
+  const password = E2E_PASSWORD
 
   await page.goto('/signup')
   await page.getByLabel('Email').fill(email)

@@ -7,6 +7,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from bujo.models import Log, MonthlyLog, RecurringTaskTemplate, Task, WeeklyLog
+from bujo.services.cycles import add_months
 from bujo.services.logs import (
     get_or_create_daily_log,
     get_or_create_monthly_log,
@@ -2289,3 +2290,620 @@ def test_task_density_sem_autenticacao_retorna_401():
     response = client.get("/api/bujo/task-density/?month_first=2026-07-01")
 
     assert response.status_code == 401
+
+
+# ==============================================================================
+# Endpoints de ciclo (Story 14.1, AC8) e caracterização do contrato legado (AC5)
+# ==============================================================================
+WEEKLY_CYCLE_URL = "/api/bujo/logs/weekly/cycle/"
+MONTHLY_CYCLE_URL = "/api/bujo/logs/monthly/cycle/"
+
+
+@pytest.mark.django_db
+def test_post_weekly_cycle_abrir_planejamento_sem_alvo_usa_a_semana_corrente(
+    auth_client, user
+):
+    response = auth_client.post(
+        WEEKLY_CYCLE_URL, {"action": "open_planning_target"}, format="json"
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body == {
+        "status": "planning",
+        "planningCompletedAt": None,
+        "weekStart": week_start_of(today_for(user)).isoformat(),
+    }
+
+
+@pytest.mark.django_db
+def test_post_weekly_cycle_ciclo_de_vida_completo_via_http(auth_client, user):
+    """Percorre planejar → concluir → iniciar → (planejar próxima) → finalizar,
+    todo pelo endpoint — 200 em cada caminho felizes."""
+    semana = week_start_of(today_for(user))
+    proxima = semana + timedelta(days=7)
+
+    def post(action, week_start=None):
+        payload = {"action": action}
+        if week_start is not None:
+            payload["weekStart"] = week_start.isoformat()
+        return auth_client.post(WEEKLY_CYCLE_URL, payload, format="json")
+
+    assert post("open_planning_target", semana).status_code == 200
+    concluido = post("complete_planning", semana)
+    assert concluido.status_code == 200
+    assert concluido.json()["planningCompletedAt"] is not None
+    assert concluido.json()["status"] == "planning"  # concluir NÃO muda o status
+
+    iniciado = post("start", semana)
+    assert iniciado.status_code == 200
+    assert iniciado.json()["status"] == "active"
+
+    assert post("open_planning_target", proxima).status_code == 200
+    finalizado = post("finalize", semana)
+    assert finalizado.status_code == 200
+    assert finalizado.json()["status"] == "finalized"
+
+
+@pytest.mark.django_db
+def test_post_weekly_cycle_cancelar_alvo_vazio_retorna_status_null(auth_client, user):
+    semana = week_start_of(today_for(user))
+    auth_client.post(
+        WEEKLY_CYCLE_URL,
+        {"action": "open_planning_target", "weekStart": semana.isoformat()},
+        format="json",
+    )
+
+    response = auth_client.post(
+        WEEKLY_CYCLE_URL,
+        {"action": "cancel_planning_target", "weekStart": semana.isoformat()},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] is None
+
+
+@pytest.mark.django_db
+def test_post_weekly_cycle_gate_de_iniciar_retorna_409(auth_client, user):
+    """Gate não satisfeito → `InvalidTransition` → 409 pelo handler central."""
+    semana = week_start_of(today_for(user))
+    auth_client.post(
+        WEEKLY_CYCLE_URL,
+        {"action": "open_planning_target", "weekStart": semana.isoformat()},
+        format="json",
+    )  # sem concluir planejamento
+
+    response = auth_client.post(
+        WEEKLY_CYCLE_URL, {"action": "start", "weekStart": semana.isoformat()}, format="json"
+    )
+
+    assert response.status_code == 409
+    assert "detail" in response.json()
+
+
+@pytest.mark.django_db
+def test_post_weekly_cycle_segundo_alvo_de_planejamento_retorna_409(auth_client, user):
+    """Colisão da unique parcial → `CycleTargetConflict` → 409 (não é transição
+    ilegal, é disputa de alvo)."""
+    semana = week_start_of(today_for(user))
+    auth_client.post(
+        WEEKLY_CYCLE_URL,
+        {"action": "open_planning_target", "weekStart": semana.isoformat()},
+        format="json",
+    )
+
+    response = auth_client.post(
+        WEEKLY_CYCLE_URL,
+        {
+            "action": "open_planning_target",
+            "weekStart": (semana + timedelta(days=7)).isoformat(),
+        },
+        format="json",
+    )
+
+    assert response.status_code == 409
+
+
+@pytest.mark.django_db
+def test_post_weekly_cycle_alvo_no_passado_retorna_409(auth_client, user):
+    passado = week_start_of(today_for(user)) - timedelta(days=7)
+
+    response = auth_client.post(
+        WEEKLY_CYCLE_URL,
+        {"action": "open_planning_target", "weekStart": passado.isoformat()},
+        format="json",
+    )
+
+    assert response.status_code == 409
+
+
+@pytest.mark.django_db
+def test_post_weekly_cycle_action_invalida_retorna_400(auth_client):
+    response = auth_client.post(WEEKLY_CYCLE_URL, {"action": "reabrir"}, format="json")
+
+    assert response.status_code == 400
+    assert "action" in response.json()["fields"]
+
+
+@pytest.mark.django_db
+def test_post_weekly_cycle_week_start_nao_segunda_retorna_400(auth_client):
+    response = auth_client.post(
+        WEEKLY_CYCLE_URL,
+        {"action": "start", "weekStart": "2026-07-22"},  # quarta-feira
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert "weekStart" in response.json()["fields"]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "action", ["complete_planning", "start", "finalize", "cancel_planning_target"]
+)
+def test_post_weekly_cycle_acoes_nao_abertura_exigem_week_start(auth_client, action):
+    response = auth_client.post(WEEKLY_CYCLE_URL, {"action": action}, format="json")
+
+    assert response.status_code == 400
+    assert "weekStart" in response.json()["fields"]
+
+
+@pytest.mark.django_db
+def test_post_monthly_cycle_abrir_planejamento_devolve_janela_regular(auth_client, user):
+    mes = today_for(user).replace(day=1)
+    janela_inicio = week_start_of(mes)
+
+    response = auth_client.post(
+        MONTHLY_CYCLE_URL, {"action": "open_planning_target"}, format="json"
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "planning",
+        "planningCompletedAt": None,
+        "monthFirst": mes.isoformat(),
+        "regularWindowStart": janela_inicio.isoformat(),
+        "regularWindowEnd": (janela_inicio + timedelta(days=6)).isoformat(),
+    }
+
+
+@pytest.mark.django_db
+def test_post_monthly_cycle_nao_aceita_cancelar_planejamento(auth_client, user):
+    """A ação não existe no Monthly (M07) — barrada como `action` inválida (400),
+    nunca chegando a um serviço."""
+    response = auth_client.post(
+        MONTHLY_CYCLE_URL,
+        {
+            "action": "cancel_planning_target",
+            "monthFirst": today_for(user).replace(day=1).isoformat(),
+        },
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert "action" in response.json()["fields"]
+
+
+@pytest.mark.django_db
+def test_post_monthly_cycle_month_first_nao_dia_1_retorna_400(auth_client):
+    response = auth_client.post(
+        MONTHLY_CYCLE_URL, {"action": "start", "monthFirst": "2026-07-15"}, format="json"
+    )
+
+    assert response.status_code == 400
+    assert "monthFirst" in response.json()["fields"]
+
+
+@pytest.mark.django_db
+def test_get_weekly_log_expoe_status_e_planning_completed_at(auth_client, user):
+    """Campos ADITIVOS (AC8): `closed` permanece, e o GET não atribui estado (AC4)."""
+    response = auth_client.get("/api/bujo/logs/weekly/")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] is None
+    assert body["planningCompletedAt"] is None
+    assert body["closed"] is False
+
+    with tenant_context(user):
+        log = WeeklyLog.objects.get(week_start=week_start_of(today_for(user)))
+        assert log.status is None  # navegar NÃO cria ciclo operacional
+
+
+@pytest.mark.django_db
+def test_get_monthly_log_expoe_status_e_planning_completed_at(auth_client, user):
+    response = auth_client.get("/api/bujo/logs/monthly/")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] is None
+    assert body["planningCompletedAt"] is None
+    assert body["closed"] is False
+
+
+@pytest.mark.django_db
+def test_get_logs_nao_alteram_estado_de_ciclo_preexistente(auth_client, user):
+    """AC4 no nível HTTP: `GET` e `POST` de tarefa passam por `get_or_create_*`, e
+    nenhum dos dois pode tocar o estado já conquistado pelo ritual."""
+    with tenant_context(user):
+        semana = week_start_of(today_for(user))
+        weekly = WeeklyLogFactory(user=user, week_start=semana, status="active")
+        mes = today_for(user).replace(day=1)
+        monthly = MonthlyLogFactory(user=user, month_first=mes, status="planning")
+
+    assert auth_client.get("/api/bujo/logs/weekly/").json()["status"] == "active"
+    assert auth_client.get("/api/bujo/logs/monthly/").json()["status"] == "planning"
+
+    auth_client.post(
+        "/api/bujo/logs/weekly/",
+        {"weekStart": semana.isoformat(), "title": "Tarefa nova"},
+        format="json",
+    )
+    auth_client.post(
+        "/api/bujo/logs/monthly/",
+        {"monthFirst": mes.isoformat(), "title": "Tarefa nova"},
+        format="json",
+    )
+
+    weekly.refresh_from_db()
+    monthly.refresh_from_db()
+    assert (weekly.status, weekly.planning_completed_at) == ("active", None)
+    assert (monthly.status, monthly.planning_completed_at) == ("planning", None)
+
+
+# --- AC5: caracterização do contrato legado ------------------------------------
+# O conjunto de chaves de cada resposta consumida pelo Daily/fluxos legados é o
+# esperado MAIS os dois campos novos nos dois logs, e nada mais mudou. Chaves em
+# camelCase porque a asserção é sobre o CONTRATO DE FIO (`response.json()`), o que
+# o frontend realmente recebe — não sobre os nomes internos dos serializers.
+LEGACY_TASK_KEYS = {
+    "id",
+    "title",
+    "description",
+    "status",
+    "eisenhower",
+    "category",
+    "scheduledDate",
+    "subtasks",
+    "waitingOn",
+    "migrationCount",
+    "migratedToTask",
+    "sourceTemplate",
+}
+
+
+@pytest.mark.django_db
+def test_ac5_caracterizacao_das_respostas_de_log(auth_client, user):
+    weekly = auth_client.get("/api/bujo/logs/weekly/").json()
+    monthly = auth_client.get("/api/bujo/logs/monthly/").json()
+
+    # `closed` PRESERVADO + exatamente os 2 campos aditivos.
+    assert set(weekly) == {
+        "weekStart",
+        "days",
+        "unscheduled",
+        "closed",
+        "status",
+        "planningCompletedAt",
+    }
+    assert set(monthly) == {
+        "monthFirst",
+        "tasks",
+        "closed",
+        "status",
+        "planningCompletedAt",
+    }
+    assert set(weekly["days"][0]) == {"date", "tasks"}
+
+
+@pytest.mark.django_db
+def test_ac5_caracterizacao_da_forma_da_task(auth_client, user):
+    """`TaskSerializer` é intocado por esta story — nenhum campo de ciclo vaza
+    para dentro da tarefa."""
+    with tenant_context(user):
+        log = get_or_create_daily_log(user=user, log_date=today_for(user))
+        TaskFactory(user=user, log=log)
+
+    tasks = auth_client.get("/api/bujo/logs/today/").json()["tasks"]
+
+    assert set(tasks[0]) == LEGACY_TASK_KEYS
+
+
+@pytest.mark.django_db
+def test_ac5_caracterizacao_das_filas_e_do_arquivo(auth_client, user):
+    """Os aliases de fila permanecem INTACTOS até a 14.3 — nada de unificação aqui."""
+    with tenant_context(user):
+        semana = week_start_of(today_for(user))
+        fechada = WeeklyLogFactory(user=user, week_start=semana - timedelta(days=7))
+        TaskFactory(user=user, weekly_log=fechada, status=Task.Status.COMPLETED)
+        futuro = MonthlyLogFactory(user=user, month_first=date(2027, 3, 1))
+        TaskFactory(user=user, monthly_log=futuro, status=Task.Status.PENDING)
+
+    esperado = {
+        "/api/bujo/archive/": {"type", "weekStart", "monthFirst"},
+        "/api/bujo/future-log/": {"year", "month", "tasks"},
+    }
+    for url, keys in esperado.items():
+        entries = auth_client.get(url).json()
+        assert entries, f"{url} deveria ter ao menos uma entrada"
+        assert set(entries[0]) == keys, url
+
+    assert set(auth_client.get("/api/bujo/migration/queue/").json()) == {
+        "logDate",
+        "tasks",
+    }
+    assert set(auth_client.get("/api/bujo/weekly-review/queue/").json()) == {
+        "weekStart",
+        "tasks",
+    }
+    assert set(auth_client.get("/api/bujo/monthly-review/queue/").json()) == {
+        "monthFirst",
+        "tasks",
+    }
+    assert set(auth_client.get("/api/bujo/catch-up/queue/").json()) == {
+        "monthlyTasks",
+        "weeklyTasks",
+        "dailyTasks",
+    }
+    density = auth_client.get(
+        f"/api/bujo/task-density/?month_first={today_for(user).replace(day=1).isoformat()}"
+    ).json()
+    assert set(density) == {"density"}
+
+
+@pytest.mark.django_db
+def test_ac5_ciclo_finalized_entra_no_arquivo_junto_dos_legados(auth_client, user):
+    """AC6 no nível HTTP: `/archive/` devolve a UNIÃO dos dois critérios, sem
+    duplicar — e o ciclo `finalized` vazio, que a derivação não pegava, entra."""
+    with tenant_context(user):
+        base = week_start_of(today_for(user))
+        legado = WeeklyLogFactory(user=user, week_start=base - timedelta(days=14))
+        TaskFactory(user=user, weekly_log=legado, status=Task.Status.COMPLETED)
+        WeeklyLogFactory(
+            user=user, week_start=base - timedelta(days=7), status="finalized"
+        )
+
+    entries = auth_client.get("/api/bujo/archive/").json()
+    semanas = [e["weekStart"] for e in entries if e["type"] == "weekly"]
+
+    assert semanas == [
+        (base - timedelta(days=7)).isoformat(),
+        (base - timedelta(days=14)).isoformat(),
+    ]
+
+
+# ==============================================================================
+# Endpoints de ciclo — lacunas fechadas no passo de QA da Story 14.1
+# ==============================================================================
+# O dev-story cobriu o caminho felizes e os 409 de gate do WEEKLY via HTTP. O que
+# faltava (e entra aqui): autenticação/isolamento dos dois endpoints novos — a
+# superfície de maior risco do repo (§6.7) —, o ciclo de vida completo do MONTHLY
+# por HTTP (o weekly tinha; o monthly só tinha abertura e os 400 de payload), a
+# idempotência no nível do fio (caso-âncora da AD-28 "re-executar Iniciar depois é
+# no-op") e o AC4 no caminho de GRAVAÇÃO em mês futuro (armazenamento do Future
+# Log), que só era coberto para o mês corrente.
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("url", [WEEKLY_CYCLE_URL, MONTHLY_CYCLE_URL])
+def test_post_cycle_sem_autenticacao_retorna_401(url):
+    """Os dois endpoints novos herdam `IsAuthenticated` do default — sem token
+    não existe `user` para o serviço escopar, então nada pode passar."""
+    response = APIClient().post(url, {"action": "open_planning_target"}, format="json")
+
+    assert response.status_code == 401
+
+
+@pytest.mark.django_db
+def test_post_weekly_cycle_escopado_por_tenant(user, other_user):
+    """A unique parcial é `(user_id) WHERE status=...` — dois usuários podem ter,
+    cada um, o SEU alvo na MESMA semana sem colidir, e a ação de um nunca toca o
+    log do outro. Bearer real nos dois clientes (não `force_authenticate`), para
+    passar pelo middleware de tenant como no request de produção."""
+    semana = week_start_of(today_for(user))
+
+    def client_for(u):
+        client = APIClient()
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {AccessToken.for_user(u)}")
+        return client
+
+    payload = {"action": "open_planning_target", "weekStart": semana.isoformat()}
+    assert client_for(user).post(WEEKLY_CYCLE_URL, payload, format="json").status_code == 200
+    assert (
+        client_for(other_user).post(WEEKLY_CYCLE_URL, payload, format="json").status_code
+        == 200
+    )
+
+    # Concluir planejamento pelo other_user não pode timbrar o log do user.
+    client_for(other_user).post(
+        WEEKLY_CYCLE_URL,
+        {"action": "complete_planning", "weekStart": semana.isoformat()},
+        format="json",
+    )
+
+    with tenant_context(user):
+        do_user = WeeklyLog.objects.get(week_start=semana)
+    with tenant_context(other_user):
+        do_other = WeeklyLog.objects.get(week_start=semana)
+
+    assert do_user.id != do_other.id
+    assert (do_user.status, do_user.planning_completed_at) == ("planning", None)
+    assert do_other.status == "planning"
+    assert do_other.planning_completed_at is not None
+
+
+@pytest.mark.django_db
+def test_post_monthly_cycle_ciclo_de_vida_completo_via_http(auth_client, user):
+    """Espelha o teste de ciclo de vida weekly, do lado monthly: planejar →
+    concluir → iniciar → (planejar o mês seguinte) → finalizar, tudo pelo
+    endpoint. O alvo nunca é enviado na abertura (é determinístico, AC3)."""
+    mes = today_for(user).replace(day=1)
+    seguinte = add_months(mes, 1)
+
+    def post(action, month_first=None):
+        payload = {"action": action}
+        if month_first is not None:
+            payload["monthFirst"] = month_first.isoformat()
+        return auth_client.post(MONTHLY_CYCLE_URL, payload, format="json")
+
+    aberto = post("open_planning_target")
+    assert aberto.status_code == 200
+    assert aberto.json()["monthFirst"] == mes.isoformat()
+
+    concluido = post("complete_planning", mes)
+    assert concluido.status_code == 200
+    assert concluido.json()["status"] == "planning"  # concluir NÃO muda o status
+    assert concluido.json()["planningCompletedAt"] is not None
+
+    iniciado = post("start", mes)
+    assert iniciado.status_code == 200
+    assert iniciado.json()["status"] == "active"
+
+    # O alvo passa a ser o mês seguinte SEM que o cliente escolha (determinismo).
+    proximo = post("open_planning_target")
+    assert proximo.status_code == 200
+    assert proximo.json()["monthFirst"] == seguinte.isoformat()
+
+    finalizado = post("finalize", mes)
+    assert finalizado.status_code == 200
+    assert finalizado.json()["status"] == "finalized"
+
+
+@pytest.mark.django_db
+def test_post_monthly_cycle_gate_de_iniciar_retorna_409(auth_client, user):
+    """Iniciar sem planejamento concluído → `InvalidTransition` → 409, igual ao
+    weekly (o gate vive no serviço, compartilhado pelos dois tipos)."""
+    mes = today_for(user).replace(day=1)
+    auth_client.post(MONTHLY_CYCLE_URL, {"action": "open_planning_target"}, format="json")
+
+    response = auth_client.post(
+        MONTHLY_CYCLE_URL, {"action": "start", "monthFirst": mes.isoformat()}, format="json"
+    )
+
+    assert response.status_code == 409
+    assert "detail" in response.json()
+
+
+@pytest.mark.django_db
+def test_post_monthly_cycle_finalizar_sem_proximo_mes_em_planejamento_retorna_409(
+    auth_client, user
+):
+    """Predicado sem lacuna do monthly (AC3): finalizar exige o mês seguinte já
+    registrado como `planning`. Sem ele, 409 — e o ciclo continua `active`."""
+    mes = today_for(user).replace(day=1)
+    auth_client.post(MONTHLY_CYCLE_URL, {"action": "open_planning_target"}, format="json")
+    auth_client.post(
+        MONTHLY_CYCLE_URL,
+        {"action": "complete_planning", "monthFirst": mes.isoformat()},
+        format="json",
+    )
+    auth_client.post(
+        MONTHLY_CYCLE_URL, {"action": "start", "monthFirst": mes.isoformat()}, format="json"
+    )
+
+    response = auth_client.post(
+        MONTHLY_CYCLE_URL,
+        {"action": "finalize", "monthFirst": mes.isoformat()},
+        format="json",
+    )
+
+    assert response.status_code == 409
+    with tenant_context(user):
+        assert MonthlyLog.objects.get(month_first=mes).status == "active"
+
+
+@pytest.mark.django_db
+def test_post_weekly_cycle_reexecutar_iniciar_e_no_op_com_o_mesmo_corpo(auth_client, user):
+    """Caso-âncora da AD-28: "na segunda-feira … passa — re-executar Iniciar
+    depois é no-op". No fio isso significa 200 com corpo IDÊNTICO (nunca 409), e
+    nenhuma escrita nova: `planningCompletedAt` não é re-timbrado."""
+    semana = week_start_of(today_for(user))
+
+    def post(action):
+        return auth_client.post(
+            WEEKLY_CYCLE_URL,
+            {"action": action, "weekStart": semana.isoformat()},
+            format="json",
+        )
+
+    post("open_planning_target")
+    concluido = post("complete_planning")
+
+    # Ainda EM PLANEJAMENTO: concluir de novo é no-op que preserva o timestamp
+    # original ("não precisa ser repetida após novas decisões", M06) — nunca 409,
+    # nunca re-timbrado.
+    reconcluido = post("complete_planning")
+    assert reconcluido.status_code == 200
+    assert reconcluido.json()["planningCompletedAt"] == concluido.json()["planningCompletedAt"]
+
+    primeira = post("start")
+    segunda = post("start")
+
+    assert (primeira.status_code, segunda.status_code) == (200, 200)
+    assert primeira.json() == segunda.json()
+    assert primeira.json()["status"] == "active"
+
+    # Fronteira do "revisitável ATÉ Iniciar": depois de iniciar, concluir
+    # planejamento deixa de ser no-op e passa a ser transição ilegal (409) — o
+    # marco de planejamento pertence à fase `planning`, e o corpo do 200 acima
+    # prova que o timestamp sobreviveu à transição.
+    assert post("complete_planning").status_code == 409
+    assert primeira.json()["planningCompletedAt"] == concluido.json()["planningCompletedAt"]
+
+
+@pytest.mark.django_db
+def test_post_task_em_mes_futuro_nao_cria_ciclo_operacional(auth_client, user):
+    """AC4 no caminho de GRAVAÇÃO: escrever num `monthly_log` FUTURO é uso do
+    Future Log como armazenamento, não entrada em regime. O log nasce e permanece
+    `status IS NULL`, aparece no `/future-log/` e não vira ciclo — o teste de AC4
+    que já existia só cobria logs do mês corrente."""
+    futuro = add_months(today_for(user).replace(day=1), 3)
+
+    criado = auth_client.post(
+        "/api/bujo/logs/monthly/",
+        {"monthFirst": futuro.isoformat(), "title": "Viagem planejada"},
+        format="json",
+    )
+    assert criado.status_code == 201
+
+    with tenant_context(user):
+        log = MonthlyLog.objects.get(month_first=futuro)
+    assert (log.status, log.planning_completed_at) == (None, None)
+
+    # Consultar o Future Log (leitura do mesmo log) também não atribui estado.
+    future_log = auth_client.get("/api/bujo/future-log/")
+    assert future_log.status_code == 200
+    assert {(g["year"], g["month"]) for g in future_log.json()} == {
+        (futuro.year, futuro.month)
+    }
+    with tenant_context(user):
+        assert MonthlyLog.objects.get(month_first=futuro).status is None
+
+
+@pytest.mark.django_db
+def test_ciclo_em_andamento_com_tudo_disposto_nao_e_reportado_fechado(auth_client, user):
+    """REVISÃO 14.1, no fio: `closed` do ciclo DENTRO do regime operacional responde
+    ao ritual, não ao conteúdo.
+
+    Antes da correção, dispor a última tarefa da semana `active` devolvia
+    `closed: true`, a semana entrava em `/archive/` sem nunca ter sido finalizada e o
+    `POST` de uma tarefa nova respondia 409 — trancando o ciclo que M06 declara
+    plenamente operável ("a data do calendário não finaliza uma semana
+    automaticamente", e só `finalized` é readonly).
+    """
+    with tenant_context(user):
+        semana = week_start_of(today_for(user))
+        log = WeeklyLogFactory(user=user, week_start=semana, status="active")
+        TaskFactory(user=user, weekly_log=log, status=Task.Status.COMPLETED)
+
+    resposta = auth_client.get("/api/bujo/logs/weekly/").json()
+    assert (resposta["status"], resposta["closed"]) == ("active", False)
+    assert auth_client.get("/api/bujo/archive/").json() == []
+
+    criacao = auth_client.post(
+        "/api/bujo/logs/weekly/",
+        {"weekStart": semana.isoformat(), "title": "a semana segue operável"},
+        format="json",
+    )
+    assert criacao.status_code == 201

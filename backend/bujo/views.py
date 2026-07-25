@@ -20,6 +20,8 @@ from bujo.serializers import (
     FutureLogMonthGroupSerializer,
     LogSerializer,
     MigrationQueueSerializer,
+    MonthlyCycleActionSerializer,
+    MonthlyCycleSerializer,
     MonthlyLogSerializer,
     MonthlyReviewQueueSerializer,
     MonthlyTaskCreateSerializer,
@@ -34,11 +36,24 @@ from bujo.serializers import (
     TaskReorderSerializer,
     TaskSerializer,
     TaskUpdateSerializer,
+    WeeklyCycleActionSerializer,
+    WeeklyCycleSerializer,
     WeeklyLogSerializer,
     WeeklyReviewQueueSerializer,
     WeeklyTaskCreateSerializer,
 )
-from bujo.services.archive import is_container_closed, list_closed_cycles
+from bujo.services.archive import is_cycle_closed, list_closed_cycles
+from bujo.services.cycles import (
+    cancel_weekly_planning_target,
+    complete_monthly_planning,
+    complete_weekly_planning,
+    finalize_monthly,
+    finalize_weekly,
+    open_monthly_planning_target,
+    open_weekly_planning_target,
+    start_monthly,
+    start_weekly,
+)
 from bujo.services.logs import (
     get_or_create_daily_log,
     get_or_create_monthly_log,
@@ -48,7 +63,7 @@ from bujo.services.migration import migrate_task
 from bujo.services.recurring import create_template, place_template, update_template
 from bujo.services.state_machine import transition_task
 from bujo.services.tasks import create_task, delete_task, reorder_task, update_task
-from core.calendar import today_for, week_start_of
+from core.calendar import month_turn_week, today_for, week_start_of
 
 
 class TodayLogView(APIView):
@@ -271,7 +286,12 @@ class WeeklyLogView(APIView):
             "week_start": weekly_log.week_start,
             "days": days,
             "unscheduled": unscheduled,
-            "closed": is_container_closed(weekly_log),
+            "closed": is_cycle_closed(weekly_log),
+            # Aditivos (AC8) lidos DIRETO do log: nenhum serviço de ciclo é
+            # chamado aqui e nenhum estado é atribuído — navegar não pode criar
+            # ciclo operacional (AC4).
+            "status": weekly_log.status,
+            "planning_completed_at": weekly_log.planning_completed_at,
         }
         return Response(WeeklyLogSerializer(data).data)
 
@@ -312,7 +332,12 @@ class MonthlyLogView(APIView):
         data = {
             "month_first": monthly_log.month_first,
             "tasks": tasks,
-            "closed": is_container_closed(monthly_log),
+            "closed": is_cycle_closed(monthly_log),
+            # Aditivos (AC8), lidos direto do log — sem atribuir estado (AC4).
+            # Consultar um monthly futuro (armazenamento do Future Log) segue
+            # devolvendo `status: null`.
+            "status": monthly_log.status,
+            "planning_completed_at": monthly_log.planning_completed_at,
         }
         return Response(MonthlyLogSerializer(data).data)
 
@@ -334,6 +359,81 @@ class MonthlyLogView(APIView):
             category=validated.get("category"),
         )
         return Response(TaskSerializer(task).data, status=status.HTTP_201_CREATED)
+
+
+# Despacho `action` → serviço, no nível do MÓDULO (não dentro da view): a view
+# fica fina de verdade — serializer valida a forma, o dict escolhe o serviço, o
+# serviço decide tudo (gates, matriz, idempotência). Zero `atomic` e zero regra
+# de transição na camada HTTP (§6.2/§6.6).
+WEEKLY_CYCLE_SERVICES = {
+    "open_planning_target": open_weekly_planning_target,
+    "complete_planning": complete_weekly_planning,
+    "start": start_weekly,
+    "finalize": finalize_weekly,
+    "cancel_planning_target": cancel_weekly_planning_target,
+}
+MONTHLY_CYCLE_SERVICES = {
+    "open_planning_target": open_monthly_planning_target,
+    "complete_planning": complete_monthly_planning,
+    "start": start_monthly,
+    "finalize": finalize_monthly,
+}
+
+
+class WeeklyCycleView(APIView):
+    """Ações do ciclo semanal (Story 14.1, AC8) — espelha `tasks/<pk>/transition/`.
+
+    Erros de gate e de matriz sobem como `InvalidTransition`/`CycleTargetConflict`
+    (ambos `DomainError`) e viram 409 pelo handler central; nada é tratado aqui.
+    """
+
+    @extend_schema(request=WeeklyCycleActionSerializer, responses=WeeklyCycleSerializer)
+    def post(self, request):
+        body = WeeklyCycleActionSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        validated = body.validated_data
+        week_start = validated.get("week_start") or week_start_of(today_for(request.user))
+
+        log = WEEKLY_CYCLE_SERVICES[validated["action"]](
+            user=request.user, week_start=week_start
+        )
+        data = {
+            "week_start": log.week_start,
+            "status": log.status,
+            "planning_completed_at": log.planning_completed_at,
+        }
+        return Response(WeeklyCycleSerializer(data).data)
+
+
+class MonthlyCycleView(APIView):
+    """Ações do ciclo mensal (Story 14.1, AC8).
+
+    `open_planning_target` não recebe alvo: ele é determinístico (mês seguinte ao
+    `active`), sem escolha nem retargeting (M07).
+    """
+
+    @extend_schema(request=MonthlyCycleActionSerializer, responses=MonthlyCycleSerializer)
+    def post(self, request):
+        body = MonthlyCycleActionSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        validated = body.validated_data
+        action = validated["action"]
+
+        service = MONTHLY_CYCLE_SERVICES[action]
+        if action == "open_planning_target":
+            log = service(user=request.user)
+        else:
+            log = service(user=request.user, month_first=validated["month_first"])
+
+        window_start, window_end = month_turn_week(log.month_first)
+        data = {
+            "month_first": log.month_first,
+            "status": log.status,
+            "planning_completed_at": log.planning_completed_at,
+            "regular_window_start": window_start,
+            "regular_window_end": window_end,
+        }
+        return Response(MonthlyCycleSerializer(data).data)
 
 
 class FutureLogView(APIView):

@@ -61,7 +61,20 @@ class WrongPlacementContainer(DomainError):
 
 
 class ClosedCycleReadOnly(DomainError):
-    """Tentativa de mutar um weekly_log/monthly_log já fechado (is_container_closed)."""
+    """Tentativa de mutar um weekly_log/monthly_log já fechado (is_cycle_closed)."""
+
+
+class CycleTargetConflict(DomainError):
+    """Disputa pelo alvo único de ciclo — colisão das uniques parciais (AD-28 item 2).
+
+    "Unicidade no banco, não na disciplina": ``weekly_log``/``monthly_log`` têm
+    índices únicos parciais garantindo no máximo um ``active`` e um ``planning``
+    por usuário. Quando duas requisições concorrentes tentam abrir/iniciar o
+    mesmo ciclo, uma delas recebe ``IntegrityError`` do Postgres — o serviço a
+    traduz nesta exceção (→ 409). NÃO é transição ilegal (por isso não é
+    ``InvalidTransition``): é corrida perdida por um pedido que era legal no
+    momento em que foi lido.
+    """
 
 
 class TenantScopeViolation(DomainError):

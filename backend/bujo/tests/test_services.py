@@ -4,9 +4,26 @@ import itertools
 from datetime import date, timedelta
 
 import pytest
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 
-from bujo.models import Log, MonthlyLog, RecurringTaskTemplate, Task, WeeklyLog
-from bujo.services.archive import is_container_closed, list_closed_cycles
+from bujo.models import CycleStatus, Log, MonthlyLog, RecurringTaskTemplate, Task, WeeklyLog
+from bujo.serializers import MONTHLY_CYCLE_ACTIONS as MONTHLY_CYCLE_ACTION_CHOICES
+from bujo.services.archive import is_container_closed, is_cycle_closed, list_closed_cycles
+from bujo.services.cycles import ALLOWED as CYCLE_ALLOWED
+from bujo.services.cycles import (
+    add_months,
+    cancel_weekly_planning_target,
+    complete_monthly_planning,
+    complete_weekly_planning,
+    finalize_monthly,
+    finalize_weekly,
+    next_monthly_target,
+    open_monthly_planning_target,
+    open_weekly_planning_target,
+    start_monthly,
+    start_weekly,
+)
 from bujo.services.logs import (
     get_or_create_daily_log,
     get_or_create_monthly_log,
@@ -23,9 +40,11 @@ from bujo.tests.factories import (
     TaskFactory,
     WeeklyLogFactory,
 )
+from core.calendar import now as cal_now
 from core.calendar import today_for, week_start_of
 from core.exceptions import (
     ClosedCycleReadOnly,
+    CycleTargetConflict,
     InvalidReorderTarget,
     InvalidTransition,
     WrongPlacementContainer,
@@ -1520,3 +1539,905 @@ def test_list_closed_cycles_escopado_por_tenant(user, other_user):
         entries = list_closed_cycles(user=user)
 
         assert entries == []
+
+
+# ==============================================================================
+# Ciclo de vida operacional de Weekly/Monthly (Story 14.1 — AD-28, M06/M07)
+# ==============================================================================
+CYCLE_STATUSES = [None, CycleStatus.PLANNING, CycleStatus.ACTIVE, CycleStatus.FINALIZED]
+
+# `to_status` → serviço público que tenta alcançá-lo. `None` (cancelar alvo vazio)
+# existe só no Weekly — a ausência no Monthly é regra de produto (M07).
+WEEKLY_CYCLE_ACTIONS = {
+    CycleStatus.PLANNING: open_weekly_planning_target,
+    CycleStatus.ACTIVE: start_weekly,
+    CycleStatus.FINALIZED: finalize_weekly,
+    None: cancel_weekly_planning_target,
+}
+MONTHLY_CYCLE_ACTIONS = {
+    CycleStatus.ACTIVE: start_monthly,
+    CycleStatus.FINALIZED: finalize_monthly,
+}
+
+
+def _current_week(user):
+    return week_start_of(today_for(user))
+
+
+def _current_month(user):
+    return today_for(user).replace(day=1)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "from_status,to_status", list(itertools.product(CYCLE_STATUSES, CYCLE_STATUSES))
+)
+def test_ciclo_weekly_matriz_completa(user, from_status, to_status):
+    """As 16 combinações (4x4) contra `cycles.ALLOWED`, no estilo de
+    `test_transition_task_matriz_completa`.
+
+    Três desfechos possíveis, e a distinção é deliberada: auto-transição
+    (`from == to`) é **no-op idempotente**, não erro — é o caso-âncora da AD-28
+    ("re-executar Iniciar depois é no-op"). Fora disso, dentro da matriz persiste,
+    fora dela levanta `InvalidTransition` e NÃO escreve.
+    """
+    with tenant_context(user):
+        key = _current_week(user)
+        log = WeeklyLogFactory(user=user, week_start=key, status=from_status)
+        if from_status == CycleStatus.PLANNING:
+            # Satisfaz o gate de planejamento concluído para que a única coisa
+            # sob teste seja a matriz (os gates têm testes isolados abaixo).
+            log.planning_completed_at = cal_now()
+            log.save(update_fields=["planning_completed_at"])
+        if from_status == CycleStatus.ACTIVE and to_status == CycleStatus.FINALIZED:
+            WeeklyLogFactory(
+                user=user, week_start=key + timedelta(days=7), status=CycleStatus.PLANNING
+            )
+
+        action = WEEKLY_CYCLE_ACTIONS[to_status]
+
+        if from_status == to_status:
+            result = action(user=user, week_start=key)
+            assert result.status == from_status
+            log.refresh_from_db()
+            assert log.status == from_status
+        elif to_status in CYCLE_ALLOWED[from_status]:
+            result = action(user=user, week_start=key)
+            assert result.status == to_status
+            log.refresh_from_db()
+            assert log.status == to_status
+        else:
+            with pytest.raises(InvalidTransition):
+                action(user=user, week_start=key)
+            log.refresh_from_db()
+            assert log.status == from_status
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "from_status,to_status",
+    list(itertools.product(CYCLE_STATUSES, [CycleStatus.ACTIVE, CycleStatus.FINALIZED])),
+)
+def test_ciclo_monthly_matriz_completa(user, from_status, to_status):
+    """Mesma matriz para o Monthly nas colunas endereçáveis por chave.
+
+    A coluna `planning` fica fora daqui porque o alvo mensal é DETERMINÍSTICO
+    (sem parâmetro de data): `open_monthly_planning_target` não endereça um mês
+    arbitrário. Ela é coberta pelos testes de alvo determinístico logo abaixo.
+    """
+    with tenant_context(user):
+        key = _current_month(user)
+        log = MonthlyLogFactory(user=user, month_first=key, status=from_status)
+        if from_status == CycleStatus.PLANNING:
+            log.planning_completed_at = cal_now()
+            log.save(update_fields=["planning_completed_at"])
+        if from_status == CycleStatus.ACTIVE and to_status == CycleStatus.FINALIZED:
+            MonthlyLogFactory(
+                user=user, month_first=add_months(key, 1), status=CycleStatus.PLANNING
+            )
+
+        action = MONTHLY_CYCLE_ACTIONS[to_status]
+
+        if from_status == to_status:
+            result = action(user=user, month_first=key)
+            assert result.status == from_status
+        elif to_status in CYCLE_ALLOWED[from_status]:
+            result = action(user=user, month_first=key)
+            assert result.status == to_status
+            log.refresh_from_db()
+            assert log.status == to_status
+        else:
+            with pytest.raises(InvalidTransition):
+                action(user=user, month_first=key)
+            log.refresh_from_db()
+            assert log.status == from_status
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "from_status", [CycleStatus.PLANNING, CycleStatus.FINALIZED]
+)
+def test_ciclo_monthly_abrir_planejamento_matriz_do_mes_corrente(user, from_status):
+    """Coluna `planning` da matriz mensal quando o alvo determinístico coincide com
+    o mês do log existente (não há `active`, então o alvo é o mês corrente):
+    `planning` → no-op idempotente; `finalized` → `InvalidTransition`."""
+    with tenant_context(user):
+        key = _current_month(user)
+        log = MonthlyLogFactory(user=user, month_first=key, status=from_status)
+
+        if from_status == CycleStatus.PLANNING:
+            assert open_monthly_planning_target(user=user).id == log.id
+        else:
+            with pytest.raises(InvalidTransition):
+                open_monthly_planning_target(user=user)
+        log.refresh_from_db()
+        assert log.status == from_status
+
+
+@pytest.mark.django_db
+def test_ciclo_monthly_abrir_planejamento_com_ativo_mira_o_mes_seguinte(user):
+    """`None → planning` aplicado ao mês SEGUINTE, nunca convertendo o `active`:
+    "não existe escolha ou retargeting" (M07)."""
+    with tenant_context(user):
+        key = _current_month(user)
+        active = MonthlyLogFactory(user=user, month_first=key, status=CycleStatus.ACTIVE)
+
+        target = open_monthly_planning_target(user=user)
+
+        assert target.month_first == add_months(key, 1)
+        assert target.status == CycleStatus.PLANNING
+        active.refresh_from_db()
+        assert active.status == CycleStatus.ACTIVE
+
+
+@pytest.mark.django_db
+def test_ciclo_monthly_nao_tem_cancelar_planejamento(user):
+    """M07: "O Monthly não herda a ação Cancelar planejamento vazio do Weekly" —
+    a ausência é regra de produto, provada contra o módulo de serviços."""
+    import bujo.services.cycles as cycles_module
+
+    assert hasattr(cycles_module, "cancel_weekly_planning_target")
+    assert not any(
+        name.startswith("cancel_monthly") for name in dir(cycles_module)
+    )
+    assert "cancel_planning_target" not in MONTHLY_CYCLE_ACTION_CHOICES
+
+
+# --- Gates de Iniciar (M06/M07: cumulativos) -----------------------------------
+@pytest.mark.django_db
+def test_ciclo_weekly_iniciar_caminho_feliz(user):
+    with tenant_context(user):
+        key = _current_week(user)
+        open_weekly_planning_target(user=user, week_start=key)
+        complete_weekly_planning(user=user, week_start=key)
+
+        log = start_weekly(user=user, week_start=key)
+
+        assert log.status == CycleStatus.ACTIVE
+
+
+@pytest.mark.django_db
+def test_ciclo_weekly_iniciar_falha_isolada_data_antes_do_alvo(user):
+    """"Uma semana futura nunca entra Em andamento antes de sua segunda-feira,
+    mesmo quando seu planejamento for concluído antecipadamente" (M06)."""
+    with tenant_context(user):
+        future = _current_week(user) + timedelta(days=7)
+        open_weekly_planning_target(user=user, week_start=future)
+        complete_weekly_planning(user=user, week_start=future)
+
+        with pytest.raises(InvalidTransition):
+            start_weekly(user=user, week_start=future)
+
+        assert WeeklyLog.objects.get(week_start=future).status == CycleStatus.PLANNING
+
+
+@pytest.mark.django_db
+def test_ciclo_weekly_iniciar_falha_isolada_planejamento_nao_concluido(user):
+    with tenant_context(user):
+        key = _current_week(user)
+        open_weekly_planning_target(user=user, week_start=key)  # sem concluir
+
+        with pytest.raises(InvalidTransition):
+            start_weekly(user=user, week_start=key)
+
+        assert WeeklyLog.objects.get(week_start=key).status == CycleStatus.PLANNING
+
+
+@pytest.mark.django_db
+def test_ciclo_weekly_iniciar_falha_isolada_anterior_nao_finalizado(user):
+    """Só o ciclo operacional imediatamente anterior bloqueia — e ele bloqueia
+    tanto em `active` quanto em qualquer estado != `finalized`."""
+    with tenant_context(user):
+        key = _current_week(user)
+        WeeklyLogFactory(
+            user=user, week_start=key - timedelta(days=7), status=CycleStatus.ACTIVE
+        )
+        open_weekly_planning_target(user=user, week_start=key)
+        complete_weekly_planning(user=user, week_start=key)
+
+        with pytest.raises(InvalidTransition):
+            start_weekly(user=user, week_start=key)
+
+        assert WeeklyLog.objects.get(week_start=key).status == CycleStatus.PLANNING
+
+
+@pytest.mark.django_db
+def test_ciclo_weekly_iniciar_ignora_ciclos_null_anteriores(user):
+    """`_previous_operational` só olha `status` não-`NULL`: sem isso, todo usuário
+    com semanas velhas não-fechadas (bucket `NULL` do backfill, com tarefas
+    abertas) ficaria travado para sempre no primeiro uso real — o "ciclo órfão"
+    que o AC7 proíbe."""
+    with tenant_context(user):
+        key = _current_week(user)
+        velha = WeeklyLogFactory(user=user, week_start=key - timedelta(days=14), status=None)
+        TaskFactory(user=user, weekly_log=velha, status=Task.Status.PENDING)
+
+        open_weekly_planning_target(user=user, week_start=key)
+        complete_weekly_planning(user=user, week_start=key)
+        log = start_weekly(user=user, week_start=key)
+
+        assert log.status == CycleStatus.ACTIVE
+        velha.refresh_from_db()
+        assert velha.status is None  # o ciclo legado não foi tocado
+
+
+@pytest.mark.django_db
+def test_ciclo_weekly_avisos_de_daily_e_monthly_nao_bloqueiam_iniciar(user):
+    """"Pendências de Daily, Monthly e recorrentes geram avisos persistentes, mas
+    não bloqueiam" — só o Weekly imediatamente anterior é fonte bloqueante."""
+    with tenant_context(user):
+        key = _current_week(user)
+        TaskFactory(user=user, status=Task.Status.PENDING)  # daily pendente
+        monthly = MonthlyLogFactory(user=user, month_first=_current_month(user))
+        TaskFactory(user=user, monthly_log=monthly, status=Task.Status.STARTED)
+
+        open_weekly_planning_target(user=user, week_start=key)
+        complete_weekly_planning(user=user, week_start=key)
+
+        assert start_weekly(user=user, week_start=key).status == CycleStatus.ACTIVE
+
+
+# --- Gates de Finalizar --------------------------------------------------------
+@pytest.mark.django_db
+@pytest.mark.parametrize("blocking_status", [Task.Status.PENDING, Task.Status.STARTED])
+def test_ciclo_weekly_finalizar_bloqueado_por_tarefa_nao_disposta(user, blocking_status):
+    with tenant_context(user):
+        key = _current_week(user)
+        log = WeeklyLogFactory(user=user, week_start=key, status=CycleStatus.ACTIVE)
+        TaskFactory(user=user, weekly_log=log, status=blocking_status)
+        WeeklyLogFactory(
+            user=user, week_start=key + timedelta(days=7), status=CycleStatus.PLANNING
+        )
+
+        with pytest.raises(InvalidTransition):
+            finalize_weekly(user=user, week_start=key)
+
+        log.refresh_from_db()
+        assert log.status == CycleStatus.ACTIVE
+
+
+@pytest.mark.django_db
+def test_ciclo_weekly_finalizar_bloqueado_por_subtarefa_pendente(user):
+    """Subárvore COMPLETA (FR-1.10): pai disposto com filho pendente não finaliza."""
+    with tenant_context(user):
+        key = _current_week(user)
+        log = WeeklyLogFactory(user=user, week_start=key, status=CycleStatus.ACTIVE)
+        pai = TaskFactory(user=user, weekly_log=log, status=Task.Status.COMPLETED)
+        TaskFactory(
+            user=user, weekly_log=log, parent_task=pai, status=Task.Status.PENDING
+        )
+        WeeklyLogFactory(
+            user=user, week_start=key + timedelta(days=7), status=CycleStatus.PLANNING
+        )
+
+        with pytest.raises(InvalidTransition):
+            finalize_weekly(user=user, week_start=key)
+
+
+@pytest.mark.django_db
+def test_ciclo_weekly_finalizar_bloqueado_sem_proxima_semana_em_planejamento(user):
+    with tenant_context(user):
+        key = _current_week(user)
+        log = WeeklyLogFactory(user=user, week_start=key, status=CycleStatus.ACTIVE)
+
+        with pytest.raises(InvalidTransition):
+            finalize_weekly(user=user, week_start=key)
+
+        log.refresh_from_db()
+        assert log.status == CycleStatus.ACTIVE
+
+
+@pytest.mark.django_db
+def test_ciclo_weekly_finalizar_aceita_semana_pulada_como_proxima(user):
+    """Weekly permite PULAR semanas: qualquer `planning` posterior satisfaz o gate
+    (AC3/M06) — exigir a semana imediatamente seguinte travaria o ritual."""
+    with tenant_context(user):
+        key = _current_week(user)
+        log = WeeklyLogFactory(user=user, week_start=key, status=CycleStatus.ACTIVE)
+        WeeklyLogFactory(
+            user=user, week_start=key + timedelta(days=21), status=CycleStatus.PLANNING
+        )
+
+        assert finalize_weekly(user=user, week_start=key).status == CycleStatus.FINALIZED
+        log.refresh_from_db()
+        assert log.status == CycleStatus.FINALIZED  # persistido, não só retornado
+
+
+@pytest.mark.django_db
+def test_ciclo_monthly_finalizar_exige_o_mes_seguinte_sem_lacuna(user):
+    """Monthly NÃO admite lacuna: um `planning` dois meses à frente não serve."""
+    with tenant_context(user):
+        key = _current_month(user)
+        log = MonthlyLogFactory(user=user, month_first=key, status=CycleStatus.ACTIVE)
+        distante = MonthlyLogFactory(
+            user=user, month_first=add_months(key, 2), status=CycleStatus.PLANNING
+        )
+
+        with pytest.raises(InvalidTransition):
+            finalize_monthly(user=user, month_first=key)
+
+        distante.status = None
+        distante.save(update_fields=["status"])
+        MonthlyLogFactory(
+            user=user, month_first=add_months(key, 1), status=CycleStatus.PLANNING
+        )
+
+        assert finalize_monthly(user=user, month_first=key).status == CycleStatus.FINALIZED
+        log.refresh_from_db()
+        assert log.status == CycleStatus.FINALIZED
+
+
+@pytest.mark.django_db
+def test_ciclo_weekly_finalizado_e_terminal_nenhuma_saida(user):
+    """Irreversibilidade (AD-28 item 3 / M06 "nunca reabre"): conjunto de saída
+    vazio — nenhuma das 4 ações weekly tira um ciclo de `finalized`."""
+    with tenant_context(user):
+        key = _current_week(user)
+        log = WeeklyLogFactory(user=user, week_start=key, status=CycleStatus.FINALIZED)
+
+        for action in (
+            open_weekly_planning_target,
+            start_weekly,
+            cancel_weekly_planning_target,
+        ):
+            with pytest.raises(InvalidTransition):
+                action(user=user, week_start=key)
+
+        # `finalize` re-executado é no-op idempotente, não uma saída do estado.
+        assert finalize_weekly(user=user, week_start=key).status == CycleStatus.FINALIZED
+        log.refresh_from_db()
+        assert log.status == CycleStatus.FINALIZED
+        assert CYCLE_ALLOWED[CycleStatus.FINALIZED] == set()
+
+
+# --- Concluir planejamento (não-bloqueante, não muda `status`) ------------------
+@pytest.mark.django_db
+def test_ciclo_concluir_planejamento_nao_muda_status_e_nao_congela_o_ritual(user):
+    """"Declaração não bloqueante: pode ocorrer a qualquer momento, não exige
+    abrir/zerar fontes, não congela o ritual" (M06) — o alvo segue plenamente
+    operável depois de concluído (só `finalized` é readonly)."""
+    with tenant_context(user):
+        key = _current_week(user)
+        open_weekly_planning_target(user=user, week_start=key)
+        log = WeeklyLog.objects.get(week_start=key)
+        TaskFactory(user=user, weekly_log=log, status=Task.Status.PENDING)
+
+        result = complete_weekly_planning(user=user, week_start=key)
+
+        assert result.status == CycleStatus.PLANNING
+        assert result.planning_completed_at is not None
+        # Continua mutável depois da declaração: nada de readonly em `planning`.
+        create_task(user=user, weekly_log=log, title="Decisão nova pós-planejamento")
+
+
+@pytest.mark.django_db
+def test_ciclo_concluir_planejamento_reexecutado_preserva_o_timestamp_original(user):
+    """Não re-timbra (mesmo espírito do "create-if-missing" de
+    `seed_medication_day`): o marco original é dado de auditoria."""
+    with tenant_context(user):
+        key = _current_week(user)
+        open_weekly_planning_target(user=user, week_start=key)
+        primeiro = complete_weekly_planning(user=user, week_start=key).planning_completed_at
+
+        segundo = complete_weekly_planning(user=user, week_start=key).planning_completed_at
+
+        assert primeiro == segundo
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("status_fora_do_regime", [None, CycleStatus.ACTIVE, CycleStatus.FINALIZED])
+def test_ciclo_concluir_planejamento_exige_status_planning(user, status_fora_do_regime):
+    """Concluir planejamento de um log FORA do regime (`NULL`) é `InvalidTransition`:
+    é o 1º passo do bypass do ritual que a matriz sem `None → active` impede."""
+    with tenant_context(user):
+        key = _current_week(user)
+        log = WeeklyLogFactory(user=user, week_start=key, status=status_fora_do_regime)
+
+        with pytest.raises(InvalidTransition):
+            complete_weekly_planning(user=user, week_start=key)
+
+        log.refresh_from_db()
+        assert log.planning_completed_at is None
+
+
+@pytest.mark.django_db
+def test_ciclo_concluir_planejamento_de_log_inexistente_levanta(user):
+    with tenant_context(user):
+        with pytest.raises(InvalidTransition):
+            complete_weekly_planning(user=user, week_start=_current_week(user))
+
+
+# --- Cancelar alvo de planejamento (só Weekly, só vazio) -----------------------
+@pytest.mark.django_db
+def test_ciclo_weekly_cancelar_zera_status_e_timestamp_sem_apagar_o_log(user):
+    """M06 admite "cancelado **e recriado**": deixar o timestamp sobreviver
+    permitiria recriar o alvo e passar o gate de Iniciar sem concluir
+    planejamento de novo."""
+    with tenant_context(user):
+        key = _current_week(user)
+        open_weekly_planning_target(user=user, week_start=key)
+        complete_weekly_planning(user=user, week_start=key)
+
+        log = cancel_weekly_planning_target(user=user, week_start=key)
+
+        assert log.status is None
+        assert log.planning_completed_at is None
+        assert WeeklyLog.objects.filter(week_start=key).exists()  # o log sobrevive
+
+        # Recriado: precisa concluir planejamento DE NOVO antes de iniciar.
+        open_weekly_planning_target(user=user, week_start=key)
+        with pytest.raises(InvalidTransition):
+            start_weekly(user=user, week_start=key)
+
+
+@pytest.mark.django_db
+def test_ciclo_weekly_cancelar_bloqueado_com_qualquer_tarefa(user):
+    """Só planejamento VAZIO pode ser cancelado — qualquer tarefa, em qualquer
+    estado, bloqueia."""
+    with tenant_context(user):
+        key = _current_week(user)
+        log = WeeklyLogFactory(user=user, week_start=key, status=CycleStatus.PLANNING)
+        TaskFactory(user=user, weekly_log=log, status=Task.Status.COMPLETED)
+
+        with pytest.raises(InvalidTransition):
+            cancel_weekly_planning_target(user=user, week_start=key)
+
+        log.refresh_from_db()
+        assert log.status == CycleStatus.PLANNING
+
+
+@pytest.mark.django_db
+def test_ciclo_weekly_cancelar_log_inexistente_levanta(user):
+    with tenant_context(user):
+        with pytest.raises(InvalidTransition):
+            cancel_weekly_planning_target(user=user, week_start=_current_week(user))
+
+
+# --- Alvo de planejamento: janela aceita ---------------------------------------
+@pytest.mark.django_db
+def test_ciclo_weekly_alvo_no_passado_e_rejeitado(user):
+    """Um alvo no passado envenenaria o "anterior operacional" de todos os ciclos
+    seguintes (AC3)."""
+    with tenant_context(user):
+        passado = _current_week(user) - timedelta(days=7)
+
+        with pytest.raises(InvalidTransition):
+            open_weekly_planning_target(user=user, week_start=passado)
+
+        assert not WeeklyLog.objects.filter(week_start=passado).exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("semanas_a_frente", [0, 1, 5])
+def test_ciclo_weekly_alvo_corrente_ou_futuro_inclusive_pulando(user, semanas_a_frente):
+    with tenant_context(user):
+        alvo = _current_week(user) + timedelta(days=7 * semanas_a_frente)
+
+        log = open_weekly_planning_target(user=user, week_start=alvo)
+
+        assert log.week_start == alvo
+        assert log.status == CycleStatus.PLANNING
+
+
+@pytest.mark.django_db
+def test_ciclo_weekly_apenas_um_alvo_em_planejamento_por_vez(user):
+    """Segunda chamada de "Planejar próxima semana" com outro alvo já em
+    planejamento → 409 pela unique parcial (caso-âncora da AD-28)."""
+    with tenant_context(user):
+        key = _current_week(user)
+        open_weekly_planning_target(user=user, week_start=key)
+
+        with pytest.raises(CycleTargetConflict):
+            open_weekly_planning_target(user=user, week_start=key + timedelta(days=7))
+
+
+# --- Monthly: alvo determinístico e sequência sem lacunas ----------------------
+@pytest.mark.django_db
+def test_ciclo_monthly_alvo_sem_nenhum_ativo_e_o_mes_corrente(user):
+    """Bootstrap de usuário novo (decisão interina das Questões abertas da 14.1):
+    sem `active`, o alvo mensal é o mês corrente por `today_for(user)`."""
+    with tenant_context(user):
+        assert next_monthly_target(user=user) == _current_month(user)
+
+        log = open_monthly_planning_target(user=user)
+
+        assert log.month_first == _current_month(user)
+        assert log.status == CycleStatus.PLANNING
+
+
+@pytest.mark.django_db
+def test_ciclo_monthly_dois_meses_pulados_exigem_materializacao_sequencial(user):
+    """M07: "cada mês intermediário é criado em sequência e percorre individualmente
+    planejar → concluir planejamento → iniciar → finalizar. Não há salto,
+    processamento em lote nem fechamento automático, mesmo quando o ciclo está
+    vazio." Caso-âncora da AD-28 ("dois meses pulados → um ciclo por vez")."""
+    with tenant_context(user):
+        atual = _current_month(user)
+        m2, m1 = add_months(atual, -2), add_months(atual, -1)
+        MonthlyLogFactory(user=user, month_first=m2, status=CycleStatus.ACTIVE)
+
+        # 1º ciclo intermediário: o alvo é m1, NUNCA um salto para o mês corrente.
+        assert open_monthly_planning_target(user=user).month_first == m1
+        complete_monthly_planning(user=user, month_first=m1)
+
+        # Sem lote: iniciar m1 antes de finalizar m2 é bloqueado.
+        with pytest.raises(InvalidTransition):
+            start_monthly(user=user, month_first=m1)
+
+        finalize_monthly(user=user, month_first=m2)
+        assert start_monthly(user=user, month_first=m1).status == CycleStatus.ACTIVE
+        # Sem fechamento automático: o mês corrente ainda não existe como ciclo.
+        assert not MonthlyLog.objects.filter(month_first=atual).exists()
+
+        # 2º ciclo: só agora o alvo passa a ser o mês corrente.
+        assert open_monthly_planning_target(user=user).month_first == atual
+        complete_monthly_planning(user=user, month_first=atual)
+        finalize_monthly(user=user, month_first=m1)
+
+        assert start_monthly(user=user, month_first=atual).status == CycleStatus.ACTIVE
+        assert MonthlyLog.objects.get(month_first=m2).status == CycleStatus.FINALIZED
+        assert MonthlyLog.objects.get(month_first=m1).status == CycleStatus.FINALIZED
+
+
+# --- Idempotência dos 9 serviços ------------------------------------------------
+def _sem_escrita(servico, **kwargs):
+    """Executa `servico(**kwargs)` e afirma que NENHUMA escrita foi emitida.
+
+    A parte "sem escrita" do AC2 não é observável pelo valor de retorno (os logs não
+    têm `updated_at`), então ela é provada pelo SQL: nenhum `INSERT`/`UPDATE`/`DELETE`
+    entre os statements capturados. Sem isso o nome do teste prometeria um guard que
+    ele não exercita (achado recorrente da retrospectiva do Épico 13).
+    """
+    with CaptureQueriesContext(connection) as capturadas:
+        resultado = servico(**kwargs)
+    escritas = [
+        q["sql"]
+        for q in capturadas.captured_queries
+        if q["sql"].lstrip().upper().startswith(("INSERT", "UPDATE", "DELETE"))
+    ]
+    assert escritas == [], f"re-execução idempotente escreveu no banco: {escritas}"
+    return resultado
+
+
+@pytest.mark.django_db
+def test_ciclo_idempotencia_dos_nove_servicos(user):
+    """AC2: re-execução no estado-alvo = no-op, mesmo retorno, sem escrita.
+
+    Um único teste percorrendo o ciclo completo dos dois tipos e re-executando
+    CADA serviço logo depois do seu caminho felizes — cobre os 9 (5 weekly + 4
+    monthly) sem 9 setups quase idênticos. Toda re-execução passa por
+    `_sem_escrita`, que prova o "sem escrita" no SQL.
+    """
+    with tenant_context(user):
+        semana = _current_week(user)
+        mes = _current_month(user)
+
+        # --- Weekly: cancelar (5º serviço) primeiro, para liberar a unique de planning.
+        assert open_weekly_planning_target(user=user, week_start=semana).status == (
+            CycleStatus.PLANNING
+        )
+        assert _sem_escrita(
+            open_weekly_planning_target, user=user, week_start=semana
+        ).status == CycleStatus.PLANNING  # idempotente
+        assert cancel_weekly_planning_target(user=user, week_start=semana).status is None
+        assert _sem_escrita(cancel_weekly_planning_target, user=user, week_start=semana).status is (
+            None
+        )
+
+        # --- Weekly: planejar → concluir → iniciar → finalizar, cada um 2x.
+        open_weekly_planning_target(user=user, week_start=semana)
+        marco = complete_weekly_planning(user=user, week_start=semana).planning_completed_at
+        assert (
+            _sem_escrita(
+                complete_weekly_planning, user=user, week_start=semana
+            ).planning_completed_at
+            == marco
+        )
+
+        assert start_weekly(user=user, week_start=semana).status == CycleStatus.ACTIVE
+        assert (
+            _sem_escrita(start_weekly, user=user, week_start=semana).status == CycleStatus.ACTIVE
+        )
+
+        open_weekly_planning_target(user=user, week_start=semana + timedelta(days=7))
+        assert finalize_weekly(user=user, week_start=semana).status == CycleStatus.FINALIZED
+        assert (
+            _sem_escrita(finalize_weekly, user=user, week_start=semana).status
+            == CycleStatus.FINALIZED
+        )
+
+        # --- Monthly: os 4 serviços, cada um 2x.
+        assert open_monthly_planning_target(user=user).month_first == mes
+        assert _sem_escrita(open_monthly_planning_target, user=user).month_first == mes
+
+        marco_mes = complete_monthly_planning(user=user, month_first=mes).planning_completed_at
+        assert (
+            _sem_escrita(
+                complete_monthly_planning, user=user, month_first=mes
+            ).planning_completed_at
+            == marco_mes
+        )
+
+        assert start_monthly(user=user, month_first=mes).status == CycleStatus.ACTIVE
+        assert _sem_escrita(start_monthly, user=user, month_first=mes).status == CycleStatus.ACTIVE
+
+        open_monthly_planning_target(user=user)  # alvo = mês seguinte
+        assert finalize_monthly(user=user, month_first=mes).status == CycleStatus.FINALIZED
+        assert (
+            _sem_escrita(finalize_monthly, user=user, month_first=mes).status
+            == CycleStatus.FINALIZED
+        )
+
+
+# --- AC4: materialização NUNCA atribui estado ----------------------------------
+@pytest.mark.django_db
+def test_ac4_get_or_create_logs_nascem_fora_do_regime_operacional(user):
+    with tenant_context(user):
+        weekly = get_or_create_weekly_log(user=user, week_start=_current_week(user))
+        monthly = get_or_create_monthly_log(user=user, month_first=_current_month(user))
+
+        for log in (weekly, monthly):
+            assert log.status is None
+            assert log.planning_completed_at is None
+
+
+@pytest.mark.django_db
+def test_ac4_get_or_create_nao_altera_estado_de_log_preexistente(user):
+    """Idempotência de materialização NÃO pode clobberar estado já conquistado pelo
+    ritual — `get_or_create` reencontra o log e o devolve intacto."""
+    with tenant_context(user):
+        semana, mes = _current_week(user), _current_month(user)
+        WeeklyLogFactory(user=user, week_start=semana, status=CycleStatus.ACTIVE)
+        MonthlyLogFactory(user=user, month_first=mes, status=CycleStatus.PLANNING)
+
+        assert get_or_create_weekly_log(user=user, week_start=semana).status == (
+            CycleStatus.ACTIVE
+        )
+        assert get_or_create_monthly_log(user=user, month_first=mes).status == (
+            CycleStatus.PLANNING
+        )
+
+
+@pytest.mark.django_db
+def test_ac4_placement_de_recorrente_nao_altera_estado_do_container(user):
+    with tenant_context(user):
+        semana = _current_week(user)
+        log = WeeklyLogFactory(user=user, week_start=semana, status=CycleStatus.PLANNING)
+        antes = (log.status, log.planning_completed_at)
+        template = RecurringTaskTemplateFactory(user=user)
+
+        place_template(user=user, template_id=template.id, week_start=semana)
+
+        log.refresh_from_db()
+        assert (log.status, log.planning_completed_at) == antes
+
+
+@pytest.mark.django_db
+def test_ac4_brain_dump_nao_altera_estado_do_container(user):
+    """`braindump` reaproveita `get_or_create_*` + `create_task` de `bujo` — import
+    local no teste porque este arquivo é do app `bujo`."""
+    from braindump.services import create_brain_dump_item, process_brain_dump_item
+
+    with tenant_context(user):
+        semana = _current_week(user)
+        log = WeeklyLogFactory(user=user, week_start=semana, status=CycleStatus.ACTIVE)
+        antes = (log.status, log.planning_completed_at)
+        item = create_brain_dump_item(user=user, title="Ideia solta")
+
+        process_brain_dump_item(user=user, item_id=item.id, destination="week")
+
+        log.refresh_from_db()
+        assert (log.status, log.planning_completed_at) == antes
+
+
+@pytest.mark.django_db
+def test_ac4_monthly_futuro_do_future_log_nao_entra_no_regime(user):
+    """"Consultar qualquer mês do Futuro não cria nem inicia um Monthly Em andamento
+    ou Em planejamento" (EXPERIENCE.md#Future Log)."""
+    with tenant_context(user):
+        futuro = add_months(_current_month(user), 6)
+
+        log = get_or_create_monthly_log(user=user, month_first=futuro)
+        create_task(user=user, monthly_log=log, title="Viagem")
+
+        log.refresh_from_db()
+        assert log.status is None
+        assert log.planning_completed_at is None
+
+
+@pytest.mark.django_db
+def test_ac4_migracao_para_o_futuro_nao_atribui_estado(user):
+    with tenant_context(user):
+        futuro = add_months(_current_month(user), 3)
+        task = TaskFactory(user=user, status=Task.Status.PENDING)
+
+        migrate_task(user=user, task_id=task.id, destination="future", month_first=futuro)
+
+        assert MonthlyLog.objects.get(month_first=futuro).status is None
+
+
+# --- AC6: `finalized` é a autoridade de "ciclo fechado" ------------------------
+@pytest.mark.django_db
+def test_ac6_ciclo_finalized_vazio_e_readonly(user):
+    """O BURACO que esta story fecha: `is_container_closed` devolve `False` para um
+    ciclo sem tarefas (`total_tasks == 0`), então um ciclo finalizado e VAZIO
+    continuava mutável. `is_cycle_closed` cobre o caso pelo estado explícito."""
+    with tenant_context(user):
+        log = WeeklyLogFactory(
+            user=user, week_start=_current_week(user), status=CycleStatus.FINALIZED
+        )
+
+        assert is_container_closed(log) is False  # a derivação legada não pega
+        assert is_cycle_closed(log) is True  # o estado explícito pega
+
+        with pytest.raises(ClosedCycleReadOnly):
+            create_task(user=user, weekly_log=log, title="Não deveria entrar")
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("factory_cls,container_kwarg", [
+    (WeeklyLogFactory, "weekly_log"),
+    (MonthlyLogFactory, "monthly_log"),
+])
+def test_ac6_mutacoes_em_ciclo_finalized_populado_levantam(user, factory_cls, container_kwarg):
+    """AC6 nomeia create/update/delete/reorder — as quatro passam pelo guardrail."""
+    with tenant_context(user):
+        log = factory_cls(user=user, status=None)
+        primeira = TaskFactory(user=user, status=Task.Status.COMPLETED, **{container_kwarg: log})
+        segunda = TaskFactory(user=user, status=Task.Status.COMPLETED, **{container_kwarg: log})
+        log.status = CycleStatus.FINALIZED
+        log.save(update_fields=["status"])
+
+        with pytest.raises(ClosedCycleReadOnly):
+            create_task(user=user, title="nova", **{container_kwarg: log})
+        with pytest.raises(ClosedCycleReadOnly):
+            update_task(user=user, task_id=primeira.id, title="editada")
+        with pytest.raises(ClosedCycleReadOnly):
+            delete_task(user=user, task_id=primeira.id)
+        with pytest.raises(ClosedCycleReadOnly):
+            reorder_task(
+                user=user,
+                task_id=primeira.id,
+                target_task_id=segunda.id,
+                position="after",
+            )
+
+
+@pytest.mark.django_db
+def test_ac6_arquivo_devolve_uniao_dos_dois_criterios_sem_duplicar(user):
+    """`list_closed_cycles` = união (`finalized` OU derivação), sem duplicata: um
+    ciclo que satisfaz OS DOIS critérios aparece uma vez só."""
+    with tenant_context(user):
+        base = _current_week(user)
+
+        # (a) só pela derivação legada: `NULL` com todas as tarefas dispostas.
+        legado = WeeklyLogFactory(user=user, week_start=base - timedelta(days=21), status=None)
+        TaskFactory(user=user, weekly_log=legado, status=Task.Status.COMPLETED)
+        # (b) só pelo estado: `finalized` e vazio.
+        vazio = WeeklyLogFactory(
+            user=user, week_start=base - timedelta(days=14), status=CycleStatus.FINALIZED
+        )
+        # (c) pelos DOIS: `finalized` e com tarefas dispostas.
+        ambos = WeeklyLogFactory(
+            user=user, week_start=base - timedelta(days=7), status=None
+        )
+        TaskFactory(user=user, weekly_log=ambos, status=Task.Status.COMPLETED)
+        ambos.status = CycleStatus.FINALIZED
+        ambos.save(update_fields=["status"])
+        # (d) nenhum dos dois: `NULL` com tarefa aberta — não entra no Arquivo.
+        aberto = WeeklyLogFactory(user=user, week_start=base, status=None)
+        TaskFactory(user=user, weekly_log=aberto, status=Task.Status.PENDING)
+
+        entries = [e for e in list_closed_cycles(user=user) if e["type"] == "weekly"]
+        semanas = [e["week_start"] for e in entries]
+
+        assert sorted(semanas, reverse=True) == semanas  # mais recentes primeiro
+        assert set(semanas) == {legado.week_start, vazio.week_start, ambos.week_start}
+        assert len(semanas) == 3  # (c) entra UMA vez, apesar dos dois critérios
+        assert aberto.week_start not in semanas
+
+
+@pytest.mark.django_db
+def test_ac6_log_vazio_sem_estado_continua_fora_do_arquivo(user):
+    """"`total_tasks = 0` nunca conta como fechado **pela derivação**" — a regra
+    antiga permanece para ciclos sem estado."""
+    with tenant_context(user):
+        WeeklyLogFactory(user=user, week_start=_current_week(user), status=None)
+
+        assert list_closed_cycles(user=user) == []
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("status_operacional", [CycleStatus.PLANNING, CycleStatus.ACTIVE])
+def test_ac6_ciclo_no_regime_operacional_com_tudo_disposto_nao_e_readonly(
+    user, status_operacional
+):
+    """REVISÃO 14.1: a derivação por conteúdo é o fallback dos ciclos `NULL` legados
+    (AC6) — ela NÃO pode fechar um ciclo que está dentro do regime operacional.
+
+    M06/M07 são explícitos: "Um Weekly Em planejamento permite criar, editar,
+    reordenar, migrar, iniciar e concluir tarefas" e só `finalized` é readonly. Sem
+    escopar a derivação, concluir a última tarefa de um alvo em planejamento (ou do
+    ciclo em andamento) tornava o container readonly e o ritual travava: a próxima
+    tarefa recebia 409 `ClosedCycleReadOnly`, e o ciclo aparecia no Arquivo sem
+    nunca ter sido finalizado.
+    """
+    with tenant_context(user):
+        log = WeeklyLogFactory(user=user, week_start=_current_week(user), status=None)
+        TaskFactory(user=user, weekly_log=log, status=Task.Status.COMPLETED)
+        log.status = status_operacional
+        log.save(update_fields=["status"])
+
+        assert is_cycle_closed(log) is False
+        # a derivação continua dizendo "fechado" — o que muda é quem tem autoridade
+        assert is_container_closed(log) is True
+        # não entra no Arquivo: não foi finalizado por ritual
+        assert list_closed_cycles(user=user) == []
+        # e segue mutável
+        nova = create_task(user=user, weekly_log=log, title="ainda posso planejar")
+        assert nova.weekly_log_id == log.id
+
+
+@pytest.mark.django_db
+def test_ac6_ciclo_null_legado_com_tudo_disposto_continua_fechado_pela_derivacao(user):
+    """O outro lado da mesma regra: escopar a derivação ao regime NÃO pode reduzir
+    o fechamento dos ciclos legados (`status IS NULL`), que é o fallback que o AC6
+    manda preservar."""
+    with tenant_context(user):
+        log = WeeklyLogFactory(user=user, week_start=_current_week(user), status=None)
+        TaskFactory(user=user, weekly_log=log, status=Task.Status.COMPLETED)
+
+        assert is_cycle_closed(log) is True
+        assert [e["week_start"] for e in list_closed_cycles(user=user)] == [log.week_start]
+        with pytest.raises(ClosedCycleReadOnly):
+            create_task(user=user, weekly_log=log, title="ciclo legado fechado")
+
+
+@pytest.mark.django_db
+def test_ciclo_monthly_alvo_na_janela_entre_finalizar_e_iniciar_e_o_planning_existente(user):
+    """REVISÃO 14.1: a ordem obrigatória do ritual mensal (finalizar exige o próximo
+    já em planejamento) cria uma janela SEM `active` — e nela o alvo determinístico
+    tem de continuar sendo o único `planning` que existe.
+
+    Antes da correção, `next_monthly_target` caía na regra de usuário novo (mês
+    corrente por `today_for`) e "Planejar próximo mês" respondia 409 (disputa de
+    alvo, pela unique parcial) ou `InvalidTransition` (mês corrente já `finalized`)
+    em vez do no-op idempotente.
+    """
+    with tenant_context(user):
+        mes = _current_month(user)
+        seguinte = add_months(mes, 1)
+
+        open_monthly_planning_target(user=user)
+        complete_monthly_planning(user=user, month_first=mes)
+        start_monthly(user=user, month_first=mes)
+        assert open_monthly_planning_target(user=user).month_first == seguinte
+        complete_monthly_planning(user=user, month_first=seguinte)
+        finalize_monthly(user=user, month_first=mes)
+
+        # Janela: `mes` finalizado, `seguinte` em planejamento, NENHUM `active`.
+        assert MonthlyLog.objects.filter(status=CycleStatus.ACTIVE).count() == 0
+        assert next_monthly_target(user=user) == seguinte
+        alvo = open_monthly_planning_target(user=user)
+        assert (alvo.month_first, alvo.status) == (seguinte, CycleStatus.PLANNING)
+        assert MonthlyLog.objects.filter(status=CycleStatus.PLANNING).count() == 1

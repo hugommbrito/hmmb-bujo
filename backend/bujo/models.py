@@ -24,11 +24,76 @@ class Log(TenantModel):
         ]
 
 
+class CycleStatus(models.TextChoices):
+    """Estado do ciclo operacional de um Weekly/Monthly Log (AD-28, Story 14.1).
+
+    Definida no nível do módulo (não aninhada nos models) pelo MESMO motivo
+    documentado em ``TaskStatus``: uma classe aninhada em ``Meta`` não enxerga o
+    namespace do model (só o do módulo), então os `CheckConstraint` abaixo não
+    conseguiriam referenciar ``WeeklyLog.Status.values``. Exposta como
+    ``WeeklyLog.Status`` / ``MonthlyLog.Status``.
+
+    **``NULL`` é a 3ª semântica, e não tem valor no enum:** um log com
+    ``status IS NULL`` está *fora do regime operacional* — nasceu por
+    materialização sob demanda (navegação, POST de tarefa, Brain Dump, placement
+    de recorrente, migração) e nunca passou por um ritual. Entrar no regime é
+    SEMPRE ato de ritual explícito (AD-28 item 3), por isso não existe valor
+    ``none``: a ausência de estado é a ausência de ciclo, não um estado a mais.
+    """
+
+    PLANNING = "planning"
+    ACTIVE = "active"
+    FINALIZED = "finalized"
+
+
+def _cycle_status_constraints(prefix: str) -> list:
+    """Constraints de estado de ciclo para uma das duas tabelas de log.
+
+    Extraídas em helper porque `weekly_log` e `monthly_log` recebem colunas
+    IDÊNTICAS (AD-28 item 1) — copiar os 3 blocos criaria a dívida de
+    divergência entre gêmeos (lição da Story 13.3/13.4). Só os NOMES das
+    constraints diferem, e nomes precisam ser únicos por tabela.
+    """
+    return [
+        models.CheckConstraint(
+            condition=models.Q(status__in=CycleStatus.values) | models.Q(status__isnull=True),
+            name=f"{prefix}_status_valid",
+        ),
+        # UniqueConstraint parcial: gera `CREATE UNIQUE INDEX ... WHERE status='active'`
+        # no Postgres (precedente: medications/models.py:236-244). "Unicidade no banco,
+        # não na disciplina" (AD-28 item 2) — um `active` E um `planning` simultâneos
+        # é o estado NORMAL do método (planeja o próximo enquanto o atual corre).
+        models.UniqueConstraint(
+            fields=["user_id"],
+            condition=models.Q(status=CycleStatus.ACTIVE),
+            name=f"uniq_{prefix}_active_per_user",
+        ),
+        models.UniqueConstraint(
+            fields=["user_id"],
+            condition=models.Q(status=CycleStatus.PLANNING),
+            name=f"uniq_{prefix}_planning_per_user",
+        ),
+    ]
+
+
 class WeeklyLog(TenantModel):
-    """Weekly Log — um por (user, week_start), week_start SEMPRE segunda (AD-05)."""
+    """Weekly Log — um por (user, week_start), week_start SEMPRE segunda (AD-05).
+
+    Também É o ciclo operacional semanal (1:1 por `(user, week_start)`): não há
+    tabela de ciclo separada, o estado mora em colunas aqui (AD-28 item 1).
+    """
+
+    Status = CycleStatus
 
     week_start = models.DateField()
     body = models.JSONField(default=dict, blank=True)
+    status = models.CharField(  # noqa: DJ001 - NULL é a 3ª semântica (fora do regime operacional), não string vazia — AD-28 item 1
+        max_length=16, choices=CycleStatus.choices, null=True, blank=True, default=None
+    )
+    # Marco "planejamento concluído": TIMESTAMP, nunca booleano (AD-28 item 1) —
+    # o ritual permanece revisitável depois de concluído, então o valor é a data
+    # da declaração, não um flag de "fechado".
+    planning_completed_at = models.DateTimeField(null=True, blank=True, default=None)
 
     class Meta:
         db_table = "weekly_log"
@@ -39,6 +104,7 @@ class WeeklyLog(TenantModel):
             models.CheckConstraint(
                 condition=models.Q(week_start__iso_week_day=1), name="week_start_is_monday"
             ),
+            *_cycle_status_constraints("weekly_log"),
         ]
 
 
@@ -46,11 +112,20 @@ class MonthlyLog(TenantModel):
     """Monthly Log — um por (user, month_first), month_first SEMPRE dia 1 (AD-05).
 
     O Future Log NÃO é uma entidade separada: é o conjunto dos MonthlyLog de
-    meses futuros (ver Dev Notes "Future Log = monthly_log futuro").
+    meses futuros (ver Dev Notes "Future Log = monthly_log futuro"). Monthlies
+    futuros usados só como armazenamento do Future Log permanecem com
+    `status IS NULL` — consultá-los não cria nem inicia ciclo operacional
+    (AD-28 item 3).
     """
+
+    Status = CycleStatus
 
     month_first = models.DateField()
     body = models.JSONField(default=dict, blank=True)
+    status = models.CharField(  # noqa: DJ001 - NULL é a 3ª semântica (fora do regime operacional), não string vazia — AD-28 item 1
+        max_length=16, choices=CycleStatus.choices, null=True, blank=True, default=None
+    )
+    planning_completed_at = models.DateTimeField(null=True, blank=True, default=None)
 
     class Meta:
         db_table = "monthly_log"
@@ -61,6 +136,7 @@ class MonthlyLog(TenantModel):
             models.CheckConstraint(
                 condition=models.Q(month_first__day=1), name="month_first_is_day_one"
             ),
+            *_cycle_status_constraints("monthly_log"),
         ]
 
 

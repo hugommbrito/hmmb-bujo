@@ -5,17 +5,22 @@ já foi feito pelo serializer na view; o serviço assume dados validados.
 from django.db import models, transaction
 
 from bujo.models import Task
-from bujo.services.archive import is_container_closed
+from bujo.services.archive import is_cycle_closed
 from bujo.services.state_machine import transition_task
 from core.exceptions import ClosedCycleReadOnly, InvalidReorderTarget
 
 
 def _check_container_open(*, weekly_log=None, monthly_log=None) -> None:
     """Daily (`log`) nunca entra nesse check — só `WeeklyLog`/`MonthlyLog` têm
-    conceito de fechamento (`services/archive.py`, `UNDISPOSED`)."""
-    if weekly_log is not None and is_container_closed(weekly_log):
+    conceito de fechamento (`services/archive.py`).
+
+    Usa `is_cycle_closed` (não `is_container_closed`) desde a Story 14.1: fecha o
+    buraco do ciclo `finalized` **VAZIO**, que a derivação por conteúdo devolvia
+    como aberto (`total_tasks == 0`) e que portanto continuava mutável apesar de o
+    usuário ter finalizado o ciclo explicitamente."""
+    if weekly_log is not None and is_cycle_closed(weekly_log):
         raise ClosedCycleReadOnly("Ciclo fechado — somente leitura.")
-    if monthly_log is not None and is_container_closed(monthly_log):
+    if monthly_log is not None and is_cycle_closed(monthly_log):
         raise ClosedCycleReadOnly("Ciclo fechado — somente leitura.")
 
 
@@ -111,10 +116,16 @@ def delete_task(*, user, task_id) -> Task | None:
 def reorder_task(*, user, task_id, target_task_id, position) -> Task:
     """Reposiciona `task` como vizinha imediata de `target_task_id`, recalculando
     `order_index` por bisseção entre os dois vizinhos que vão ladear a tarefa
-    após o move (mesmo índice fracionário de `create_task`, que soma `+1.0`)."""
+    após o move (mesmo índice fracionário de `create_task`, que soma `+1.0`).
+
+    O guardrail de ciclo fechado entra aqui na Story 14.1 (AC6 nomeia `reorder_task`
+    junto de create/update/delete): reordenar é mutação de conteúdo do container,
+    então um ciclo `finalized` — ou fechado pela derivação legada — é readonly para
+    ela também."""
     if str(task_id) == str(target_task_id):
         raise InvalidReorderTarget(task_id, target_task_id)
     task = Task.objects.get(id=task_id)  # objects = auto-escopado por tenant
+    _check_container_open(weekly_log=task.weekly_log, monthly_log=task.monthly_log)
     target = Task.objects.get(id=target_task_id)  # idem — DoesNotExist -> 404 na view
 
     siblings = list(
