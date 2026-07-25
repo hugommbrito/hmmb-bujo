@@ -3,11 +3,12 @@ import { useLocation, useNavigate } from 'react-router-dom'
 
 import { BrainDumpBadge } from '../../../features/braindump'
 
-import { navIcons, NAV_ICON_SIZE } from './navIcons'
+import { navIconFor } from './navIcons'
 import {
   deriveBottomNavShortcuts,
   deriveShellNavItems,
   flattenDestinations,
+  isDestinationActive,
   SHELL_BADGE_SX,
 } from './shellDestinations'
 
@@ -53,12 +54,12 @@ export function ShellBottomNav({ menuOpen, onOpenMenu }: ShellBottomNavProps) {
   // então o custo é um punhado de filtros sobre 4 entradas.
   const shortcuts = deriveBottomNavShortcuts(flattenDestinations(deriveShellNavItems()))
 
-  // Ativo por prefixo do próprio destino (path exato ou `path + '/'`, como
-  // `containsRoute` da ShellSidebar — nunca um prefixo mais largo).
-  const containsRoute = (path: string) =>
-    location.pathname === path || location.pathname.startsWith(`${path}/`)
-
-  const activeShortcut = shortcuts.find((dest) => containsRoute(dest.path))
+  // Ativo pelo predicado ÚNICO das três superfícies (`isDestinationActive`:
+  // prefixo do próprio destino, nunca um prefixo mais largo) — a cópia local do
+  // `containsRoute` saiu daqui na Story 13.4 (SHELL-DEBT-03).
+  const activeShortcut = shortcuts.find((dest) =>
+    isDestinationActive(location.pathname, dest.path),
+  )
   // Rota atual fora dos 3 atalhos ⇒ Menu aparece selecionado (EXPERIENCE §App
   // Shell). `aria-current` no botão Menu segue o mockup aprovado — decisão
   // interina registrada no checklist (Questão Aberta 1) para o passe da 13.4.
@@ -81,8 +82,6 @@ export function ShellBottomNav({ menuOpen, onOpenMenu }: ShellBottomNavProps) {
     backgroundColor: selected ? 'var(--ds-primary-soft)' : 'transparent',
   })
 
-  const MenuIcon = navIcons['menu']
-
   return (
     <Box
       component="nav"
@@ -103,11 +102,8 @@ export function ShellBottomNav({ menuOpen, onOpenMenu }: ShellBottomNavProps) {
       }}
     >
       {shortcuts.map((dest) => {
-        const selected = containsRoute(dest.path)
-        const IconComp = navIcons[dest.key]
-        const icon = IconComp ? (
-          <IconComp size={NAV_ICON_SIZE} weight={selected ? 'fill' : 'regular'} />
-        ) : null
+        const selected = isDestinationActive(location.pathname, dest.path)
+        const icon = navIconFor(dest.key, selected ? 'fill' : 'regular')
         return (
           <ButtonBase
             key={dest.path}
@@ -135,7 +131,7 @@ export function ShellBottomNav({ menuOpen, onOpenMenu }: ShellBottomNavProps) {
         aria-current={menuSelected ? 'page' : undefined}
         sx={itemSx(menuSelected)}
       >
-        <MenuIcon size={NAV_ICON_SIZE} weight={menuSelected ? 'fill' : 'regular'} />
+        {navIconFor('menu', menuSelected ? 'fill' : 'regular')}
         <span>Menu</span>
       </ButtonBase>
     </Box>

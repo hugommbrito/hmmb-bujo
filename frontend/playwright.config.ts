@@ -8,6 +8,12 @@ import { DJANGO_SETTINGS_MODULE } from './e2e/backendEnv'
 // login/signup, API e UI juntos.
 export default defineConfig({
   testDir: './e2e',
+  // `e2e/tools/` guarda COLETORES sob demanda (hoje: o inventário da
+  // SHELL-DEBT-02 — axe sem `exclude: 'main'` por faixa, Story 13.4 Task 8).
+  // Coleta não é gate: fica fora da suíte para não reprovar por dívida de
+  // conteúdo legado e para não existir teste permanentemente `skip`ado.
+  // Roda com `--config playwright.inventory.config.ts`.
+  testIgnore: ['**/tools/**'],
   fullyParallel: true,
   // Contenção da branch Neon `e2e` (locks órfãos + cold-start) tornava a suíte
   // não-determinística sob execução paralela — diagnosticada e mitigada

@@ -94,7 +94,10 @@ test('lista ciclos fechados e navega para semana/mês com estado final, sem affo
 
   const migratedRow = page.getByTestId('task-row').filter({ hasText: 'Tarefa migrada para outro ciclo' })
   await expect(migratedRow).toBeVisible()
-  await expect(migratedRow.getByLabel('Migrada')).toBeVisible()
+  // `exact` porque a MESMA linha carrega dois rótulos com "Migrada": o controle de
+  // status (`Migrada`) e o chip de linhagem (`Migrada 2 vezes`) — sem isso o
+  // `getByLabel` casa por substring e viola o strict mode.
+  await expect(migratedRow.getByLabel('Migrada', { exact: true })).toBeVisible()
 
   await expect(page.getByRole('button', { name: 'Definir placement' })).toHaveCount(0)
   expect(templatesRequested).toBe(false)

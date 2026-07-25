@@ -17,11 +17,12 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { BrainDumpBadge } from '../../../features/braindump'
 import { useOnlineStatus } from '../../../shared/hooks/useOnlineStatus'
 import type { CollectionManifestEntry } from '../../collections/registry'
-import type { Icon } from '@phosphor-icons/react'
 
-import { navIcons, NAV_ICON_SIZE, type NavIconKey } from './navIcons'
+import { navIcons, navIconFor, NAV_ICON_SIZE, type NavIconKey } from './navIcons'
+import { ShellNavDestination } from './ShellNavDestination'
 import {
   deriveShellNavItems,
+  isDestinationActive,
   SHELL_BADGE_SX,
   type ShellDestination,
   type ShellDestinationGroup,
@@ -102,63 +103,25 @@ export function ShellSidebar({
   // ── Estrutura canônica (núcleo + collections filtradas — nav mínima) ────────
   const navItems = deriveShellNavItems(collections)
 
-  const isActive = (path: string) => location.pathname === path
-  const containsRoute = (path: string) =>
-    location.pathname === path || location.pathname.startsWith(`${path}/`)
-
-  // Collection nova ainda sem entrada no catálogo fechado degrada SEM ícone (o
-  // destino segue navegável pelo label/aria-label) em vez de derrubar o shell —
-  // o `id` vem do registro como string aberta e o catálogo é fechado por design.
-  const iconFor = (key: NavIconKey, active: boolean) => {
-    const IconComp: Icon | undefined = navIcons[key]
-    if (!IconComp) return null
-    return <IconComp size={NAV_ICON_SIZE} weight={active ? 'fill' : 'regular'} />
-  }
-
   const iconSx = { minWidth: collapsed ? 0 : 40, justifyContent: 'center', color: 'inherit' }
 
-  const destinationSx = (active: boolean) => ({
-    borderLeft: '3px solid',
-    borderLeftColor: active ? 'var(--ds-primary)' : 'transparent',
-    backgroundColor: active ? 'var(--ds-primary-soft)' : 'transparent',
-    color: active ? 'var(--ds-ink)' : 'var(--ds-ink-muted)',
-    justifyContent: collapsed ? 'center' : 'flex-start',
-    minHeight: 'var(--ds-touch-target-min)',
-    px: collapsed ? 0 : 'var(--ds-space-2)',
-    '&:hover': { backgroundColor: 'var(--ds-surface-subtle)' },
-  })
-
   // Um destino ativo combina 4+ canais (WCAG 1.4.1): indicador lateral 3px +
-  // fundo primary-soft + label em peso forte + ícone `fill` + aria-current.
-  const renderDestination = (dest: ShellDestination) => {
-    const active = isActive(dest.path)
-    const icon = iconFor(dest.key, active)
-    return (
-      <ListItemButton
-        key={dest.path}
-        onClick={() => navigate(dest.path)}
-        aria-current={active ? 'page' : undefined}
-        aria-label={collapsed ? dest.label : undefined}
-        sx={destinationSx(active)}
-      >
-        <ListItemIcon sx={iconSx}>
-          {dest.badge ? (
-            <BrainDumpBadge badgeSx={SHELL_BADGE_SX} max={9}>
-              {icon}
-            </BrainDumpBadge>
-          ) : (
-            icon
-          )}
-        </ListItemIcon>
-        {!collapsed && (
-          <ListItemText
-            primary={dest.label}
-            slotProps={{ primary: { fontWeight: active ? 700 : 500 } }}
-          />
-        )}
-      </ListItemButton>
-    )
-  }
+  // fundo primary-soft + label em peso forte + ícone `fill` + aria-current. O
+  // markup vive na linha COMPARTILHADA com o `ShellNavigationSheet`
+  // (`ShellNavDestination` — Story 13.4 AC3), e o "ativo" vem do predicado ÚNICO
+  // das três superfícies (`isDestinationActive`, prefixo do próprio destino):
+  // é a mudança de comportamento INTENCIONAL desta story (SHELL-DEBT-03), que
+  // passa a marcar o destino pai nas rotas de histórico/parametrizadas.
+  const renderDestination = (dest: ShellDestination) => (
+    <ShellNavDestination
+      key={dest.path}
+      destination={dest}
+      active={isDestinationActive(location.pathname, dest.path)}
+      collapsed={collapsed}
+      onActivate={() => navigate(dest.path)}
+      withHover
+    />
+  )
 
   // Agrupador (Planner/Saúde): expõe aria-expanded, NUNCA aria-current. Quando
   // recolhido contendo a rota ativa, indica por indicador lateral + fundo sutil
@@ -168,10 +131,11 @@ export function ShellSidebar({
     const onToggleGroup = () =>
       setClosedGroups((prev) => ({ ...prev, [group.key]: !prev[group.key] }))
     const groupVisuallyOpen = open && !collapsed
-    const activeChild = group.children.find((c) => containsRoute(c.path))
+    const activeChild = group.children.find((c) =>
+      isDestinationActive(location.pathname, c.path),
+    )
     const showContains = Boolean(activeChild) && !groupVisuallyOpen
     const describedById = `${group.key}-active-destination`
-    const GroupIcon = navIcons[group.key]
 
     return (
       <Box key={group.key}>
@@ -194,9 +158,10 @@ export function ShellSidebar({
             '&:hover': { backgroundColor: 'var(--ds-surface-subtle)' },
           }}
         >
-          <ListItemIcon sx={iconSx}>
-            <GroupIcon size={NAV_ICON_SIZE} weight="regular" />
-          </ListItemIcon>
+          {/* Guard de catálogo também no CABEÇALHO do grupo (AC2 da 13.4): um
+              `nav.group` novo no registro degrada sem ícone em vez de derrubar
+              o chrome inteiro — antes `navIcons[group.key]` era lido sem guard. */}
+          <ListItemIcon sx={iconSx}>{navIconFor(group.key)}</ListItemIcon>
           {!collapsed && (
             <>
               <ListItemText

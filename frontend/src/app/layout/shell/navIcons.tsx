@@ -102,3 +102,22 @@ export const navIcons: Record<NavIconKey, Icon> = {
   medications: Pill,
   gratitude: Heart,
 }
+
+/**
+ * Renderiza o ícone canônico de uma chave do catálogo, TOLERANDO chave ausente.
+ *
+ * O catálogo é FECHADO por design, mas as chaves de destino e de **agrupador**
+ * vêm do registro como string aberta (`entry.id`, `entry.nav.group`): uma
+ * collection ou um grupo novo ainda não curado não pode derrubar o chrome
+ * inteiro — degrada SEM ícone, com o label/nome acessível preservados
+ * (FR-1.3/AR-23; AC2 da Story 13.4, que estendeu ao agrupador o guard que existia
+ * só para o destino).
+ *
+ * Guard ÚNICO: era duplicado como `iconFor` na `ShellSidebar`, inline no
+ * `ShellNavigationSheet`/`ShellBottomNav` e AUSENTE nos dois cabeçalhos de grupo.
+ */
+export function navIconFor(key: NavIconKey, weight: 'regular' | 'fill' = 'regular') {
+  const IconComp: Icon | undefined = navIcons[key]
+  if (!IconComp) return null
+  return <IconComp size={NAV_ICON_SIZE} weight={weight} />
+}

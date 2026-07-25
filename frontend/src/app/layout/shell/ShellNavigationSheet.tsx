@@ -12,15 +12,14 @@ import {
 } from '@mui/material'
 import { useLocation, useNavigate } from 'react-router-dom'
 
-import { BrainDumpBadge } from '../../../features/braindump'
 import { shellCssVariables } from '../../../shared/design/tokens'
 import type { CollectionManifestEntry } from '../../collections/registry'
-import type { Icon } from '@phosphor-icons/react'
 
-import { navIcons, NAV_ICON_SIZE, type NavIconKey } from './navIcons'
+import { navIconFor, type NavIconKey } from './navIcons'
+import { ShellNavDestination } from './ShellNavDestination'
 import {
   deriveShellNavItems,
-  SHELL_BADGE_SX,
+  isDestinationActive,
   type ShellDestination,
   type ShellDestinationGroup,
 } from './shellDestinations'
@@ -72,16 +71,14 @@ export function ShellNavigationSheet({ open, onClose, collections }: ShellNaviga
 
   const navItems = deriveShellNavItems(collections)
 
-  // Ativo por PREFIXO do próprio destino (path exato ou `path + '/'`) — o mesmo
-  // `containsRoute` da `ShellBottomNav`. As rotas de histórico das collections
+  // Ativo pelo predicado ÚNICO das três superfícies (`isDestinationActive`,
+  // prefixo do próprio destino) — a cópia local do `containsRoute` saiu daqui na
+  // Story 13.4 (SHELL-DEBT-03). As rotas de histórico das collections
   // (`/habits/history`, `/health/metrics/history`, `/gratitude/history`) são
   // reais: com match exato o sheet ficaria SEM nenhum destino ativo justamente
   // onde a barra já marca o seu estado, e o foco inicial do AC4 pousaria num
   // item sem `aria-current`.
-  const containsRoute = (path: string) =>
-    location.pathname === path || location.pathname.startsWith(`${path}/`)
-  const isActive = containsRoute
-
+  //
   // Destinos EFETIVAMENTE renderizados: um agrupador recolhido DESMONTA os
   // filhos (`Collapse unmountOnExit`), então o alvo do foco inicial tem de sair
   // desta lista — senão reabrir o sheet com o grupo da rota ativa recolhido
@@ -96,7 +93,8 @@ export function ShellNavigationSheet({ open, onClose, collections }: ShellNaviga
   // Foco inicial no destino ativo; se nenhum destino visível casa a rota, no
   // primeiro item visível (AC4).
   const focusPath = (
-    visibleDestinations.find((dest) => containsRoute(dest.path)) ?? visibleDestinations[0]
+    visibleDestinations.find((dest) => isDestinationActive(location.pathname, dest.path)) ??
+    visibleDestinations[0]
   )?.path
 
   // Dois mecanismos complementares (padrão do BrainDumpCaptureSheet, aprendizado
@@ -125,52 +123,32 @@ export function ShellNavigationSheet({ open, onClose, collections }: ShellNaviga
 
   const cssVariables = shellCssVariables(theme.palette.mode === 'dark' ? 'dark' : 'light')
 
-  const renderDestination = (dest: ShellDestination) => {
-    const active = isActive(dest.path)
-    const IconComp: Icon | undefined = navIcons[dest.key]
-    const icon = IconComp ? (
-      <IconComp size={NAV_ICON_SIZE} weight={active ? 'fill' : 'regular'} />
-    ) : null
-    const isInitialFocus = dest.path === focusPath
-    return (
-      <ListItemButton
-        key={dest.path}
-        onClick={() => {
-          navigate(dest.path)
-          onClose()
-        }}
-        aria-current={active ? 'page' : undefined}
-        ref={isInitialFocus ? attachInitialFocus : undefined}
-        sx={{
-          borderLeft: '3px solid',
-          borderLeftColor: active ? 'var(--ds-primary)' : 'transparent',
-          backgroundColor: active ? 'var(--ds-primary-soft)' : 'transparent',
-          color: active ? 'var(--ds-ink)' : 'var(--ds-ink-muted)',
-          minHeight: 'var(--ds-touch-target-min)',
-          px: 'var(--ds-space-2)',
-        }}
-      >
-        <ListItemIcon sx={{ minWidth: 40, justifyContent: 'center', color: 'inherit' }}>
-          {dest.badge ? (
-            <BrainDumpBadge badgeSx={SHELL_BADGE_SX} max={9}>
-              {icon}
-            </BrainDumpBadge>
-          ) : (
-            icon
-          )}
-        </ListItemIcon>
-        <ListItemText
-          primary={dest.label}
-          slotProps={{ primary: { fontWeight: active ? 700 : 500 } }}
-        />
-      </ListItemButton>
-    )
-  }
+  // Linha de destino COMPARTILHADA com a `ShellSidebar` (`ShellNavDestination` —
+  // Story 13.4 AC3): o markup, os nomes acessíveis, os canais de "ativo" e o
+  // contrato do badge são os mesmos nas duas superfícies. Aqui só difere o que é
+  // legitimamente do sheet: navegar TAMBÉM fecha, e o destino do foco inicial
+  // recebe o `ref`.
+  const renderDestination = (dest: ShellDestination) => (
+    <ShellNavDestination
+      key={dest.path}
+      destination={dest}
+      active={isDestinationActive(location.pathname, dest.path)}
+      onActivate={() => {
+        navigate(dest.path)
+        onClose()
+      }}
+      itemRef={dest.path === focusPath ? attachInitialFocus : undefined}
+    />
+  )
 
-  // Agrupadores expõem aria-expanded (nunca aria-current — AC3).
+  // Agrupadores expõem aria-expanded (nunca aria-current — AC3). O cabeçalho de
+  // grupo permanece DUPLICADO em relação à sidebar de propósito: unificá-lo
+  // exigiria uma prop condicional para cada divergência real do agrupador da
+  // sidebar (rail, `aria-describedby` de "Contém a página atual", peso condicional,
+  // chevron oculto no rail) — divergência de composição registrada com
+  // justificativa no checklist de paridade (Story 13.4 AC3).
   const renderGroup = (group: ShellDestinationGroup) => {
     const groupOpen = !closedGroups[group.key]
-    const GroupIcon = navIcons[group.key]
     return (
       <Box key={group.key}>
         <ListItemButton
@@ -182,8 +160,11 @@ export function ShellNavigationSheet({ open, onClose, collections }: ShellNaviga
             px: 'var(--ds-space-2)',
           }}
         >
+          {/* Guard de catálogo também no CABEÇALHO do grupo (AC2 da 13.4): um
+              `nav.group` novo no registro degrada sem ícone em vez de derrubar
+              o chrome inteiro — antes `navIcons[group.key]` era lido sem guard. */}
           <ListItemIcon sx={{ minWidth: 40, justifyContent: 'center', color: 'inherit' }}>
-            <GroupIcon size={NAV_ICON_SIZE} weight="regular" />
+            {navIconFor(group.key)}
           </ListItemIcon>
           <ListItemText primary={group.label} slotProps={{ primary: { fontWeight: 600 } }} />
           {/* Chevron: glyph unicode decorativo (catálogo fechado sem chevron). */}
@@ -233,6 +214,18 @@ export function ShellNavigationSheet({ open, onClose, collections }: ShellNaviga
               'calc(100dvh - var(--ds-topbar-height) - var(--ds-bottom-nav-height) - env(safe-area-inset-bottom, 0px))',
             display: 'flex',
             flexDirection: 'column',
+            // ANEL DE FOCO reaplicado DENTRO do portal, pela mesma razão dos
+            // tokens acima: a regra `'& :focus-visible'` do `ShellLayout` é
+            // descendente do `shell-root`, e o paper deste sheet vive em
+            // `document.body`. Sem isto, todo controle do sheet (Fechar,
+            // agrupadores e os 14 destinos) fica SEM outline — o `ButtonBase` do
+            // MUI zera até o anel default do browser (`outline: 0`), então a única
+            // pista de foco seria a tinta de `.Mui-focusVisible`. Achado do passo
+            // de QA da Story 13.4 (A11Y-06 / WCAG 2.4.7 no chrome do compact).
+            '& :focus-visible': {
+              outline: 'var(--ds-focus-ring-width) solid var(--ds-focus)',
+              outlineOffset: 'var(--ds-focus-ring-offset)',
+            },
           },
         },
       }}

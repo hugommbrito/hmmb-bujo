@@ -7,6 +7,12 @@ import { MemoryRouter, useLocation } from 'react-router-dom'
 // padrão da Story 13.2.
 import shellBottomNavSource from './ShellBottomNav.tsx?raw'
 import shellNavigationSheetSource from './ShellNavigationSheet.tsx?raw'
+// Story 13.4 AC3: a linha de destino compartilhada (`ShellNavDestination.tsx`)
+// nasceu da extração das duas cópias de `renderDestination`. Nenhum grep
+// existente a cobria — este é o único lugar do repo com o TRIPÉ completo
+// (mui-icons + literais estruturais + Query), então o arquivo novo entra aqui em
+// vez de espalhar guardas por mais um arquivo de teste.
+import shellNavDestinationSource from './ShellNavDestination.tsx?raw'
 
 // Padrão de chrome: o barrel `features/braindump` é mockado SEM Query — nenhum
 // QueryClientProvider na árvore (AC1). O mock rico expõe as props em data-attrs
@@ -138,6 +144,8 @@ describe('ShellBottomNav — acessibilidade e guardas (AC1/AC7)', () => {
   it('nenhum @mui/icons-material nos componentes novos (catálogo Phosphor fechado)', () => {
     expect(shellBottomNavSource).not.toMatch(/from\s+['"]@mui\/icons-material/)
     expect(shellNavigationSheetSource).not.toMatch(/from\s+['"]@mui\/icons-material/)
+    // Story 13.4: a linha de destino compartilhada entra no mesmo tripé.
+    expect(shellNavDestinationSource).not.toMatch(/from\s+['"]@mui\/icons-material/)
   })
 
   it('zero literais estruturais (56/64/240) — geometria só via tokens', () => {
@@ -145,10 +153,19 @@ describe('ShellBottomNav — acessibilidade e guardas (AC1/AC7)', () => {
     expect(shellNavigationSheetSource).not.toMatch(/\b(56|64|240)\b/)
     expect(shellBottomNavSource).toContain('var(--ds-bottom-nav-height)')
     expect(shellBottomNavSource).toContain('env(safe-area-inset-bottom, 0px)')
+    // Story 13.4: o arquivo novo usa o conjunto AMPLIADO (inclui 52 do FAB e 48
+    // do alvo compacto), porque nada de geometria pode nascer literal ali.
+    expect(shellNavDestinationSource).not.toMatch(/\b(56|64|240|52|48)\b/)
+    expect(shellNavDestinationSource).toContain('var(--ds-touch-target-min)')
   })
 
   it('sem TanStack Query direto no chrome (contagem só pelo BrainDumpBadge)', () => {
     expect(shellBottomNavSource).not.toMatch(/@tanstack\/react-query/)
     expect(shellNavigationSheetSource).not.toMatch(/@tanstack\/react-query/)
+    // Story 13.4: a linha compartilhada encapsula a contagem no barrel da
+    // feature — nenhum hook de Query no chrome (senão os 3 testes compartilhados
+    // AppLayout/router/RouteAnnouncer precisariam de QueryClientProvider).
+    expect(shellNavDestinationSource).not.toMatch(/@tanstack\/react-query/)
+    expect(shellNavDestinationSource).toMatch(/from '\.\.\/\.\.\/\.\.\/features\/braindump'/)
   })
 })

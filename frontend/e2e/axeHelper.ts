@@ -22,12 +22,19 @@ interface RunAxeOptions {
    */
   include?: string
   /**
-   * Exclui um seletor da análise. Usado nesta story para tirar o `<main>` da
-   * página legada do escopo (a dívida do conteúdo legado é da Story 13.4),
+   * Exclui um ou mais seletores da análise. Usado desde a Story 13.1 para tirar
+   * o `<main>` da página legada do escopo (SHELL-DEBT-02, migrada onda a onda),
    * mantendo o chrome do shell — topbar, sidebar/bottom nav, skip link e seam —
    * sob o gate.
+   *
+   * A Story 13.4 aceita LISTA porque uma superfície legada pode ficar FORA do
+   * `<main>`: o `BrainDumpCaptureSheet` é portalizado pelo MUI, então a mesma
+   * dívida de conteúdo legado precisa do mesmo tratamento por um segundo
+   * seletor. É extensão de escopo da SHELL-DEBT-02, não regra silenciada —
+   * `disableRules` continua não existindo no repo, e cada exclusão é explícita
+   * no spec e registrada no checklist de paridade.
    */
-  exclude?: string
+  exclude?: string | string[]
   /** Rótulo do contexto (viewport/rota) para a mensagem de falha. */
   label?: string
 }
@@ -45,8 +52,8 @@ export async function expectNoAxeViolations(page: Page, options: RunAxeOptions =
   if (options.include) {
     builder = builder.include(options.include)
   }
-  if (options.exclude) {
-    builder = builder.exclude(options.exclude)
+  for (const selector of [options.exclude ?? []].flat()) {
+    builder = builder.exclude(selector)
   }
 
   const results = await builder.analyze()

@@ -86,7 +86,11 @@ test('subtarefa cicla status independente do pai, sem cascata', async ({ page })
   await panel.getByLabel('Nova subtarefa').fill('Rodar testes')
   await syncAfter(page, () => panel.getByRole('button', { name: 'Nova subtarefa' }).click())
   await expect(panel.getByText('Rodar testes')).toBeVisible()
-  await page.getByLabel('Fechar').click()
+  // Escopado ao painel de detalhe: desde a Story 13.3 o `ShellLayout` mantém a
+  // instância ÚNICA do `BrainDumpCaptureSheet` montada em toda faixa (o
+  // `SwipeableDrawer` do MUI não desmonta o paper), então existe um segundo
+  // "Fechar" na página — no `AppLayout` legado ele só existia no compact.
+  await panel.getByLabel('Fechar').click()
 
   const parentRow = page.getByTestId('task-row').filter({ hasText: 'Preparar release' })
   const subtaskRow = page.getByTestId('task-row').filter({ hasText: 'Rodar testes' })

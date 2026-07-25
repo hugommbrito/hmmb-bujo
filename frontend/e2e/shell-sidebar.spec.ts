@@ -1,8 +1,9 @@
-import type { Locator, Page } from '@playwright/test'
-
 import { test, expect } from './fixtures'
 import { expectNoAxeViolations } from './axeHelper'
 import { seedBrainDumpItems } from './seedBrainDumpItems'
+// Helpers do chrome extraídos para reuso na Story 13.4 (a matriz de a11y e a
+// auditoria de teclado usam os mesmos) — antes duplicados aqui e no bottomnav.
+import { computed, dsToken, hexToRgb, mainNav, sidebarPaper } from './shellHelpers'
 
 // E2E da SIDEBAR nova do shell (Story 13.2 — `ShellSidebar` derivada do manifest)
 // num browser real. Complementa — não repete — o `ShellSidebar.test.tsx` (jsdom):
@@ -43,38 +44,6 @@ const CANONICAL_ORDER = [
   'Arquivo',
   'Configurações',
 ]
-
-function mainNav(page: Page): Locator {
-  return page.getByRole('navigation', { name: 'Navegação principal' })
-}
-
-/** O paper do `Drawer` permanente que contém a nav principal (≠ paper do detalhe). */
-function sidebarPaper(page: Page): Locator {
-  return page
-    .locator('.MuiDrawer-paper')
-    .filter({ has: page.getByRole('navigation', { name: 'Navegação principal' }) })
-}
-
-/** Valor de um token `--ds-*` lido da raiz do shell (não hardcodado no spec). */
-async function dsToken(page: Page, name: string): Promise<string> {
-  return page
-    .getByTestId('shell-root')
-    .evaluate((el, prop) => getComputedStyle(el).getPropertyValue(prop).trim(), name)
-}
-
-/** `#315F5A` → `rgb(49, 95, 90)`, para comparar com `getComputedStyle` do Chrome. */
-function hexToRgb(hex: string): string {
-  const value = hex.replace('#', '')
-  const [r, g, b] = [0, 2, 4].map((offset) => parseInt(value.slice(offset, offset + 2), 16))
-  return `rgb(${r}, ${g}, ${b})`
-}
-
-function computed(locator: Locator, property: string): Promise<string> {
-  return locator.evaluate(
-    (el, prop) => getComputedStyle(el).getPropertyValue(prop),
-    property,
-  )
-}
 
 test.describe('Sidebar do shell — wide 1440×900', () => {
   test.use({ viewport: { width: 1440, height: 900 } })

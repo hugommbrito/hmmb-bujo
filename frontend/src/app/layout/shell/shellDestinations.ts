@@ -85,37 +85,118 @@ function toDestination(entry: CollectionManifestEntry): ShellDestination {
 }
 
 /**
+ * Predicado ÚNICO de "destino ativo", consumido pelas TRÊS superfícies de
+ * navegação (`ShellSidebar`, `ShellBottomNav`, `ShellNavigationSheet`) —
+ * fechamento da **SHELL-DEBT-03**, que existia porque a sidebar usava match
+ * EXATO e as outras duas usavam prefixo, em três cópias literais divergentes.
+ *
+ * Semântica: **prefixo do próprio destino** (path exato ou `path + '/'`), nunca
+ * um prefixo mais largo. As rotas de histórico das collections
+ * (`/habits/history`, `/health/metrics/history`, …) e as rotas parametrizadas de
+ * arquivo (`/archive/weekly/:weekStart`) são reais: com match exato elas
+ * deixavam a navegação SEM nenhum destino ativo. Já `/planner/future` compartilha
+ * o segmento `/planner` com os atalhos sem ser rota de nenhum deles — e continua
+ * não ativando ninguém.
+ *
+ * Recebe o `pathname` como argumento (função pura, sem hook): quem tem o
+ * `useLocation` é a superfície.
+ */
+export function isDestinationActive(pathname: string, path: string): boolean {
+  return pathname === path || pathname.startsWith(`${path}/`)
+}
+
+/**
+ * Rótulo humano de cada agrupador derivado do registro. **Limitação conhecida
+ * (registrada no checklist de paridade):** `CollectionNav` só tem a chave do
+ * grupo (`nav.group`), não um label — então o rótulo vive aqui, num mapa
+ * NOMEADO, e não espalhado em literais pela derivação. Uma chave de grupo fora
+ * deste mapa degrada para a própria chave em vez de renderizar `undefined`.
+ */
+const GROUP_LABELS: Readonly<Record<string, string>> = {
+  saude: 'Saúde',
+}
+
+/**
+ * Unidade de collection na ordenação canônica: uma collection avulsa OU um grupo
+ * inteiro. `order` do grupo = o MENOR `nav.order` entre os filhos; `index` = a
+ * primeira ocorrência no array do registro (tiebreak determinístico).
+ */
+type CollectionUnit =
+  | { kind: 'standalone'; order: number; index: number; entry: CollectionManifestEntry }
+  | { kind: 'group'; order: number; index: number; key: string; entries: CollectionManifestEntry[] }
+
+/**
  * Estrutura canônica AGRUPADA da navegação (sidebar/sheet): núcleo hardcoded +
- * collections derivadas da lista FILTRADA (avulsas + grupo `saude` por
- * `nav.order`). Não hardcodar as 4: o gateamento futuro (Épico 10) vai FILTRAR
- * o registro; zero/uma collection já são toleradas por construção.
+ * collections derivadas da lista FILTRADA. Não hardcodar as 4: o gateamento
+ * futuro (Épico 10) vai FILTRAR o registro; zero/uma collection já são toleradas
+ * por construção.
+ *
+ *   ▶ DERIVAÇÃO GENÉRICA (fecha a **SHELL-DEBT-04** e torna executável o DoD do
+ *     AD-17 — "collection nova = pasta da feature + UMA entrada no registro"):
+ *     ZERO `id` literal aqui. Antes os avulsos eram escolhidos por
+ *     `find(c => c.id === 'habits' | 'gratitude')`, então uma collection avulsa
+ *     nova não aparecia em NENHUMA superfície de navegação.
+ *
+ *   ▶ Regra de ordem: as **unidades** (cada avulsa + cada grupo) são ordenadas
+ *     por `nav.order` e, em empate, pela primeira ocorrência no registro; dentro
+ *     do grupo vale `nav.order`. É essa regra que preserva byte-a-byte a ordem
+ *     canônica atual — `habits` (order 0) empata com `health-metrics` (order 0) e
+ *     o tiebreak pelo índice é o que mantém Hábitos antes de Saúde.
  */
 export function deriveShellNavItems(
   collections: readonly CollectionManifestEntry[] = registryCollections,
 ): ShellNavItem[] {
-  const standalone = collections.filter((c) => !c.nav.group)
-  const habits = standalone.find((c) => c.id === 'habits')
-  const gratitude = standalone.find((c) => c.id === 'gratitude')
-  const healthChildren = collections
-    .filter((c) => c.nav.group === 'saude')
-    .sort((a, b) => a.nav.order - b.nav.order)
-    .map(toDestination)
+  const units: CollectionUnit[] = []
+  const groupUnits = new Map<string, Extract<CollectionUnit, { kind: 'group' }>>()
 
-  const items: ShellNavItem[] = [
+  collections.forEach((entry, index) => {
+    const groupKey = entry.nav.group
+    if (!groupKey) {
+      units.push({ kind: 'standalone', order: entry.nav.order, index, entry })
+      return
+    }
+    const existing = groupUnits.get(groupKey)
+    if (existing) {
+      existing.entries.push(entry)
+      existing.order = Math.min(existing.order, entry.nav.order)
+      return
+    }
+    const unit: Extract<CollectionUnit, { kind: 'group' }> = {
+      kind: 'group',
+      order: entry.nav.order,
+      index,
+      key: groupKey,
+      entries: [entry],
+    }
+    groupUnits.set(groupKey, unit)
+    units.push(unit)
+  })
+
+  const collectionItems: ShellNavItem[] = [...units]
+    .sort((a, b) => a.order - b.order || a.index - b.index)
+    .map((unit) =>
+      unit.kind === 'standalone'
+        ? { kind: 'destination', destination: toDestination(unit.entry) }
+        : {
+            kind: 'group',
+            group: {
+              key: unit.key as NavIconKey,
+              label: GROUP_LABELS[unit.key] ?? unit.key,
+              children: [...unit.entries]
+                .sort((a, b) => a.nav.order - b.nav.order)
+                .map(toDestination),
+            },
+          },
+    )
+
+  return [
     { kind: 'destination', destination: TODAY },
     { kind: 'group', group: { key: 'planner', label: 'Planner', children: PLANNER_CHILDREN } },
-  ]
-  if (habits) items.push({ kind: 'destination', destination: toDestination(habits) })
-  if (healthChildren.length > 0) {
-    items.push({ kind: 'group', group: { key: 'saude', label: 'Saúde', children: healthChildren } })
-  }
-  if (gratitude) items.push({ kind: 'destination', destination: toDestination(gratitude) })
-  items.push(
+    ...collectionItems,
     { kind: 'destination', destination: BRAIN_DUMP },
     { kind: 'destination', destination: ARCHIVE },
     { kind: 'destination', destination: SETTINGS },
-  )
-  return items
+  ]
 }
 
 /**

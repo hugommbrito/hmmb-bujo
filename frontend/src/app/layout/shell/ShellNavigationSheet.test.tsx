@@ -185,6 +185,65 @@ describe('ShellNavigationSheet — estado ativo e agrupadores (AC3)', () => {
   })
 })
 
+// ─── Story 13.4 AC1/AC2 — predicado unificado + derivação genérica no sheet ───
+describe('ShellNavigationSheet — paridade da 13.4 (AC1/AC2)', () => {
+  /** Avulsa INÉDITA: `id` fora do catálogo `navIcons`, sem `nav.group`. */
+  const novaAvulsa: CollectionManifestEntry = {
+    ...registry[0],
+    id: 'journalling',
+    name: 'Journalling',
+    nav: { label: 'Journalling', order: 2 },
+    routes: [{ ...registry[0].routes[0], path: 'journalling', title: 'Journalling' }],
+  }
+
+  it('collection avulsa inédita aparece no sheet, na posição do nav.order e sem ícone', () => {
+    renderSheet({ startOpen: true, collections: [...registry, novaAvulsa] })
+
+    const item = screen.getByRole('button', { name: 'Journalling' })
+    expect(item).toBeInTheDocument()
+    expect(item.querySelector('svg')).toBeNull()
+    expect(precedes(screen.getByText('Gratidão'), screen.getByText('Journalling'))).toBe(true)
+    expect(precedes(screen.getByText('Journalling'), screen.getByText('Brain Dump'))).toBe(true)
+  })
+
+  it('cabeçalho de grupo com chave fora do catálogo degrada sem ícone (sem crash)', () => {
+    // Antes da 13.4, `navIcons[group.key]` era lido SEM guard aqui também
+    // (`ShellNavigationSheet.tsx:173`).
+    const grupoNovo: CollectionManifestEntry = {
+      ...registry[0],
+      id: 'reading',
+      name: 'Leitura',
+      nav: { label: 'Livros', group: 'biblioteca', order: 5 },
+      routes: [{ ...registry[0].routes[0], path: 'reading', title: 'Leitura' }],
+    }
+    renderSheet({ startOpen: true, collections: [...registry, grupoNovo] })
+
+    const header = screen.getByRole('button', { name: 'biblioteca' })
+    expect(header).toHaveAttribute('aria-expanded', 'true')
+    expect(header.querySelector('svg')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Livros' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Configurações' })).toBeInTheDocument()
+  })
+
+  it('rotas profundas de arquivo e de Configurações ativam o destino pai, um só ativo', () => {
+    // Mesmo predicado da sidebar e da bottom nav desde a 13.4 (SHELL-DEBT-03).
+    const { unmount } = renderSheet({ startOpen: true, initialPath: '/archive/weekly/2026-07-20' })
+    expect(screen.getByRole('button', { name: 'Arquivo' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+    expect(document.querySelectorAll('[aria-current="page"]')).toHaveLength(1)
+    unmount()
+
+    renderSheet({ startOpen: true, initialPath: '/settings/medications' })
+    expect(screen.getByRole('button', { name: 'Configurações' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+    expect(document.querySelectorAll('[aria-current="page"]')).toHaveLength(1)
+  })
+})
+
 describe('ShellNavigationSheet — foco e fechamento (AC4)', () => {
   it('foco inicial vai ao destino ativo (nunca ao Fechar)', async () => {
     const user = userEvent.setup()

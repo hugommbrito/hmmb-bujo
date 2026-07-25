@@ -97,9 +97,14 @@ export function ShellLayout({ surfaceMigrated = false }: ShellLayoutProps) {
   }, [isCompact])
 
   // Atalho [ para toggle da sidebar / B para o Brain Dump — ambos globais,
-  // só no desktop. Guards idênticos aos do AppLayout legado: sem o guard de
-  // ctrlKey/metaKey/altKey, Cmd+B/Ctrl+B (atalhos nativos do navegador/OS em
-  // algumas plataformas) seriam sequestrados.
+  // só no desktop.
+  //
+  // Guards de AMBOS os atalhos (AC5 da Story 13.4: "ambos ignorados em
+  // INPUT/TEXTAREA/contentEditable e com guard de ctrl/meta/alt"): sem o guard de
+  // modificador, `Cmd+B`/`Ctrl+B` e `Cmd+[`/`Ctrl+[` — atalhos NATIVOS do
+  // navegador/OS em algumas plataformas (`Cmd+[` é "voltar" no macOS) — seriam
+  // sequestrados. O `AppLayout` legado guarda só o `B`; a review da 13.4 fechou a
+  // assimetria no shell novo, onde a sidebar/rail de fato responde ao `[`.
   useEffect(() => {
     if (!isDesktop) return
 
@@ -110,11 +115,11 @@ export function ShellLayout({ surfaceMigrated = false }: ShellLayoutProps) {
         target.tagName === 'TEXTAREA' ||
         target.isContentEditable
       if (isEditable) return
+      if (event.ctrlKey || event.metaKey || event.altKey) return
 
       if (event.key === '[') {
         setSidebarCollapsed((prev) => !prev)
       } else if (event.key === 'b' || event.key === 'B') {
-        if (event.ctrlKey || event.metaKey || event.altKey) return
         navigate('/brain-dump')
       }
     }

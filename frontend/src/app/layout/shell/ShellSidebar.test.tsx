@@ -205,6 +205,113 @@ describe('ShellSidebar — estado ativo e agrupadores (AC5)', () => {
   })
 })
 
+// ─── Story 13.4 AC1 — predicado de ativo unificado (SHELL-DEBT-03 fechada) ────
+// A sidebar usava match EXATO: nas rotas profundas reais (histórico das
+// collections, sub-rotas de Configurações, arquivo parametrizado) NENHUM destino
+// ficava ativo, enquanto a bottom nav e o sheet já marcavam o pai. Estes casos
+// são a mudança de comportamento INTENCIONAL da story — os asserts de rota exata
+// acima continuam intocados.
+describe('ShellSidebar — destino ativo por prefixo (Story 13.4 AC1)', () => {
+  const rotasProfundas: Array<{ path: string; destino: string }> = [
+    { path: '/habits/history', destino: 'Hábitos' },
+    { path: '/gratitude/history', destino: 'Gratidão' },
+    { path: '/health/metrics/history', destino: 'Métricas' },
+    { path: '/health/medications/history', destino: 'Medicamentos' },
+    { path: '/settings/habits', destino: 'Configurações' },
+    { path: '/settings/health-metrics', destino: 'Configurações' },
+    { path: '/settings/medications', destino: 'Configurações' },
+    { path: '/archive/weekly/2026-07-20', destino: 'Arquivo' },
+    { path: '/archive/monthly/2026-07-01', destino: 'Arquivo' },
+  ]
+
+  for (const { path, destino } of rotasProfundas) {
+    it(`${path} marca "${destino}" com aria-current e mantém exatamente UM ativo`, () => {
+      const { unmount } = renderSidebar({ initialPath: path })
+
+      expect(screen.getByRole('button', { name: destino })).toHaveAttribute(
+        'aria-current',
+        'page',
+      )
+      // Todos os canais visuais do ativo, não só o atributo (SB-11).
+      expect(screen.getByText(destino)).toHaveStyle({ fontWeight: '700' })
+      // O agrupador NUNCA recebe aria-current (SB-05/SB-13).
+      expect(document.querySelectorAll('[aria-current="page"]')).toHaveLength(1)
+      unmount()
+    })
+  }
+
+  it('/daily/:date não ativa nenhum destino (contrato registrado, não bug)', () => {
+    // `/daily/:date` não tem destino próprio na nav — o atalho do dia é "Hoje"
+    // (`/today`). No compact é o item Menu que aparece selecionado.
+    renderSidebar({ initialPath: '/daily/2026-07-01' })
+    expect(document.querySelectorAll('[aria-current="page"]')).toHaveLength(0)
+  })
+
+  it('agrupador com a rota profunda de um filho dentro segue só com aria-expanded', () => {
+    renderSidebar({ initialPath: '/health/metrics/history' })
+
+    const saude = screen.getByRole('button', { name: 'Saúde' })
+    expect(saude).toHaveAttribute('aria-expanded', 'true')
+    expect(saude).not.toHaveAttribute('aria-current')
+  })
+})
+
+// ─── Story 13.4 AC2 — derivação genérica + guard do ícone de agrupador ────────
+describe('ShellSidebar — collection e grupo inéditos (Story 13.4 AC2)', () => {
+  /** Avulsa INÉDITA: `id` fora do catálogo `navIcons`, sem `nav.group`. */
+  const novaAvulsa: CollectionManifestEntry = {
+    ...registry[0],
+    id: 'journalling',
+    name: 'Journalling',
+    nav: { label: 'Journalling', order: 2 },
+    routes: [{ ...registry[0].routes[0], path: 'journalling', title: 'Journalling' }],
+  }
+
+  it('collection avulsa inédita aparece na sidebar, sem ícone e sem crash (DoD do AD-17)', () => {
+    renderSidebar({ initialPath: '/today', collections: [...registry, novaAvulsa] })
+
+    const item = screen.getByRole('button', { name: 'Journalling' })
+    expect(item).toBeInTheDocument()
+    // Degrada SEM ícone (o catálogo Phosphor é fechado), mas segue navegável.
+    expect(item.querySelector('svg')).toBeNull()
+    // Posição ditada pelo `nav.order` (2 ⇒ depois de Gratidão, order 1).
+    expect(precedes(screen.getByText('Gratidão'), screen.getByText('Journalling'))).toBe(true)
+    expect(precedes(screen.getByText('Journalling'), screen.getByText('Brain Dump'))).toBe(true)
+  })
+
+  it('avulsa inédita fica ativa na própria rota, sem segundo aria-current', () => {
+    renderSidebar({ initialPath: '/journalling', collections: [...registry, novaAvulsa] })
+
+    expect(screen.getByRole('button', { name: 'Journalling' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+    expect(document.querySelectorAll('[aria-current="page"]')).toHaveLength(1)
+  })
+
+  it('cabeçalho de grupo com chave fora do catálogo degrada sem ícone em vez de derrubar o chrome', () => {
+    // Antes da 13.4, `navIcons[group.key]` era lido SEM guard no cabeçalho de
+    // grupo (`ShellSidebar.tsx:174`): uma `nav.group` nova no registro derrubava
+    // o chrome inteiro com "GroupIcon is not a function".
+    const grupoNovo: CollectionManifestEntry = {
+      ...registry[0],
+      id: 'reading',
+      name: 'Leitura',
+      nav: { label: 'Livros', group: 'biblioteca', order: 5 },
+      routes: [{ ...registry[0].routes[0], path: 'reading', title: 'Leitura' }],
+    }
+    renderSidebar({ initialPath: '/today', collections: [...registry, grupoNovo] })
+
+    const header = screen.getByRole('button', { name: 'biblioteca' })
+    expect(header).toHaveAttribute('aria-expanded', 'true')
+    expect(header.querySelector('svg')).toBeNull()
+    // O filho do grupo novo é navegável mesmo sem ícone de agrupador.
+    expect(screen.getByRole('button', { name: 'Livros' })).toBeInTheDocument()
+    // E o resto do chrome continua inteiro.
+    expect(screen.getByRole('button', { name: 'Configurações' })).toBeInTheDocument()
+  })
+})
+
 describe('ShellSidebar — rail 64px e toggle (AC6)', () => {
   it('rail oculta labels e chevrons mas preserva o nome acessível (aria-label)', () => {
     renderSidebar({ collapsed: true, initialPath: '/today' })
@@ -382,5 +489,27 @@ describe('ShellSidebar — acessibilidade (AC4/AC5)', () => {
     // Sem os literais do legado (DIV-1: 56→64).
     expect(shellSidebarSource).not.toContain('COLLAPSED_WIDTH')
     expect(shellSidebarSource).not.toContain('DRAWER_WIDTH')
+  })
+
+  // ── Story 13.4 AC3 — os dois guards `?raw` que NÃO existiam para a sidebar ──
+  // O tripé completo (mui-icons + literais estruturais + Query) morava só em
+  // `ShellBottomNav.test.tsx`, cobrindo apenas `ShellBottomNav.tsx`/
+  // `ShellNavigationSheet.tsx`. A `ShellSidebar` tinha SÓ o grep de
+  // `@mui/icons-material` (acima) e um teste de tokens que não grepa literais.
+  // Os dois `it` abaixo são novos; nenhum assert existente foi tocado. (O tripé
+  // do arquivo NOVO da linha compartilhada fica no lugar onde o tripé já mora —
+  // `ShellBottomNav.test.tsx` — para não espalhar as guardas em três arquivos.)
+
+  it('sem TanStack Query direto na sidebar (contagem só pelo BrainDumpBadge)', () => {
+    // Um hook de Query aqui obrigaria `QueryClientProvider` nos três testes
+    // compartilhados do chrome (AppLayout/router/RouteAnnouncer) — lição recorrente.
+    expect(shellSidebarSource).not.toMatch(/@tanstack\/react-query/)
+  })
+
+  it('zero literais estruturais (56/64/240/52/48) na sidebar', () => {
+    // Toda geometria vem de `var(--ds-*)`; um literal aqui é a regressão que o
+    // token existe para impedir. Verificado no HEAD 2fca13f: 0 hits — o grep
+    // nasce verde, sem refactor de geometria embutido nesta task.
+    expect(shellSidebarSource).not.toMatch(/\b(56|64|240|52|48)\b/)
   })
 })
