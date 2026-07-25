@@ -344,6 +344,203 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/bujo/ritual-decisions/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description `POST /api/bujo/ritual-decisions/` — persistência imediata, um POST por
+         *     decisão (AD-28 item 6 ponto 6): pausar ou sair do ritual não perde nada.
+         *
+         *     O serializer valida FORMA (400). A matriz de combinação legal levanta
+         *     `InvalidRitualDecision` e o alvo fora de `planning` levanta
+         *     `InvalidTransition` — ambas `DomainError`, ambas 409 pelo handler central,
+         *     nenhuma tratada aqui.
+         */
+        post: operations["bujo_ritual_decisions_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bujo/rituals/monthly/density/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Densidade real do Monthly-alvo (AC6) — endpoint NOVO, gêmeo do semanal. */
+        get: operations["bujo_rituals_monthly_density_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bujo/rituals/monthly/sources/future-log/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description Base das três fontes mensais (gêmea da semanal: mecânica extraída, não
+         *     copiada — o que diverge é o parâmetro de período e o serviço).
+         */
+        get: operations["bujo_rituals_monthly_sources_future_log_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bujo/rituals/monthly/sources/previous-monthly/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description Base das três fontes mensais (gêmea da semanal: mecânica extraída, não
+         *     copiada — o que diverge é o parâmetro de período e o serviço).
+         */
+        get: operations["bujo_rituals_monthly_sources_previous_monthly_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bujo/rituals/monthly/sources/recurring/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description Base das três fontes mensais (gêmea da semanal: mecânica extraída, não
+         *     copiada — o que diverge é o parâmetro de período e o serviço).
+         */
+        get: operations["bujo_rituals_monthly_sources_recurring_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bujo/rituals/weekly/density/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description Densidade real do Weekly-alvo (AC6) — endpoint NOVO.
+         *
+         *     `GET /api/bujo/task-density/` fica intocado em rota, forma e semântica: são
+         *     dois contratos distintos (ver docstring de `bujo/services/density.py`), não uma
+         *     correção do antigo.
+         *
+         *     NÃO exige alvo em planejamento: aceita qualquer log existente e devolve a
+         *     grade vazia quando o log não existe, para que as Stories 14.5/14.6 (boards em
+         *     `active`) e 14.10 (Arquivo, `finalized`) reusem o mesmo endpoint.
+         */
+        get: operations["bujo_rituals_weekly_density_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bujo/rituals/weekly/sources/monthly-in-week/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Base das quatro fontes semanais — só o serviço e o serializer variam. */
+        get: operations["bujo_rituals_weekly_sources_monthly_in_week_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bujo/rituals/weekly/sources/pending-dailies/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Base das quatro fontes semanais — só o serviço e o serializer variam. */
+        get: operations["bujo_rituals_weekly_sources_pending_dailies_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bujo/rituals/weekly/sources/previous-weekly/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Base das quatro fontes semanais — só o serviço e o serializer variam. */
+        get: operations["bujo_rituals_weekly_sources_previous_weekly_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bujo/rituals/weekly/sources/recurring/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Base das quatro fontes semanais — só o serviço e o serializer variam. */
+        get: operations["bujo_rituals_weekly_sources_recurring_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/bujo/task-density/": {
         parameters: {
             query?: never;
@@ -1207,6 +1404,17 @@ export interface components {
             timeBlockId: string;
             confirmed: boolean;
         };
+        /** @description `previous-weekly`/`previous-monthly`: acrescentam `readyToFinalize`. */
+        BlockingTaskSource: {
+            sourceId: string;
+            blocking: boolean;
+            countsTowardProgress: boolean;
+            eligibleCount: number;
+            pendingDecisionCount: number;
+            reviewed: boolean;
+            items: components["schemas"]["RitualTaskItem"][];
+            readyToFinalize: boolean;
+        };
         BrainDumpCount: {
             count: number;
         };
@@ -1270,6 +1478,42 @@ export interface components {
          * @enum {string}
          */
         DayTypeEnum: "weekday" | "weekend" | "holiday";
+        /**
+         * @description * `keep` - Keep
+         *     * `skip_week` - Skip Week
+         *     * `keep_undated` - Keep Undated
+         * @enum {string}
+         */
+        DecisionEnum: "keep" | "skip_week" | "keep_undated";
+        DensityCell: {
+            total: number;
+            byStatus: components["schemas"]["DensityStatusBreakdown"];
+        };
+        DensityDay: {
+            total: number;
+            byStatus: components["schemas"]["DensityStatusBreakdown"];
+            /** Format: date */
+            date: string;
+        };
+        DensityResponse: {
+            days: components["schemas"]["DensityDay"][];
+            undated: components["schemas"]["DensityCell"];
+            total: number;
+        };
+        /**
+         * @description As 6 chaves de `TaskStatus`, SEMPRE presentes (zeros inclusive).
+         *
+         *     Nenhuma tem underscore, então a camelização de saída não as altera — o que é
+         *     verificado por teste de fio, não deduzido.
+         */
+        DensityStatusBreakdown: {
+            pending: number;
+            started: number;
+            completed: number;
+            cancelled: number;
+            migrated: number;
+            postponed: number;
+        };
         Doctor: {
             /** Format: uuid */
             readonly id: string;
@@ -1849,6 +2093,17 @@ export interface components {
             tasks: components["schemas"]["Task"][];
             closed: boolean;
         };
+        MonthlyRecurringSource: {
+            sourceId: string;
+            blocking: boolean;
+            countsTowardProgress: boolean;
+            eligibleCount: number;
+            pendingDecisionCount: number;
+            reviewed: boolean;
+            items: components["schemas"]["RitualTemplateItem"][];
+            alreadyPlaced: components["schemas"]["_TemplateBucket"];
+            alreadyPlacedInYear: components["schemas"]["_TemplateBucket"];
+        };
         MonthlyReviewQueue: {
             /** Format: date */
             monthFirst: string;
@@ -1964,6 +2219,21 @@ export interface components {
             displayOrder?: number;
             active?: boolean;
         };
+        /** @description A única fonte com `groups` em vez de `items` planos (AC3). */
+        PendingDailiesSource: {
+            sourceId: string;
+            blocking: boolean;
+            countsTowardProgress: boolean;
+            eligibleCount: number;
+            pendingDecisionCount: number;
+            reviewed: boolean;
+            groups: components["schemas"]["PendingDailyGroup"][];
+        };
+        PendingDailyGroup: {
+            /** Format: date */
+            date: string;
+            items: components["schemas"]["RitualTaskItem"][];
+        };
         /**
          * @description * `before` - before
          *     * `after` - after
@@ -2005,6 +2275,58 @@ export interface components {
             monthFirst?: string;
             /** Format: date */
             scheduledDate?: string | null;
+        };
+        /**
+         * @description Resposta do `POST /api/bujo/ritual-decisions/`.
+         *
+         *     O alvo volta como a **chave de período** que o cliente enviou (`weekStart` /
+         *     `monthFirst`), não como o id do log: o id é opaco para quem endereça o ritual
+         *     por semana/mês, e devolvê-lo obrigaria o cliente a uma segunda leitura só para
+         *     saber a qual ritual a decisão que ele acabou de gravar pertence. O item volta
+         *     como `taskId`/`recurringTemplateId` — o mesmo identificador que entrou.
+         */
+        RitualDecision: {
+            /** Format: uuid */
+            id: string;
+            decision: string;
+            /** Format: date */
+            readonly weekStart: string | null;
+            /** Format: date */
+            readonly monthFirst: string | null;
+            /** Format: uuid */
+            taskId: string | null;
+            /** Format: uuid */
+            recurringTemplateId: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /**
+         * @description Corpo do `POST /api/bujo/ritual-decisions/`.
+         *
+         *     Campos no CORPO, então chegam do fio em camelCase (`weekStart`, `taskId`,
+         *     `recurringTemplateId`) e o `CamelCaseJSONParser` converte antes do serializer.
+         */
+        RitualDecisionCreate: {
+            decision: components["schemas"]["DecisionEnum"];
+            /** Format: date */
+            weekStart?: string;
+            /** Format: date */
+            monthFirst?: string;
+            /** Format: uuid */
+            taskId?: string;
+            /** Format: uuid */
+            recurringTemplateId?: string;
+        };
+        RitualTaskItem: {
+            task: components["schemas"]["Task"];
+            decision: string | null;
+        };
+        RitualTemplateItem: {
+            template: components["schemas"]["RecurringTaskTemplate"];
+            decision: string | null;
+            instancesInTargetCount: number;
         };
         /**
          * @description Entrada de nova versão de agenda (AC3/AC5): ``time_block_id`` + ``dose`` +
@@ -2155,6 +2477,16 @@ export interface components {
             targetTaskId: string;
             position: components["schemas"]["PositionEnum"];
         };
+        /** @description Fontes cujos itens são Tasks: `monthly-in-week`, `future-log`. */
+        TaskSource: {
+            sourceId: string;
+            blocking: boolean;
+            countsTowardProgress: boolean;
+            eligibleCount: number;
+            pendingDecisionCount: number;
+            reviewed: boolean;
+            items: components["schemas"]["RitualTaskItem"][];
+        };
         TaskTransitionRequest: {
             toStatus: components["schemas"]["ToStatusEnum"];
         };
@@ -2231,6 +2563,16 @@ export interface components {
             unscheduled: components["schemas"]["Task"][];
             closed: boolean;
         };
+        WeeklyRecurringSource: {
+            sourceId: string;
+            blocking: boolean;
+            countsTowardProgress: boolean;
+            eligibleCount: number;
+            pendingDecisionCount: number;
+            reviewed: boolean;
+            items: components["schemas"]["RitualTemplateItem"][];
+            alreadyPlaced: components["schemas"]["_TemplateBucket"];
+        };
         WeeklyReviewQueue: {
             /** Format: date */
             weekStart: string;
@@ -2245,6 +2587,14 @@ export interface components {
             description?: string | null;
             eisenhower?: (components["schemas"]["EisenhowerEnum"] | components["schemas"]["NullEnum"]) | null;
             category?: (components["schemas"]["CategoryEnum"] | components["schemas"]["NullEnum"]) | null;
+        };
+        /**
+         * @description `alreadyPlaced`/`alreadyPlacedInYear` — fora do progresso e dos avisos, mas
+         *     permanentemente consultáveis (novas instâncias continuam permitidas).
+         */
+        _TemplateBucket: {
+            countsTowardProgress: boolean;
+            items: components["schemas"]["RitualTemplateItem"][];
         };
     };
     responses: never;
@@ -2757,6 +3107,218 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Task"];
+                };
+            };
+        };
+    };
+    bujo_ritual_decisions_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RitualDecisionCreate"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RitualDecision"];
+                };
+            };
+        };
+    };
+    bujo_rituals_monthly_density_retrieve: {
+        parameters: {
+            query: {
+                month_first: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DensityResponse"];
+                };
+            };
+        };
+    };
+    bujo_rituals_monthly_sources_future_log_retrieve: {
+        parameters: {
+            query: {
+                month_first: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskSource"];
+                };
+            };
+        };
+    };
+    bujo_rituals_monthly_sources_previous_monthly_retrieve: {
+        parameters: {
+            query: {
+                month_first: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BlockingTaskSource"];
+                };
+            };
+        };
+    };
+    bujo_rituals_monthly_sources_recurring_retrieve: {
+        parameters: {
+            query: {
+                month_first: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MonthlyRecurringSource"];
+                };
+            };
+        };
+    };
+    bujo_rituals_weekly_density_retrieve: {
+        parameters: {
+            query: {
+                week_start: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DensityResponse"];
+                };
+            };
+        };
+    };
+    bujo_rituals_weekly_sources_monthly_in_week_retrieve: {
+        parameters: {
+            query: {
+                week_start: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskSource"];
+                };
+            };
+        };
+    };
+    bujo_rituals_weekly_sources_pending_dailies_retrieve: {
+        parameters: {
+            query: {
+                week_start: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PendingDailiesSource"];
+                };
+            };
+        };
+    };
+    bujo_rituals_weekly_sources_previous_weekly_retrieve: {
+        parameters: {
+            query: {
+                week_start: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BlockingTaskSource"];
+                };
+            };
+        };
+    };
+    bujo_rituals_weekly_sources_recurring_retrieve: {
+        parameters: {
+            query: {
+                week_start: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WeeklyRecurringSource"];
                 };
             };
         };

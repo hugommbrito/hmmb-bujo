@@ -17,7 +17,15 @@ import factory
 from factory.django import DjangoModelFactory
 
 from accounts.tests.factories import UserFactory
-from bujo.models import Log, MonthlyLog, RecurringTaskTemplate, Task, WeeklyLog
+from bujo.models import (
+    Log,
+    MonthlyLog,
+    RecurringTaskTemplate,
+    RitualDecision,
+    RitualDecisionKind,
+    Task,
+    WeeklyLog,
+)
 from core.calendar import week_start_of
 from core.tests.registry import register_isolation_case
 
@@ -102,6 +110,35 @@ class RecurringTaskTemplateFactory(DjangoModelFactory):
     active = True
 
 
+class RitualDecisionFactory(DjangoModelFactory):
+    """Decisão-snapshot (Story 14.2). Default = o par legal mais simples:
+    alvo weekly × item Task, decisão ``keep``.
+
+    Nenhum default para `monthly_log`/`recurring_template`: os CHECKs
+    *exactly-one* exigem que quem quiser a outra âncora passe `weekly_log=None`
+    (ou `task=None`) explicitamente, e é bom que isso seja visível no teste.
+    """
+
+    class Meta:
+        model = RitualDecision
+
+    class Params:
+        user = factory.SubFactory(UserFactory)
+
+    user_id = factory.SelfAttribute("user.id")
+    weekly_log = factory.LazyAttribute(
+        lambda o: None if o.monthly_log is not None else WeeklyLogFactory(user=o.user)
+    )
+    monthly_log = None
+    task = factory.LazyAttribute(
+        lambda o: None
+        if o.recurring_template is not None
+        else TaskFactory(user=o.user, weekly_log=o.weekly_log, monthly_log=o.monthly_log)
+    )
+    recurring_template = None
+    decision = RitualDecisionKind.KEEP
+
+
 register_isolation_case(
     id="bujo.Log",
     model=Log,
@@ -133,5 +170,21 @@ register_isolation_case(
         "title": "Template de isolamento",
         "recurrence_group": "weekly",
         "recurrence_text": "toda segunda",
+    },
+)
+register_isolation_case(
+    id="bujo.RitualDecision",
+    model=RitualDecision,
+    # Sem `user_id` no `make` (o auto-fill FAZ PARTE do contrato) e as duas
+    # âncoras exatamente-um satisfeitas: alvo weekly + item template — o par de
+    # `skip_week`, que é o único cujo item não é uma Task.
+    make=lambda: {
+        "weekly_log": WeeklyLog.objects.create(week_start=week_start_of(date(2026, 2, 2))),
+        "recurring_template": RecurringTaskTemplate.objects.create(
+            title="Template da decisão de isolamento",
+            recurrence_group="weekly",
+            recurrence_text="toda segunda",
+        ),
+        "decision": RitualDecisionKind.SKIP_WEEK,
     },
 )

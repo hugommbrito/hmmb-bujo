@@ -6,7 +6,7 @@ import pytest
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
-from bujo.models import Log, MonthlyLog, RecurringTaskTemplate, Task, WeeklyLog
+from bujo.models import Log, MonthlyLog, RecurringTaskTemplate, RitualDecision, Task, WeeklyLog
 from bujo.services.cycles import add_months
 from bujo.services.logs import (
     get_or_create_daily_log,
@@ -2907,3 +2907,601 @@ def test_ciclo_em_andamento_com_tudo_disposto_nao_e_reportado_fechado(auth_clien
         format="json",
     )
     assert criacao.status_code == 201
+
+
+# =============================================================================
+# Story 14.2 — endpoints de fonte, densidade e decisão-snapshot
+# =============================================================================
+_R_SEMANA = date(2026, 3, 2)  # segunda
+_R_MES = date(2026, 3, 1)
+
+# URLs como LITERAIS (convenção do arquivo): a rota É contrato, então um `reverse`
+# esconderia exatamente a mudança que estes testes precisam pegar.
+FONTES_SEMANAIS = [
+    "/api/bujo/rituals/weekly/sources/monthly-in-week/",
+    "/api/bujo/rituals/weekly/sources/recurring/",
+    "/api/bujo/rituals/weekly/sources/previous-weekly/",
+    "/api/bujo/rituals/weekly/sources/pending-dailies/",
+    "/api/bujo/rituals/weekly/density/",
+]
+FONTES_MENSAIS = [
+    "/api/bujo/rituals/monthly/sources/recurring/",
+    "/api/bujo/rituals/monthly/sources/future-log/",
+    "/api/bujo/rituals/monthly/sources/previous-monthly/",
+    "/api/bujo/rituals/monthly/density/",
+]
+DECISOES_URL = "/api/bujo/ritual-decisions/"
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("url", [*FONTES_SEMANAIS, *FONTES_MENSAIS, DECISOES_URL])
+def test_ritual_endpoints_sem_autenticacao_retornam_401(url):
+    """AC7: os 10 endpoints novos exigem token."""
+    client = APIClient()
+    metodo = client.post if url == DECISOES_URL else client.get
+    assert metodo(url).status_code == 401
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("url", FONTES_SEMANAIS)
+def test_fontes_semanais_exigem_week_start_numa_segunda(auth_client, url):
+    """AC7/Task 7: query param `week_start` em snake_case, validado como segunda."""
+    assert auth_client.get(url).status_code == 400  # ausente
+    assert auth_client.get(f"{url}?week_start=2026-03-03").status_code == 400  # terça
+    assert auth_client.get(f"{url}?week_start={_R_SEMANA.isoformat()}").status_code == 200
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("url", FONTES_MENSAIS)
+def test_fontes_mensais_exigem_month_first_no_dia_um(auth_client, url):
+    assert auth_client.get(url).status_code == 400
+    assert auth_client.get(f"{url}?month_first=2026-03-15").status_code == 400
+    assert auth_client.get(f"{url}?month_first={_R_MES.isoformat()}").status_code == 200
+
+
+@pytest.mark.django_db
+def test_fontes_isolamento_entre_tenants_com_bearer_real(user, other_user):
+    """AC7: isolamento provado pelo ciclo de request COMPLETO (JWT + middleware),
+    não por `tenant_context` manual."""
+    with tenant_context(other_user):
+        semana = WeeklyLogFactory(
+            user=other_user, week_start=_R_SEMANA, status=WeeklyLog.Status.PLANNING
+        )
+        mes = MonthlyLogFactory(
+            user=other_user, month_first=_R_MES, status=MonthlyLog.Status.PLANNING
+        )
+        TaskFactory(user=other_user, weekly_log=semana, scheduled_date=_R_SEMANA)
+        TaskFactory(user=other_user, monthly_log=mes, scheduled_date=_R_SEMANA)
+        RecurringTaskTemplateFactory(user=other_user)
+
+    client = APIClient()
+    client.credentials(HTTP_AUTHORIZATION=f"Bearer {AccessToken.for_user(user)}")
+
+    for url in FONTES_SEMANAIS:
+        corpo = client.get(f"{url}?week_start={_R_SEMANA.isoformat()}").json()
+        assert corpo.get("eligibleCount", 0) == 0
+        assert corpo.get("total", 0) == 0
+    for url in FONTES_MENSAIS:
+        corpo = client.get(f"{url}?month_first={_R_MES.isoformat()}").json()
+        assert corpo.get("eligibleCount", 0) == 0
+        assert corpo.get("total", 0) == 0
+
+
+@pytest.mark.django_db
+def test_post_decisao_ritual_cria_e_e_idempotente_no_fio(auth_client, user):
+    """AC2/AC8: corpo em camelCase (`weekStart`/`taskId`) pelo `CamelCaseJSONParser`,
+    resposta camelizada, e re-postar devolve o MESMO registro."""
+    with tenant_context(user):
+        WeeklyLogFactory(user=user, week_start=_R_SEMANA, status=WeeklyLog.Status.PLANNING)
+        mes = MonthlyLogFactory(user=user, month_first=_R_MES)
+        tarefa = TaskFactory(user=user, monthly_log=mes, scheduled_date=_R_SEMANA)
+
+    corpo = {"decision": "keep", "weekStart": _R_SEMANA.isoformat(), "taskId": str(tarefa.id)}
+    primeiro = auth_client.post(DECISOES_URL, corpo, format="json")
+    segundo = auth_client.post(DECISOES_URL, corpo, format="json")
+
+    assert primeiro.status_code == 201
+    assert set(primeiro.json()) == {
+        "id",
+        "decision",
+        "weekStart",
+        "monthFirst",
+        "taskId",
+        "recurringTemplateId",
+        "createdAt",
+        "updatedAt",
+    }
+    assert primeiro.json()["decision"] == "keep"
+    # O alvo volta como a CHAVE DE PERÍODO enviada, não como o id do log: quem
+    # endereça o ritual por semana/mês não teria o que fazer com um UUID opaco.
+    assert primeiro.json()["weekStart"] == _R_SEMANA.isoformat()
+    assert primeiro.json()["taskId"] == str(tarefa.id)
+    assert primeiro.json()["monthFirst"] is None
+    assert primeiro.json()["recurringTemplateId"] is None
+    assert segundo.json()["id"] == primeiro.json()["id"]
+    assert segundo.json()["updatedAt"] == primeiro.json()["updatedAt"]  # nenhuma escrita
+
+
+@pytest.mark.django_db
+def test_post_decisao_ritual_forma_invalida_e_400(auth_client, user):
+    """A distinção é deliberada: **forma** é 400 no serializer; **combinação** é 409
+    no serviço (regra de produto nunca em serializer — §6.6)."""
+    with tenant_context(user):
+        semana = WeeklyLogFactory(
+            user=user, week_start=_R_SEMANA, status=WeeklyLog.Status.PLANNING
+        )
+        tarefa = TaskFactory(user=user, weekly_log=semana)
+        template = RecurringTaskTemplateFactory(user=user)
+
+    corpos_invalidos = [
+        {"decision": "keep", "taskId": str(tarefa.id)},  # nenhum alvo
+        {
+            "decision": "keep",
+            "weekStart": _R_SEMANA.isoformat(),
+            "monthFirst": _R_MES.isoformat(),
+            "taskId": str(tarefa.id),
+        },  # dois alvos
+        {"decision": "keep", "weekStart": _R_SEMANA.isoformat()},  # nenhum item
+        {
+            "decision": "keep",
+            "weekStart": _R_SEMANA.isoformat(),
+            "taskId": str(tarefa.id),
+            "recurringTemplateId": str(template.id),
+        },  # dois itens
+        {"decision": "keep", "weekStart": "2026-03-03", "taskId": str(tarefa.id)},  # terça
+        {"decision": "keep", "monthFirst": "2026-03-15", "taskId": str(tarefa.id)},  # dia 15
+        {"decision": "skip_month", "weekStart": _R_SEMANA.isoformat(), "taskId": str(tarefa.id)},
+    ]
+    for corpo in corpos_invalidos:
+        assert auth_client.post(DECISOES_URL, corpo, format="json").status_code == 400, corpo
+
+
+@pytest.mark.django_db
+def test_post_decisao_ritual_combinacao_ilegal_e_alvo_fora_de_planning_sao_409(auth_client, user):
+    with tenant_context(user):
+        semana = WeeklyLogFactory(user=user, week_start=_R_SEMANA, status=WeeklyLog.Status.ACTIVE)
+        tarefa = TaskFactory(user=user, weekly_log=semana)
+        template = RecurringTaskTemplateFactory(user=user)
+
+    # Alvo em `active` (não `planning`) → InvalidTransition.
+    fora_de_planning = auth_client.post(
+        DECISOES_URL,
+        {"decision": "keep", "weekStart": _R_SEMANA.isoformat(), "taskId": str(tarefa.id)},
+        format="json",
+    )
+    # Combinação ilegal: `keep` não se aplica a template → InvalidRitualDecision.
+    combinacao = auth_client.post(
+        DECISOES_URL,
+        {
+            "decision": "keep",
+            "weekStart": _R_SEMANA.isoformat(),
+            "recurringTemplateId": str(template.id),
+        },
+        format="json",
+    )
+    assert fora_de_planning.status_code == 409
+    assert combinacao.status_code == 409
+
+
+@pytest.mark.django_db
+def test_envelope_de_fonte_no_fio_e_camelcase(auth_client, user):
+    """AC8/AC5: forma exata do envelope no fio, incluindo o bucket
+    `alreadyPlaced` e a ausência deliberada de `label` (a cópia pt-BR é do UI)."""
+    with tenant_context(user):
+        WeeklyLogFactory(user=user, week_start=_R_SEMANA, status=WeeklyLog.Status.PLANNING)
+        template = RecurringTaskTemplateFactory(user=user, recurrence_text="regar plantas")
+        colocado = RecurringTaskTemplateFactory(user=user, recurrence_text="mercado")
+        place_template(user=user, template_id=colocado.id, week_start=_R_SEMANA)
+
+    corpo = auth_client.get(
+        f"/api/bujo/rituals/weekly/sources/recurring/?week_start={_R_SEMANA.isoformat()}"
+    ).json()
+
+    assert set(corpo) == {
+        "sourceId",
+        "blocking",
+        "countsTowardProgress",
+        "eligibleCount",
+        "pendingDecisionCount",
+        "reviewed",
+        "items",
+        "alreadyPlaced",
+    }
+    assert "label" not in corpo
+    assert corpo["sourceId"] == "recurring"
+    assert set(corpo["items"][0]) == {"template", "decision", "instancesInTargetCount"}
+    assert corpo["items"][0]["template"]["id"] == str(template.id)
+    assert corpo["items"][0]["decision"] is None
+    assert set(corpo["alreadyPlaced"]) == {"countsTowardProgress", "items"}
+    assert corpo["alreadyPlaced"]["countsTowardProgress"] is False
+
+
+@pytest.mark.django_db
+def test_fonte_pending_dailies_no_fio_usa_groups(auth_client, user):
+    """AC3: a única fonte com `groups` em vez de `items` planos."""
+    with tenant_context(user):
+        WeeklyLogFactory(user=user, week_start=_R_SEMANA, status=WeeklyLog.Status.PLANNING)
+        log = LogFactory(user=user, log_date=_R_SEMANA - timedelta(days=3))
+        TaskFactory(user=user, log=log)
+
+    corpo = auth_client.get(
+        f"/api/bujo/rituals/weekly/sources/pending-dailies/?week_start={_R_SEMANA.isoformat()}"
+    ).json()
+
+    assert "items" not in corpo
+    assert [grupo["date"] for grupo in corpo["groups"]] == [
+        (_R_SEMANA - timedelta(days=3)).isoformat()
+    ]
+    assert set(corpo["groups"][0]["items"][0]) == {"task", "decision"}
+    # `decision` NUNCA entra no `TaskSerializer` (compartilhado por ~10 respostas
+    # legadas): fica no item da fonte — AC8.
+    assert "decision" not in corpo["groups"][0]["items"][0]["task"]
+
+
+@pytest.mark.django_db
+def test_fontes_bloqueantes_no_fio_expoem_ready_to_finalize(auth_client, user):
+    for url, param in (
+        (
+            f"/api/bujo/rituals/weekly/sources/previous-weekly/?week_start={_R_SEMANA.isoformat()}",
+            "weekly",
+        ),
+        (
+            f"/api/bujo/rituals/monthly/sources/previous-monthly/?month_first={_R_MES.isoformat()}",
+            "monthly",
+        ),
+    ):
+        corpo = auth_client.get(url).json()
+        assert corpo["blocking"] is True, param
+        assert corpo["readyToFinalize"] is False, param
+        assert corpo["sourceId"] == f"previous-{param}", param
+
+
+@pytest.mark.django_db
+def test_densidade_no_fio_tem_by_status_com_as_seis_chaves(auth_client, user):
+    """AC6: as 6 chaves de status não têm underscore, então a camelização de saída
+    não as altera — verificado no FIO, não deduzido."""
+    with tenant_context(user):
+        semana = WeeklyLogFactory(user=user, week_start=_R_SEMANA)
+        raiz = TaskFactory(user=user, weekly_log=semana, scheduled_date=_R_SEMANA)
+        TaskFactory(user=user, weekly_log=semana, scheduled_date=_R_SEMANA, parent_task=raiz)
+
+    corpo = auth_client.get(
+        f"/api/bujo/rituals/weekly/density/?week_start={_R_SEMANA.isoformat()}"
+    ).json()
+
+    assert set(corpo) == {"days", "undated", "total"}
+    assert len(corpo["days"]) == 7
+    assert set(corpo["days"][0]) == {"date", "total", "byStatus"}
+    assert set(corpo["days"][0]["byStatus"]) == {
+        "pending",
+        "started",
+        "completed",
+        "cancelled",
+        "migrated",
+        "postponed",
+    }
+    assert corpo["days"][0]["total"] == 2  # subtarefa contada
+    assert corpo["total"] == 2
+    assert set(corpo["undated"]) == {"total", "byStatus"}
+
+
+@pytest.mark.django_db
+def test_densidade_mensal_no_fio_devolve_todos_os_dias_do_mes(auth_client, user):
+    corpo = auth_client.get("/api/bujo/rituals/monthly/density/?month_first=2028-02-01").json()
+    assert len(corpo["days"]) == 29  # bissexto
+
+
+# --- Passo de QA (bmad-qa-generate-e2e-tests) ----------------------------------
+# Lacunas de FIO que o dev-story deixou abertas: as três formas de resposta e as
+# duas células da matriz que só existiam na camada de serviço, mais o laço de
+# ritual (ler fonte → decidir → reler fonte) que é a razão de os endpoints
+# existirem e que nenhum teste percorria inteiro por HTTP.
+@pytest.mark.django_db
+def test_fonte_recorrentes_mensais_no_fio_expoe_os_dois_buckets(auth_client, user):
+    """AC4/AC5 no fio: a fonte mensal é a ÚNICA com dois buckets, e
+    `alreadyPlacedInYear` (a elegibilidade anual por ano-alvo) só aparecia em
+    teste de serviço — `already_placed_in_year` é também a única chave de bucket
+    com underscore, então a camelização precisa ser verificada, não deduzida.
+    """
+    with tenant_context(user):
+        MonthlyLogFactory(user=user, month_first=_R_MES, status=MonthlyLog.Status.PLANNING)
+        RecurringTaskTemplateFactory(
+            user=user,
+            recurrence_text="a-mensal pendente",
+            recurrence_group=RecurringTaskTemplate.RecurrenceGroup.MONTHLY,
+        )
+        mensal_colocado = RecurringTaskTemplateFactory(
+            user=user,
+            recurrence_text="b-mensal colocado",
+            recurrence_group=RecurringTaskTemplate.RecurrenceGroup.MONTHLY,
+        )
+        place_template(user=user, template_id=mensal_colocado.id, month_first=_R_MES)
+        RecurringTaskTemplateFactory(
+            user=user,
+            recurrence_text="c-anual pendente",
+            recurrence_group=RecurringTaskTemplate.RecurrenceGroup.ANNUAL,
+        )
+        anual_no_ano = RecurringTaskTemplateFactory(
+            user=user,
+            recurrence_text="d-anual ja resolvido no ano",
+            recurrence_group=RecurringTaskTemplate.RecurrenceGroup.ANNUAL,
+        )
+        # Instância em NOVEMBRO do mesmo ano: resolve a pendência anual de MARÇO
+        # sem que uma linha de código leia `recurrence_text`.
+        place_template(user=user, template_id=anual_no_ano.id, month_first=date(2026, 11, 1))
+
+    corpo = auth_client.get(
+        f"/api/bujo/rituals/monthly/sources/recurring/?month_first={_R_MES.isoformat()}"
+    ).json()
+
+    assert set(corpo) == {
+        "sourceId",
+        "blocking",
+        "countsTowardProgress",
+        "eligibleCount",
+        "pendingDecisionCount",
+        "reviewed",
+        "items",
+        "alreadyPlaced",
+        "alreadyPlacedInYear",
+    }
+    assert corpo["sourceId"] == "recurring"
+    assert corpo["blocking"] is False
+    # Ordem do M07: mensais ativos PRIMEIRO, depois anuais elegíveis.
+    assert [item["template"]["recurrenceText"] for item in corpo["items"]] == [
+        "a-mensal pendente",
+        "c-anual pendente",
+    ]
+    assert corpo["eligibleCount"] == 2
+    assert [item["template"]["recurrenceText"] for item in corpo["alreadyPlaced"]["items"]] == [
+        "b-mensal colocado"
+    ]
+    assert [
+        item["template"]["recurrenceText"] for item in corpo["alreadyPlacedInYear"]["items"]
+    ] == ["d-anual ja resolvido no ano"]
+    # Nenhum dos dois buckets entra no denominador do progresso (AC5).
+    assert corpo["alreadyPlaced"]["countsTowardProgress"] is False
+    assert corpo["alreadyPlacedInYear"]["countsTowardProgress"] is False
+
+
+@pytest.mark.django_db
+def test_post_decisao_keep_undated_no_fio_grava_no_alvo_mensal(auth_client, user):
+    """AC2: a célula `keep_undated` (alvo MENSAL × Task do Future Log) nunca havia
+    devolvido 201 por HTTP — só `keep` tinha. O caso-âncora da AD-28 exige também
+    que a Task permaneça INTACTA e sem dia."""
+    with tenant_context(user):
+        mes = MonthlyLogFactory(user=user, month_first=_R_MES, status=MonthlyLog.Status.PLANNING)
+        tarefa = TaskFactory(user=user, monthly_log=mes, scheduled_date=None)
+
+    resposta = auth_client.post(
+        DECISOES_URL,
+        {"decision": "keep_undated", "monthFirst": _R_MES.isoformat(), "taskId": str(tarefa.id)},
+        format="json",
+    )
+
+    assert resposta.status_code == 201
+    assert resposta.json()["decision"] == "keep_undated"
+    assert resposta.json()["monthFirst"] == _R_MES.isoformat()
+    assert resposta.json()["weekStart"] is None
+    with tenant_context(user):
+        tarefa.refresh_from_db()
+        assert tarefa.scheduled_date is None
+        assert tarefa.status == Task.Status.PENDING
+        assert tarefa.monthly_log_id == mes.id
+
+
+@pytest.mark.django_db
+def test_post_decisao_skip_week_no_fio_nao_cria_task_nem_desativa_template(auth_client, user):
+    """AC2 + caso-âncora literal da AD-28 item 6, no fio: "linha em
+    `ritual_decisions`; **nenhuma Task nasce**; o template **não** é desativado"."""
+    with tenant_context(user):
+        WeeklyLogFactory(user=user, week_start=_R_SEMANA, status=WeeklyLog.Status.PLANNING)
+        template = RecurringTaskTemplateFactory(
+            user=user,
+            recurrence_group=RecurringTaskTemplate.RecurrenceGroup.WEEKLY,
+            recurrence_text="regar plantas",
+        )
+        tarefas_antes = Task.objects.count()
+
+    resposta = auth_client.post(
+        DECISOES_URL,
+        {
+            "decision": "skip_week",
+            "weekStart": _R_SEMANA.isoformat(),
+            "recurringTemplateId": str(template.id),
+        },
+        format="json",
+    )
+
+    assert resposta.status_code == 201
+    assert resposta.json()["recurringTemplateId"] == str(template.id)
+    assert resposta.json()["taskId"] is None
+    with tenant_context(user):
+        assert Task.objects.count() == tarefas_antes  # nenhuma Task nasceu
+        template.refresh_from_db()
+        assert template.active is True  # o aviso some, o template continua vivo
+
+
+@pytest.mark.django_db
+def test_laco_do_ritual_no_fio_decisao_zera_a_pendencia_sem_mudar_a_elegibilidade(
+    auth_client, user
+):
+    """AC2/AC5 fim a fim por HTTP: ler a fonte → POSTar a decisão → reler a fonte.
+
+    É o laço que a UI das 14.5/14.6 vai executar. O invariante que importa é a
+    assimetria: `pendingDecisionCount` cai e `reviewed` vira `true`, mas
+    `eligibleCount` NÃO muda — decisão-snapshot não remove o item da fonte, e a
+    Task não é tocada (AD-28 item 6, ponto 8).
+    """
+    with tenant_context(user):
+        WeeklyLogFactory(user=user, week_start=_R_SEMANA, status=WeeklyLog.Status.PLANNING)
+        mes = MonthlyLogFactory(user=user, month_first=_R_MES)
+        tarefa = TaskFactory(user=user, monthly_log=mes, scheduled_date=_R_SEMANA)
+
+    url = f"/api/bujo/rituals/weekly/sources/monthly-in-week/?week_start={_R_SEMANA.isoformat()}"
+    antes = auth_client.get(url).json()
+    assert (antes["eligibleCount"], antes["pendingDecisionCount"], antes["reviewed"]) == (
+        1,
+        1,
+        False,
+    )
+    assert antes["items"][0]["decision"] is None
+
+    criacao = auth_client.post(
+        DECISOES_URL,
+        {"decision": "keep", "weekStart": _R_SEMANA.isoformat(), "taskId": str(tarefa.id)},
+        format="json",
+    )
+    assert criacao.status_code == 201
+
+    depois = auth_client.get(url).json()
+    assert (depois["eligibleCount"], depois["pendingDecisionCount"], depois["reviewed"]) == (
+        1,
+        0,
+        True,
+    )
+    assert depois["items"][0]["decision"] == "keep"
+    assert depois["items"][0]["task"]["id"] == str(tarefa.id)
+
+
+@pytest.mark.django_db
+def test_post_decisao_com_item_de_outro_tenant_e_409_e_nao_persiste(user, other_user):
+    """AC7 na ESCRITA: o isolamento do fio só era provado nas leituras. Uma decisão
+    apontando para a Task de outro tenant é indistinguível de item inexistente
+    (409, mensagem neutra) e não deixa linha em nenhum dos dois tenants."""
+    with tenant_context(user):
+        WeeklyLogFactory(user=user, week_start=_R_SEMANA, status=WeeklyLog.Status.PLANNING)
+    with tenant_context(other_user):
+        mes_alheio = MonthlyLogFactory(user=other_user, month_first=_R_MES)
+        tarefa_alheia = TaskFactory(
+            user=other_user, monthly_log=mes_alheio, scheduled_date=_R_SEMANA
+        )
+
+    client = APIClient()
+    client.credentials(HTTP_AUTHORIZATION=f"Bearer {AccessToken.for_user(user)}")
+    resposta = client.post(
+        DECISOES_URL,
+        {"decision": "keep", "weekStart": _R_SEMANA.isoformat(), "taskId": str(tarefa_alheia.id)},
+        format="json",
+    )
+
+    assert resposta.status_code == 409
+    with tenant_context(user):
+        assert RitualDecision.objects.count() == 0
+    with tenant_context(other_user):
+        assert RitualDecision.objects.count() == 0
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("url", [*FONTES_SEMANAIS, *FONTES_MENSAIS])
+def test_fontes_e_densidades_recusam_escrita(auth_client, url):
+    """AC7/AC8: fonte e densidade são LEITURA. Um `POST` que passasse a 200 seria
+    uma superfície de escrita nascida por acidente de roteamento."""
+    assert auth_client.post(url, {}, format="json").status_code == 405
+
+
+@pytest.mark.django_db
+def test_decisoes_de_ritual_recusam_leitura(auth_client):
+    """AC2/Questão aberta #4: `/ritual-decisions/` é só `POST` — não há listagem
+    nem `DELETE` de decisão-snapshot nesta story, e isso é contrato, não omissão."""
+    assert auth_client.get(DECISOES_URL).status_code == 405
+    assert auth_client.delete(DECISOES_URL).status_code == 405
+
+
+# --- AC8: caracterização do contrato legado ------------------------------------
+@pytest.mark.django_db
+def test_ac8_contrato_legado_preservado_nas_nove_respostas_nomeadas(auth_client, user):
+    """AC8: **nenhum** endpoint existente muda de rota, campo ou semântica.
+
+    Caracterização sobre o JSON de fio (camelCase) das 9 respostas que a AC8 nomeia
+    — as chaves de topo são o contrato que ~10 superfícies de frontend consomem.
+    Um campo acrescentado por engano (ex.: `decision` no `TaskSerializer`) quebra
+    aqui.
+    """
+    with tenant_context(user):
+        semana = WeeklyLogFactory(user=user, week_start=_R_SEMANA)
+        mes = MonthlyLogFactory(user=user, month_first=_R_MES)
+        TaskFactory(user=user, weekly_log=semana, scheduled_date=_R_SEMANA)
+        TaskFactory(user=user, monthly_log=mes)
+        RecurringTaskTemplateFactory(user=user)
+
+    esperado = {
+        f"/api/bujo/task-density/?month_first={_R_MES.isoformat()}": {"density"},
+        "/api/bujo/migration/queue/": {"logDate", "tasks"},
+        "/api/bujo/weekly-review/queue/": {"weekStart", "tasks"},
+        "/api/bujo/monthly-review/queue/": {"monthFirst", "tasks"},
+        "/api/bujo/catch-up/queue/": {"monthlyTasks", "weeklyTasks", "dailyTasks"},
+        f"/api/bujo/logs/weekly/?week_start={_R_SEMANA.isoformat()}": {
+            "weekStart",
+            "days",
+            "unscheduled",
+            "closed",
+            "status",
+            "planningCompletedAt",
+        },
+        f"/api/bujo/logs/monthly/?month_first={_R_MES.isoformat()}": {
+            "monthFirst",
+            "tasks",
+            "closed",
+            "status",
+            "planningCompletedAt",
+        },
+    }
+    for url, chaves in esperado.items():
+        resposta = auth_client.get(url)
+        assert resposta.status_code == 200, url
+        assert set(resposta.json()) == chaves, url
+
+    # Respostas de LISTA: o contrato é o conjunto de chaves de cada elemento.
+    campos_de_template = {
+        "id",
+        "title",
+        "description",
+        "eisenhower",
+        "category",
+        "recurrenceGroup",
+        "recurrenceText",
+        "active",
+    }
+    templates = auth_client.get("/api/bujo/recurring-templates/")
+    assert templates.status_code == 200
+    assert set(templates.json()[0]) == campos_de_template
+    # `future-log/` só devolve meses FUTUROS com tarefa raiz, então precisa de um
+    # mês semeado relativo a `today_for` — sem ele o assert de forma seria vácuo
+    # (lista vazia passa por qualquer contrato).
+    with tenant_context(user):
+        futuro = MonthlyLogFactory(
+            user=user, month_first=date(today_for(user).year + 1, 3, 1)
+        )
+        TaskFactory(user=user, monthly_log=futuro)
+    grupos = auth_client.get("/api/bujo/future-log/")
+    assert grupos.status_code == 200
+    assert grupos.json(), "o mês futuro semeado deveria aparecer"
+    assert set(grupos.json()[0]) == {"year", "month", "tasks"}
+
+
+@pytest.mark.django_db
+def test_ac8_task_serializer_nao_ganhou_campo_de_decisao(auth_client, user):
+    """AC8, dito de forma direta: `decision` é relativa a um ALVO de ritual, então
+    não pode virar campo do `TaskSerializer` — que é compartilhado por ~10
+    respostas legadas."""
+    with tenant_context(user):
+        semana = WeeklyLogFactory(user=user, week_start=_R_SEMANA)
+        TaskFactory(user=user, weekly_log=semana, scheduled_date=_R_SEMANA)
+
+    dias = auth_client.get(f"/api/bujo/logs/weekly/?week_start={_R_SEMANA.isoformat()}").json()
+    tarefa = dias["days"][0]["tasks"][0]
+    assert set(tarefa) == {
+        "id",
+        "title",
+        "description",
+        "status",
+        "eisenhower",
+        "category",
+        "scheduledDate",
+        "subtasks",
+        "waitingOn",
+        "migrationCount",
+        "migratedToTask",
+        "sourceTemplate",
+    }

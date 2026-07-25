@@ -16,31 +16,41 @@ from rest_framework.views import APIView
 from bujo.models import Log, MonthlyLog, RecurringTaskTemplate, Task, WeeklyLog
 from bujo.serializers import (
     ArchiveEntrySerializer,
+    BlockingTaskSourceSerializer,
     CatchUpQueueSerializer,
+    DensityResponseSerializer,
     FutureLogMonthGroupSerializer,
     LogSerializer,
     MigrationQueueSerializer,
     MonthlyCycleActionSerializer,
     MonthlyCycleSerializer,
     MonthlyLogSerializer,
+    MonthlyRecurringSourceSerializer,
     MonthlyReviewQueueSerializer,
     MonthlyTaskCreateSerializer,
+    MonthSourceQuerySerializer,
+    PendingDailiesSourceSerializer,
     RecurringTaskTemplateCreateSerializer,
     RecurringTaskTemplatePlaceSerializer,
     RecurringTaskTemplateSerializer,
     RecurringTaskTemplateUpdateSerializer,
+    RitualDecisionCreateSerializer,
+    RitualDecisionSerializer,
     TaskCreateSerializer,
     TaskDensityQuerySerializer,
     TaskDensityResponseSerializer,
     TaskMigrateSerializer,
     TaskReorderSerializer,
     TaskSerializer,
+    TaskSourceSerializer,
     TaskUpdateSerializer,
     WeeklyCycleActionSerializer,
     WeeklyCycleSerializer,
     WeeklyLogSerializer,
+    WeeklyRecurringSourceSerializer,
     WeeklyReviewQueueSerializer,
     WeeklyTaskCreateSerializer,
+    WeekSourceQuerySerializer,
 )
 from bujo.services.archive import is_cycle_closed, list_closed_cycles
 from bujo.services.cycles import (
@@ -54,6 +64,7 @@ from bujo.services.cycles import (
     start_monthly,
     start_weekly,
 )
+from bujo.services.density import compute_month_density, compute_week_density
 from bujo.services.logs import (
     get_or_create_daily_log,
     get_or_create_monthly_log,
@@ -61,6 +72,16 @@ from bujo.services.logs import (
 )
 from bujo.services.migration import migrate_task
 from bujo.services.recurring import create_template, place_template, update_template
+from bujo.services.rituals import (
+    list_future_log_items,
+    list_monthly_recurring_candidates,
+    list_monthly_tasks_in_week,
+    list_pending_daily_groups,
+    list_previous_monthly_pendings,
+    list_previous_weekly_pendings,
+    list_weekly_recurring_candidates,
+    upsert_ritual_decision,
+)
 from bujo.services.state_machine import transition_task
 from bujo.services.tasks import create_task, delete_task, reorder_task, update_task
 from core.calendar import month_turn_week, today_for, week_start_of
@@ -636,3 +657,161 @@ class TaskMigrateView(APIView):
         except Task.DoesNotExist:
             raise NotFound() from None
         return Response(TaskSerializer(task).data)
+
+
+# --- Rituais (Story 14.2) ------------------------------------------------------
+# UMA view por fonte, e nenhuma view agregadora: "fontes carregam/falham
+# independentemente" (M06 L251, M07 L309) é requisito de API, não de UI, e só é
+# verdade de fato se cada fonte for uma requisição própria — um agregador com
+# `try/except` devolveria 200 com erros embutidos e acoplaria os tempos de
+# resposta. O rail soma no cliente.
+#
+# Todas finas (query serializer valida → serviço → serializer de resposta) e
+# nenhuma materializa log: os serviços usam `objects.filter(...).first()`.
+class _WeekSourceView(APIView):
+    """Base das quatro fontes semanais — só o serviço e o serializer variam."""
+
+    service = None
+    response_serializer = None
+
+    def get(self, request):
+        query = WeekSourceQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
+        source = self.service(user=request.user, week_start=query.validated_data["week_start"])
+        return Response(self.response_serializer(source).data)
+
+
+class _MonthSourceView(APIView):
+    """Base das três fontes mensais (gêmea da semanal: mecânica extraída, não
+    copiada — o que diverge é o parâmetro de período e o serviço)."""
+
+    service = None
+    response_serializer = None
+
+    def get(self, request):
+        query = MonthSourceQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
+        source = self.service(user=request.user, month_first=query.validated_data["month_first"])
+        return Response(self.response_serializer(source).data)
+
+
+class WeeklyMonthlyInWeekSourceView(_WeekSourceView):
+    service = staticmethod(list_monthly_tasks_in_week)
+    response_serializer = TaskSourceSerializer
+
+    @extend_schema(parameters=[WeekSourceQuerySerializer], responses=TaskSourceSerializer)
+    def get(self, request):
+        return super().get(request)
+
+
+class WeeklyRecurringSourceView(_WeekSourceView):
+    service = staticmethod(list_weekly_recurring_candidates)
+    response_serializer = WeeklyRecurringSourceSerializer
+
+    @extend_schema(
+        parameters=[WeekSourceQuerySerializer], responses=WeeklyRecurringSourceSerializer
+    )
+    def get(self, request):
+        return super().get(request)
+
+
+class WeeklyPreviousWeeklySourceView(_WeekSourceView):
+    service = staticmethod(list_previous_weekly_pendings)
+    response_serializer = BlockingTaskSourceSerializer
+
+    @extend_schema(parameters=[WeekSourceQuerySerializer], responses=BlockingTaskSourceSerializer)
+    def get(self, request):
+        return super().get(request)
+
+
+class WeeklyPendingDailiesSourceView(_WeekSourceView):
+    service = staticmethod(list_pending_daily_groups)
+    response_serializer = PendingDailiesSourceSerializer
+
+    @extend_schema(
+        parameters=[WeekSourceQuerySerializer], responses=PendingDailiesSourceSerializer
+    )
+    def get(self, request):
+        return super().get(request)
+
+
+class MonthlyRecurringSourceView(_MonthSourceView):
+    service = staticmethod(list_monthly_recurring_candidates)
+    response_serializer = MonthlyRecurringSourceSerializer
+
+    @extend_schema(
+        parameters=[MonthSourceQuerySerializer], responses=MonthlyRecurringSourceSerializer
+    )
+    def get(self, request):
+        return super().get(request)
+
+
+class MonthlyFutureLogSourceView(_MonthSourceView):
+    service = staticmethod(list_future_log_items)
+    response_serializer = TaskSourceSerializer
+
+    @extend_schema(parameters=[MonthSourceQuerySerializer], responses=TaskSourceSerializer)
+    def get(self, request):
+        return super().get(request)
+
+
+class MonthlyPreviousMonthlySourceView(_MonthSourceView):
+    service = staticmethod(list_previous_monthly_pendings)
+    response_serializer = BlockingTaskSourceSerializer
+
+    @extend_schema(parameters=[MonthSourceQuerySerializer], responses=BlockingTaskSourceSerializer)
+    def get(self, request):
+        return super().get(request)
+
+
+class WeeklyDensityView(APIView):
+    """Densidade real do Weekly-alvo (AC6) — endpoint NOVO.
+
+    `GET /api/bujo/task-density/` fica intocado em rota, forma e semântica: são
+    dois contratos distintos (ver docstring de `bujo/services/density.py`), não uma
+    correção do antigo.
+
+    NÃO exige alvo em planejamento: aceita qualquer log existente e devolve a
+    grade vazia quando o log não existe, para que as Stories 14.5/14.6 (boards em
+    `active`) e 14.10 (Arquivo, `finalized`) reusem o mesmo endpoint.
+    """
+
+    @extend_schema(parameters=[WeekSourceQuerySerializer], responses=DensityResponseSerializer)
+    def get(self, request):
+        query = WeekSourceQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
+        density = compute_week_density(
+            user=request.user, week_start=query.validated_data["week_start"]
+        )
+        return Response(DensityResponseSerializer(density).data)
+
+
+class MonthlyDensityView(APIView):
+    """Densidade real do Monthly-alvo (AC6) — endpoint NOVO, gêmeo do semanal."""
+
+    @extend_schema(parameters=[MonthSourceQuerySerializer], responses=DensityResponseSerializer)
+    def get(self, request):
+        query = MonthSourceQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
+        density = compute_month_density(
+            user=request.user, month_first=query.validated_data["month_first"]
+        )
+        return Response(DensityResponseSerializer(density).data)
+
+
+class RitualDecisionCreateView(APIView):
+    """`POST /api/bujo/ritual-decisions/` — persistência imediata, um POST por
+    decisão (AD-28 item 6 ponto 6): pausar ou sair do ritual não perde nada.
+
+    O serializer valida FORMA (400). A matriz de combinação legal levanta
+    `InvalidRitualDecision` e o alvo fora de `planning` levanta
+    `InvalidTransition` — ambas `DomainError`, ambas 409 pelo handler central,
+    nenhuma tratada aqui.
+    """
+
+    @extend_schema(request=RitualDecisionCreateSerializer, responses=RitualDecisionSerializer)
+    def post(self, request):
+        body = RitualDecisionCreateSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        decision = upsert_ritual_decision(user=request.user, **body.validated_data)
+        return Response(RitualDecisionSerializer(decision).data, status=status.HTTP_201_CREATED)

@@ -6,11 +6,16 @@ from bujo.views import (
     FutureLogView,
     MigrationQueueView,
     MonthlyCycleView,
+    MonthlyDensityView,
+    MonthlyFutureLogSourceView,
     MonthlyLogView,
+    MonthlyPreviousMonthlySourceView,
+    MonthlyRecurringSourceView,
     MonthlyReviewQueueView,
     RecurringTaskTemplateDetailView,
     RecurringTaskTemplateListView,
     RecurringTaskTemplatePlaceView,
+    RitualDecisionCreateView,
     SubtaskCreateView,
     TaskCreateView,
     TaskDensityView,
@@ -20,7 +25,12 @@ from bujo.views import (
     TaskTransitionView,
     TodayLogView,
     WeeklyCycleView,
+    WeeklyDensityView,
     WeeklyLogView,
+    WeeklyMonthlyInWeekSourceView,
+    WeeklyPendingDailiesSourceView,
+    WeeklyPreviousWeeklySourceView,
+    WeeklyRecurringSourceView,
     WeeklyReviewQueueView,
 )
 
@@ -57,6 +67,58 @@ urlpatterns = [
         "recurring-templates/<uuid:pk>/",
         RecurringTaskTemplateDetailView.as_view(),
         name="bujo-recurring-template-detail",
+    ),
+    # Fontes dos rituais (Story 14.2, AC3/AC4) — UMA rota por fonte, sem
+    # agregador: a independência de carga/falha é estrutural, não um try/except.
+    path(
+        "rituals/weekly/sources/monthly-in-week/",
+        WeeklyMonthlyInWeekSourceView.as_view(),
+        name="bujo-ritual-weekly-monthly-in-week",
+    ),
+    path(
+        "rituals/weekly/sources/recurring/",
+        WeeklyRecurringSourceView.as_view(),
+        name="bujo-ritual-weekly-recurring",
+    ),
+    path(
+        "rituals/weekly/sources/previous-weekly/",
+        WeeklyPreviousWeeklySourceView.as_view(),
+        name="bujo-ritual-weekly-previous-weekly",
+    ),
+    path(
+        "rituals/weekly/sources/pending-dailies/",
+        WeeklyPendingDailiesSourceView.as_view(),
+        name="bujo-ritual-weekly-pending-dailies",
+    ),
+    path(
+        "rituals/weekly/density/",
+        WeeklyDensityView.as_view(),
+        name="bujo-ritual-weekly-density",
+    ),
+    path(
+        "rituals/monthly/sources/recurring/",
+        MonthlyRecurringSourceView.as_view(),
+        name="bujo-ritual-monthly-recurring",
+    ),
+    path(
+        "rituals/monthly/sources/future-log/",
+        MonthlyFutureLogSourceView.as_view(),
+        name="bujo-ritual-monthly-future-log",
+    ),
+    path(
+        "rituals/monthly/sources/previous-monthly/",
+        MonthlyPreviousMonthlySourceView.as_view(),
+        name="bujo-ritual-monthly-previous-monthly",
+    ),
+    path(
+        "rituals/monthly/density/",
+        MonthlyDensityView.as_view(),
+        name="bujo-ritual-monthly-density",
+    ),
+    path(
+        "ritual-decisions/",
+        RitualDecisionCreateView.as_view(),
+        name="bujo-ritual-decision-create",
     ),
     path(
         "recurring-templates/<uuid:pk>/place/",

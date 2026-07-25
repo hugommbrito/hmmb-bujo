@@ -259,6 +259,35 @@ def _finalize(spec: _CycleSpec, *, key: date):
     return log
 
 
+# --- predicados públicos compartilhados com as fontes de ritual (Story 14.2) ---
+# Wrappers finos por tipo, e NÃO uma cópia da query: as fontes bloqueantes dos
+# rituais (`previous-weekly` / `previous-monthly`) precisam olhar EXATAMENTE o
+# mesmo log que o gate de `_start` consulta. Se divergissem — por exemplo se uma
+# fonte assumisse `week_start - 7 dias` em vez do anterior OPERACIONAL — a UI
+# mostraria "semana anterior pronta para finalizar" enquanto Iniciar responderia
+# 409, porque um ciclo `NULL` intermediário estaria sendo contado por um lado e
+# ignorado pelo outro.
+def previous_operational_weekly(*, user, week_start) -> WeeklyLog | None:
+    """Weekly operacional imediatamente anterior a ``week_start`` (ou ``None``)."""
+    return _previous_operational(_WEEKLY, key=week_start)
+
+
+def previous_operational_monthly(*, user, month_first) -> MonthlyLog | None:
+    """Monthly operacional imediatamente anterior a ``month_first`` (ou ``None``)."""
+    return _previous_operational(_MONTHLY, key=month_first)
+
+
+def has_undisposed(log) -> bool:
+    """Alguma tarefa da subárvore de ``log`` ainda ``pending``/``started``?
+
+    Público desde a Story 14.2: é o mesmo predicado que decide o gate de
+    finalizar e o ``readyToFinalize`` que as fontes bloqueantes expõem — um
+    ``readyToFinalize: true`` que não fosse este predicado seria uma promessa que
+    o botão Finalizar não honraria.
+    """
+    return _has_undisposed(log)
+
+
 # --- Weekly (M06) --------------------------------------------------------------
 @transaction.atomic
 def open_weekly_planning_target(*, user, week_start) -> WeeklyLog:

@@ -253,6 +253,150 @@ class Task(TenantModel):
         ]
 
 
+class RitualDecisionKind(models.TextChoices):
+    """As três decisões de ritual que **não mutam o item** (AD-28 item 6).
+
+    Definida no nível do módulo (não aninhada em ``RitualDecision``) pelo MESMO
+    motivo já documentado em ``TaskStatus``/``CycleStatus``: uma classe aninhada
+    não é visível do namespace de ``Meta``, então o `CheckConstraint` abaixo não
+    conseguiria referenciar ``RitualDecision.Decision.values``. Exposta como
+    ``RitualDecision.Decision``.
+
+    Cada valor é amarrado a **um** contexto de ritual pela matriz única do
+    serviço (``bujo/services/rituals.py``), não por convenção:
+
+    - ``keep`` — "manter" uma ``Task`` datada do Monthly na semana (M06 fonte 1);
+    - ``skip_week`` — "não alocar nesta semana" um ``RecurringTaskTemplate``
+      weekly, sem desativá-lo (M06 fonte 3). Decide sobre um **template**, não
+      sobre uma Task (AD-28 item 6);
+    - ``keep_undated`` — "manter sem dia" um item do Future Log já pertencente ao
+      Monthly-alvo (M07 fonte 2).
+
+    Decisões **mutantes** (migrar/alocar/concluir/cancelar/adiar) NÃO entram
+    aqui: a própria mutação é a persistência, e registrar em dobro criaria uma
+    segunda verdade (AD-28 item 6).
+    """
+
+    KEEP = "keep"
+    SKIP_WEEK = "skip_week"
+    KEEP_UNDATED = "keep_undated"
+
+
+def _ritual_decision_uniques() -> list:
+    """As quatro uniques **parciais** de ``(alvo, item)``, uma por combinação legal.
+
+    Derivadas do produto cartesiano das duas âncoras em vez de escritas quatro
+    vezes: os quatro blocos seriam idênticos a menos dos nomes de coluna, e
+    copiá-los é exatamente a dívida de divergência entre gêmeos que as retros dos
+    Épicos 13/14 mandam evitar (mesmo motivo de ``_cycle_status_constraints``).
+
+    Uma unique parcial por par (e não uma única sobre as 4 colunas) porque no
+    Postgres cada ``NULL`` é distinto de todo outro ``NULL``: a unique de 4
+    colunas com 2 sempre nulas **nunca** colidiria, e a segunda linha do mesmo
+    ``(alvo, item)`` passaria. ``condition=`` (Django 5.2; ``check=`` deprecado)
+    gera ``CREATE UNIQUE INDEX ... WHERE`` — precedente ``medications/models.py``.
+    """
+    return [
+        models.UniqueConstraint(
+            fields=[target, item],
+            condition=models.Q(**{f"{target}__isnull": False, f"{item}__isnull": False}),
+            name=f"uniq_ritual_decision_{short_target}_{short_item}",
+        )
+        for target, short_target in (("weekly_log", "weekly"), ("monthly_log", "monthly"))
+        for item, short_item in (("task", "task"), ("recurring_template", "recurring"))
+    ]
+
+
+class RitualDecision(TenantModel):
+    """Decisão-snapshot de um ritual: um registro por (ritual-alvo × item).
+
+    Tabela própria porque a decisão é **relativa ao alvo**, não um atributo do
+    item: o mesmo template pode ser "não alocado" na semana X e alocado na X+1, e
+    a ``Task`` **jamais** é tocada por uma decisão-snapshot (AD-28 item 6, ponto 8).
+
+    Duas âncoras **exclusivas** (padrão CHECK *exactly-one* da AD-03/AD-20, a
+    mesma forma de ``Task.Meta.task_exactly_one_log``): o alvo é um weekly XOR um
+    monthly; o item é uma ``Task`` XOR um ``RecurringTaskTemplate``.
+
+    Unicidade ``(alvo, item)`` por **uniques parciais por combinação** (quatro,
+    uma por par legal) em vez de uma unique sobre as quatro colunas: no Postgres
+    ``UNIQUE`` trata ``NULL`` como distinto de qualquer outro ``NULL``, então uma
+    unique de 4 colunas com 2 nulas nunca colidiria e a segunda linha do mesmo
+    par passaria. Re-decidir é **upsert no serviço**, nunca segunda linha.
+
+    NÃO existe coluna de progresso/contador aqui nem nos logs: progresso de
+    ritual é **derivado** na leitura (elegíveis − mutados − decididos), AD-28
+    item 6 ponto 7.
+    """
+
+    Decision = RitualDecisionKind
+
+    # Alvo do ritual — exatamente um.
+    weekly_log = models.ForeignKey(
+        WeeklyLog,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="ritual_decisions",
+    )
+    monthly_log = models.ForeignKey(
+        MonthlyLog,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="ritual_decisions",
+    )
+    # Item decidido — exatamente um. `CASCADE` nos dois: apagar a Task (hard
+    # delete de `pending`) ou o template leva a decisão embora, sem órfã.
+    task = models.ForeignKey(
+        Task,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="ritual_decisions",
+    )
+    recurring_template = models.ForeignKey(
+        "RecurringTaskTemplate",
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="ritual_decisions",
+    )
+    # NOT NULL e SEM default: uma decisão sem valor não é uma decisão.
+    decision = models.CharField(max_length=16, choices=RitualDecisionKind.choices)
+    created_at = models.DateTimeField(auto_now_add=True)
+    # `updated_at` é o que permite PROVAR o upsert idempotente: re-decidir a
+    # mesma tupla com o mesmo valor não emite `UPDATE`, então o timestamp fica
+    # intacto.
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        # Plural, como a AD-28 nomeia. A divergência do singular vale só para
+        # `weekly_log`/`monthly_log`, que são preexistentes.
+        db_table = "ritual_decisions"
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(weekly_log__isnull=False, monthly_log__isnull=True)
+                    | models.Q(weekly_log__isnull=True, monthly_log__isnull=False)
+                ),
+                name="ritual_decision_exactly_one_target",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(task__isnull=False, recurring_template__isnull=True)
+                    | models.Q(task__isnull=True, recurring_template__isnull=False)
+                ),
+                name="ritual_decision_exactly_one_item",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(decision__in=RitualDecisionKind.values),
+                name="ritual_decision_valid",
+            ),
+            *_ritual_decision_uniques(),
+        ]
+
+
 class RecurringTaskTemplate(TenantModel):
     """Catálogo de recorrentes (AD-08) — tabela separada de `Task`, sem
     `status`/`log_id`/ciclo de vida: um template nunca migra, só é colocado

@@ -77,6 +77,28 @@ class CycleTargetConflict(DomainError):
     """
 
 
+class InvalidRitualDecision(DomainError):
+    """Combinação ``(alvo, item, decisão)`` que o produto não define (AD-28 item 6).
+
+    A matriz única em ``bujo/services/rituals.py`` amarra cada uma das três
+    decisões-snapshot a **um** contexto de ritual: ``keep`` só em weekly × Task,
+    ``skip_week`` só em weekly × template, ``keep_undated`` só em monthly × Task.
+    Toda outra célula é ilegal por decisão de produto explícita — não existe "não
+    alocar neste mês" para anual e o Weekly anterior não oferece "manter"
+    (EXPERIENCE.md M06/M07).
+
+    **Por que exceção nova** (mesma lógica que criou ``CycleTargetConflict``):
+    não é transição de estado ilegal (``InvalidTransition`` — o alvo pode estar
+    perfeitamente em ``planning``), nem disputa pelo alvo único de ciclo
+    (``CycleTargetConflict``). É uma combinação que o produto simplesmente não
+    define, e o consumidor precisa poder distinguir os três casos. → 409 pelo
+    mesmo handler central.
+
+    Também é o erro devolvido quando o **item** não existe no tenant: a mensagem
+    fica neutra de propósito, para não revelar a existência de linha alheia.
+    """
+
+
 class TenantScopeViolation(DomainError):
     """A tenant-scoped query/write ran without a tenant context set (AD-12).
 

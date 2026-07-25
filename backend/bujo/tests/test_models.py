@@ -6,7 +6,13 @@ from datetime import date
 import pytest
 from django.db import IntegrityError, transaction
 
-from bujo.models import MonthlyLog, Task, WeeklyLog
+from bujo.models import (
+    MonthlyLog,
+    RitualDecision,
+    RitualDecisionKind,
+    Task,
+    WeeklyLog,
+)
 from bujo.tests.factories import (
     LogFactory,
     MonthlyLogFactory,
@@ -401,3 +407,147 @@ def test_migration_0007_passado_nao_fechado_e_null(kind, key):
         classify_cycle_status(kind=kind, key=key, today=_HOJE, derived_closed=False)
         is None
     )
+
+
+# --- `ritual_decisions` (Story 14.2, AC1) --------------------------------------
+def _decisao_kwargs(user, **overrides):
+    """Kwargs de uma decisão legal mínima (alvo weekly × item Task)."""
+    weekly = WeeklyLogFactory(user=user)
+    base = {
+        "weekly_log": weekly,
+        "monthly_log": None,
+        "task": TaskFactory(user=user, weekly_log=weekly),
+        "recurring_template": None,
+        "decision": RitualDecisionKind.KEEP,
+    }
+    base.update(overrides)
+    return base
+
+
+@pytest.mark.django_db
+def test_ritual_decision_unique_parcial_barra_segunda_linha_do_mesmo_par(user):
+    """AC1: re-decidir é upsert no serviço, NUNCA segunda linha no banco."""
+    with tenant_context(user):
+        kwargs = _decisao_kwargs(user)
+        RitualDecision.objects.create(**kwargs)
+        with pytest.raises(IntegrityError):
+            with transaction.atomic():
+                RitualDecision.objects.create(**kwargs)
+
+
+@pytest.mark.django_db
+def test_ritual_decision_pares_diferentes_coexistem(user):
+    """A unicidade é por `(alvo, item)`, não por alvo nem por item: o mesmo alvo
+    com dois itens, e o mesmo item em dois alvos, precisam coexistir."""
+    with tenant_context(user):
+        weekly_a = WeeklyLogFactory(user=user)
+        weekly_b = WeeklyLogFactory(user=user)
+        tarefa_1 = TaskFactory(user=user, weekly_log=weekly_a)
+        tarefa_2 = TaskFactory(user=user, weekly_log=weekly_a)
+
+        RitualDecision.objects.create(
+            weekly_log=weekly_a, task=tarefa_1, decision=RitualDecisionKind.KEEP
+        )
+        RitualDecision.objects.create(
+            weekly_log=weekly_a, task=tarefa_2, decision=RitualDecisionKind.KEEP
+        )
+        RitualDecision.objects.create(
+            weekly_log=weekly_b, task=tarefa_1, decision=RitualDecisionKind.KEEP
+        )
+
+        assert RitualDecision.objects.count() == 3
+
+
+@pytest.mark.django_db
+def test_ritual_decision_unique_parcial_por_template(user):
+    """A unique de `(weekly_log, recurring_template)` é uma constraint SEPARADA
+    das outras três — um teste só sobre o par de Task não a exercitaria."""
+    with tenant_context(user):
+        weekly = WeeklyLogFactory(user=user)
+        template = RecurringTaskTemplateFactory(user=user)
+        kwargs = {
+            "weekly_log": weekly,
+            "recurring_template": template,
+            "decision": RitualDecisionKind.SKIP_WEEK,
+        }
+        RitualDecision.objects.create(**kwargs)
+        with pytest.raises(IntegrityError):
+            with transaction.atomic():
+                RitualDecision.objects.create(**kwargs)
+
+
+@pytest.mark.django_db
+def test_ritual_decision_unique_parcial_no_alvo_mensal(user):
+    """Gêmea da anterior no alvo monthly — as 4 uniques são 4 constraints."""
+    with tenant_context(user):
+        monthly = MonthlyLogFactory(user=user)
+        template = RecurringTaskTemplateFactory(user=user)
+        tarefa = TaskFactory(user=user, monthly_log=monthly)
+        par_task = {
+            "monthly_log": monthly,
+            "task": tarefa,
+            "decision": RitualDecisionKind.KEEP_UNDATED,
+        }
+        par_template = {
+            "monthly_log": monthly,
+            "recurring_template": template,
+            "decision": RitualDecisionKind.KEEP_UNDATED,
+        }
+        RitualDecision.objects.create(**par_task)
+        RitualDecision.objects.create(**par_template)
+        for par in (par_task, par_template):
+            with pytest.raises(IntegrityError):
+                with transaction.atomic():
+                    RitualDecision.objects.create(**par)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("ambos", [True, False])
+def test_ritual_decision_check_exactly_one_target(user, ambos):
+    """Dois alvos OU nenhum alvo violam `ritual_decision_exactly_one_target`."""
+    with tenant_context(user):
+        monthly = MonthlyLogFactory(user=user)
+        kwargs = _decisao_kwargs(user)
+        kwargs["monthly_log"] = monthly if ambos else None
+        if not ambos:
+            kwargs["weekly_log"] = None
+        with pytest.raises(IntegrityError):
+            with transaction.atomic():
+                RitualDecision.objects.create(**kwargs)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("ambos", [True, False])
+def test_ritual_decision_check_exactly_one_item(user, ambos):
+    """Dois itens OU nenhum item violam `ritual_decision_exactly_one_item`."""
+    with tenant_context(user):
+        kwargs = _decisao_kwargs(user)
+        kwargs["recurring_template"] = (
+            RecurringTaskTemplateFactory(user=user) if ambos else None
+        )
+        if not ambos:
+            kwargs["task"] = None
+        with pytest.raises(IntegrityError):
+            with transaction.atomic():
+                RitualDecision.objects.create(**kwargs)
+
+
+@pytest.mark.django_db
+def test_ritual_decision_check_barra_valor_fora_do_enum(user):
+    """`decision` fora dos três valores é barrada pelo banco, não só pelo enum
+    Python: um `bulk_create`/`update` cru não passa pelo `TextChoices`."""
+    with tenant_context(user):
+        with pytest.raises(IntegrityError):
+            with transaction.atomic():
+                RitualDecision.objects.create(**_decisao_kwargs(user, decision="skip_month"))
+
+
+@pytest.mark.django_db
+def test_ritual_decision_nao_acrescenta_coluna_de_progresso(user):
+    """AD-28 item 6 ponto 7: progresso é DERIVADO. Nenhuma coluna de contador em
+    `ritual_decisions` e nenhuma nova em `weekly_log`/`monthly_log`."""
+    for model in (RitualDecision, WeeklyLog, MonthlyLog):
+        nomes = {campo.name for campo in model._meta.get_fields()}
+        assert not {
+            n for n in nomes if "count" in n or "progress" in n or "reviewed" in n
+        }, f"{model.__name__} ganhou coluna de progresso/contador"

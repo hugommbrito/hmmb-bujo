@@ -7,7 +7,16 @@ import pytest
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 
-from bujo.models import CycleStatus, Log, MonthlyLog, RecurringTaskTemplate, Task, WeeklyLog
+from bujo.models import (
+    CycleStatus,
+    Log,
+    MonthlyLog,
+    RecurringTaskTemplate,
+    RitualDecision,
+    RitualDecisionKind,
+    Task,
+    WeeklyLog,
+)
 from bujo.serializers import MONTHLY_CYCLE_ACTIONS as MONTHLY_CYCLE_ACTION_CHOICES
 from bujo.services.archive import is_container_closed, is_cycle_closed, list_closed_cycles
 from bujo.services.cycles import ALLOWED as CYCLE_ALLOWED
@@ -24,6 +33,7 @@ from bujo.services.cycles import (
     start_monthly,
     start_weekly,
 )
+from bujo.services.density import compute_month_density, compute_week_density
 from bujo.services.logs import (
     get_or_create_daily_log,
     get_or_create_monthly_log,
@@ -31,6 +41,18 @@ from bujo.services.logs import (
 )
 from bujo.services.migration import inherited_successor_status, migrate_task
 from bujo.services.recurring import create_template, place_template, update_template
+from bujo.services.rituals import (
+    ALLOWED_DECISIONS,
+    decisions_for_target,
+    list_future_log_items,
+    list_monthly_recurring_candidates,
+    list_monthly_tasks_in_week,
+    list_pending_daily_groups,
+    list_previous_monthly_pendings,
+    list_previous_weekly_pendings,
+    list_weekly_recurring_candidates,
+    upsert_ritual_decision,
+)
 from bujo.services.state_machine import ALLOWED, transition_task
 from bujo.services.tasks import create_task, delete_task, reorder_task, update_task
 from bujo.tests.factories import (
@@ -46,6 +68,7 @@ from core.exceptions import (
     ClosedCycleReadOnly,
     CycleTargetConflict,
     InvalidReorderTarget,
+    InvalidRitualDecision,
     InvalidTransition,
     WrongPlacementContainer,
 )
@@ -2441,3 +2464,1009 @@ def test_ciclo_monthly_alvo_na_janela_entre_finalizar_e_iniciar_e_o_planning_exi
         alvo = open_monthly_planning_target(user=user)
         assert (alvo.month_first, alvo.status) == (seguinte, CycleStatus.PLANNING)
         assert MonthlyLog.objects.filter(status=CycleStatus.PLANNING).count() == 1
+
+
+# =============================================================================
+# Story 14.2 — decisões-snapshot e fontes dos rituais
+# =============================================================================
+# Datas fixas (o guardrail de AST proíbe `date.today()` fora de `core/calendar`)
+# e escolhidas para exercitar as regras de calendário: `_SEMANA_VIRADA` é uma
+# segunda cuja semana cruza março→abril.
+_SEMANA = date(2026, 3, 2)  # segunda
+_SEMANA_VIRADA = date(2026, 3, 30)  # segunda; a semana vai até 2026-04-05
+_MES = date(2026, 3, 1)
+
+_ITEM_TIPOS = ("task", "template")
+_ALVO_TIPOS = ("weekly", "monthly")
+# As 3 células legais da matriz, na forma `(decisão, alvo, item)`.
+_CELULAS_LEGAIS = {
+    (RitualDecisionKind.KEEP, "weekly", "task"),
+    (RitualDecisionKind.SKIP_WEEK, "weekly", "template"),
+    (RitualDecisionKind.KEEP_UNDATED, "monthly", "task"),
+}
+
+
+def _alvos_em_planejamento(user, *, week_start=_SEMANA, month_first=_MES):
+    """Weekly e Monthly do mesmo usuário, ambos em `planning`.
+
+    Legal simultaneamente: as uniques parciais da 14.1 são por TABELA, então um
+    `planning` weekly e um `planning` monthly coexistem (é o estado normal do
+    método).
+    """
+    return (
+        WeeklyLogFactory(user=user, week_start=week_start, status=CycleStatus.PLANNING),
+        MonthlyLogFactory(user=user, month_first=month_first, status=CycleStatus.PLANNING),
+    )
+
+
+def _kwargs_da_celula(*, alvo_tipo, item_tipo, weekly, monthly, tarefa, template):
+    alvo = (
+        {"week_start": weekly.week_start}
+        if alvo_tipo == "weekly"
+        else {"month_first": monthly.month_first}
+    )
+    item = {"task_id": tarefa.id} if item_tipo == "task" else {"recurring_template_id": template.id}
+    return {**alvo, **item}
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "decisao,alvo_tipo,item_tipo",
+    list(itertools.product(list(RitualDecisionKind.values), _ALVO_TIPOS, _ITEM_TIPOS)),
+)
+def test_ritual_decisao_matriz_completa(user, decisao, alvo_tipo, item_tipo):
+    """AC2: matriz exaustiva 3 × 2 × 2 = 12 células — 3 legais, 9 ilegais.
+
+    Célula ilegal levanta `InvalidRitualDecision` **e não persiste** (o assert de
+    contagem é o que impede um "levantou depois de escrever" passar batido).
+    """
+    with tenant_context(user):
+        weekly, monthly = _alvos_em_planejamento(user)
+        tarefa = TaskFactory(user=user, weekly_log=weekly)
+        template = RecurringTaskTemplateFactory(user=user)
+        kwargs = _kwargs_da_celula(
+            alvo_tipo=alvo_tipo,
+            item_tipo=item_tipo,
+            weekly=weekly,
+            monthly=monthly,
+            tarefa=tarefa,
+            template=template,
+        )
+
+        legal = (decisao, alvo_tipo, item_tipo) in _CELULAS_LEGAIS
+        if legal:
+            registro = upsert_ritual_decision(user=user, decision=decisao, **kwargs)
+            assert registro.decision == decisao
+            assert RitualDecision.objects.count() == 1
+        else:
+            with pytest.raises(InvalidRitualDecision):
+                upsert_ritual_decision(user=user, decision=decisao, **kwargs)
+            assert RitualDecision.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_ritual_decisao_matriz_cobre_as_tres_celulas_legais(user):
+    """Guarda a própria matriz: `ALLOWED_DECISIONS` tem exatamente 3 entradas, uma
+    por valor do enum. Um 4º par (ex.: `(monthly, template)`, o "Não alocar neste
+    mês" que M07 proíbe para anual) quebraria aqui antes de chegar à API."""
+    assert set(ALLOWED_DECISIONS) == set(RitualDecisionKind.values)
+    assert set(ALLOWED_DECISIONS.values()) == {
+        ("weekly", "task"),
+        ("weekly", "template"),
+        ("monthly", "task"),
+    }
+
+
+@pytest.mark.django_db
+def test_ritual_decisao_exige_exatamente_um_alvo_e_um_item(user):
+    """A validação de forma acontece ANTES de tocar o banco (o CHECK é rede)."""
+    with tenant_context(user):
+        weekly, monthly = _alvos_em_planejamento(user)
+        tarefa = TaskFactory(user=user, weekly_log=weekly)
+        template = RecurringTaskTemplateFactory(user=user)
+        formas_invalidas = [
+            {"task_id": tarefa.id},  # nenhum alvo
+            {
+                "week_start": weekly.week_start,
+                "month_first": monthly.month_first,
+                "task_id": tarefa.id,
+            },  # dois alvos
+            {"week_start": weekly.week_start},  # nenhum item
+            {
+                "week_start": weekly.week_start,
+                "task_id": tarefa.id,
+                "recurring_template_id": template.id,
+            },  # dois itens
+        ]
+        for kwargs in formas_invalidas:
+            with pytest.raises(InvalidRitualDecision):
+                upsert_ritual_decision(user=user, decision=RitualDecisionKind.KEEP, **kwargs)
+        assert RitualDecision.objects.count() == 0
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "status_do_alvo", [None, CycleStatus.ACTIVE, CycleStatus.FINALIZED, CycleStatus.PLANNING]
+)
+def test_ritual_decisao_exige_alvo_em_planejamento(user, status_do_alvo):
+    """AC2: decisão-snapshot é ato de RITUAL, e o ritual só existe no alvo em
+    planejamento. Só `planning` passa; os outros três regimes são 409."""
+    with tenant_context(user):
+        weekly = WeeklyLogFactory(user=user, week_start=_SEMANA, status=status_do_alvo)
+        tarefa = TaskFactory(user=user, weekly_log=weekly)
+        chamada = dict(
+            user=user,
+            decision=RitualDecisionKind.KEEP,
+            week_start=_SEMANA,
+            task_id=tarefa.id,
+        )
+        if status_do_alvo == CycleStatus.PLANNING:
+            assert upsert_ritual_decision(**chamada).weekly_log_id == weekly.id
+        else:
+            with pytest.raises(InvalidTransition):
+                upsert_ritual_decision(**chamada)
+            assert RitualDecision.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_ritual_decisao_alvo_inexistente_e_409_e_nao_materializa(user):
+    """Alvo que nunca foi materializado conta como `status = None` — e consultar
+    NÃO pode criar o log (guardrail da AC4 da 14.1, do lado da escrita)."""
+    with tenant_context(user):
+        outro_weekly = WeeklyLogFactory(user=user, week_start=_SEMANA, status=CycleStatus.PLANNING)
+        tarefa = TaskFactory(user=user, weekly_log=outro_weekly)
+        semana_sem_log = _SEMANA + timedelta(weeks=4)
+
+        with pytest.raises(InvalidTransition):
+            upsert_ritual_decision(
+                user=user,
+                decision=RitualDecisionKind.KEEP,
+                week_start=semana_sem_log,
+                task_id=tarefa.id,
+            )
+        assert not WeeklyLog.objects.filter(week_start=semana_sem_log).exists()
+
+
+@pytest.mark.django_db
+def test_ritual_decisao_item_de_outro_tenant_e_indistinguivel_de_inexistente(user, other_user):
+    """A mensagem é NEUTRA de propósito: revelar "não existe" vs. "existe mas não é
+    seu" vazaria a presença de linha alheia."""
+    with tenant_context(other_user):
+        alheia = TaskFactory(user=other_user)
+    with tenant_context(user):
+        WeeklyLogFactory(user=user, week_start=_SEMANA, status=CycleStatus.PLANNING)
+        with pytest.raises(InvalidRitualDecision) as alheio:
+            upsert_ritual_decision(
+                user=user,
+                decision=RitualDecisionKind.KEEP,
+                week_start=_SEMANA,
+                task_id=alheia.id,
+            )
+        with pytest.raises(InvalidRitualDecision) as inexistente:
+            upsert_ritual_decision(
+                user=user,
+                decision=RitualDecisionKind.KEEP,
+                week_start=_SEMANA,
+                task_id="00000000-0000-0000-0000-000000000000",
+            )
+        assert str(alheio.value) == str(inexistente.value)
+
+
+@pytest.mark.django_db
+def test_ritual_decisao_upsert_e_idempotente_sem_escrita(user):
+    """AC2: re-executar com a mesma tupla NÃO escreve — provado em SQL com
+    `_sem_escrita` (criado na review da 14.1), não por comparação de retorno."""
+    with tenant_context(user):
+        weekly, monthly = _alvos_em_planejamento(user)
+        tarefa = TaskFactory(user=user, weekly_log=weekly)
+        template = RecurringTaskTemplateFactory(user=user)
+        tarefa_mensal = TaskFactory(user=user, monthly_log=monthly)
+
+        chamadas = [
+            dict(decision=RitualDecisionKind.KEEP, week_start=_SEMANA, task_id=tarefa.id),
+            dict(
+                decision=RitualDecisionKind.SKIP_WEEK,
+                week_start=_SEMANA,
+                recurring_template_id=template.id,
+            ),
+            dict(
+                decision=RitualDecisionKind.KEEP_UNDATED,
+                month_first=_MES,
+                task_id=tarefa_mensal.id,
+            ),
+        ]
+        for chamada in chamadas:
+            primeiro = upsert_ritual_decision(user=user, **chamada)
+            timbre = primeiro.updated_at
+            segundo = _sem_escrita(upsert_ritual_decision, user=user, **chamada)
+            assert segundo.id == primeiro.id
+            # `updated_at` intacto: `auto_now` só se move num `save()` de verdade,
+            # então este assert é a segunda prova (independente do SQL) de no-op.
+            assert segundo.updated_at == timbre
+        assert RitualDecision.objects.count() == 3
+
+
+@pytest.mark.django_db
+def test_ritual_decisao_jamais_toca_o_item(user):
+    """AD-28 item 6 ponto 8: "A Task jamais é tocada por uma decisão-snapshot".
+
+    Snapshot de TODOS os campos concretos (não só `status`): um `save()` acidental
+    de `updated_at`, `order_index` ou `scheduled_date` também é "tocar".
+    """
+
+    def instantaneo(instancia):
+        instancia.refresh_from_db()
+        return {
+            campo.attname: getattr(instancia, campo.attname)
+            for campo in instancia._meta.concrete_fields
+        }
+
+    with tenant_context(user):
+        weekly = WeeklyLogFactory(user=user, week_start=_SEMANA, status=CycleStatus.PLANNING)
+        tarefa = TaskFactory(user=user, weekly_log=weekly, scheduled_date=_SEMANA)
+        template = RecurringTaskTemplateFactory(user=user)
+        antes_tarefa, antes_template = instantaneo(tarefa), instantaneo(template)
+
+        upsert_ritual_decision(
+            user=user, decision=RitualDecisionKind.KEEP, week_start=_SEMANA, task_id=tarefa.id
+        )
+        upsert_ritual_decision(
+            user=user,
+            decision=RitualDecisionKind.SKIP_WEEK,
+            week_start=_SEMANA,
+            recurring_template_id=template.id,
+        )
+
+        assert instantaneo(tarefa) == antes_tarefa
+        assert instantaneo(template) == antes_template
+
+
+@pytest.mark.django_db
+def test_ritual_decisao_some_com_o_item_por_cascade(user):
+    """As FKs são `CASCADE`: apagar a Task (hard delete de `pending`) ou o
+    template leva a decisão embora — nunca sobra decisão órfã apontando para um
+    item que não existe mais."""
+    with tenant_context(user):
+        weekly = WeeklyLogFactory(user=user, week_start=_SEMANA, status=CycleStatus.PLANNING)
+        tarefa = TaskFactory(user=user, weekly_log=weekly)
+        template = RecurringTaskTemplateFactory(user=user)
+        upsert_ritual_decision(
+            user=user, decision=RitualDecisionKind.KEEP, week_start=_SEMANA, task_id=tarefa.id
+        )
+        upsert_ritual_decision(
+            user=user,
+            decision=RitualDecisionKind.SKIP_WEEK,
+            week_start=_SEMANA,
+            recurring_template_id=template.id,
+        )
+        assert RitualDecision.objects.count() == 2
+
+        delete_task(user=user, task_id=tarefa.id)  # hard delete: a tarefa é `pending`
+        assert RitualDecision.objects.filter(task__isnull=False).count() == 0
+
+        template.delete()
+        assert RitualDecision.objects.count() == 0
+
+
+# --- fontes do ritual SEMANAL (AC3/AC5) ----------------------------------------
+@pytest.mark.django_db
+def test_fonte_monthly_na_semana_traz_os_dois_monthly_na_virada(user):
+    """AC3 fonte 1: "incluindo **ambos** os Monthly quando a semana cruza meses".
+
+    A semana de 2026-03-30 vai até 2026-04-05, então `months_of_week` devolve
+    março E abril — e uma implementação que olhasse só o mês do `week_start`
+    perderia a tarefa de abril.
+    """
+    with tenant_context(user):
+        WeeklyLogFactory(user=user, week_start=_SEMANA_VIRADA, status=CycleStatus.PLANNING)
+        marco = MonthlyLogFactory(user=user, month_first=date(2026, 3, 1))
+        abril = MonthlyLogFactory(user=user, month_first=date(2026, 4, 1))
+        TaskFactory(user=user, monthly_log=marco, scheduled_date=date(2026, 3, 31))
+        TaskFactory(user=user, monthly_log=abril, scheduled_date=date(2026, 4, 2))
+        # Fora da janela: mesmo Monthly, dia depois do domingo da semana-alvo.
+        TaskFactory(user=user, monthly_log=abril, scheduled_date=date(2026, 4, 6))
+        # Fora por status (não é `pending`/`started`).
+        TaskFactory(
+            user=user,
+            monthly_log=marco,
+            scheduled_date=date(2026, 3, 30),
+            status=Task.Status.COMPLETED,
+        )
+
+        fonte = list_monthly_tasks_in_week(user=user, week_start=_SEMANA_VIRADA)
+
+        assert fonte["source_id"] == "monthly-in-week"
+        assert fonte["blocking"] is False
+        assert fonte["counts_toward_progress"] is True
+        assert [item["task"].scheduled_date for item in fonte["items"]] == [
+            date(2026, 3, 31),
+            date(2026, 4, 2),
+        ]
+        assert fonte["eligible_count"] == 2
+        assert fonte["pending_decision_count"] == 2
+        assert fonte["reviewed"] is False
+
+
+@pytest.mark.django_db
+def test_fonte_monthly_na_semana_keep_zera_pendencia_sem_mudar_elegibilidade(user):
+    """AC5: `keep` retira o item de `pendingDecisionCount` MAS ele continua
+    elegível e listado — decisão-snapshot não remove nada da fonte."""
+    with tenant_context(user):
+        WeeklyLogFactory(user=user, week_start=_SEMANA, status=CycleStatus.PLANNING)
+        mes = MonthlyLogFactory(user=user, month_first=_MES)
+        tarefa = TaskFactory(user=user, monthly_log=mes, scheduled_date=_SEMANA)
+
+        upsert_ritual_decision(
+            user=user, decision=RitualDecisionKind.KEEP, week_start=_SEMANA, task_id=tarefa.id
+        )
+        fonte = list_monthly_tasks_in_week(user=user, week_start=_SEMANA)
+
+        assert fonte["eligible_count"] == 1
+        assert fonte["pending_decision_count"] == 0
+        assert fonte["reviewed"] is True
+        assert fonte["items"][0]["decision"] == RitualDecisionKind.KEEP
+
+
+@pytest.mark.django_db
+def test_fonte_recorrentes_semanais_ordem_alfabetica_e_already_placed_fora_do_progresso(user):
+    """AC3 fonte 3 + AC5: `alreadyPlaced` sai do denominador (bucket com
+    `countsTowardProgress: False`) e continua consultável."""
+    with tenant_context(user):
+        WeeklyLogFactory(user=user, week_start=_SEMANA, status=CycleStatus.PLANNING)
+        zeta = RecurringTaskTemplateFactory(user=user, recurrence_text="zelar pelas plantas")
+        alfa = RecurringTaskTemplateFactory(user=user, recurrence_text="acordar cedo")
+        colocado = RecurringTaskTemplateFactory(user=user, recurrence_text="mercado")
+        inativo = RecurringTaskTemplateFactory(user=user, recurrence_text="antigo", active=False)
+        mensal = RecurringTaskTemplateFactory(
+            user=user,
+            recurrence_text="pagar contas",
+            recurrence_group=RecurringTaskTemplate.RecurrenceGroup.MONTHLY,
+        )
+        place_template(user=user, template_id=colocado.id, week_start=_SEMANA)
+
+        fonte = list_weekly_recurring_candidates(user=user, week_start=_SEMANA)
+
+        assert [item["template"].id for item in fonte["items"]] == [alfa.id, zeta.id]
+        assert inativo.id not in {item["template"].id for item in fonte["items"]}
+        assert mensal.id not in {item["template"].id for item in fonte["items"]}
+        assert [item["template"].id for item in fonte["already_placed"]["items"]] == [colocado.id]
+        assert fonte["already_placed"]["counts_toward_progress"] is False
+        assert fonte["eligible_count"] == 2  # o já alocado NÃO entra no denominador
+        assert fonte["pending_decision_count"] == 2
+
+
+@pytest.mark.django_db
+def test_fonte_recorrentes_skip_week_sai_da_pendencia_sem_desativar_o_template(user):
+    """AC3 fonte 3, literal do M06: "Não alocar nesta semana **remove o aviso sem
+    desativar o template**" — e sem criar nenhuma Task."""
+    with tenant_context(user):
+        WeeklyLogFactory(user=user, week_start=_SEMANA, status=CycleStatus.PLANNING)
+        template = RecurringTaskTemplateFactory(user=user, recurrence_text="regar")
+        tarefas_antes = Task.objects.count()
+
+        upsert_ritual_decision(
+            user=user,
+            decision=RitualDecisionKind.SKIP_WEEK,
+            week_start=_SEMANA,
+            recurring_template_id=template.id,
+        )
+        fonte = list_weekly_recurring_candidates(user=user, week_start=_SEMANA)
+
+        template.refresh_from_db()
+        assert template.active is True  # não desativado
+        assert Task.objects.count() == tarefas_antes  # NENHUMA Task nasce
+        assert fonte["items"][0]["decision"] == RitualDecisionKind.SKIP_WEEK
+        assert fonte["eligible_count"] == 1
+        assert fonte["pending_decision_count"] == 0
+        assert fonte["reviewed"] is True
+
+
+@pytest.mark.django_db
+def test_fonte_recorrentes_permite_multiplas_instancias_no_mesmo_dia(user):
+    """"Múltiplas instâncias por template" (AD-08/M09): nenhuma constraint de
+    template × dia nem × alvo. Duas instâncias no MESMO dia são legais, e o
+    `instancesInTargetCount` as conta."""
+    with tenant_context(user):
+        WeeklyLogFactory(user=user, week_start=_SEMANA, status=CycleStatus.PLANNING)
+        template = RecurringTaskTemplateFactory(user=user, recurrence_text="treinar")
+        for _ in range(2):
+            place_template(
+                user=user, template_id=template.id, week_start=_SEMANA, scheduled_date=_SEMANA
+            )
+
+        fonte = list_weekly_recurring_candidates(user=user, week_start=_SEMANA)
+
+        assert fonte["items"] == []
+        assert fonte["already_placed"]["items"][0]["instances_in_target_count"] == 2
+
+
+@pytest.mark.django_db
+def test_fonte_weekly_anterior_usa_o_anterior_OPERACIONAL_ignorando_ciclos_null(user):
+    """AC3 fonte 4: o log anterior vem do mesmo predicado do gate de `start_weekly`.
+
+    Com um ciclo `NULL` na semana imediatamente anterior e um `active` duas
+    semanas atrás, "anterior" é o `active` — nunca `week_start − 7 dias`. Se a
+    fonte divergisse do gate, a UI diria "pronta para finalizar" enquanto Iniciar
+    responderia 409.
+    """
+    with tenant_context(user):
+        alvo = _SEMANA + timedelta(weeks=2)
+        WeeklyLogFactory(user=user, week_start=alvo, status=CycleStatus.PLANNING)
+        intermediario = WeeklyLogFactory(user=user, week_start=_SEMANA + timedelta(weeks=1))
+        operacional = WeeklyLogFactory(user=user, week_start=_SEMANA, status=CycleStatus.ACTIVE)
+        TaskFactory(user=user, weekly_log=intermediario, title="do ciclo NULL")
+        TaskFactory(user=user, weekly_log=operacional, title="do ciclo operacional")
+
+        fonte = list_previous_weekly_pendings(user=user, week_start=alvo)
+
+        assert [item["task"].title for item in fonte["items"]] == ["do ciclo operacional"]
+        assert fonte["blocking"] is True
+        assert fonte["ready_to_finalize"] is False
+        assert fonte["reviewed"] is False
+
+
+@pytest.mark.django_db
+def test_fonte_weekly_anterior_ready_to_finalize_quando_zera(user):
+    """AC3: "Ao zerar, mostra Semana anterior pronta para finalizar"."""
+    with tenant_context(user):
+        alvo = _SEMANA + timedelta(weeks=1)
+        WeeklyLogFactory(user=user, week_start=alvo, status=CycleStatus.PLANNING)
+        anterior = WeeklyLogFactory(user=user, week_start=_SEMANA, status=CycleStatus.ACTIVE)
+        TaskFactory(user=user, weekly_log=anterior, status=Task.Status.COMPLETED)
+
+        fonte = list_previous_weekly_pendings(user=user, week_start=alvo)
+
+        assert fonte["items"] == []
+        assert fonte["reviewed"] is True  # vazio é revisado
+        assert fonte["ready_to_finalize"] is True
+
+
+@pytest.mark.django_db
+def test_fonte_weekly_anterior_ausente_e_vazia_e_nao_pronta(user):
+    """AC3: anterior ausente ⇒ fonte vazia, `blocking: true`,
+    `readyToFinalize: false` — o gate de Iniciar passa por vacuidade (AC7 da
+    14.1), mas não há "mês/semana anterior" a finalizar."""
+    with tenant_context(user):
+        WeeklyLogFactory(user=user, week_start=_SEMANA, status=CycleStatus.PLANNING)
+
+        fonte = list_previous_weekly_pendings(user=user, week_start=_SEMANA)
+
+        assert fonte["items"] == []
+        assert fonte["blocking"] is True
+        assert fonte["reviewed"] is True
+        assert fonte["ready_to_finalize"] is False
+
+
+@pytest.mark.django_db
+def test_fonte_weekly_anterior_ignora_decisao_snapshot_gravada_no_log_anterior(user):
+    """AC3 fonte 4 + AC5: a fonte bloqueante NÃO oferece decisão-snapshot (M06:
+    "não oferece 'manter'"), então `pendingDecisionCount == eligibleCount` sempre.
+
+    O caso que prova a construção em vez da coincidência: a matriz de
+    `upsert_ritual_decision` casa só *tipos* de alvo e item, então `keep` é aceito
+    sobre uma Task ancorada no PRÓPRIO weekly enquanto ele é o `planning`. Se a
+    fonte lesse as decisões do log anterior, aquele item sairia da pendência,
+    `reviewed` viraria `True` com tarefa aberta de pé, e a UI ofereceria "pronta
+    para finalizar" enquanto Iniciar responderia 409.
+    """
+    with tenant_context(user):
+        anterior = WeeklyLogFactory(user=user, week_start=_SEMANA, status=CycleStatus.PLANNING)
+        tarefa = TaskFactory(user=user, weekly_log=anterior, title="aberta na semana anterior")
+        upsert_ritual_decision(
+            user=user, decision=RitualDecisionKind.KEEP, week_start=_SEMANA, task_id=tarefa.id
+        )
+        # O anterior sai de `planning` e passa a ser o operacional do alvo seguinte.
+        anterior.status = CycleStatus.ACTIVE
+        anterior.save(update_fields=["status"])
+        alvo = _SEMANA + timedelta(weeks=1)
+        WeeklyLogFactory(user=user, week_start=alvo, status=CycleStatus.PLANNING)
+
+        fonte = list_previous_weekly_pendings(user=user, week_start=alvo)
+
+        assert [item["task"].title for item in fonte["items"]] == ["aberta na semana anterior"]
+        assert fonte["items"][0]["decision"] is None
+        assert fonte["pending_decision_count"] == fonte["eligible_count"] == 1
+        assert fonte["reviewed"] is False  # a pendência só sai por MUTAÇÃO
+        assert fonte["ready_to_finalize"] is False
+
+
+@pytest.mark.django_db
+def test_fonte_daily_pendentes_agrupa_por_data_do_mais_antigo_ao_mais_recente(user):
+    """AC3 fonte 5: agrupados por data, ordem CRESCENTE, e a fronteira
+    `log_date < weekStart` (ambiguidade #1) exclui os dias da semana-alvo."""
+    with tenant_context(user):
+        WeeklyLogFactory(user=user, week_start=_SEMANA, status=CycleStatus.PLANNING)
+        recente = LogFactory(user=user, log_date=_SEMANA - timedelta(days=1))
+        antigo = LogFactory(user=user, log_date=_SEMANA - timedelta(days=10))
+        dentro_da_semana = LogFactory(user=user, log_date=_SEMANA + timedelta(days=1))
+        resolvido = LogFactory(user=user, log_date=_SEMANA - timedelta(days=5))
+        TaskFactory(user=user, log=recente, title="recente")
+        TaskFactory(user=user, log=antigo, title="antigo")
+        TaskFactory(user=user, log=dentro_da_semana, title="dentro da semana-alvo")
+        TaskFactory(user=user, log=resolvido, status=Task.Status.COMPLETED)
+
+        fonte = list_pending_daily_groups(user=user, week_start=_SEMANA)
+
+        assert [grupo["date"] for grupo in fonte["groups"]] == [
+            _SEMANA - timedelta(days=10),
+            _SEMANA - timedelta(days=1),
+        ]
+        assert [grupo["items"][0]["task"].title for grupo in fonte["groups"]] == [
+            "antigo",
+            "recente",
+        ]
+        assert "items" not in fonte  # esta fonte serializa `groups`, não `items`
+        assert fonte["eligible_count"] == 2
+        assert fonte["blocking"] is False
+
+
+@pytest.mark.django_db
+def test_fonte_daily_pendentes_vazia_e_revisada(user):
+    """AC5: "vazio é revisado" (M06/M07) — a fonte sem itens não trava progresso."""
+    with tenant_context(user):
+        WeeklyLogFactory(user=user, week_start=_SEMANA, status=CycleStatus.PLANNING)
+
+        fonte = list_pending_daily_groups(user=user, week_start=_SEMANA)
+
+        assert fonte["groups"] == []
+        assert fonte["eligible_count"] == 0
+        assert fonte["pending_decision_count"] == 0
+        assert fonte["reviewed"] is True
+
+
+# --- fontes do ritual MENSAL (AC4/AC5) -----------------------------------------
+@pytest.mark.django_db
+def test_fonte_recorrentes_mensais_ordem_mensal_depois_anual(user):
+    """AC4 fonte 1: "templates `monthly` ativos **primeiro**, depois `annual`"."""
+    with tenant_context(user):
+        MonthlyLogFactory(user=user, month_first=_MES, status=CycleStatus.PLANNING)
+        anual = RecurringTaskTemplateFactory(
+            user=user,
+            recurrence_text="aniversário",
+            recurrence_group=RecurringTaskTemplate.RecurrenceGroup.ANNUAL,
+        )
+        mensal_z = RecurringTaskTemplateFactory(
+            user=user,
+            recurrence_text="zerar planilha",
+            recurrence_group=RecurringTaskTemplate.RecurrenceGroup.MONTHLY,
+        )
+        mensal_a = RecurringTaskTemplateFactory(
+            user=user,
+            recurrence_text="aluguel",
+            recurrence_group=RecurringTaskTemplate.RecurrenceGroup.MONTHLY,
+        )
+        RecurringTaskTemplateFactory(user=user, recurrence_text="semanal ignorado")
+
+        fonte = list_monthly_recurring_candidates(user=user, month_first=_MES)
+
+        # Mensais em ordem alfabética primeiro, o anual depois — mesmo que
+        # "aniversário" viesse antes de "aluguel" numa ordenação global.
+        assert [item["template"].id for item in fonte["items"]] == [
+            mensal_a.id,
+            mensal_z.id,
+            anual.id,
+        ]
+        assert fonte["eligible_count"] == 3
+        # Nenhuma decisão-snapshot existe nesta fonte (a matriz não tem célula
+        # `(monthly, template)`): "Não existe 'Não alocar neste mês' para anual".
+        assert all(item["decision"] is None for item in fonte["items"])
+
+
+@pytest.mark.django_db
+def test_fonte_recorrentes_mensais_anual_com_instancia_em_mes_FUTURO_do_ano_sai_da_elegibilidade(
+    user,
+):
+    """AC4: a elegibilidade anual é por ANO do alvo, não por mês — é o caso que
+    prova "sem parsing de `recurrence_text`".
+
+    O anual foi alocado em NOVEMBRO; o alvo é MARÇO. Ele sai da elegibilidade de
+    março porque já tem destino no ano, e vai para `alreadyPlacedInYear` — fora do
+    progresso e dos avisos (M07 L301). Uma implementação que olhasse "instância no
+    mês-alvo" o manteria pendente para sempre.
+    """
+    with tenant_context(user):
+        MonthlyLogFactory(user=user, month_first=_MES, status=CycleStatus.PLANNING)
+        anual_alocado = RecurringTaskTemplateFactory(
+            user=user,
+            recurrence_text="revisão anual",
+            recurrence_group=RecurringTaskTemplate.RecurrenceGroup.ANNUAL,
+        )
+        anual_livre = RecurringTaskTemplateFactory(
+            user=user,
+            recurrence_text="seguro do carro",
+            recurrence_group=RecurringTaskTemplate.RecurrenceGroup.ANNUAL,
+        )
+        place_template(
+            user=user, template_id=anual_alocado.id, month_first=date(2026, 11, 1)
+        )
+        # Ano DIFERENTE não resolve a pendência do ano-alvo.
+        place_template(user=user, template_id=anual_livre.id, month_first=date(2027, 5, 1))
+
+        fonte = list_monthly_recurring_candidates(user=user, month_first=_MES)
+
+        assert [item["template"].id for item in fonte["items"]] == [anual_livre.id]
+        assert [item["template"].id for item in fonte["already_placed_in_year"]["items"]] == [
+            anual_alocado.id
+        ]
+        assert fonte["already_placed_in_year"]["counts_toward_progress"] is False
+        assert fonte["eligible_count"] == 1
+
+
+@pytest.mark.django_db
+def test_fonte_recorrentes_mensais_regra_de_dezembro_e_emergente(user):
+    """AC4: "em dezembro somente o próprio mês-alvo resolve a pendência anual" —
+    **sem nenhum código especial de dezembro**.
+
+    Teste-âncora da dedução: com alvo em dezembro não existe mês posterior dentro
+    do mesmo ano, então a única alocação que tira o anual da fonte é a que cai no
+    próprio dezembro. O teste prova as duas metades: alocar em dezembro resolve;
+    alocar em janeiro do ano SEGUINTE não resolve.
+    """
+    with tenant_context(user):
+        dezembro = date(2026, 12, 1)
+        MonthlyLogFactory(user=user, month_first=dezembro, status=CycleStatus.PLANNING)
+        no_proprio_dezembro = RecurringTaskTemplateFactory(
+            user=user,
+            recurrence_text="balanço do ano",
+            recurrence_group=RecurringTaskTemplate.RecurrenceGroup.ANNUAL,
+        )
+        no_ano_seguinte = RecurringTaskTemplateFactory(
+            user=user,
+            recurrence_text="checkup",
+            recurrence_group=RecurringTaskTemplate.RecurrenceGroup.ANNUAL,
+        )
+        place_template(user=user, template_id=no_proprio_dezembro.id, month_first=dezembro)
+        place_template(user=user, template_id=no_ano_seguinte.id, month_first=date(2027, 1, 1))
+
+        fonte = list_monthly_recurring_candidates(user=user, month_first=dezembro)
+
+        assert [item["template"].id for item in fonte["items"]] == [no_ano_seguinte.id]
+        assert [item["template"].id for item in fonte["already_placed_in_year"]["items"]] == [
+            no_proprio_dezembro.id
+        ]
+
+
+@pytest.mark.django_db
+def test_fonte_recorrentes_mensais_already_placed_no_alvo_fora_do_progresso(user):
+    """AC4: `alreadyPlaced` (mensal com instância NO alvo) fica fora do progresso e
+    continua consultável — a primeira instância resolve a pendência do ciclo."""
+    with tenant_context(user):
+        MonthlyLogFactory(user=user, month_first=_MES, status=CycleStatus.PLANNING)
+        colocado = RecurringTaskTemplateFactory(
+            user=user,
+            recurrence_text="pagar aluguel",
+            recurrence_group=RecurringTaskTemplate.RecurrenceGroup.MONTHLY,
+        )
+        place_template(user=user, template_id=colocado.id, month_first=_MES)
+
+        fonte = list_monthly_recurring_candidates(user=user, month_first=_MES)
+
+        assert fonte["items"] == []
+        assert [item["template"].id for item in fonte["already_placed"]["items"]] == [colocado.id]
+        assert fonte["already_placed"]["counts_toward_progress"] is False
+        assert fonte["eligible_count"] == 0
+        assert fonte["reviewed"] is True
+
+
+@pytest.mark.django_db
+def test_fonte_future_log_ordena_dia_depois_sem_dia_e_aceita_keep_undated(user):
+    """AC4 fonte 2: raízes do monthly-alvo, ordenadas dia → sem-dia (M08), com
+    `keep_undated` retirando o item da pendência sem mudar a Task."""
+    with tenant_context(user):
+        mes = MonthlyLogFactory(user=user, month_first=_MES, status=CycleStatus.PLANNING)
+        sem_dia = TaskFactory(user=user, monthly_log=mes, scheduled_date=None, title="sem dia")
+        dia_20 = TaskFactory(
+            user=user, monthly_log=mes, scheduled_date=date(2026, 3, 20), title="dia 20"
+        )
+        dia_5 = TaskFactory(
+            user=user, monthly_log=mes, scheduled_date=date(2026, 3, 5), title="dia 5"
+        )
+        TaskFactory(user=user, monthly_log=mes, status=Task.Status.CANCELLED, title="cancelada")
+        # Subtarefa: vai aninhada no `TaskSerializer`, nunca como raiz da fonte.
+        TaskFactory(user=user, monthly_log=mes, parent_task=dia_5, title="subtarefa")
+
+        upsert_ritual_decision(
+            user=user,
+            decision=RitualDecisionKind.KEEP_UNDATED,
+            month_first=_MES,
+            task_id=sem_dia.id,
+        )
+        fonte = list_future_log_items(user=user, month_first=_MES)
+
+        assert [item["task"].id for item in fonte["items"]] == [dia_5.id, dia_20.id, sem_dia.id]
+        assert fonte["items"][-1]["decision"] == RitualDecisionKind.KEEP_UNDATED
+        assert fonte["eligible_count"] == 3
+        assert fonte["pending_decision_count"] == 2
+
+
+@pytest.mark.django_db
+def test_fonte_future_log_nao_reapresenta_sucessor_recem_migrado_do_monthly_anterior(user):
+    """AC4/ambiguidade #2: a fonte "Monthly anterior" migra itens PARA o alvo
+    durante o MESMO ritual. Sem a exclusão, o sucessor recém-criado voltaria à
+    fila do Future Log como item indeciso — fila que nunca zera.
+
+    O item adiado de um ritual MAIS ANTIGO (predecessor em mês−2) **continua
+    aparecendo**: esse é o Future Log funcionando, não o mesmo caso.
+    """
+    with tenant_context(user):
+        anterior = MonthlyLogFactory(
+            user=user, month_first=date(2026, 2, 1), status=CycleStatus.ACTIVE
+        )
+        antigo = MonthlyLogFactory(user=user, month_first=date(2026, 1, 1))
+        alvo = MonthlyLogFactory(user=user, month_first=_MES, status=CycleStatus.PLANNING)
+
+        sucessor_recente = TaskFactory(user=user, monthly_log=alvo, title="migrada do mês passado")
+        predecessor_recente = TaskFactory(
+            user=user, monthly_log=anterior, status=Task.Status.POSTPONED
+        )
+        predecessor_recente.migrated_to_task = sucessor_recente
+        predecessor_recente.save(update_fields=["migrated_to_task"])
+
+        sucessor_antigo = TaskFactory(user=user, monthly_log=alvo, title="adiada de janeiro")
+        predecessor_antigo = TaskFactory(
+            user=user, monthly_log=antigo, status=Task.Status.POSTPONED
+        )
+        predecessor_antigo.migrated_to_task = sucessor_antigo
+        predecessor_antigo.save(update_fields=["migrated_to_task"])
+
+        propria = TaskFactory(user=user, monthly_log=alvo, title="nasceu no alvo")
+
+        fonte = list_future_log_items(user=user, month_first=_MES)
+
+        titulos = {item["task"].title for item in fonte["items"]}
+        assert sucessor_recente.title not in titulos
+        assert titulos == {sucessor_antigo.title, propria.title}
+
+
+@pytest.mark.django_db
+def test_fonte_previous_monthly_e_bloqueante_e_espelha_a_semanal(user):
+    """AC4 fonte 3: mesma mecânica da fonte bloqueante semanal (extraída, não
+    copiada) — anterior OPERACIONAL, `blocking`, `readyToFinalize`."""
+    with tenant_context(user):
+        MonthlyLogFactory(user=user, month_first=_MES, status=CycleStatus.PLANNING)
+        MonthlyLogFactory(user=user, month_first=date(2026, 2, 1))  # NULL: ignorado
+        operacional = MonthlyLogFactory(
+            user=user, month_first=date(2026, 1, 1), status=CycleStatus.ACTIVE
+        )
+        TaskFactory(user=user, monthly_log=operacional, title="aberta em janeiro")
+
+        fonte = list_previous_monthly_pendings(user=user, month_first=_MES)
+
+        assert fonte["source_id"] == "previous-monthly"
+        assert [item["task"].title for item in fonte["items"]] == ["aberta em janeiro"]
+        assert fonte["blocking"] is True
+        assert fonte["ready_to_finalize"] is False
+        assert all(item["decision"] is None for item in fonte["items"])
+
+
+@pytest.mark.django_db
+def test_decisions_for_target_devolve_os_dois_dicts_em_uma_query(user):
+    """`decisions_for_target` é o que evita N+1 nas fontes: uma query só, e a
+    separação por tipo de item já feita."""
+    with tenant_context(user):
+        weekly = WeeklyLogFactory(user=user, week_start=_SEMANA, status=CycleStatus.PLANNING)
+        mes = MonthlyLogFactory(user=user, month_first=_MES)
+        tarefa = TaskFactory(user=user, monthly_log=mes, scheduled_date=_SEMANA)
+        template = RecurringTaskTemplateFactory(user=user)
+        upsert_ritual_decision(
+            user=user, decision=RitualDecisionKind.KEEP, week_start=_SEMANA, task_id=tarefa.id
+        )
+        upsert_ritual_decision(
+            user=user,
+            decision=RitualDecisionKind.SKIP_WEEK,
+            week_start=_SEMANA,
+            recurring_template_id=template.id,
+        )
+
+        with CaptureQueriesContext(connection) as capturadas:
+            por_task, por_template = decisions_for_target(user=user, weekly_log=weekly)
+
+        assert len(capturadas.captured_queries) == 1
+        assert por_task == {tarefa.id: RitualDecisionKind.KEEP}
+        assert por_template == {template.id: RitualDecisionKind.SKIP_WEEK}
+        assert decisions_for_target(user=user, weekly_log=None) == ({}, {})
+
+
+# --- densidade real (AC6) -------------------------------------------------------
+_SEIS_STATUS = set(Task.Status.values)
+
+
+@pytest.mark.django_db
+def test_densidade_semanal_conta_subtarefas(user):
+    """AC6: a densidade **inclui subtarefas** — o OPOSTO de todas as superfícies de
+    listagem e de `TaskDensityView`. Este é o teste que falha se alguém copiar
+    `parent_task__isnull=True` de lá."""
+    with tenant_context(user):
+        semana = WeeklyLogFactory(user=user, week_start=_SEMANA)
+        raiz = TaskFactory(user=user, weekly_log=semana, scheduled_date=_SEMANA)
+        TaskFactory(user=user, weekly_log=semana, scheduled_date=_SEMANA, parent_task=raiz)
+        TaskFactory(user=user, weekly_log=semana, scheduled_date=_SEMANA, parent_task=raiz)
+
+        densidade = compute_week_density(user=user, week_start=_SEMANA)
+
+        assert densidade["days"][0]["total"] == 3
+        assert densidade["total"] == 3
+
+
+@pytest.mark.django_db
+def test_densidade_semanal_grade_completa_com_seis_status_e_undated(user):
+    """AC6: 7 dias (vazios visíveis), faixa `undated` separada, e as 6 chaves de
+    status SEMPRE presentes com zeros."""
+    with tenant_context(user):
+        semana = WeeklyLogFactory(user=user, week_start=_SEMANA)
+        TaskFactory(user=user, weekly_log=semana, scheduled_date=_SEMANA)
+        TaskFactory(
+            user=user,
+            weekly_log=semana,
+            scheduled_date=_SEMANA + timedelta(days=3),
+            status=Task.Status.CANCELLED,
+        )
+        TaskFactory(user=user, weekly_log=semana, scheduled_date=None)
+
+        densidade = compute_week_density(user=user, week_start=_SEMANA)
+
+        assert len(densidade["days"]) == 7
+        assert [dia["date"] for dia in densidade["days"]] == [
+            _SEMANA + timedelta(days=offset) for offset in range(7)
+        ]
+        for celula in [*densidade["days"], densidade["undated"]]:
+            assert set(celula["by_status"]) == _SEIS_STATUS
+        assert densidade["days"][0]["by_status"]["pending"] == 1
+        assert densidade["days"][1]["total"] == 0  # dia vazio presente na grade
+        assert densidade["days"][3]["by_status"]["cancelled"] == 1
+        assert densidade["undated"]["total"] == 1
+        assert densidade["total"] == 3
+
+
+@pytest.mark.django_db
+def test_densidade_conta_registros_nao_linhagens(user):
+    """AC6/M06 L223: "o resumo conta **registros, não linhagens**" — origem
+    `migrated` e sucessor contam SEPARADAMENTE, sem deduplicação."""
+    with tenant_context(user):
+        semana = WeeklyLogFactory(user=user, week_start=_SEMANA)
+        sucessor = TaskFactory(user=user, weekly_log=semana, scheduled_date=_SEMANA)
+        origem = TaskFactory(
+            user=user,
+            weekly_log=semana,
+            scheduled_date=_SEMANA,
+            status=Task.Status.MIGRATED,
+            migration_count=1,
+        )
+        origem.migrated_to_task = sucessor
+        origem.save(update_fields=["migrated_to_task"])
+
+        densidade = compute_week_density(user=user, week_start=_SEMANA)
+
+        assert densidade["days"][0]["total"] == 2
+        assert densidade["days"][0]["by_status"]["migrated"] == 1
+        assert densidade["days"][0]["by_status"]["pending"] == 1
+
+
+@pytest.mark.django_db
+def test_densidade_nao_projeta_recorrente_nao_alocado_nem_outros_containers(user):
+    """AC6: "recorrentes ainda não alocados **não são projeção**", e nada de somar
+    tarefas de outros containers (o legado `task-density/` soma três fontes)."""
+    with tenant_context(user):
+        WeeklyLogFactory(user=user, week_start=_SEMANA)
+        RecurringTaskTemplateFactory(user=user, recurrence_text="toda segunda")
+        outra_semana = WeeklyLogFactory(user=user, week_start=_SEMANA + timedelta(weeks=1))
+        TaskFactory(user=user, weekly_log=outra_semana, scheduled_date=_SEMANA + timedelta(days=7))
+        mes = MonthlyLogFactory(user=user, month_first=_MES)
+        TaskFactory(user=user, monthly_log=mes, scheduled_date=_SEMANA)
+        LogFactory(user=user, log_date=_SEMANA)  # daily do mesmo dia
+
+        densidade = compute_week_density(user=user, week_start=_SEMANA)
+
+        assert densidade["total"] == 0
+
+
+@pytest.mark.django_db
+def test_densidade_mensal_grade_completa_incluindo_fevereiro_bissexto(user):
+    """AC6: todos os dias reais do mês (28–31), bissexto incluído — via
+    `calendar.monthrange`, não por aritmética de ano."""
+    with tenant_context(user):
+        for month_first, dias in ((date(2028, 2, 1), 29), (date(2026, 2, 1), 28)):
+            MonthlyLogFactory(user=user, month_first=month_first)
+            densidade = compute_month_density(user=user, month_first=month_first)
+            assert len(densidade["days"]) == dias
+            assert densidade["days"][-1]["date"].day == dias
+
+
+@pytest.mark.django_db
+def test_densidade_mensal_conta_apenas_o_container_alvo(user):
+    """AC6: só `monthly_log = <alvo>`. Uma tarefa de OUTRO monthly com data dentro
+    do mês-alvo (possível via Future Log) não pode aparecer."""
+    with tenant_context(user):
+        alvo = MonthlyLogFactory(user=user, month_first=_MES)
+        outro = MonthlyLogFactory(user=user, month_first=date(2026, 4, 1))
+        TaskFactory(user=user, monthly_log=alvo, scheduled_date=date(2026, 3, 10))
+        TaskFactory(user=user, monthly_log=outro, scheduled_date=date(2026, 3, 10))
+
+        densidade = compute_month_density(user=user, month_first=_MES)
+
+        assert densidade["days"][9]["total"] == 1
+        assert densidade["total"] == 1
+
+
+@pytest.mark.django_db
+def test_densidade_aceita_alvo_em_qualquer_estado_e_log_ausente_devolve_grade_zerada(user):
+    """AC6: a densidade NÃO exige alvo em planejamento (reuso por 14.5/14.6/14.10),
+    e log inexistente devolve a grade completa zerada — não 404, não vazio."""
+    with tenant_context(user):
+        for status_do_alvo in (None, CycleStatus.PLANNING, CycleStatus.FINALIZED):
+            semana = _SEMANA + timedelta(weeks=len(WeeklyLog.objects.all()))
+            log = WeeklyLogFactory(user=user, week_start=semana, status=status_do_alvo)
+            TaskFactory(user=user, weekly_log=log, scheduled_date=semana)
+            assert compute_week_density(user=user, week_start=semana)["total"] == 1
+
+        semana_sem_log = _SEMANA + timedelta(weeks=40)
+        vazia = compute_week_density(user=user, week_start=semana_sem_log)
+        assert len(vazia["days"]) == 7
+        assert vazia["total"] == 0
+        assert set(vazia["undated"]["by_status"]) == _SEIS_STATUS
+
+
+@pytest.mark.django_db
+def test_fontes_e_densidades_nao_materializam_nenhum_log(user):
+    """AC7: **nenhum** endpoint desta story materializa log.
+
+    Chama as SETE fontes e as DUAS densidades para chaves sem log nenhum e afirma
+    que `WeeklyLog`/`MonthlyLog`/`Log` não ganharam linhas — é o guardrail da AC4
+    da Story 14.1, agora do lado da leitura.
+    """
+    with tenant_context(user):
+        semana = _SEMANA + timedelta(weeks=52)
+        mes = date(2027, 9, 1)
+        antes = (WeeklyLog.objects.count(), MonthlyLog.objects.count(), Log.objects.count())
+
+        for servico in (
+            list_monthly_tasks_in_week,
+            list_weekly_recurring_candidates,
+            list_previous_weekly_pendings,
+            list_pending_daily_groups,
+            compute_week_density,
+        ):
+            servico(user=user, week_start=semana)
+        for servico in (
+            list_monthly_recurring_candidates,
+            list_future_log_items,
+            list_previous_monthly_pendings,
+            compute_month_density,
+        ):
+            servico(user=user, month_first=mes)
+
+        assert (
+            WeeklyLog.objects.count(),
+            MonthlyLog.objects.count(),
+            Log.objects.count(),
+        ) == antes
+        assert antes == (0, 0, 0)
+
+
+@pytest.mark.django_db
+def test_fontes_e_densidades_isolam_por_tenant(user, other_user):
+    """AC7: todo acesso usa o manager auto-escopado `objects`. O usuário B não vê
+    nada do A, mesmo com as chaves de período idênticas."""
+    with tenant_context(other_user):
+        semana = WeeklyLogFactory(user=other_user, week_start=_SEMANA, status=CycleStatus.PLANNING)
+        mes = MonthlyLogFactory(user=other_user, month_first=_MES, status=CycleStatus.PLANNING)
+        TaskFactory(user=other_user, weekly_log=semana, scheduled_date=_SEMANA)
+        TaskFactory(user=other_user, monthly_log=mes, scheduled_date=_SEMANA)
+        RecurringTaskTemplateFactory(user=other_user)
+        LogFactory(user=other_user, log_date=_SEMANA - timedelta(days=2))
+        TaskFactory(user=other_user, log=Log.objects.get(log_date=_SEMANA - timedelta(days=2)))
+
+    with tenant_context(user):
+        assert list_monthly_tasks_in_week(user=user, week_start=_SEMANA)["eligible_count"] == 0
+        assert (
+            list_weekly_recurring_candidates(user=user, week_start=_SEMANA)["eligible_count"] == 0
+        )
+        assert list_previous_weekly_pendings(user=user, week_start=_SEMANA)["eligible_count"] == 0
+        assert list_pending_daily_groups(user=user, week_start=_SEMANA)["groups"] == []
+        assert (
+            list_monthly_recurring_candidates(user=user, month_first=_MES)["eligible_count"] == 0
+        )
+        assert list_future_log_items(user=user, month_first=_MES)["eligible_count"] == 0
+        assert list_previous_monthly_pendings(user=user, month_first=_MES)["eligible_count"] == 0
+        assert compute_week_density(user=user, week_start=_SEMANA)["total"] == 0
+        assert compute_month_density(user=user, month_first=_MES)["total"] == 0

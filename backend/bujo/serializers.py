@@ -9,7 +9,13 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from bujo.filters import TaskFilter
-from bujo.models import Log, RecurringTaskTemplate, Task
+from bujo.models import (
+    Log,
+    RecurringTaskTemplate,
+    RitualDecision,
+    RitualDecisionKind,
+    Task,
+)
 
 
 class TaskSerializer(serializers.ModelSerializer):
@@ -394,3 +400,189 @@ class RecurringTaskTemplatePlaceSerializer(serializers.Serializer):
     week_start = serializers.DateField(required=False)
     month_first = serializers.DateField(required=False)
     scheduled_date = serializers.DateField(required=False, allow_null=True)
+
+
+# --- Rituais: decisões-snapshot e fontes (Story 14.2) --------------------------
+# Distinção deliberada de responsabilidade (§6.6): o serializer valida **forma**
+# (400) — exatamente um alvo, exatamente um item, `week_start` numa segunda,
+# `month_first` no dia 1. A **matriz** de combinação legal `(alvo, item, decisão)`
+# é regra de produto e vive no serviço, devolvendo 409. Forma é validação;
+# combinação é regra.
+class RitualDecisionCreateSerializer(serializers.Serializer):
+    """Corpo do `POST /api/bujo/ritual-decisions/`.
+
+    Campos no CORPO, então chegam do fio em camelCase (`weekStart`, `taskId`,
+    `recurringTemplateId`) e o `CamelCaseJSONParser` converte antes do serializer.
+    """
+
+    decision = serializers.ChoiceField(choices=RitualDecisionKind.choices)
+    week_start = serializers.DateField(required=False)
+    month_first = serializers.DateField(required=False)
+    task_id = serializers.UUIDField(required=False)
+    recurring_template_id = serializers.UUIDField(required=False)
+
+    def validate(self, attrs):
+        week_start = attrs.get("week_start")
+        month_first = attrs.get("month_first")
+        if (week_start is None) == (month_first is None):
+            raise serializers.ValidationError(
+                "Informe exatamente um alvo: weekStart (ritual semanal) ou monthFirst (mensal)."
+            )
+        if (attrs.get("task_id") is None) == (attrs.get("recurring_template_id") is None):
+            raise serializers.ValidationError(
+                "Informe exatamente um item: taskId ou recurringTemplateId."
+            )
+        if week_start is not None and week_start.isoweekday() != 1:
+            raise serializers.ValidationError({"week_start": "Deve ser uma segunda-feira."})
+        if month_first is not None and month_first.day != 1:
+            raise serializers.ValidationError({"month_first": "Deve ser o primeiro dia do mês."})
+        return attrs
+
+
+class RitualDecisionSerializer(serializers.Serializer):
+    """Resposta do `POST /api/bujo/ritual-decisions/`.
+
+    O alvo volta como a **chave de período** que o cliente enviou (`weekStart` /
+    `monthFirst`), não como o id do log: o id é opaco para quem endereça o ritual
+    por semana/mês, e devolvê-lo obrigaria o cliente a uma segunda leitura só para
+    saber a qual ritual a decisão que ele acabou de gravar pertence. O item volta
+    como `taskId`/`recurringTemplateId` — o mesmo identificador que entrou.
+    """
+
+    id = serializers.UUIDField()
+    decision = serializers.CharField()
+    week_start = serializers.SerializerMethodField()
+    month_first = serializers.SerializerMethodField()
+    task_id = serializers.UUIDField(allow_null=True)
+    recurring_template_id = serializers.UUIDField(allow_null=True)
+    created_at = serializers.DateTimeField()
+    updated_at = serializers.DateTimeField()
+
+    @extend_schema_field(serializers.DateField(allow_null=True))
+    def get_week_start(self, decisao: RitualDecision):
+        return decisao.weekly_log.week_start if decisao.weekly_log_id else None
+
+    @extend_schema_field(serializers.DateField(allow_null=True))
+    def get_month_first(self, decisao: RitualDecision):
+        return decisao.monthly_log.month_first if decisao.monthly_log_id else None
+
+
+# Envelope UNIFORME das sete fontes. **Sem campo `label`** de propósito: a cópia
+# pt-BR das fontes é do UI (DESIGN/EXPERIENCE são a autoridade de wording) e uma
+# cópia em duas camadas é dívida garantida. O backend expõe `sourceId` estável.
+class _SourceEnvelopeSerializer(serializers.Serializer):
+    source_id = serializers.CharField()
+    blocking = serializers.BooleanField()
+    counts_toward_progress = serializers.BooleanField()
+    eligible_count = serializers.IntegerField()
+    pending_decision_count = serializers.IntegerField()
+    reviewed = serializers.BooleanField()
+
+
+# `decision` fica no ITEM da fonte, nunca no `TaskSerializer`: uma decisão é
+# relativa a um alvo de ritual, e o `TaskSerializer` é compartilhado por ~10
+# respostas legadas — acrescentá-lo lá mudaria contrato (AC8).
+class RitualTaskItemSerializer(serializers.Serializer):
+    task = TaskSerializer()
+    decision = serializers.CharField(allow_null=True)
+
+
+class RitualTemplateItemSerializer(serializers.Serializer):
+    template = RecurringTaskTemplateSerializer()
+    decision = serializers.CharField(allow_null=True)
+    instances_in_target_count = serializers.IntegerField()
+
+
+class _TemplateBucketSerializer(serializers.Serializer):
+    """`alreadyPlaced`/`alreadyPlacedInYear` — fora do progresso e dos avisos, mas
+    permanentemente consultáveis (novas instâncias continuam permitidas)."""
+
+    counts_toward_progress = serializers.BooleanField()
+    items = RitualTemplateItemSerializer(many=True)
+
+
+class TaskSourceSerializer(_SourceEnvelopeSerializer):
+    """Fontes cujos itens são Tasks: `monthly-in-week`, `future-log`."""
+
+    items = RitualTaskItemSerializer(many=True)
+
+
+class BlockingTaskSourceSerializer(TaskSourceSerializer):
+    """`previous-weekly`/`previous-monthly`: acrescentam `readyToFinalize`."""
+
+    ready_to_finalize = serializers.BooleanField()
+
+
+class WeeklyRecurringSourceSerializer(_SourceEnvelopeSerializer):
+    items = RitualTemplateItemSerializer(many=True)
+    already_placed = _TemplateBucketSerializer()
+
+
+class MonthlyRecurringSourceSerializer(WeeklyRecurringSourceSerializer):
+    already_placed_in_year = _TemplateBucketSerializer()
+
+
+class PendingDailyGroupSerializer(serializers.Serializer):
+    date = serializers.DateField()
+    items = RitualTaskItemSerializer(many=True)
+
+
+class PendingDailiesSourceSerializer(_SourceEnvelopeSerializer):
+    """A única fonte com `groups` em vez de `items` planos (AC3)."""
+
+    groups = PendingDailyGroupSerializer(many=True)
+
+
+class WeekSourceQuerySerializer(serializers.Serializer):
+    """`?week_start=` em **snake_case**: a camelização do
+    `djangorestframework-camel-case` cobre corpo (parser/renderer), NÃO query
+    string, e é a convenção vigente do repo (`TaskDensityQuerySerializer`, e o
+    cliente em `frontend/src/features/bujo/api.ts`)."""
+
+    week_start = serializers.DateField()
+
+    def validate_week_start(self, value):
+        if value.isoweekday() != 1:
+            raise serializers.ValidationError("Deve ser uma segunda-feira.")
+        return value
+
+
+class MonthSourceQuerySerializer(serializers.Serializer):
+    month_first = serializers.DateField()
+
+    def validate_month_first(self, value):
+        if value.day != 1:
+            raise serializers.ValidationError("Deve ser o primeiro dia do mês.")
+        return value
+
+
+# --- Densidade real (Story 14.2, AC6) ------------------------------------------
+# Endpoints NOVOS: `TaskDensity*Serializer` (Story 11.3) fica intocado.
+class DensityStatusBreakdownSerializer(serializers.Serializer):
+    """As 6 chaves de `TaskStatus`, SEMPRE presentes (zeros inclusive).
+
+    Nenhuma tem underscore, então a camelização de saída não as altera — o que é
+    verificado por teste de fio, não deduzido.
+    """
+
+    pending = serializers.IntegerField()
+    started = serializers.IntegerField()
+    completed = serializers.IntegerField()
+    cancelled = serializers.IntegerField()
+    migrated = serializers.IntegerField()
+    postponed = serializers.IntegerField()
+
+
+class DensityCellSerializer(serializers.Serializer):
+    total = serializers.IntegerField()
+    by_status = DensityStatusBreakdownSerializer()
+
+
+class DensityDaySerializer(DensityCellSerializer):
+    date = serializers.DateField()
+
+
+class DensityResponseSerializer(serializers.Serializer):
+    days = DensityDaySerializer(many=True)
+    undated = DensityCellSerializer()
+    total = serializers.IntegerField()

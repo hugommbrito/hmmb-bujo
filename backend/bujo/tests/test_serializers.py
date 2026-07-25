@@ -6,10 +6,13 @@ import pytest
 
 from bujo.models import RecurringTaskTemplate, Task
 from bujo.serializers import (
+    DensityResponseSerializer,
     LogSerializer,
     RecurringTaskTemplateCreateSerializer,
     RecurringTaskTemplateUpdateSerializer,
+    RitualDecisionCreateSerializer,
     TaskSerializer,
+    TaskSourceSerializer,
 )
 from bujo.services.migration import migrate_task
 from bujo.services.recurring import place_template
@@ -245,3 +248,76 @@ def test_update_serializer_todos_os_campos_sao_opcionais():
 
     assert serializer.is_valid(), serializer.errors
     assert serializer.validated_data == {}
+
+
+# --- Story 14.2: envelope de fonte e densidade ---------------------------------
+def test_ritual_decision_create_serializer_exige_exatamente_um_alvo_e_um_item():
+    """Forma inválida é 400 no serializer; a MATRIZ de combinação é 409 no serviço.
+    A distinção é deliberada (§6.6: regra de produto nunca em serializer)."""
+    base = {"decision": "keep", "taskId": "b1f0c2d4-0000-4000-8000-000000000001"}
+    formas = [
+        base,  # nenhum alvo
+        {**base, "weekStart": "2026-03-02", "monthFirst": "2026-03-01"},  # dois alvos
+        {"decision": "keep", "weekStart": "2026-03-02"},  # nenhum item
+        {
+            **base,
+            "weekStart": "2026-03-02",
+            "recurringTemplateId": "b1f0c2d4-0000-4000-8000-000000000002",
+        },  # dois itens
+        {**base, "weekStart": "2026-03-03"},  # não é segunda
+        {**base, "monthFirst": "2026-03-15"},  # não é dia 1
+    ]
+    # O parser camelCase roda ANTES do serializer no ciclo real; aqui alimentamos
+    # snake_case direto, que é o que o serializer recebe de fato.
+    def snake(corpo):
+        mapa = {
+            "weekStart": "week_start",
+            "monthFirst": "month_first",
+            "taskId": "task_id",
+            "recurringTemplateId": "recurring_template_id",
+        }
+        return {mapa.get(k, k): v for k, v in corpo.items()}
+
+    for corpo in formas:
+        assert not RitualDecisionCreateSerializer(data=snake(corpo)).is_valid(), corpo
+
+    valido = RitualDecisionCreateSerializer(data=snake({**base, "weekStart": "2026-03-02"}))
+    assert valido.is_valid(), valido.errors
+
+
+def test_envelope_de_fonte_serializa_sem_label_e_com_os_seis_campos():
+    """AC5 + decisão registrada nas Dev Notes: **sem campo `label`** — a cópia pt-BR
+    das fontes é do UI (DESIGN/EXPERIENCE são a autoridade de wording)."""
+    dados = TaskSourceSerializer(
+        {
+            "source_id": "monthly-in-week",
+            "blocking": False,
+            "counts_toward_progress": True,
+            "eligible_count": 0,
+            "pending_decision_count": 0,
+            "reviewed": True,
+            "items": [],
+        }
+    ).data
+    assert set(dados) == {
+        "source_id",
+        "blocking",
+        "counts_toward_progress",
+        "eligible_count",
+        "pending_decision_count",
+        "reviewed",
+        "items",
+    }
+    assert "label" not in dados
+
+
+def test_densidade_serializa_as_seis_chaves_de_status_sem_underscore():
+    """AC6: as 6 chaves de `TaskStatus` não têm underscore, então a camelização de
+    saída não as altera — e todas são obrigatórias no serializer, então uma chave
+    faltando levantaria em vez de sair como `undefined` no cliente."""
+    celula = {"total": 0, "by_status": {status: 0 for status in Task.Status.values}}
+    dados = DensityResponseSerializer(
+        {"days": [{"date": date(2026, 3, 2), **celula}], "undated": celula, "total": 0}
+    ).data
+    assert set(dados["days"][0]["by_status"]) == set(Task.Status.values)
+    assert not any("_" in chave for chave in dados["days"][0]["by_status"])
