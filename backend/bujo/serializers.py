@@ -241,6 +241,38 @@ class CatchUpQueueSerializer(serializers.Serializer):
     daily_tasks = TaskSerializer(many=True)
 
 
+# --- fila unificada de migração (Story 14.3, AD-28 item 7) ---------------------
+# `Serializer` puros (não `ModelSerializer`): é projeção do dict devolvido por
+# `services/migration.unified_migration_queue`, exatamente como os quatro
+# serializers de fila acima. Os itens são `TaskSerializer` PURO — acrescentar
+# campo a ele quebraria ~10 respostas legadas que o compartilham.
+
+
+class UnifiedQueueGroupSerializer(serializers.Serializer):
+    # Chave UNIFORME do período de origem: `month_first` na seção `month`,
+    # `week_start` na `week`, `log_date` na `day`. Uma chave só, um serializer só
+    # — e é dela que a Task Row deriva a "origem" do item (M10). Ids de container
+    # (`logId`/`weeklyLogId`) não são contrato de API neste domínio (achado M1 da
+    # review da 14.2).
+    period_start = serializers.DateField()
+    items = TaskSerializer(many=True)
+
+
+class UnifiedQueueSectionSerializer(serializers.Serializer):
+    # `CharField`, não `ChoiceField`: um `*Enum` novo no schema seria ruído de
+    # contrato para três valores que o backend sempre emite e o cliente nunca
+    # envia. O "rótulo por fonte" é servido por `source_id` + `period_start` — a
+    # cópia pt-BR fica no UI (DESIGN/EXPERIENCE são a autoridade de wording).
+    source_id = serializers.CharField()
+    count = serializers.IntegerField()
+    groups = UnifiedQueueGroupSerializer(many=True)
+
+
+class UnifiedMigrationQueueSerializer(serializers.Serializer):
+    total_count = serializers.IntegerField()
+    sections = UnifiedQueueSectionSerializer(many=True)
+
+
 class TaskMigrateSerializer(serializers.Serializer):
     destination = serializers.ChoiceField(choices=["today", "week", "month", "future", "cancel"])
     month_first = serializers.DateField(required=False)

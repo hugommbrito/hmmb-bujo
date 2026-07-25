@@ -147,6 +147,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /**
+         * @description ALIAS FINO de `UnifiedMigrationQueueView` (ver a seção de filas acima) —
+         *     contrato `{monthlyTasks, weeklyTasks, dailyTasks}`.
+         *
+         *     A única divergência de recorte em relação à fila unificada: `dailyTasks`
+         *     EXCLUI o grupo de ontem, que é território do alias `/migration/queue/`.
+         */
         get: operations["bujo_catch_up_queue_retrieve"];
         put?: never;
         post?: never;
@@ -271,7 +278,37 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /**
+         * @description ALIAS FINO de `UnifiedMigrationQueueView` — contrato `{logDate, tasks}`.
+         *
+         *     `log_date` vem de `queue["yesterday"]`, pronto do serviço: o alias não
+         *     recalcula tempo por conta própria, o que elimina a chance de incoerência se a
+         *     virada do dia cair entre duas leituras — e é o que torna satisfazível o guard
+         *     de "zero query própria" (o nome da função de calendário nem aparece aqui).
+         */
         get: operations["bujo_migration_queue_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bujo/migration/unified-queue/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description Fila única de pendências dos três níveis, mês → semana → dia.
+         *
+         *     View fina e sem query param: a fila é sempre "tudo que ficou atrás de hoje"
+         *     (AD-09 item 8 — apresenta tudo, item a item, sem janela nem paginação).
+         */
+        get: operations["bujo_migration_unified_queue_retrieve"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2527,6 +2564,20 @@ export interface components {
          * @enum {string}
          */
         TypeEnum: "weekly" | "monthly";
+        UnifiedMigrationQueue: {
+            totalCount: number;
+            sections: components["schemas"]["UnifiedQueueSection"][];
+        };
+        UnifiedQueueGroup: {
+            /** Format: date */
+            periodStart: string;
+            items: components["schemas"]["Task"][];
+        };
+        UnifiedQueueSection: {
+            sourceId: string;
+            count: number;
+            groups: components["schemas"]["UnifiedQueueGroup"][];
+        };
         WeeklyCycle: {
             status: string | null;
             /** Format: date-time */
@@ -2996,6 +3047,25 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MigrationQueue"];
+                };
+            };
+        };
+    };
+    bujo_migration_unified_queue_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnifiedMigrationQueue"];
                 };
             };
         };

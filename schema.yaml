@@ -169,6 +169,12 @@ paths:
   /api/bujo/catch-up/queue/:
     get:
       operationId: bujo_catch_up_queue_retrieve
+      description: |-
+        ALIAS FINO de `UnifiedMigrationQueueView` (ver a seção de filas acima) —
+        contrato `{monthlyTasks, weeklyTasks, dailyTasks}`.
+
+        A única divergência de recorte em relação à fila unificada: `dailyTasks`
+        EXCLUI o grupo de ontem, que é território do alias `/migration/queue/`.
       tags:
       - bujo
       security:
@@ -329,6 +335,13 @@ paths:
   /api/bujo/migration/queue/:
     get:
       operationId: bujo_migration_queue_retrieve
+      description: |-
+        ALIAS FINO de `UnifiedMigrationQueueView` — contrato `{logDate, tasks}`.
+
+        `log_date` vem de `queue["yesterday"]`, pronto do serviço: o alias não
+        recalcula tempo por conta própria, o que elimina a chance de incoerência se a
+        virada do dia cair entre duas leituras — e é o que torna satisfazível o guard
+        de "zero query própria" (o nome da função de calendário nem aparece aqui).
       tags:
       - bujo
       security:
@@ -339,6 +352,25 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/MigrationQueue'
+          description: ''
+  /api/bujo/migration/unified-queue/:
+    get:
+      operationId: bujo_migration_unified_queue_retrieve
+      description: |-
+        Fila única de pendências dos três níveis, mês → semana → dia.
+
+        View fina e sem query param: a fila é sempre "tudo que ficou atrás de hoje"
+        (AD-09 item 8 — apresenta tudo, item a item, sem janela nem paginação).
+      tags:
+      - bujo
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnifiedMigrationQueue'
           description: ''
   /api/bujo/monthly-review/queue/:
     get:
@@ -4476,6 +4508,46 @@ components:
       description: |-
         * `weekly` - weekly
         * `monthly` - monthly
+    UnifiedMigrationQueue:
+      type: object
+      properties:
+        totalCount:
+          type: integer
+        sections:
+          type: array
+          items:
+            $ref: '#/components/schemas/UnifiedQueueSection'
+      required:
+      - sections
+      - totalCount
+    UnifiedQueueGroup:
+      type: object
+      properties:
+        periodStart:
+          type: string
+          format: date
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Task'
+      required:
+      - items
+      - periodStart
+    UnifiedQueueSection:
+      type: object
+      properties:
+        sourceId:
+          type: string
+        count:
+          type: integer
+        groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/UnifiedQueueGroup'
+      required:
+      - count
+      - groups
+      - sourceId
     WeeklyCycle:
       type: object
       properties:

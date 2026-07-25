@@ -13,7 +13,7 @@ from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from bujo.models import Log, MonthlyLog, RecurringTaskTemplate, Task, WeeklyLog
+from bujo.models import MonthlyLog, RecurringTaskTemplate, Task, WeeklyLog
 from bujo.serializers import (
     ArchiveEntrySerializer,
     BlockingTaskSourceSerializer,
@@ -44,6 +44,7 @@ from bujo.serializers import (
     TaskSerializer,
     TaskSourceSerializer,
     TaskUpdateSerializer,
+    UnifiedMigrationQueueSerializer,
     WeeklyCycleActionSerializer,
     WeeklyCycleSerializer,
     WeeklyLogSerializer,
@@ -70,7 +71,7 @@ from bujo.services.logs import (
     get_or_create_monthly_log,
     get_or_create_weekly_log,
 )
-from bujo.services.migration import migrate_task
+from bujo.services.migration import migrate_task, unified_migration_queue
 from bujo.services.recurring import create_template, place_template, update_template
 from bujo.services.rituals import (
     list_future_log_items,
@@ -540,18 +541,78 @@ class TaskDensityView(APIView):
         return Response(TaskDensityResponseSerializer({"density": density}).data)
 
 
+# --- filas de migração (Story 14.3, AD-28 itens 7-8) ---------------------------
+#
+# FONTE DE VERDADE: `UnifiedMigrationQueueView` (`/migration/unified-queue/`),
+# projeção direta de `services/migration.unified_migration_queue`.
+#
+# ALIASES: `MigrationQueueView` (`/migration/queue/`) e `CatchUpQueueView`
+# (`/catch-up/queue/`) — mesmas rotas, mesmos serializers, ZERO lógica própria de
+# query. Cada uma chama o serviço unificado UMA vez e só reagrupa em Python o que
+# recebeu. Existem para manter o Daily legado plenamente utilizável (premissa
+# blindada até o Épico 17); a remoção formal (rotas + serializers + consumidores)
+# é do Épico 18. Testes de caracterização congelam os dois contratos, e um guard
+# por `inspect.getsource` falha se alguém "otimizar" um alias reintroduzindo
+# query própria.
+
+
+def _flatten_queue_section(section, *, only_period=None, exclude_period=None):
+    """Achata os grupos de uma seção da fila unificada numa lista de tarefas.
+
+    Um helper para os DOIS aliases: eles pedem a mesma operação com parâmetros
+    diferentes (`/migration/queue/` quer SÓ o grupo de ontem; `/catch-up/queue/`
+    quer TUDO MENOS o grupo de ontem). Escrever a projeção duas vezes seria a
+    dívida de gêmeos do Épico 13 outra vez — o que diverge é o parâmetro, e é só
+    isso que fica visível no ponto de uso.
+    """
+    return [
+        task
+        for group in section["groups"]
+        if (only_period is None or group["period_start"] == only_period)
+        and (exclude_period is None or group["period_start"] != exclude_period)
+        for task in group["items"]
+    ]
+
+
+def _queue_section(queue, source_id):
+    return next(section for section in queue["sections"] if section["source_id"] == source_id)
+
+
+class UnifiedMigrationQueueView(APIView):
+    """Fila única de pendências dos três níveis, mês → semana → dia.
+
+    View fina e sem query param: a fila é sempre "tudo que ficou atrás de hoje"
+    (AD-09 item 8 — apresenta tudo, item a item, sem janela nem paginação).
+    """
+
+    @extend_schema(responses=UnifiedMigrationQueueSerializer)
+    def get(self, request):
+        queue = unified_migration_queue(user=request.user)
+        return Response(UnifiedMigrationQueueSerializer(queue).data)
+
+
 class MigrationQueueView(APIView):
+    """ALIAS FINO de `UnifiedMigrationQueueView` — contrato `{logDate, tasks}`.
+
+    `log_date` vem de `queue["yesterday"]`, pronto do serviço: o alias não
+    recalcula tempo por conta própria, o que elimina a chance de incoerência se a
+    virada do dia cair entre duas leituras — e é o que torna satisfazível o guard
+    de "zero query própria" (o nome da função de calendário nem aparece aqui).
+    """
+
     @extend_schema(responses=MigrationQueueSerializer)
     def get(self, request):
-        yesterday = today_for(request.user) - timedelta(days=1)
-        log = Log.objects.filter(log_date=yesterday).first()  # nunca materializa o log de ontem
-        if log is None:
-            tasks = Task.objects.none()
-        else:
-            tasks = log.tasks.filter(
-                status__in=[Task.Status.PENDING, Task.Status.STARTED], parent_task__isnull=True
-            )
-        data = {"log_date": yesterday, "tasks": tasks}
+        queue = unified_migration_queue(user=request.user)
+        yesterday = queue["yesterday"]
+        data = {
+            "log_date": yesterday,
+            # Só o grupo de ontem (0 ou 1 grupo) — é a diferença entre este
+            # alias e o da catch-up, e a razão pela qual a seção `day` precisa
+            # dos grupos por `period_start`.
+            "tasks": _flatten_queue_section(
+                _queue_section(queue, "day"), only_period=yesterday
+            ),
+        }
         return Response(MigrationQueueSerializer(data).data)
 
 
@@ -595,32 +656,22 @@ class MonthlyReviewQueueView(APIView):
 
 
 class CatchUpQueueView(APIView):
+    """ALIAS FINO de `UnifiedMigrationQueueView` (ver a seção de filas acima) —
+    contrato `{monthlyTasks, weeklyTasks, dailyTasks}`.
+
+    A única divergência de recorte em relação à fila unificada: `dailyTasks`
+    EXCLUI o grupo de ontem, que é território do alias `/migration/queue/`.
+    """
+
     @extend_schema(responses=CatchUpQueueSerializer)
     def get(self, request):
-        today = today_for(request.user)
-        yesterday = today - timedelta(days=1)
-        previous_week_start = week_start_of(today) - timedelta(weeks=1)
-        previous_month_first = (today.replace(day=1) - timedelta(days=1)).replace(day=1)
-
-        def undisposed_roots(queryset):
-            return queryset.filter(
-                status__in=[Task.Status.PENDING, Task.Status.STARTED], parent_task__isnull=True
-            )
-
-        monthly_tasks = undisposed_roots(
-            Task.objects.filter(monthly_log__month_first__lt=previous_month_first)
-        ).order_by("monthly_log__month_first")
-        weekly_tasks = undisposed_roots(
-            Task.objects.filter(weekly_log__week_start__lt=previous_week_start)
-        ).order_by("weekly_log__week_start")
-        daily_tasks = undisposed_roots(
-            Task.objects.filter(log__log_date__lt=yesterday)
-        ).order_by("log__log_date")
-
+        queue = unified_migration_queue(user=request.user)
         data = {
-            "monthly_tasks": monthly_tasks,
-            "weekly_tasks": weekly_tasks,
-            "daily_tasks": daily_tasks,
+            "monthly_tasks": _flatten_queue_section(_queue_section(queue, "month")),
+            "weekly_tasks": _flatten_queue_section(_queue_section(queue, "week")),
+            "daily_tasks": _flatten_queue_section(
+                _queue_section(queue, "day"), exclude_period=queue["yesterday"]
+            ),
         }
         return Response(CatchUpQueueSerializer(data).data)
 

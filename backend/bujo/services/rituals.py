@@ -235,11 +235,16 @@ def _task_items(tasks, decisions_by_task: dict) -> list:
     return [{"task": task, "decision": decisions_by_task.get(task.id)} for task in tasks]
 
 
-def _undisposed_roots(queryset):
+def undisposed_roots(queryset):
     """Raízes abertas. ``parent_task__isnull=True`` porque as subtarefas vão
     aninhadas no ``TaskSerializer`` (convenção de todas as listagens — a
     densidade é a única superfície que faz o oposto). ``UNDISPOSED`` vem de
-    ``services/archive.py``: fonte única de "tarefa aberta", não redeclarada."""
+    ``services/archive.py``: fonte única de "tarefa aberta", não redeclarada.
+
+    PÚBLICA desde a Story 14.3 (era ``_undisposed_roots``): ``services/migration.py``
+    a consome para as três seções da fila unificada em vez de redeclarar o
+    predicado. Promover em vez de importar um símbolo privado entre serviços
+    mantém uma fonte única de "raiz aberta" sem tornar o acoplamento invisível."""
     return queryset.filter(status__in=UNDISPOSED, parent_task__isnull=True)
 
 
@@ -274,7 +279,7 @@ def _blocking_previous_source(source_id: str, previous) -> dict:
     contratado na AC7 da Story 14.1. ``ready_to_finalize`` é o MESMO predicado do
     gate de finalizar (``has_undisposed``), não uma reimplementação.
     """
-    tasks = [] if previous is None else _by_day_then_undated(_undisposed_roots(previous.tasks))
+    tasks = [] if previous is None else _by_day_then_undated(undisposed_roots(previous.tasks))
     return _envelope(
         source_id,
         items=_task_items(tasks, {}),
@@ -323,7 +328,7 @@ def list_monthly_tasks_in_week(*, user, week_start) -> dict:
     weekly_log = WeeklyLog.objects.filter(week_start=week_start).first()
     by_task, _ = decisions_for_target(user=user, weekly_log=weekly_log)
     month_keys = [date(year, month, 1) for year, month in months_of_week(week_start)]
-    tasks = _undisposed_roots(
+    tasks = undisposed_roots(
         Task.objects.filter(
             monthly_log__month_first__in=month_keys,
             scheduled_date__range=(week_start, week_start + timedelta(days=6)),
@@ -391,7 +396,7 @@ def list_pending_daily_groups(*, user, week_start) -> dict:
     iterar logs e consultar tarefas de cada um seria N+1.
     """
     tasks = (
-        _undisposed_roots(Task.objects.filter(log__log_date__lt=week_start))
+        undisposed_roots(Task.objects.filter(log__log_date__lt=week_start))
         .select_related("log")
         .order_by("log__log_date", "order_index")
     )
@@ -494,7 +499,7 @@ def list_future_log_items(*, user, month_first) -> dict:
     if monthly_log is None:
         tasks = []
     else:
-        queryset = _undisposed_roots(monthly_log.tasks)
+        queryset = undisposed_roots(monthly_log.tasks)
         previous = previous_operational_monthly(user=user, month_first=month_first)
         if previous is not None:
             # `migrated_from` é o reverso de `Task.migrated_to_task`, então isto

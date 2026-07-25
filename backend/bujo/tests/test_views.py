@@ -1,5 +1,6 @@
 """Testes de `TodayLogView`/`TaskTransitionView` (AC #1, #2)."""
 
+import inspect
 from datetime import date, timedelta
 
 import pytest
@@ -22,6 +23,7 @@ from bujo.tests.factories import (
     TaskFactory,
     WeeklyLogFactory,
 )
+from bujo.views import CatchUpQueueView, MigrationQueueView
 from core.calendar import today_for, week_start_of
 from core.tenant import current_user_id, tenant_context
 
@@ -2612,7 +2614,14 @@ def test_ac5_caracterizacao_da_forma_da_task(auth_client, user):
 
 @pytest.mark.django_db
 def test_ac5_caracterizacao_das_filas_e_do_arquivo(auth_client, user):
-    """Os aliases de fila permanecem INTACTOS até a 14.3 — nada de unificação aqui."""
+    """Os CONTRATOS de fila permanecem intactos — agora congelados SOBRE o serviço
+    unificado (Story 14.3, AD-28 item 8). `/migration/queue/` e `/catch-up/queue/`
+    passaram a ser aliases finos de `unified_migration_queue`, e este teste é
+    exatamente a prova de que a mudança de implementação não vazou para o fio:
+    mesmas rotas, mesmas chaves, mesmos tipos. A remoção formal dos aliases é do
+    Épico 18. `weekly-review/queue/` e `monthly-review/queue/` não foram
+    unificadas (servem o período ANTERIOR, matéria de ritual) e seguem intactas
+    também em implementação."""
     with tenant_context(user):
         semana = week_start_of(today_for(user))
         fechada = WeeklyLogFactory(user=user, week_start=semana - timedelta(days=7))
@@ -3505,3 +3514,327 @@ def test_ac8_task_serializer_nao_ganhou_campo_de_decisao(auth_client, user):
         "migratedToTask",
         "sourceTemplate",
     }
+
+
+# --- fila unificada de migração (Story 14.3; AD-28 itens 7-8) -------------------
+
+_FILA_UNIFICADA_URL = "/api/bujo/migration/unified-queue/"
+_MIGRATION_QUEUE_URL = "/api/bujo/migration/queue/"
+_CATCH_UP_QUEUE_URL = "/api/bujo/catch-up/queue/"
+
+
+def _ids_de_topo_da_fila_unificada(payload):
+    return [
+        item["id"]
+        for secao in payload["sections"]
+        for grupo in secao["groups"]
+        for item in grupo["items"]
+    ]
+
+
+def _semear_cenario_da_fila(user):
+    """Pendências nos TRÊS níveis + 6 distratores. Devolve (pendentes, distratores)
+    como dicts de `nome -> id serializado` para os asserts nomearem o que provam."""
+    hoje = today_for(user)
+    ontem = hoje - timedelta(days=1)
+    anteontem = hoje - timedelta(days=2)
+    semana_anterior = week_start_of(hoje) - timedelta(weeks=1)
+    mes_anterior = (hoje.replace(day=1) - timedelta(days=1)).replace(day=1)
+    mes_retro_anterior = (mes_anterior - timedelta(days=1)).replace(day=1)
+
+    log_antigo = LogFactory(user=user, log_date=anteontem)
+    raiz_aberta = TaskFactory(user=user, log=log_antigo, status=Task.Status.STARTED)
+    pendentes = {
+        "month": TaskFactory(
+            user=user,
+            monthly_log=MonthlyLogFactory(user=user, month_first=mes_retro_anterior),
+            status=Task.Status.PENDING,
+        ).id,
+        "week": TaskFactory(
+            user=user,
+            weekly_log=WeeklyLogFactory(user=user, week_start=semana_anterior - timedelta(weeks=1)),
+            status=Task.Status.PENDING,
+        ).id,
+        "day_anteontem": raiz_aberta.id,
+        "day_ontem": TaskFactory(
+            user=user, log=LogFactory(user=user, log_date=ontem), status=Task.Status.PENDING
+        ).id,
+    }
+    distratores = {
+        "de_hoje": TaskFactory(
+            user=user, log=LogFactory(user=user, log_date=hoje), status=Task.Status.PENDING
+        ).id,
+        "semana_anterior": TaskFactory(
+            user=user,
+            weekly_log=WeeklyLogFactory(user=user, week_start=semana_anterior),
+            status=Task.Status.PENDING,
+        ).id,
+        "mes_anterior": TaskFactory(
+            user=user,
+            monthly_log=MonthlyLogFactory(user=user, month_first=mes_anterior),
+            status=Task.Status.PENDING,
+        ).id,
+        "completed_antiga": TaskFactory(
+            user=user, log=log_antigo, status=Task.Status.COMPLETED
+        ).id,
+        # Subtarefa ABERTA de raiz ABERTA: não é item de topo em nenhuma resposta,
+        # mas APARECE aninhada em `subtasks` da raiz — `TaskSerializer.get_subtasks`
+        # devolve `obj.subtasks.all()` sem filtro de status, e isso é o contrato
+        # vigente. Daí o assert comparar ids de TOPO, e não procurar o id no corpo.
+        "subtarefa_aberta": TaskFactory(
+            user=user, log=log_antigo, parent_task=raiz_aberta, status=Task.Status.PENDING
+        ).id,
+    }
+    # Ids como STRING: as asserções são sobre o JSON de fio, onde `UUIDField`
+    # sai serializado — comparar `UUID(...)` com `str` falha silenciosamente por
+    # tipo, não por conteúdo.
+    return (
+        {nome: str(task_id) for nome, task_id in pendentes.items()},
+        {nome: str(task_id) for nome, task_id in distratores.items()},
+    )
+
+
+@pytest.mark.django_db
+def test_get_fila_unificada_sem_autenticacao_retorna_401():
+    assert APIClient().get(_FILA_UNIFICADA_URL).status_code == 401
+
+
+@pytest.mark.django_db
+def test_get_fila_unificada_escopada_por_tenant_com_bearer_real(user, other_user):
+    """AC2: escopo por tenant pelo manager `objects`, provado no ciclo de request
+    real (JWT de verdade, sem `force_authenticate`) — a pendência antiga de
+    `other_user` não vaza."""
+    with tenant_context(other_user):
+        TaskFactory(
+            user=other_user,
+            log=LogFactory(user=other_user, log_date=today_for(other_user) - timedelta(days=3)),
+            status=Task.Status.PENDING,
+        )
+
+    client = APIClient()
+    client.credentials(HTTP_AUTHORIZATION=f"Bearer {AccessToken.for_user(user)}")
+    payload = client.get(_FILA_UNIFICADA_URL).json()
+
+    assert payload["totalCount"] == 0
+    assert _ids_de_topo_da_fila_unificada(payload) == []
+    assert current_user_id.get() is None  # nenhum vazamento entre requests
+
+
+@pytest.mark.django_db
+def test_get_fila_unificada_forma_de_fio_em_camelcase(auth_client, user):
+    """AC2/AC7: a camelização é do RENDERER, então só se prova no fio (`.json()`).
+    Três seções SEMPRE presentes, na ordem `month`/`week`/`day`, com `count` por
+    fonte, `periodStart` por grupo e itens no `TaskSerializer` puro."""
+    with tenant_context(user):
+        pendentes, _ = _semear_cenario_da_fila(user)
+
+    payload = auth_client.get(_FILA_UNIFICADA_URL).json()
+
+    assert set(payload) == {"totalCount", "sections"}
+    assert [secao["sourceId"] for secao in payload["sections"]] == ["month", "week", "day"]
+    for secao in payload["sections"]:
+        assert set(secao) == {"sourceId", "count", "groups"}
+        for grupo in secao["groups"]:
+            assert set(grupo) == {"periodStart", "items"}
+    assert payload["totalCount"] == len(pendentes)
+    assert payload["totalCount"] == sum(secao["count"] for secao in payload["sections"])
+    itens = [
+        item
+        for secao in payload["sections"]
+        for grupo in secao["groups"]
+        for item in grupo["items"]
+    ]
+    assert itens, "o cenário semeado tem pendências nos três níveis"
+    assert set(itens[0]) == LEGACY_TASK_KEYS  # `TaskSerializer` puro, sem campo novo
+
+
+@pytest.mark.django_db
+def test_get_fila_unificada_secoes_vazias_presentes_e_sem_materializar_log(auth_client, user):
+    """AC2: usuário sem log nenhum recebe as três seções vazias (não 404) e a
+    requisição não cria linha em `Log`/`WeeklyLog`/`MonthlyLog`."""
+    payload = auth_client.get(_FILA_UNIFICADA_URL).json()
+
+    assert payload["totalCount"] == 0
+    assert [
+        (secao["sourceId"], secao["count"], secao["groups"]) for secao in payload["sections"]
+    ] == [("month", 0, []), ("week", 0, []), ("day", 0, [])]
+    with tenant_context(user):
+        assert Log.objects.count() == 0
+        assert WeeklyLog.objects.count() == 0
+        assert MonthlyLog.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_uniao_dos_dois_aliases_equivale_a_fila_unificada(auth_client, user, other_user):
+    """AC6: o conjunto de ids de `/migration/queue/` ∪ `/catch-up/queue/` é
+    EXATAMENTE o da fila unificada, num cenário com pendências nos três níveis e
+    6 distratores — nenhum distrator aparece como item de TOPO nas três respostas.
+    """
+    with tenant_context(other_user):
+        de_outro_tenant = TaskFactory(
+            user=other_user,
+            log=LogFactory(user=other_user, log_date=today_for(other_user) - timedelta(days=3)),
+            status=Task.Status.PENDING,
+        )
+    with tenant_context(user):
+        pendentes, distratores = _semear_cenario_da_fila(user)
+    # 6º distrator: pendência antiga de OUTRO tenant, nomeada junto dos cinco.
+    distratores["outro_tenant"] = str(de_outro_tenant.id)
+
+    unificada = auth_client.get(_FILA_UNIFICADA_URL).json()
+    migration = auth_client.get(_MIGRATION_QUEUE_URL).json()
+    catch_up = auth_client.get(_CATCH_UP_QUEUE_URL).json()
+
+    ids_unificada = _ids_de_topo_da_fila_unificada(unificada)
+    ids_migration = [item["id"] for item in migration["tasks"]]
+    ids_catch_up = [
+        item["id"]
+        for chave in ("monthlyTasks", "weeklyTasks", "dailyTasks")
+        for item in catch_up[chave]
+    ]
+
+    assert set(ids_unificada) == set(pendentes.values())
+    assert set(ids_migration) | set(ids_catch_up) == set(ids_unificada)
+    # Sem dedup: `Task` tem exatamente um container (CHECK `task_exactly_one_log`),
+    # então as seções são disjuntas e os dois aliases particionam a união.
+    assert len(ids_migration) + len(ids_catch_up) == len(ids_unificada)
+
+    for nome, task_id in distratores.items():
+        assert task_id not in ids_unificada, nome
+        assert task_id not in ids_migration, nome
+        assert task_id not in ids_catch_up, nome
+
+
+@pytest.mark.django_db
+def test_particao_de_ontem_entre_os_dois_aliases(auth_client, user):
+    """AC5: "ontem" é o nível `day` da fila unificada e território EXCLUSIVO do
+    alias `/migration/queue/`; `/catch-up/queue/.dailyTasks` continua cortando em
+    `< ontem`. É a fronteira que separa os dois aliases."""
+    with tenant_context(user):
+        pendentes, _ = _semear_cenario_da_fila(user)
+        ontem = today_for(user) - timedelta(days=1)
+
+    unificada = auth_client.get(_FILA_UNIFICADA_URL).json()
+    migration = auth_client.get(_MIGRATION_QUEUE_URL).json()
+    catch_up = auth_client.get(_CATCH_UP_QUEUE_URL).json()
+
+    assert migration["logDate"] == ontem.isoformat()
+    assert [item["id"] for item in migration["tasks"]] == [pendentes["day_ontem"]]
+
+    secao_day = next(s for s in unificada["sections"] if s["sourceId"] == "day")
+    assert pendentes["day_ontem"] in [
+        item["id"] for grupo in secao_day["groups"] for item in grupo["items"]
+    ]
+    assert [grupo["periodStart"] for grupo in secao_day["groups"]] == [
+        (ontem - timedelta(days=1)).isoformat(),
+        ontem.isoformat(),
+    ]
+
+    ids_dailies = [item["id"] for item in catch_up["dailyTasks"]]
+    assert pendentes["day_ontem"] not in ids_dailies
+    assert ids_dailies == [pendentes["day_anteontem"]]
+
+
+def test_aliases_de_fila_nao_contem_query_propria():
+    """AC5: guard de fonte (espelha os greps `?raw` do Épico 13) — os dois aliases
+    projetam a resposta do serviço unificado e mais nada. Falha alta e cedo se
+    alguém "otimizar" um alias reintroduzindo query própria, o que faria os
+    contratos legados divergirem silenciosamente da fila unificada."""
+    proibidos = ("Task.objects", "Log.objects", ".filter(", "status__in", "today_for")
+    for view in (MigrationQueueView, CatchUpQueueView):
+        fonte = inspect.getsource(view)
+        assert "unified_migration_queue(user=request.user)" in fonte, view.__name__
+        for token in proibidos:
+            assert token not in fonte, f"{view.__name__} voltou a conter `{token}`"
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("metodo", ["post", "put", "patch", "delete"])
+def test_fila_unificada_recusa_escrita(auth_client, metodo):
+    """AC3: "nenhum endpoint de escrita novo é criado" — a ausência de superfície de
+    escrita é DECISÃO de produto (a decisão por item continua sendo
+    `POST /tasks/<pk>/migrate/`), e ausência não testada é ausência que volta.
+
+    Um `405` aqui é o contrato; um `2xx` significaria que alguém acoplou mutação à
+    rota da fila e a herança da AD-18 passou a ter duas portas.
+    """
+    resposta = getattr(auth_client, metodo)(_FILA_UNIFICADA_URL, {}, format="json")
+
+    assert resposta.status_code == 405, metodo
+
+
+@pytest.mark.django_db
+def test_fila_unificada_ignora_query_params_e_nao_pagina(auth_client, user):
+    """AC2/AD-09 item 8: a fila "apresenta TUDO, item a item" — sem janela, sem
+    limite, sem paginação, e sem query param nenhum ("a fila é sempre tudo que ficou
+    atrás de hoje").
+
+    O teste manda os params que um cliente distraído (ou uma 14.9 apressada) tentaria
+    primeiro e exige o corpo IDÊNTICO ao da chamada sem params: se um dia alguém
+    acrescentar `?limit=`/`?source_id=`, este teste falha e a mudança de contrato
+    passa a ser deliberada em vez de silenciosa.
+    """
+    with tenant_context(user):
+        pendentes, _ = _semear_cenario_da_fila(user)
+
+    sem_params = auth_client.get(_FILA_UNIFICADA_URL).json()
+    com_params = auth_client.get(
+        f"{_FILA_UNIFICADA_URL}?limit=1&page=2&cursor=abc&source_id=day&sourceId=day"
+    ).json()
+
+    assert sem_params["totalCount"] == len(pendentes)  # cenário povoado (não-vacuidade)
+    assert com_params == sem_params
+
+
+@pytest.mark.django_db
+def test_fila_unificada_ignora_periodos_futuros_nos_tres_niveis(auth_client, user):
+    """AC1: as fronteiras são EXCLUSIVAS e olham para trás — o futuro nunca é
+    pendência.
+
+    O sétimo distrator, que o cenário de equivalência não tem: pendências em
+    containers FUTUROS. Não é hipótese de laboratório — o Future Log (Épico 6) cria
+    tarefas em Monthly Logs de meses adiante, e o Weekly/Daily de amanhã existe assim
+    que o usuário navega para frente (`past-period-navigation`). Se alguma fronteira
+    virasse `__gt`/`__lte` mal escrita, a fila passaria a cobrar decisão sobre o que
+    ainda não aconteceu — e os dois aliases levariam isso ao Daily legado.
+    """
+    with tenant_context(user):
+        hoje = today_for(user)
+        proximo_mes = (hoje.replace(day=28) + timedelta(days=7)).replace(day=1)
+        futuros = {
+            "amanha": TaskFactory(
+                user=user,
+                log=LogFactory(user=user, log_date=hoje + timedelta(days=1)),
+                status=Task.Status.PENDING,
+            ).id,
+            "proxima_semana": TaskFactory(
+                user=user,
+                weekly_log=WeeklyLogFactory(
+                    user=user, week_start=week_start_of(hoje) + timedelta(weeks=1)
+                ),
+                status=Task.Status.STARTED,
+            ).id,
+            "proximo_mes": TaskFactory(
+                user=user,
+                monthly_log=MonthlyLogFactory(user=user, month_first=proximo_mes),
+                status=Task.Status.PENDING,
+            ).id,
+        }
+
+    unificada = auth_client.get(_FILA_UNIFICADA_URL).json()
+    migration = auth_client.get(_MIGRATION_QUEUE_URL).json()
+    catch_up = auth_client.get(_CATCH_UP_QUEUE_URL).json()
+
+    assert unificada["totalCount"] == 0
+    assert [
+        (secao["sourceId"], secao["count"], secao["groups"]) for secao in unificada["sections"]
+    ] == [("month", 0, []), ("week", 0, []), ("day", 0, [])]
+    assert migration["tasks"] == []
+    assert (catch_up["monthlyTasks"], catch_up["weeklyTasks"], catch_up["dailyTasks"]) == (
+        [],
+        [],
+        [],
+    )
+    # As três tarefas existem de verdade (o cenário não é vazio por acidente de seed).
+    with tenant_context(user):
+        assert Task.objects.filter(id__in=futuros.values()).count() == 3

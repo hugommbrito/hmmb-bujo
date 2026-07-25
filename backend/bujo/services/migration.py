@@ -1,11 +1,27 @@
-"""Migração diária de tarefas pendentes (FR-1.7, AD-03, AD-08 item 11, §6.2).
+"""Migração de tarefas pendentes e a fila que a alimenta (FR-1.7, AD-03,
+AD-08 item 11, AD-09, AD-28 itens 7-8, §6.2).
 
-`migrate_task` não duplica `order_index`/validação de transição — reaproveita
-`create_task`/`update_task` (`services/tasks.py`) e `transition_task`
-(`services/state_machine.py`) tal como já existem.
+Duas metades do MESMO agregado coabitam aqui de propósito (AD-28 item 7: a fila
+vive "ao lado de `migrate_task`"):
+
+- a **mutação** — `migrate_task`/`_migrate_subtree`/`inherited_successor_status`.
+  Não duplica `order_index`/validação de transição: reaproveita
+  `create_task`/`update_task` (`services/tasks.py`) e `transition_task`
+  (`services/state_machine.py`) tal como já existem;
+- a **leitura** — `unified_migration_queue`, a fila unificada de pendências. Ela
+  é 100% DERIVADA por query (zero schema novo, zero cron, zero estado
+  acumulado — filosofia AD-09 item 2 intacta) e a decisão por item é a própria
+  `migrate_task` logo acima. Separar as duas em módulos diferentes obrigaria a
+  ler dois arquivos para entender um único laço "derivar → decidir → re-derivar".
 """
 
+from collections import OrderedDict
+from collections.abc import Callable
+from dataclasses import dataclass
+from datetime import date, timedelta
+
 from django.db import transaction
+from django.db.models import F
 
 from bujo.models import Task
 from bujo.services.logs import (
@@ -13,6 +29,7 @@ from bujo.services.logs import (
     get_or_create_monthly_log,
     get_or_create_weekly_log,
 )
+from bujo.services.rituals import undisposed_roots
 from bujo.services.state_machine import transition_task
 from bujo.services.tasks import create_task, set_lineage_fields
 from core.calendar import today_for, week_start_of
@@ -157,3 +174,140 @@ def migrate_task(*, user, task_id, destination, month_first=None, scheduled_date
         new_status=new_status,
     )
     return Task.objects.get(id=task.id)  # recarrega com status/migrated_to_task atualizados
+
+
+# --- fila unificada de migração (Story 14.3, AD-28 itens 7-8 / AD-09) ----------
+
+
+def _previous_week_start(today: date) -> date:
+    return week_start_of(today) - timedelta(weeks=1)
+
+
+def _previous_month_first(today: date) -> date:
+    # `.replace(day=1)` inline porque `core/calendar.py` não expõe
+    # `month_first_for` — mesma expressão que as views legadas já usavam.
+    return (today.replace(day=1) - timedelta(days=1)).replace(day=1)
+
+
+@dataclass(frozen=True)
+class _SectionSpec:
+    """O que DIVERGE entre as três seções — e nada mais.
+
+    `source_id` é o rótulo estrutural servido ao cliente; `period_lookup` é o
+    caminho ORM da chave de período do container (usado para filtrar, anotar e
+    ordenar de uma vez); `boundary` deriva a fronteira EXCLUSIVA (`__lt`) a
+    partir de `hoje`. Uma estrutura só, três linhas de dados: copiar o corpo da
+    derivação três vezes seria a dívida SHELL-DEBT-03/04 do Épico 13 se
+    repetindo (padrão `_CycleSpec` da 14.1 / `ALLOWED_DECISIONS` da 14.2).
+
+    Não há um quarto campo com "o nome do atributo da chave de período" porque a
+    derivação ANOTA a chave sempre com o MESMO alias (`period_start`, via
+    `F(period_lookup)`): o laço de agrupamento lê um atributo uniforme e a
+    mecânica fica genuinamente sem ramos. A alternativa `select_related` (o que
+    `rituals.list_pending_daily_groups` faz) exigiria esse quarto campo e um
+    acesso diferente por seção — uma query só nas duas, mas com um ramo por
+    seção reintroduzido de graça.
+    """
+
+    source_id: str
+    period_lookup: str
+    boundary: Callable[[date], date]
+
+
+# Ordem hierárquica do BuJo, do mais grosso ao mais fino (AD-09 item 4). Esta
+# tupla É o contrato de ordem das seções — a resposta nunca a reordena.
+#
+# As fronteiras são EXCLUSIVAS (`__lt`) de propósito: com isso a semana e o mês
+# ANTERIORES ficam fora da fila por construção. Eles são as fontes bloqueantes
+# dos rituais (Story 14.2, `previous-weekly`/`previous-monthly`, servidas por
+# `weekly-review/queue/` e `monthly-review/queue/`) — escoá-los também pela fila
+# criaria duas superfícies para a mesma pendência. "Ontem", em contraste, É o
+# nível `day` (fronteira `< hoje`), não uma quarta seção.
+_SECTION_SPECS = (
+    _SectionSpec("month", "monthly_log__month_first", _previous_month_first),
+    _SectionSpec("week", "weekly_log__week_start", _previous_week_start),
+    _SectionSpec("day", "log__log_date", lambda today: today),
+)
+
+
+def unified_migration_queue(*, user) -> dict:
+    """Fila única de pendências dos três níveis, mês → semana → dia (AD-28 item 7).
+
+    Leitura pura, derivada por query: nada de `@transaction.atomic` (não há
+    escrita, e um `atomic` numa leitura mascararia uma escrita acidental numa
+    review futura), nada de `get_or_create_*_log` (jamais materializa container —
+    padrão herdado de `MigrationQueueView`) e nada de `all_objects` (o manager
+    `objects` é auto-escopado por tenant, AD-12).
+
+    Devolve estrutura PURA (dicts + instâncias de `Task`), nunca `Response`::
+
+        {"total_count": int,
+         "sections": [{"source_id": str, "count": int,
+                       "groups": [{"period_start": date, "items": [Task]}]}],
+         "yesterday": date}
+
+    As três seções estão SEMPRE presentes, inclusive vazias (`count: 0`,
+    `groups: []`): a UI da 14.9 desenha o rail de fontes completo, e uma seção
+    ausente obrigaria o cliente a inventar a ordem.
+
+    `yesterday` é chave INTERNA, consumida apenas pelos aliases legados
+    (`MigrationQueueView`/`CatchUpQueueView`, que precisam da fronteira de ontem
+    sem recalcular tempo). `UnifiedMigrationQueueSerializer` declara só
+    `total_count`/`sections`, e um `Serializer` com campos declarados ignora
+    chaves extras do dict — então ela não vaza para o contrato público.
+
+    Não reusa `_envelope`/`_bucket` de `services/rituals.py`: aquele envelope
+    carrega `blocking`, `reviewed`, `counts_toward_progress` e
+    `pending_decision_count`, campos SEM significado aqui (a fila não tem
+    decisão-snapshot nem gate de ritual). A não-reutilização é deliberada —
+    forçar o envelope comum produziria campos falsos, pior que um dict de três
+    chaves. Pela mesma razão a fila não CONSULTA `ritual_decisions`: ela lista o
+    que está aberto, e só a mutação remove um item (achado A1 da review da 14.2).
+    """
+    today = today_for(user)
+    sections = []
+
+    for spec in _SECTION_SPECS:
+        tasks = (
+            undisposed_roots(
+                Task.objects.filter(**{f"{spec.period_lookup}__lt": spec.boundary(today)})
+            )
+            # A chave do período tem de vir na MESMA query: filtrar/ordenar por
+            # `log__log_date` não popula `task.log`, e ler o container no laço
+            # abaixo custaria uma query POR TAREFA.
+            .annotate(period_start=F(spec.period_lookup))
+            # O `TaskSerializer` recursa em `subtasks`; o prefetch cobre a
+            # profundidade 1 e REDUZ (não elimina) as queries da recursão, que
+            # desce arbitrariamente fundo. As views legadas não prefetcham nada,
+            # então isto é estritamente melhor e não muda contrato.
+            .prefetch_related("subtasks")
+            # Ordenação DECLARADA, não herdada: `order_by` substitui
+            # integralmente `Meta.ordering = ["order_index"]` (Django 5.2), e as
+            # views legadas ordenavam só pelo período — a ordem intra-período era
+            # indefinida. Aqui ela passa a ser contrato (aperto compatível).
+            .order_by("period_start", "order_index")
+        )
+
+        groups: OrderedDict = OrderedDict()
+        for task in tasks:
+            groups.setdefault(task.period_start, []).append(task)
+
+        sections.append(
+            {
+                "source_id": spec.source_id,
+                "count": sum(len(items) for items in groups.values()),
+                "groups": [
+                    {"period_start": period_start, "items": items}
+                    for period_start, items in groups.items()
+                ],
+            }
+        )
+
+    return {
+        # `total_count` é a soma direta das três seções, sem dedup: `Task` tem
+        # exatamente UM container (CHECK `task_exactly_one_log`), logo as seções
+        # são disjuntas por garantia do banco.
+        "total_count": sum(section["count"] for section in sections),
+        "sections": sections,
+        "yesterday": today - timedelta(days=1),
+    }

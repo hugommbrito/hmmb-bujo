@@ -24,6 +24,7 @@ from bujo.views import (
     TaskReorderView,
     TaskTransitionView,
     TodayLogView,
+    UnifiedMigrationQueueView,
     WeeklyCycleView,
     WeeklyDensityView,
     WeeklyLogView,
@@ -44,6 +45,15 @@ urlpatterns = [
     path("archive/", ArchiveView.as_view(), name="bujo-archive"),
     path("future-log/", FutureLogView.as_view(), name="bujo-future-log"),
     path("migration/queue/", MigrationQueueView.as_view(), name="bujo-migration-queue"),
+    # Fila unificada (Story 14.3, AD-28 item 7) — fonte de verdade das duas filas
+    # legadas, que passaram a ser aliases finos dela. A AD escreve
+    # `GET /api/migration/unified-queue/`; a rota real leva o prefixo do app
+    # (`api/bujo/`, `config/urls.py`), como todas as rotas de `bujo`.
+    path(
+        "migration/unified-queue/",
+        UnifiedMigrationQueueView.as_view(),
+        name="bujo-unified-migration-queue",
+    ),
     path("weekly-review/queue/", WeeklyReviewQueueView.as_view(), name="bujo-weekly-review-queue"),
     path(
         "monthly-review/queue/",

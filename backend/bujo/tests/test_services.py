@@ -39,7 +39,11 @@ from bujo.services.logs import (
     get_or_create_monthly_log,
     get_or_create_weekly_log,
 )
-from bujo.services.migration import inherited_successor_status, migrate_task
+from bujo.services.migration import (
+    inherited_successor_status,
+    migrate_task,
+    unified_migration_queue,
+)
 from bujo.services.recurring import create_template, place_template, update_template
 from bujo.services.rituals import (
     ALLOWED_DECISIONS,
@@ -3470,3 +3474,496 @@ def test_fontes_e_densidades_isolam_por_tenant(user, other_user):
         assert list_previous_monthly_pendings(user=user, month_first=_MES)["eligible_count"] == 0
         assert compute_week_density(user=user, week_start=_SEMANA)["total"] == 0
         assert compute_month_density(user=user, month_first=_MES)["total"] == 0
+
+
+# --- fila unificada de migração (Story 14.3; AD-28 itens 7-8, AD-09) -----------
+#
+# As fronteiras dos testes são derivadas de `today_for(user)` da MESMA forma que
+# o produto (AD-09 item 1), mas escritas aqui de forma independente: se alguém
+# afrouxar `__lt` para `__lte` no serviço, o teste tem de ficar vermelho — por
+# isso nada de importar o spec das seções para montar as datas esperadas.
+
+
+def _fronteiras(user):
+    """(hoje, ontem, início da semana anterior, primeiro dia do mês anterior)."""
+    hoje = today_for(user)
+    return (
+        hoje,
+        hoje - timedelta(days=1),
+        week_start_of(hoje) - timedelta(weeks=1),
+        (hoje.replace(day=1) - timedelta(days=1)).replace(day=1),
+    )
+
+
+def _secao(fila, source_id):
+    return next(secao for secao in fila["sections"] if secao["source_id"] == source_id)
+
+
+def _ids_da_secao(fila, source_id):
+    return [
+        task.id for grupo in _secao(fila, source_id)["groups"] for task in grupo["items"]
+    ]
+
+
+@pytest.mark.django_db
+def test_fila_unificada_fronteira_da_secao_month(user):
+    """AC1: o mês ANTERIOR fica fora (é fonte bloqueante do ritual da 14.2);
+    o mês retro-anterior entra. A fronteira é `<`, não `<=`."""
+    with tenant_context(user):
+        _, _, _, mes_anterior = _fronteiras(user)
+        mes_retro_anterior = (mes_anterior - timedelta(days=1)).replace(day=1)
+
+        de_fora = TaskFactory(
+            user=user,
+            monthly_log=MonthlyLogFactory(user=user, month_first=mes_anterior),
+            status=Task.Status.PENDING,
+        )
+        de_dentro = TaskFactory(
+            user=user,
+            monthly_log=MonthlyLogFactory(user=user, month_first=mes_retro_anterior),
+            status=Task.Status.PENDING,
+        )
+
+        fila = unified_migration_queue(user=user)
+
+        assert _ids_da_secao(fila, "month") == [de_dentro.id]
+        assert de_fora.id not in _ids_da_secao(fila, "month")
+
+
+@pytest.mark.django_db
+def test_fila_unificada_fronteira_da_secao_week(user):
+    """AC1: a semana ANTERIOR fica fora; a de duas semanas atrás entra."""
+    with tenant_context(user):
+        _, _, semana_anterior, _ = _fronteiras(user)
+        duas_semanas_atras = semana_anterior - timedelta(weeks=1)
+
+        de_fora = TaskFactory(
+            user=user,
+            weekly_log=WeeklyLogFactory(user=user, week_start=semana_anterior),
+            status=Task.Status.STARTED,
+        )
+        de_dentro = TaskFactory(
+            user=user,
+            weekly_log=WeeklyLogFactory(user=user, week_start=duas_semanas_atras),
+            status=Task.Status.PENDING,
+        )
+
+        fila = unified_migration_queue(user=user)
+
+        assert _ids_da_secao(fila, "week") == [de_dentro.id]
+        assert de_fora.id not in _ids_da_secao(fila, "week")
+
+
+@pytest.mark.django_db
+def test_fila_unificada_fronteira_da_secao_day_inclui_ontem(user):
+    """AC1: a fronteira do nível `day` é `log_date < hoje` — ONTEM entra (é a
+    diferença em relação à catch-up legada, que corta em `< ontem`), anteontem
+    entra, hoje não. "Ontem" é o nível `day`, não uma quarta seção."""
+    with tenant_context(user):
+        hoje, ontem, _, _ = _fronteiras(user)
+        anteontem = hoje - timedelta(days=2)
+
+        de_hoje = TaskFactory(
+            user=user, log=LogFactory(user=user, log_date=hoje), status=Task.Status.PENDING
+        )
+        de_ontem = TaskFactory(
+            user=user, log=LogFactory(user=user, log_date=ontem), status=Task.Status.PENDING
+        )
+        de_anteontem = TaskFactory(
+            user=user, log=LogFactory(user=user, log_date=anteontem), status=Task.Status.STARTED
+        )
+
+        fila = unified_migration_queue(user=user)
+
+        assert _ids_da_secao(fila, "day") == [de_anteontem.id, de_ontem.id]
+        assert de_hoje.id not in _ids_da_secao(fila, "day")
+        assert fila["yesterday"] == ontem
+
+
+@pytest.mark.django_db
+def test_fila_unificada_ordem_das_secoes_e_mes_semana_dia(user):
+    """AC1/AD-09 item 4: ordem hierárquica do BuJo, do mais grosso ao mais fino.
+    Asserção sobre a LISTA (um `set` não provaria ordem nenhuma)."""
+    with tenant_context(user):
+        fila = unified_migration_queue(user=user)
+
+        assert [secao["source_id"] for secao in fila["sections"]] == ["month", "week", "day"]
+
+
+@pytest.mark.django_db
+def test_fila_unificada_grupos_crescentes_e_itens_por_order_index(user):
+    """AC1: grupos por período CRESCENTE (mais antigo primeiro) e itens por
+    `order_index` — ordenação declarada, não herdada do `Meta.ordering` (que
+    `order_by` substitui) nem do humor do Postgres."""
+    with tenant_context(user):
+        hoje, ontem, _, _ = _fronteiras(user)
+        anteontem = hoje - timedelta(days=2)
+
+        log_ontem = LogFactory(user=user, log_date=ontem)
+        log_anteontem = LogFactory(user=user, log_date=anteontem)
+        # Criados fora de ordem de propósito, em período E em order_index.
+        segunda_de_ontem = TaskFactory(
+            user=user, log=log_ontem, status=Task.Status.PENDING, order_index=20.0
+        )
+        primeira_de_ontem = TaskFactory(
+            user=user, log=log_ontem, status=Task.Status.PENDING, order_index=10.0
+        )
+        de_anteontem = TaskFactory(
+            user=user, log=log_anteontem, status=Task.Status.PENDING, order_index=99.0
+        )
+
+        fila = unified_migration_queue(user=user)
+        grupos = _secao(fila, "day")["groups"]
+
+        assert [grupo["period_start"] for grupo in grupos] == [anteontem, ontem]
+        assert [task.id for task in grupos[0]["items"]] == [de_anteontem.id]
+        assert [task.id for task in grupos[1]["items"]] == [
+            primeira_de_ontem.id,
+            segunda_de_ontem.id,
+        ]
+
+
+@pytest.mark.django_db
+def test_fila_unificada_count_por_secao_total_e_secoes_vazias_presentes(user):
+    """AC2: `count` é o total de ITENS da seção (não de grupos), `total_count` é
+    a soma das três, e uma seção sem pendência continua PRESENTE com
+    `count: 0`/`groups: []` — a UI da 14.9 desenha o rail completo."""
+    with tenant_context(user):
+        hoje, ontem, _, mes_anterior = _fronteiras(user)
+        mes_retro_anterior = (mes_anterior - timedelta(days=1)).replace(day=1)
+        mes_log = MonthlyLogFactory(user=user, month_first=mes_retro_anterior)
+        TaskFactory(user=user, monthly_log=mes_log, status=Task.Status.PENDING)
+        TaskFactory(user=user, monthly_log=mes_log, status=Task.Status.PENDING)
+        TaskFactory(
+            user=user, log=LogFactory(user=user, log_date=ontem), status=Task.Status.PENDING
+        )
+        TaskFactory(
+            user=user,
+            log=LogFactory(user=user, log_date=hoje - timedelta(days=3)),
+            status=Task.Status.PENDING,
+        )
+
+        fila = unified_migration_queue(user=user)
+
+        assert _secao(fila, "month")["count"] == 2
+        assert len(_secao(fila, "month")["groups"]) == 1  # 2 itens, 1 grupo
+        assert _secao(fila, "day")["count"] == 2
+        assert _secao(fila, "week")["count"] == 0
+        assert _secao(fila, "week")["groups"] == []
+        assert fila["total_count"] == 4
+        assert fila["total_count"] == sum(secao["count"] for secao in fila["sections"])
+
+
+@pytest.mark.django_db
+def test_fila_unificada_descarta_dispostos_e_subtarefas(user):
+    """AC1: só raízes `pending`/`started`. `completed`/`cancelled`/`migrated`/
+    `postponed` antigos ficam fora, e a SUBTAREFA aberta de uma raiz aberta não
+    é item de topo — este é o assert que falha se alguém esquecer
+    `parent_task__isnull=True` (as subtarefas vão ANINHADAS no serializer)."""
+    with tenant_context(user):
+        hoje, _, _, _ = _fronteiras(user)
+        log = LogFactory(user=user, log_date=hoje - timedelta(days=4))
+        raiz = TaskFactory(user=user, log=log, status=Task.Status.STARTED)
+        subtarefa = TaskFactory(
+            user=user, log=log, parent_task=raiz, status=Task.Status.PENDING
+        )
+        dispostos = [
+            TaskFactory(user=user, log=log, status=status)
+            for status in (
+                Task.Status.COMPLETED,
+                Task.Status.CANCELLED,
+                Task.Status.MIGRATED,
+                Task.Status.POSTPONED,
+            )
+        ]
+
+        fila = unified_migration_queue(user=user)
+
+        assert _ids_da_secao(fila, "day") == [raiz.id]
+        assert subtarefa.id not in _ids_da_secao(fila, "day")
+        for disposto in dispostos:
+            assert disposto.id not in _ids_da_secao(fila, "day")
+
+
+@pytest.mark.django_db
+def test_fila_unificada_rederivacao_remove_o_item_decidido_sem_persistencia_nova(user):
+    """AC3: "retomar traz só os restantes" é consequência da RE-DERIVAÇÃO, não de
+    estado salvo. Migrar tira o item (vira `migrated`), cancelar também (vira
+    `cancelled`), a seção continua presente mesmo vazia, e NENHUMA linha entra em
+    `ritual_decisions` — a mutação é a persistência (AD-28 item 6)."""
+    with tenant_context(user):
+        hoje, ontem, _, _ = _fronteiras(user)
+        log = LogFactory(user=user, log_date=ontem)
+        a_migrar = TaskFactory(user=user, log=log, status=Task.Status.PENDING, order_index=1.0)
+        a_cancelar = TaskFactory(user=user, log=log, status=Task.Status.PENDING, order_index=2.0)
+        remanescente = TaskFactory(
+            user=user, log=log, status=Task.Status.STARTED, order_index=3.0
+        )
+
+        inicial = unified_migration_queue(user=user)
+        assert inicial["total_count"] == 3
+
+        migrate_task(user=user, task_id=a_migrar.id, destination="today")
+        depois_da_migracao = unified_migration_queue(user=user)
+        assert a_migrar.id not in _ids_da_secao(depois_da_migracao, "day")
+        assert depois_da_migracao["total_count"] == 2
+        assert set(_ids_da_secao(depois_da_migracao, "day")) == {
+            a_cancelar.id,
+            remanescente.id,
+        }
+
+        migrate_task(user=user, task_id=a_cancelar.id, destination="cancel")
+        depois_do_cancelamento = unified_migration_queue(user=user)
+        assert _ids_da_secao(depois_do_cancelamento, "day") == [remanescente.id]
+        assert depois_do_cancelamento["total_count"] == 1
+        # A seção segue PRESENTE mesmo depois de esvaziar as outras duas.
+        assert [secao["source_id"] for secao in depois_do_cancelamento["sections"]] == [
+            "month",
+            "week",
+            "day",
+        ]
+
+        # AD-28 item 6: decisão mutante não ganha registro paralelo.
+        assert RitualDecision.objects.count() == 0
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("secao_alvo", ["month", "week", "day"])
+def test_fila_unificada_heranca_de_status_e_waiting_on_por_secao(user, secao_alvo):
+    """AC4: item da fila migrado para hoje nasce sucessor com o status herdado
+    (AD-18 item 1, via `inherited_successor_status` — regra REUSADA, não
+    reimplementada aqui) e `waiting_on` copiado, origem `migrated`,
+    `migration_count` +1, e a subárvore migra junta com cada filho herdando O
+    PRÓPRIO status (AD-08 item 11 / AD-18 item 2). Um caso por seção: a fila é
+    a ENTRADA sob teste, não a herança como mecanismo novo."""
+    with tenant_context(user):
+        hoje, ontem, semana_anterior, mes_anterior = _fronteiras(user)
+        containers = {
+            "month": {
+                "monthly_log": MonthlyLogFactory(
+                    user=user, month_first=(mes_anterior - timedelta(days=1)).replace(day=1)
+                )
+            },
+            "week": {
+                "weekly_log": WeeklyLogFactory(
+                    user=user, week_start=semana_anterior - timedelta(weeks=1)
+                )
+            },
+            "day": {"log": LogFactory(user=user, log_date=ontem)},
+        }[secao_alvo]
+
+        raiz = TaskFactory(
+            user=user, status=Task.Status.STARTED, waiting_on=True, migration_count=0, **containers
+        )
+        filho_iniciado = TaskFactory(
+            user=user, parent_task=raiz, status=Task.Status.STARTED, **containers
+        )
+        filho_pendente = TaskFactory(
+            user=user, parent_task=raiz, status=Task.Status.PENDING, **containers
+        )
+        filho_concluido = TaskFactory(
+            user=user, parent_task=raiz, status=Task.Status.COMPLETED, **containers
+        )
+
+        # A fila é a entrada: o item existe nela ANTES da decisão.
+        assert raiz.id in _ids_da_secao(unified_migration_queue(user=user), secao_alvo)
+
+        origem = migrate_task(user=user, task_id=raiz.id, destination="today")
+
+        assert origem.status == Task.Status.MIGRATED
+        sucessor = origem.migrated_to_task
+        assert sucessor.status == inherited_successor_status(Task.Status.STARTED)
+        assert sucessor.status == Task.Status.STARTED
+        assert sucessor.waiting_on is True
+        assert sucessor.migration_count == 1
+        assert sucessor.log.log_date == hoje
+
+        por_titulo = {filho.title: filho for filho in sucessor.subtasks.all()}
+        assert set(por_titulo) == {filho_iniciado.title, filho_pendente.title}
+        assert por_titulo[filho_iniciado.title].status == Task.Status.STARTED
+        assert por_titulo[filho_pendente.title].status == Task.Status.PENDING
+        # Filho já disposto não viaja e permanece na origem.
+        filho_concluido.refresh_from_db()
+        assert filho_concluido.status == Task.Status.COMPLETED
+        assert filho_concluido.parent_task_id == raiz.id
+
+        # E a re-derivação remove o item decidido (caso-âncora da AD-28, L1247).
+        assert raiz.id not in _ids_da_secao(unified_migration_queue(user=user), secao_alvo)
+
+
+@pytest.mark.django_db
+def test_fila_unificada_migration_count_conta_por_decisao_nao_por_dia_pulado(user):
+    """AC4/AD-09 item 5: entrando PELA FILA UNIFICADA, um item cujo log é de
+    várias semanas atrás ganha `migration_count == 1` numa decisão só — a
+    contagem é por decisão, não por dia de calendário pulado. Extensão do caso
+    já coberto por `test_migrate_task_catch_up_conta_por_decisao_nao_por_dia_pulado`
+    (mesma propriedade, entrada nova)."""
+    with tenant_context(user):
+        hoje, _, _, _ = _fronteiras(user)
+        antiga = hoje - timedelta(weeks=5)
+        task = TaskFactory(
+            user=user,
+            log=LogFactory(user=user, log_date=antiga),
+            status=Task.Status.PENDING,
+            migration_count=0,
+        )
+
+        fila = unified_migration_queue(user=user)
+        assert task.id in _ids_da_secao(fila, "day")
+
+        sucessor = migrate_task(user=user, task_id=task.id, destination="today").migrated_to_task
+
+        assert sucessor.migration_count == 1
+
+
+@pytest.mark.django_db
+def test_fila_unificada_nao_materializa_nenhum_log_e_e_leitura_pura(user):
+    """AC2: usuário sem log nenhum recebe as três seções vazias e a chamada não
+    cria linha em `Log`/`WeeklyLog`/`MonthlyLog`. `_sem_escrita` reforça no SQL:
+    zero `INSERT`/`UPDATE`/`DELETE` (a derivação é leitura, e é por isso que o
+    serviço não é `@transaction.atomic`)."""
+    with tenant_context(user):
+        fila = _sem_escrita(unified_migration_queue, user=user)
+
+        assert [secao["source_id"] for secao in fila["sections"]] == ["month", "week", "day"]
+        assert [secao["count"] for secao in fila["sections"]] == [0, 0, 0]
+        assert [secao["groups"] for secao in fila["sections"]] == [[], [], []]
+        assert fila["total_count"] == 0
+        assert Log.objects.count() == 0
+        assert WeeklyLog.objects.count() == 0
+        assert MonthlyLog.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_fila_unificada_escopada_por_tenant(user, other_user):
+    """AC2: tudo pelo manager auto-escopado `objects` — a pendência antiga de
+    outro usuário não vaza para a fila."""
+    with tenant_context(other_user):
+        hoje = today_for(other_user)
+        TaskFactory(
+            user=other_user,
+            log=LogFactory(user=other_user, log_date=hoje - timedelta(days=3)),
+            status=Task.Status.PENDING,
+        )
+
+    with tenant_context(user):
+        fila = unified_migration_queue(user=user)
+
+        assert fila["total_count"] == 0
+
+
+@pytest.mark.django_db
+def test_fila_unificada_nao_faz_n_mais_1_por_grupo(user):
+    """AC1 ("nunca N+1 por log"): o custo em queries da derivação NÃO cresce com o
+    número de grupos nem de tarefas.
+
+    Este é o assert que a Task 1 pede e que nenhum outro teste faz: a chave do
+    período vem `annotate`ada na MESMA query, então o laço de agrupamento lê um
+    atributo simples e nunca toca `task.log`/`task.weekly_log`/`task.monthly_log`.
+    Sem a anotação (ou sem o `select_related` equivalente) a fila continuaria
+    devolvendo o conteúdo correto — e uma tarefa a mais viraria uma query a mais,
+    silenciosamente. Comparar duas medições reais (magra × gorda) é o único jeito
+    de detectar isso; um número absoluto fixado à mão quebraria a cada mudança de
+    `prefetch_related`.
+    """
+
+    def _semear(indice, *, raizes_por_container):
+        """Um container por nível, `raizes_por_container` raízes abertas em cada."""
+        hoje = today_for(user)
+        # Um mês distinto por `indice`, todos ANTERIORES ao mês anterior (que a AC1
+        # mantém fora da fila): retrocede mês a mês pelo primeiro dia, sem aritmética
+        # de 31 dias, que pularia fevereiro.
+        mes = (hoje.replace(day=1) - timedelta(days=1)).replace(day=1)
+        for _ in range(indice + 1):
+            mes = (mes - timedelta(days=1)).replace(day=1)
+        containers = (
+            ("monthly_log", MonthlyLogFactory(user=user, month_first=mes)),
+            (
+                "weekly_log",
+                WeeklyLogFactory(
+                    user=user, week_start=week_start_of(hoje) - timedelta(weeks=2 + indice)
+                ),
+            ),
+            ("log", LogFactory(user=user, log_date=hoje - timedelta(days=2 + indice))),
+        )
+        for campo, container in containers:
+            for ordem in range(raizes_por_container):
+                TaskFactory(
+                    user=user,
+                    status=Task.Status.PENDING,
+                    order_index=float(ordem + 1),
+                    **{campo: container},
+                )
+
+    def _medir():
+        with CaptureQueriesContext(connection) as capturadas:
+            fila = unified_migration_queue(user=user)
+        return len(capturadas.captured_queries), fila
+
+    with tenant_context(user):
+        _semear(0, raizes_por_container=1)
+        queries_magra, fila_magra = _medir()
+        assert fila_magra["total_count"] == 3, "as três seções precisam estar POVOADAS"
+        # (com seção vazia o Django pula o `prefetch_related` e a comparação viraria
+        # ruído: o teste mediria a ausência de dado, não a ausência de N+1)
+
+        for indice in range(1, 4):
+            _semear(indice, raizes_por_container=4)
+        queries_gorda, fila_gorda = _medir()
+        assert fila_gorda["total_count"] == 3 + 3 * 3 * 4
+        assert [len(secao["groups"]) for secao in fila_gorda["sections"]] == [4, 4, 4]
+
+        assert queries_gorda == queries_magra, (
+            f"a derivação passou de {queries_magra} para {queries_gorda} queries ao ir de "
+            f"1 para 4 grupos por seção — a chave de período deixou de vir na mesma query"
+        )
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("destino", ["today", "week", "month", "future"])
+def test_fila_unificada_sucessor_de_qualquer_destino_nao_reentra_na_fila(user, destino):
+    """AC3: o ritual da fila TERMINA — nenhum dos quatro destinos com linhagem
+    devolve o sucessor para dentro da fila.
+
+    A re-derivação já é testada para `today` e `cancel`; os destinos `week`,
+    `month` e `future` criam o sucessor em containers cujo período é comparado com
+    as MESMAS fronteiras da fila (`< semana anterior`, `< mês anterior`), e é aí
+    que um erro de sinal produziria um laço infinito: o usuário decide, o item
+    volta, a faixa do Hoje nunca zera. Nenhum teste cobria esse par
+    (destino → fronteira) além de `today`.
+    """
+    with tenant_context(user):
+        hoje, _, _, mes_anterior = _fronteiras(user)
+        mes_seguinte = (hoje.replace(day=28) + timedelta(days=7)).replace(day=1)
+        origem = TaskFactory(
+            user=user,
+            log=LogFactory(user=user, log_date=hoje - timedelta(days=3)),
+            status=Task.Status.PENDING,
+        )
+        assert unified_migration_queue(user=user)["total_count"] == 1
+
+        migrate_task(
+            user=user,
+            task_id=origem.id,
+            destination=destino,
+            # `month` recebe o mês CORRENTE (a view o força; o serviço o exige) e
+            # `future` um mês adiante — nunca `mes_anterior`, que a AC1 mantém fora
+            # da fila por ser fonte bloqueante do ritual da 14.2.
+            month_first=(
+                hoje.replace(day=1)
+                if destino == "month"
+                else mes_seguinte
+                if destino == "future"
+                else None
+            ),
+        )
+
+        fila = unified_migration_queue(user=user)
+        sucessor = Task.objects.get(id=origem.id).migrated_to_task
+        assert sucessor is not None, "os quatro destinos deste teste criam linhagem"
+        assert fila["total_count"] == 0, (
+            f"destino {destino!r}: o sucessor {sucessor.id} reentrou na fila — "
+            f"a decisão nunca escoaria a pendência"
+        )
+        assert [secao["source_id"] for secao in fila["sections"]] == ["month", "week", "day"]
+        assert mes_anterior < hoje.replace(day=1)  # sanidade da fronteira usada acima
