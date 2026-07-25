@@ -1,86 +1,26 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="pt-BR">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>UX Design Validation — HMMB BuJo</title>
-  <style>
-    :root{--bg:#fafaf9;--surface:#fff;--border:#e7e5e4;--text:#1c1917;--muted:#6b6561;--strong:#16733a;--adequate:#5f6f16}
-    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.6 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-    .container{max-width:980px;margin:auto;padding:32px 24px 64px}header{padding-bottom:16px;border-bottom:1px solid var(--border);margin-bottom:24px}
-    h1{margin:0;font-size:24px}.subtitle,.source,footer{color:var(--muted);font:12px ui-monospace,"SFMono-Regular",Consolas,monospace}
-    .synthesis,.counts{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:18px 22px;margin-bottom:24px}.synthesis{border-left:3px solid var(--strong)}
-    .synthesis p{margin:0 0 10px}.synthesis p:last-child{margin-bottom:0}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;margin-bottom:24px}
-    .card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 14px}.name{font-size:13px;color:var(--muted)}.verdict{font-weight:700;color:var(--strong)}
-    .verdict.adequate{color:var(--adequate)}details{background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-bottom:12px;overflow:hidden}
-    summary{padding:14px 18px;cursor:pointer;display:flex;gap:12px;align-items:center}summary h2{font-size:16px;margin:0;flex:1}.pill{font-size:11px;text-transform:uppercase;font-weight:700;color:#fff;background:var(--strong);border-radius:999px;padding:3px 9px}
-    .pill.adequate{background:var(--adequate)}.body{padding:0 18px 14px}.body p{margin:0}.counts h2{font-size:16px;margin-top:0}.counts ul{margin-bottom:0}footer{margin-top:36px;padding-top:16px;border-top:1px solid var(--border)}
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UX Design Validation — hmmb-bujo / Story 14.0</title>
+<style>
+:root{--bg:#fafaf9;--surface:#fff;--border:#e7e5e4;--text:#1c1917;--muted:#78716c;--strong:#16a34a;--adequate:#65a30d;--high:#ea580c;--medium:#ca8a04;--low:#64748b}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.6 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.container{max-width:960px;margin:auto;padding:32px 24px 64px}
+header{border-bottom:1px solid var(--border);padding-bottom:16px;margin-bottom:24px}h1{font-size:22px;margin:0}.sub{color:var(--muted);font:13px ui-monospace,monospace}
+.synthesis,.section,.mechanical{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:18px 20px;margin-bottom:14px}.synthesis{border-left:3px solid var(--strong)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin:20px 0}.card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px}.name{font-size:13px;color:var(--muted)}.verdict{font-weight:700;color:var(--strong)}.verdict.adequate{color:var(--adequate)}
+h2{font-size:17px;margin:0 0 10px}.finding{border-top:1px solid var(--border);padding:10px 0}.finding:first-of-type{border:0}.badge{font-size:11px;font-weight:700;text-transform:uppercase;border-radius:4px;padding:3px 7px;margin-right:7px}.high{color:var(--high);background:#fff1eb}.medium{color:var(--medium);background:#fff9db}.low{color:var(--low);background:#f1f5f9}.resolved{color:var(--strong);font-weight:700}footer{margin-top:32px;padding-top:14px;border-top:1px solid var(--border);color:var(--muted);font:12px ui-monospace,monospace}
+</style>
 </head>
-<body>
-  <main class="container">
-    <header>
-      <h1>HMMB BuJo — UX Design Validation Report</h1>
-      <div class="subtitle">DESIGN.md + EXPERIENCE.md · 2026-07-24T08:53:52-03:00 · America/Fortaleza</div>
-    </header>
-
-    <section class="synthesis" aria-labelledby="synthesis-title">
-      <h2 id="synthesis-title">Síntese</h2>
-      <p>O par está <strong>forte</strong> como contrato para arquitetura e story-dev: referências resolvem, decisões load-bearing estão comprometidas, deferimentos possuem gates e a rastreabilidade cobre os 111 requisitos do PRD. O Rubric Walker não encontrou misses mecânicos nem findings de julgamento com impacto downstream.</p>
-      <p>A lente consumer WCAG 2.2 AA também concluiu <strong>strong</strong>, sem divergências remanescentes entre spines, handoff, decisões e mocks. Os oito temas passam os pares textuais e não textuais definidos; estrutura, navegação, foco, estados dinâmicos, reflow, touch, preferências e resiliência estão especificados de forma implementável e testável.</p>
-    </section>
-
-    <section aria-labelledby="categories-title">
-      <h2 id="categories-title">Category verdicts</h2>
-      <div class="grid">
-        <div class="card"><div class="name">Flow coverage</div><div class="verdict">strong</div></div>
-        <div class="card"><div class="name">Token completeness</div><div class="verdict">strong</div></div>
-        <div class="card"><div class="name">Component coverage</div><div class="verdict">strong</div></div>
-        <div class="card"><div class="name">State coverage</div><div class="verdict">strong</div></div>
-        <div class="card"><div class="name">Visual reference coverage</div><div class="verdict">strong</div></div>
-        <div class="card"><div class="name">Bloat &amp; overspecification</div><div class="verdict adequate">adequate</div></div>
-        <div class="card"><div class="name">Inheritance discipline</div><div class="verdict">strong</div></div>
-        <div class="card"><div class="name">Shape fit</div><div class="verdict">strong</div></div>
-      </div>
-    </section>
-
-    <section aria-labelledby="rubric-title">
-      <h2 id="rubric-title">Rubric Walker</h2>
-      <details><summary><h2>1. Flow coverage</h2><span class="pill">strong</span></summary><div class="body"><p>Oito jornadas e 111 requisitos foram cobertos ou diferidos com gates explícitos; todos os fluxos possuem failure path próprio ou Resiliência canônica.</p></div></details>
-      <details><summary><h2>2. Token completeness</h2><span class="pill">strong</span></summary><div class="body"><p>Tokens e referências resolvem, sem curingas; oito paletas completas e critérios de contraste load-bearing declarados.</p></div></details>
-      <details><summary><h2>3. Component coverage</h2><span class="pill">strong</span></summary><div class="body"><p>Catálogo bilateral idêntico de 30 componentes, na mesma ordem e hierarquia, com três aliases controlados.</p></div></details>
-      <details><summary><h2>4. State coverage</h2><span class="pill">strong</span></summary><div class="body"><p>Estados transversais, resiliência, preferências, ciclos e deferimentos estão cobertos.</p></div></details>
-      <details><summary><h2>5. Visual reference coverage</h2><span class="pill">strong</span></summary><div class="body"><p>5/5 mocks, 9/9 wireframes importados e dois key mocks aprovados estão ligados com precedência dos spines declarada.</p></div></details>
-      <details><summary><h2>6. Bloat &amp; overspecification</h2><span class="pill adequate">adequate</span></summary><div class="body"><p>A extensão acompanha a complexidade load-bearing; detalhes puramente técnicos permanecem no companion.</p></div></details>
-      <details><summary><h2>7. Inheritance discipline</h2><span class="pill">strong</span></summary><div class="body"><p>Sources, 111 IDs, nomes, aliases e referências de tokens resolvem sem inconsistências.</p></div></details>
-      <details><summary><h2>8. Shape fit</h2><span class="pill">strong</span></summary><div class="body"><p>Os dois spines seguem suas estruturas canônicas e as seções adicionais têm função downstream clara.</p></div></details>
-    </section>
-
-    <section aria-labelledby="accessibility-title">
-      <h2 id="accessibility-title">Accessibility reviewer</h2>
-      <details>
-        <summary><h2>Consumer WCAG 2.2 AA</h2><span class="pill">strong</span><span class="source">review-accessibility-product.md</span></summary>
-        <div class="body">
-          <p>A revisão adversarial revalidou integralmente estrutura e landmarks; navegação, nomes, estados e badges; teclado, foco, overlays e movimento; reflow, zoom, safe-area e targets; cor, contraste e forced-colors; dados, rede e preferências; shell mobile, sheet e seam; e a semântica demonstrativa dos mocks. Nenhum finding permaneceu.</p>
-        </div>
-      </details>
-    </section>
-
-    <section class="counts" aria-labelledby="counts-title">
-      <h2 id="counts-title">Findings</h2>
-      <ul>
-        <li>Critical: 0</li>
-        <li>High: 0</li>
-        <li>Medium: 0</li>
-        <li>Low: 0</li>
-        <li>Rubric: 0 findings; Accessibility: 0 findings; Consolidado: 0 findings.</li>
-      </ul>
-    </section>
-
-    <footer>
-      <div>Reviewers: review-rubric.md · review-accessibility-product.md</div>
-      <div>Generated: 2026-07-24T08:53:52-03:00 (America/Fortaleza)</div>
-    </footer>
-  </main>
-</body>
-</html>
+<body><main class="container">
+<header><h1>hmmb-bujo / Story 14.0 — UX Design Validation</h1><div class="sub">DESIGN.md + EXPERIENCE.md · 2026-07-24T21:51:42-03:00</div></header>
+<div class="synthesis"><p>O par de spines está forte e pronto para handoff após correções. O Rubric Walker encontrou promoção ausente e catálogo bilateral incompleto; a lente de acessibilidade encontrou correções importantes no mock e no contrato. Todos os achados foram reconciliados antes da promoção.</p><p>O contraste load-bearing passou nas oito paletas. Testes no app real permanecem obrigação da Story 14.10.</p></div>
+<div class="grid">
+<div class="card"><div class="name">Flow coverage</div><div class="verdict">strong</div></div><div class="card"><div class="name">Token completeness</div><div class="verdict">strong</div></div><div class="card"><div class="name">Component coverage</div><div class="verdict">strong</div></div><div class="card"><div class="name">State coverage</div><div class="verdict">strong</div></div><div class="card"><div class="name">Visual references</div><div class="verdict">strong</div></div><div class="card"><div class="name">Bloat & overspecification</div><div class="verdict adequate">adequate</div></div><div class="card"><div class="name">Inheritance discipline</div><div class="verdict">strong</div></div><div class="card"><div class="name">Shape fit</div><div class="verdict">strong</div></div>
+</div>
+<section class="section"><h2>Rubric Walker</h2><div class="finding"><span class="badge high">high</span>Mock promovido inexistente — <span class="resolved">resolvido</span>: `mockups/key-archive.html` promovido e verificado.</div><div class="finding"><span class="badge medium">medium</span>`Archive History` fora do catálogo bilateral — <span class="resolved">resolvido</span> nos dois spines.</div></section>
+<section class="section"><h2>Acessibilidade</h2><div class="finding"><span class="badge high">4 high</span>Status readonly, tipografia, tabs e categoria — <span class="resolved">resolvidos</span>.</div><div class="finding"><span class="badge medium">4 medium</span>Targets, forced-colors, foco no sucessor e anúncios — <span class="resolved">resolvidos</span>.</div><div class="finding"><span class="badge low">3 low</span>Labels, seleção programática e skip link — <span class="resolved">resolvidos/encaminhados</span>.</div></section>
+<section class="mechanical"><h2>Verificações fortes</h2><ul><li>0 achados críticos.</li><li>Contraste load-bearing aprovado nas oito paletas.</li><li>Estados loading, empty, error, offline, readonly e zero collections cobertos.</li><li>320 CSS px, zoom 200%, teclado, foco e forced-colors contratados; teste final no app pela Story 14.10.</li></ul></section>
+<footer>review-rubric.md · review-accessibility-archive.md · validation-report.md</footer>
+</main></body></html>

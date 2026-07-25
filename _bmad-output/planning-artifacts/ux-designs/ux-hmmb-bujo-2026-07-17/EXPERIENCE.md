@@ -12,6 +12,7 @@ sources:
   - ../../architecture.md
   - ../../epics.md
   - ../../../implementation-artifacts/13-0-ux-spec-do-app-shell-novo.md
+  - ../../../implementation-artifacts/14-0-ux-mockups-complementares-do-nucleo-bujo.md
   - ../../../implementation-artifacts/sprint-status.yaml
   - imports/mybujo-full-handoff/design_handoff_full_app/README.md
 ---
@@ -132,6 +133,7 @@ Empty states explicam a ausência e oferecem no máximo uma ação pertinente. C
 | Monthly Planning Workspace | Planejamento mensal | composição pai de sources, decisões e density |
 | Monthly Planning Sources | Planejamento mensal | recorrentes → Future Log → Monthly anterior; navegação livre e decisões próprias por fonte |
 | Month Density | Planejamento mensal | minicalendário real, total e distribuição textual por status em cada dia e no pool sem dia |
+| Archive History | Arquivo | abas Semanal/Mensal; filtros de data; lista selecionável; detalhe readonly; linhagem e restauração de contexto |
 
 ### App Shell, aparência e atalhos
 
@@ -365,6 +367,26 @@ Uma **fila unificada** reúne as pendências dos três níveis, ordenadas **mês
 ### Arquivo e ciclo fechado
 
 Ciclo finalizado permanece navegável e legível, em readonly. Controles de mutação desaparecem; conteúdo não recebe aparência disabled. Weekly só finaliza explicitamente sem tarefas `pending`/`started` e nunca reabre.
+
+Arquivo usa abas **Semanal** e **Mensal**. Cada aba segue **filtros de data → lista de períodos → detalhe readonly**. Os filtros operam somente sobre `weekStart`/`monthFirst`; o índice não precisa fornecer busca, agregados, paginação ou conteúdo dos logs. A lista usa os tipos e chaves temporais do índice; selecionar um período conserva os deep links e carrega o detalhe pela rota/query semanal ou mensal existente.
+
+As abas são in-page e seguem o padrão ARIA tabs: container `tablist`; cada controle `tab` expõe `aria-selected` e `aria-controls`; cada painel usa `tabpanel`, `aria-labelledby` e `tabindex="0"`. Setas esquerda/direita movem foco; Home/End levam à primeira/última aba; ativação acompanha o foco porque o carregamento do índice já está disponível. A seleção de período expõe estado programático e associa lista e heading do detalhe.
+
+No detalhe, `Fechado` nomeia o estado do ciclo e `Somente leitura` explicita a permissão. Task Row, grupos diários, **Sem dia definido**, categoria, status, Eisenhower, ordem, subtarefas e anatomia do detalhe permanecem canônicos. Criar, editar, mover, reordenar, concluir, cancelar e excluir não são renderizados. Abertura do detalhe, seleção, navegação temporal e seta de linhagem continuam operáveis.
+
+A seta de uma origem migrada abre o período/container do sucessor imediato, seleciona o dia ou grupo necessário, posiciona e destaca a linha sem abrir o detalhe. Voltar restaura aba, intervalo, período selecionado, posição de rolagem e foco na seta de origem.
+
+Após a navegação, foco programático vai para a **Task Row sucessora** (`tabindex="-1"`), e uma mensagem `aria-live="polite"` anuncia o período e o título da tarefa. No retorno, o foco só é restaurado na seta de origem depois que a lista e a linha estiverem montadas.
+
+Loading mantém shell/header e usa skeleton de abas, filtros, lista e detalhe. Empty inicial informa que ainda não há ciclo finalizado do tipo; empty por filtro mantém o intervalo e oferece **Limpar período**. Erro de leitura preserva aba, datas, seleção e posição com retry local. Offline mantém ciclos já carregados; período sem cache comunica indisponibilidade e nunca simula vazio.
+
+Lista e detalhe recebem `aria-busy` durante seus carregamentos; skeletons ficam `aria-hidden`. Erro de leitura usa anúncio único `alert` e retry nomeado pelo tipo/período; offline persistente usa `status` sem repetir anúncio a cada render. Em readonly, ícones de status não são controles e ficam fora da ordem de foco; somente a seta de linhagem permanece interativa.
+
+Categoria conserva borda cromática e acrescenta seu nome no texto/nome acessível da Task Row. Em forced-colors, seleção, foco, feedback, categoria e destaque usam cores do sistema e distinções por borda/espessura/texto; nenhum fill tem significado isolado.
+
+Wide/medium usam lista + detalhe; tablet reduz a lista; compact usa lista → detalhe em sequência, com filtros alcançáveis e sem scroll horizontal de página. Em 320 CSS px e zoom 200%, primeiro e último controles ficam visíveis acima do chrome fixo.
+
+→ Composição e estados aprovados: [`mockups/key-archive.html`](mockups/key-archive.html). A exploração deferida do Arquivo vive em [`.working/future-vision/archive-future-vision.html`](.working/future-vision/archive-future-vision.html) e não constitui contrato. Os spines vencem em conflito.
 
 ### Módulos futuros previstos e estados diferidos
 

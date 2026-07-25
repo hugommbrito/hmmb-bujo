@@ -12,6 +12,7 @@ sources:
   - ../../architecture.md
   - ../../epics.md
   - ../../../implementation-artifacts/13-0-ux-spec-do-app-shell-novo.md
+  - ../../../implementation-artifacts/14-0-ux-mockups-complementares-do-nucleo-bujo.md
   - imports/mybujo-full-handoff/design_handoff_full_app/README.md
 colors:
   # Aliases canônicos: Mineral Light.
@@ -384,6 +385,13 @@ components:
     horizon-months: '8'
     focus-scroll: 'internal'
     terminal-opacity: '0.58'
+  archive-history:
+    period-list-width: '330px'
+    detail-min-width: '0'
+    desktop-layout: 'period-list + readonly-detail'
+    tablet-layout: 'reduced-period-list + readonly-detail'
+    compact-layout: 'period-list -> readonly-detail'
+    closed-contrast: 'normal'
   task-row:
     min-height-pointer: '36px'
     min-height-touch: '48px'
@@ -529,6 +537,7 @@ Raios de 2–8px comunicam ferramenta, não aplicativo lifestyle. Pills ficam re
 | Monthly Planning Workspace | Workspace Surface | pai de sources e density |
 | Monthly Planning Sources | Monthly Planning Workspace | rail de três fontes |
 | Month Density | Monthly Planning Workspace | minicalendário e distribuição |
+| Archive History | Workspace Surface | abas temporais + filtros + lista mestre + detalhe readonly |
 
 ### App Shell
 
@@ -622,6 +631,18 @@ Superfície híbrida conforme `{components.future-board}`: trilho à esquerda co
 Item datado usa prefixo `(14)`; item só com mês usa `— ago`, ambos em `{typography.meta}` com números tabulares. Datear/mover reutiliza o seletor de destino do ritual — dias do mês, **Sem dia definido** e outro mês — confirmando com destino nomeado; a origem fica terminal com `{components.future-board.terminal-opacity}` e seta navegável ao sucessor, que entra com contorno `{colors.info}` e `{colors.info-soft}` temporários. A seção **Anuais pendentes** usa o padrão de placement; vazia, não renderiza. No compact, o trilho vira barra de meses rolável e os seletores abrem em sheet.
 
 → Referência aprovada: [`mockups/key-future-log.html`](mockups/key-future-log.html). Os spines vencem em qualquer conflito com este mockup.
+
+### Arquivo
+
+Arquivo usa o padrão Histórico conforme `{components.archive-history}`. As abas **Semanal** e **Mensal** antecipam a taxonomia temporal sem expor Diário, busca ou IA antes de seus contratos. Em cada aba, as datas inicial e final filtram os períodos pela chave temporal já disponível; a lista permanece cronológica, do mais recente para o mais antigo, e a seleção abre o detalhe readonly ao lado.
+
+Wide e medium usam lista de períodos + detalhe. Tablet reduz a lista antes de recompor. Compact usa sequência lista → detalhe, sem comprimir o mestre-detalhe nem criar scroll horizontal de página. `Fechado` identifica o período; `Somente leitura` identifica a permissão do detalhe. Ambos usam texto e contraste normal.
+
+O detalhe reutiliza a Task Row, agrupamento diário/seção **Sem dia definido** e anatomia do detalhe de tarefa. Criar, editar, mover, reordenar, concluir, cancelar e excluir desaparecem; não ficam disabled. Seleção, leitura, abertura do detalhe e seta origem → sucessor permanecem ativas. A origem migrada e o sucessor destacado seguem o tratamento canônico de linhagem com `{colors.info}` e `{colors.info-soft}`.
+
+Loading preserva a geometria de abas, filtros, lista e detalhe. Empty inicial e empty por filtro ocupam a região de períodos; erro e offline ficam junto à região afetada. Nenhum desses estados substitui o shell ou o header.
+
+→ Referência aprovada: [`mockups/key-archive.html`](mockups/key-archive.html). A visão aditiva não contratual permanece em [`.working/future-vision/archive-future-vision.html`](.working/future-vision/archive-future-vision.html). Os spines vencem em qualquer conflito.
 
 ### Recorrentes (Coleção)
 
