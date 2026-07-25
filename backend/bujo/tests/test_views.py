@@ -1,12 +1,14 @@
 """Testes de `TodayLogView`/`TaskTransitionView` (AC #1, #2)."""
 
 import inspect
+import uuid
 from datetime import date, timedelta
 
 import pytest
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
+import bujo.services.recurring
 from bujo.models import Log, MonthlyLog, RecurringTaskTemplate, RitualDecision, Task, WeeklyLog
 from bujo.services.cycles import add_months
 from bujo.services.logs import (
@@ -23,7 +25,11 @@ from bujo.tests.factories import (
     TaskFactory,
     WeeklyLogFactory,
 )
-from bujo.views import CatchUpQueueView, MigrationQueueView
+from bujo.views import (
+    CatchUpQueueView,
+    MigrationQueueView,
+    RecurringTaskTemplateDetailView,
+)
 from core.calendar import today_for, week_start_of
 from core.tenant import current_user_id, tenant_context
 
@@ -2099,6 +2105,318 @@ def test_patch_recurring_template_de_outro_tenant_retorna_404(auth_client, other
     assert response.status_code == 404
 
 
+# --- DELETE lógico de template (Story 14.4, AC4/AC5/AC6) ------------------------
+
+
+@pytest.mark.django_db
+def test_delete_recurring_template_retorna_204_sem_corpo_e_some_da_listagem(auth_client, user):
+    """AC4: `204 No Content` sem corpo (idioma DRF), e o template desaparece da
+    biblioteca. Um template VIVO ao lado impede que o assert de ausência passe
+    por lista vazia."""
+    with tenant_context(user):
+        excluido = RecurringTaskTemplateFactory(user=user, title="A excluir")
+        vivo = RecurringTaskTemplateFactory(user=user, title="Permanece")
+
+    response = auth_client.delete(f"/api/bujo/recurring-templates/{excluido.id}/")
+
+    assert response.status_code == 204
+    assert response.content == b""
+    listagem = auth_client.get("/api/bujo/recurring-templates/").json()
+    assert {t["id"] for t in listagem} == {str(vivo.id)}
+
+
+@pytest.mark.django_db
+def test_delete_recurring_template_duas_vezes_retorna_204_com_deleted_at_inalterado(
+    auth_client, user
+):
+    """AC4: idempotência observada NO FIO — 204 nas duas chamadas e o carimbo da
+    segunda igual ao da primeira (relido do banco entre as duas, não do retorno).
+    Um duplo-clique não pode virar erro visível."""
+    with tenant_context(user):
+        template = RecurringTaskTemplateFactory(user=user)
+
+    primeira = auth_client.delete(f"/api/bujo/recurring-templates/{template.id}/")
+    with tenant_context(user):
+        template.refresh_from_db()
+        carimbo_original = template.deleted_at
+
+    segunda = auth_client.delete(f"/api/bujo/recurring-templates/{template.id}/")
+
+    assert primeira.status_code == 204
+    assert segunda.status_code == 204
+    assert carimbo_original is not None
+    with tenant_context(user):
+        template.refresh_from_db()
+        assert template.deleted_at == carimbo_original
+
+
+@pytest.mark.django_db
+def test_delete_recurring_template_sem_token_retorna_401(user):
+    """AC4: sem `Authorization`, 401 — o `APIClient` cru não passa pelo
+    `auth_client` (que já entra em `tenant_context`)."""
+    with tenant_context(user):
+        template = RecurringTaskTemplateFactory(user=user)
+
+    response = APIClient().delete(f"/api/bujo/recurring-templates/{template.id}/")
+
+    assert response.status_code == 401
+    with tenant_context(user):
+        template.refresh_from_db()
+        assert template.deleted_at is None
+
+
+@pytest.mark.django_db
+def test_delete_recurring_template_de_outro_tenant_retorna_404_com_bearer_real(user, other_user):
+    """AC4 + AD-12: a linha alheia é inexistente para o manager escopado. Com JWT
+    de verdade (não `force_authenticate`), o ciclo completo
+    `TenantAwareJWTAuthentication` + `TenantMiddleware` é exercitado — e o
+    template do outro tenant continua VIVO depois da tentativa."""
+    with tenant_context(other_user):
+        alheio = RecurringTaskTemplateFactory(user=other_user, title="De outro tenant")
+
+    client = APIClient()
+    client.credentials(HTTP_AUTHORIZATION=f"Bearer {AccessToken.for_user(user)!s}")
+    response = client.delete(f"/api/bujo/recurring-templates/{alheio.id}/")
+
+    assert response.status_code == 404
+    with tenant_context(other_user):
+        alheio.refresh_from_db()
+        assert alheio.deleted_at is None
+
+
+@pytest.mark.django_db
+def test_delete_recurring_template_inexistente_retorna_404(auth_client):
+    response = auth_client.delete(f"/api/bujo/recurring-templates/{uuid.uuid4()}/")
+
+    assert response.status_code == 404
+
+
+@pytest.mark.django_db
+def test_matriz_active_x_excluido_em_todas_as_combinacoes_de_query_param(auth_client, user):
+    """AC6 — a matriz de 4 células (`active` × vivo/excluído) assertada sobre a
+    MESMA listagem, célula por célula, sem nenhuma inferida:
+
+    |              | vivo                          | excluído              |
+    |--------------|-------------------------------|-----------------------|
+    | active=True  | aparece (sem filtro e `?active=true`)  | não aparece  |
+    | active=False | aparece (sem filtro e `?active=false`) | não aparece  |
+
+    Provada em TODAS as combinações de query param que a listagem aceita —
+    inclusive `?unplaced_year`, a que mais escapa, porque é a que o `FuturePage`
+    usa para os anuais pendentes. Asserts de CONJUNTO de ids (nunca `len`), em
+    camelCase via `.json()` (nunca `.data`, que é pré-render/snake_case).
+    """
+    with tenant_context(user):
+        Group = RecurringTaskTemplate.RecurrenceGroup
+        vivo_ativo = RecurringTaskTemplateFactory(
+            user=user, title="Vivo ativo", active=True, recurrence_group=Group.ANNUAL
+        )
+        vivo_inativo = RecurringTaskTemplateFactory(
+            user=user, title="Vivo inativo", active=False, recurrence_group=Group.ANNUAL
+        )
+        excluido_ativo = RecurringTaskTemplateFactory(
+            user=user, title="Excluído ativo", active=True, recurrence_group=Group.ANNUAL
+        )
+        excluido_inativo = RecurringTaskTemplateFactory(
+            user=user, title="Excluído inativo", active=False, recurrence_group=Group.ANNUAL
+        )
+
+    for alvo in (excluido_ativo, excluido_inativo):
+        assert auth_client.delete(f"/api/bujo/recurring-templates/{alvo.id}/").status_code == 204
+
+    def ids(url):
+        return {t["id"] for t in auth_client.get(url).json()}
+
+    assert ids("/api/bujo/recurring-templates/") == {str(vivo_ativo.id), str(vivo_inativo.id)}
+    assert ids("/api/bujo/recurring-templates/?active=true") == {str(vivo_ativo.id)}
+    assert ids("/api/bujo/recurring-templates/?active=false") == {str(vivo_inativo.id)}
+    assert ids("/api/bujo/recurring-templates/?recurrence_group=annual") == {
+        str(vivo_ativo.id),
+        str(vivo_inativo.id),
+    }
+    assert ids("/api/bujo/recurring-templates/?unplaced_year=2026") == {
+        str(vivo_ativo.id),
+        str(vivo_inativo.id),
+    }
+
+    # O soft delete NÃO altera `active`: os dois eixos são ortogonais no schema,
+    # não só na UI. O excluído que era ativo continua ativo na linha.
+    with tenant_context(user):
+        excluido_ativo.refresh_from_db()
+        excluido_inativo.refresh_from_db()
+        assert excluido_ativo.active is True
+        assert excluido_inativo.active is False
+        assert excluido_ativo.deleted_at is not None
+        assert excluido_inativo.deleted_at is not None
+
+
+@pytest.mark.django_db
+def test_active_e_reversivel_e_deleted_at_e_irreversivel(auth_client, user):
+    """AC6: os dois conceitos, provados DISTINTOS de ponta a ponta —
+    `active` volta por `PATCH`; `deleted_at` não tem caminho de volta (o próprio
+    `PATCH` passa a devolver 404, então nem `{"deletedAt": null}` teria onde
+    chegar)."""
+    with tenant_context(user):
+        template = RecurringTaskTemplateFactory(user=user, active=True)
+    url = f"/api/bujo/recurring-templates/{template.id}/"
+
+    def ids_ativos():
+        resposta = auth_client.get("/api/bujo/recurring-templates/?active=true")
+        return {t["id"] for t in resposta.json()}
+
+    assert auth_client.patch(url, {"active": False}, format="json").status_code == 200
+    assert ids_ativos() == set()
+    assert auth_client.patch(url, {"active": True}, format="json").status_code == 200
+    assert ids_ativos() == {str(template.id)}
+
+    assert auth_client.delete(url).status_code == 204
+
+    # Irreversível: nenhuma escrita alcança o excluído.
+    assert auth_client.patch(url, {"active": True}, format="json").status_code == 404
+    assert auth_client.patch(url, {"deletedAt": None}, format="json").status_code == 404
+    assert (
+        auth_client.post(url + "place/", {"weekStart": "2026-03-02"}, format="json").status_code
+        == 404
+    )
+
+
+@pytest.mark.django_db
+def test_delete_recurring_template_preserva_source_template_da_instancia_no_fio(auth_client, user):
+    """AC5 no fio: excluir o template não muda UMA VÍRGULA da resposta de Task —
+    `sourceTemplate` continua trazendo o MESMO uuid depois da exclusão."""
+    with tenant_context(user):
+        template = RecurringTaskTemplateFactory(
+            user=user, recurrence_group=RecurringTaskTemplate.RecurrenceGroup.WEEKLY
+        )
+        week_start = week_start_of(today_for(user))
+
+    place = auth_client.post(
+        f"/api/bujo/recurring-templates/{template.id}/place/",
+        {"weekStart": week_start.isoformat()},
+        format="json",
+    )
+    assert place.status_code == 201
+    antes = auth_client.get(f"/api/bujo/logs/weekly/?week_start={week_start.isoformat()}").json()
+
+    assert auth_client.delete(f"/api/bujo/recurring-templates/{template.id}/").status_code == 204
+
+    depois = auth_client.get(f"/api/bujo/logs/weekly/?week_start={week_start.isoformat()}").json()
+    # Placement sem `scheduledDate` cai em `unscheduled` (a instância existe e
+    # continua apontando para o template excluído).
+    assert [t["sourceTemplate"] for t in depois["unscheduled"]] == [str(template.id)]
+    assert depois["unscheduled"] == antes["unscheduled"]  # a exclusão não altera nada da Task
+
+
+def test_nenhum_caminho_de_producao_faz_exclusao_fisica_de_template():
+    """AC3: guard de fonte (mesmo padrão do guard de alias da 14.3) — nem o
+    serviço de recorrentes nem a view de detalhe emitem exclusão física. M09 é
+    literal: "não há exclusão física", e a linha precisa persistir para a FK
+    `Task.source_template` (`SET_NULL`) não apagar a linhagem em silêncio.
+
+    O literal procurado tem o PONTO (`.delete(`), então `def delete(self, ...)`
+    da view não casa — é isso que torna o guard escrevível. Cuidado ao editar os
+    comentários/docstrings destes dois alvos: `inspect.getsource` lê o bloco
+    inteiro, então citar o literal em prosa quebraria o guard.
+    """
+    for alvo in (bujo.services.recurring, RecurringTaskTemplateDetailView):
+        fonte = inspect.getsource(alvo)
+        assert ".delete(" not in fonte, getattr(alvo, "__name__", str(alvo))
+
+
+# --- Passo de QA da Story 14.4 (bmad-qa-generate-e2e-tests) ---------------------
+# Lacunas de FIO que o dev-story deixou abertas. As duas daqui são de CONTRATO da
+# biblioteca; as das fontes de ritual e da decisão-snapshot ficam na seção da 14.2
+# (fim do arquivo), onde as URLs literais e as constantes de alvo já moram.
+
+# Chaves do `RecurringTaskTemplateSerializer` camelizadas — as 8 do `fields`, nem
+# uma mais. Constante de módulo porque três respostas diferentes a asseram.
+_CHAVES_DE_TEMPLATE_NO_FIO = {
+    "id",
+    "title",
+    "description",
+    "eisenhower",
+    "category",
+    "recurrenceGroup",
+    "recurrenceText",
+    "active",
+}
+
+
+@pytest.mark.django_db
+def test_deleted_at_nao_vaza_no_contrato_de_template_em_nenhuma_das_tres_respostas(
+    auth_client, user
+):
+    """AC4: `RecurringTaskTemplateSerializer` fica INTOCADO — `deleted_at` é
+    estado interno, não campo de contrato: seria `null` em 100% das respostas que
+    a API consegue emitir (toda resposta traz template vivo), então expô-lo seria
+    ruído permanente. `djangorestframework-camel-case` o entregaria como
+    `deletedAt`, que é o nome procurado aqui.
+
+    A própria story indicou este teste e este lugar: "se quiser blindar a
+    ausência, o lugar é o assert de CONJUNTO DE CHAVES do teste de fio da
+    listagem, não um teste de serializer novo". Assert de conjunto (não `not in`)
+    e nas TRÊS respostas que emitem template, porque um `fields` ampliado por
+    engano vaza nas três de uma vez.
+    """
+    criacao = auth_client.post(
+        "/api/bujo/recurring-templates/",
+        {"title": "Regar plantas", "recurrenceGroup": "weekly", "recurrenceText": "toda segunda"},
+        format="json",
+    )
+    assert criacao.status_code == 201
+    template_id = criacao.json()["id"]
+
+    listagem = auth_client.get("/api/bujo/recurring-templates/").json()
+    edicao = auth_client.patch(
+        f"/api/bujo/recurring-templates/{template_id}/", {"active": False}, format="json"
+    )
+    assert edicao.status_code == 200
+
+    assert set(criacao.json()) == _CHAVES_DE_TEMPLATE_NO_FIO
+    assert len(listagem) == 1
+    assert set(listagem[0]) == _CHAVES_DE_TEMPLATE_NO_FIO
+    assert set(edicao.json()) == _CHAVES_DE_TEMPLATE_NO_FIO
+
+
+@pytest.mark.django_db
+def test_excluido_some_da_listagem_com_os_tres_query_params_combinados(auth_client, user):
+    """AC1/AC6: a matriz da story prova cada query param ISOLADO. "Some da
+    biblioteca em toda combinação" inclui os três encadeados de uma vez —
+    `?active=true&recurrence_group=annual&unplaced_year=`, que é a forma que o
+    `FuturePage` mais se aproxima de emitir.
+
+    Cenário com três anuais ativos, para nenhum dos filtros passar por vacuidade:
+    o vivo sem instância no ano (deve aparecer), o vivo COM instância no ano (sai
+    pelo `unplaced_year`, provando que a cláusula está viva) e o excluído sem
+    instância no ano (sai só pelo `live_templates` — se o filtro de vivos não
+    existisse, ele seria indistinguível do primeiro).
+    """
+    ano = 2026
+    with tenant_context(user):
+        Group = RecurringTaskTemplate.RecurrenceGroup
+        vivo_pendente = RecurringTaskTemplateFactory(
+            user=user, title="Vivo pendente", active=True, recurrence_group=Group.ANNUAL
+        )
+        vivo_com_instancia = RecurringTaskTemplateFactory(
+            user=user, title="Vivo já colocado", active=True, recurrence_group=Group.ANNUAL
+        )
+        excluido_pendente = RecurringTaskTemplateFactory(
+            user=user, title="Excluído pendente", active=True, recurrence_group=Group.ANNUAL
+        )
+        place_template(user=user, template_id=vivo_com_instancia.id, month_first=date(ano, 11, 1))
+
+    assert (
+        auth_client.delete(f"/api/bujo/recurring-templates/{excluido_pendente.id}/").status_code
+        == 204
+    )
+
+    combinado = auth_client.get(
+        f"/api/bujo/recurring-templates/?active=true&recurrence_group=annual&unplaced_year={ano}"
+    ).json()
+
+    assert {t["id"] for t in combinado} == {str(vivo_pendente.id)}
+
+
 @pytest.mark.django_db
 def test_post_place_weekly_cria_task_201(auth_client, user):
     with tenant_context(user):
@@ -3838,3 +4156,275 @@ def test_fila_unificada_ignora_periodos_futuros_nos_tres_niveis(auth_client, use
     # As três tarefas existem de verdade (o cenário não é vazio por acidente de seed).
     with tenant_context(user):
         assert Task.objects.filter(id__in=futuros.values()).count() == 3
+
+
+# =============================================================================
+# Story 14.4 — soft delete NAS FONTES DOS RITUAIS, no fio (passo de QA)
+# =============================================================================
+# O dev-story provou a AC2 pontos 2/3/4/7 na camada de SERVIÇO. Aqui mora o que
+# só o fio mostra e que a UI das 14.5/14.6 vai consumir: os envelopes das duas
+# fontes "Recorrentes" (quatro buckets, não dois), as contagens de progresso
+# derivadas deles (`eligibleCount`/`pendingDecisionCount`/`reviewed`) e o
+# `POST /ritual-decisions/` sobre template excluído — cujo 409 e cuja mensagem
+# NEUTRA são contrato de segurança, não detalhe de implementação.
+_URL_FONTE_RECORRENTES_SEMANAL = (
+    f"/api/bujo/rituals/weekly/sources/recurring/?week_start={_R_SEMANA.isoformat()}"
+)
+_URL_FONTE_RECORRENTES_MENSAL = (
+    f"/api/bujo/rituals/monthly/sources/recurring/?month_first={_R_MES.isoformat()}"
+)
+
+
+@pytest.mark.django_db
+def test_fonte_recorrentes_semanal_no_fio_perde_o_excluido_dos_dois_buckets_e_das_contagens(
+    auth_client, user
+):
+    """AC2 ponto 2 no FIO: o excluído sai de `items` E de `alreadyPlaced`, e as
+    contagens de progresso do envelope acompanham.
+
+    O que só aqui é verificável: `eligibleCount`/`pendingDecisionCount`/`reviewed`
+    são computados na leitura sobre a lista de itens (nenhuma coluna, nenhum
+    cache), então excluir um template PENDENTE muda o denominador do progresso do
+    ritual — e excluir o ÚLTIMO pendente faz a fonte passar a "revisada". É o
+    efeito de produto do soft delete sobre o ritual, e nenhum teste de serviço o
+    observa.
+
+    Cada bucket tem um template VIVO ao lado do excluído, então os asserts são de
+    CONJUNTO de ids e nenhum passa por lista vazia (achado B1 da 14.2). O
+    `template` aninhado é serializado pelo MESMO
+    `RecurringTaskTemplateSerializer` da biblioteca: a ausência de `deletedAt`
+    vale para ele também.
+    """
+    with tenant_context(user):
+        WeeklyLogFactory(user=user, week_start=_R_SEMANA, status=WeeklyLog.Status.PLANNING)
+        vivo_pendente = RecurringTaskTemplateFactory(user=user, recurrence_text="a-vivo pendente")
+        excluido_pendente = RecurringTaskTemplateFactory(
+            user=user, recurrence_text="b-excluido pendente"
+        )
+        vivo_alocado = RecurringTaskTemplateFactory(user=user, recurrence_text="c-vivo alocado")
+        excluido_alocado = RecurringTaskTemplateFactory(
+            user=user, recurrence_text="d-excluido alocado"
+        )
+        place_template(user=user, template_id=vivo_alocado.id, week_start=_R_SEMANA)
+        place_template(user=user, template_id=excluido_alocado.id, week_start=_R_SEMANA)
+
+    antes = auth_client.get(_URL_FONTE_RECORRENTES_SEMANAL).json()
+    assert (antes["eligibleCount"], antes["pendingDecisionCount"], antes["reviewed"]) == (
+        2,
+        2,
+        False,
+    )
+    assert set(antes["items"][0]["template"]) == _CHAVES_DE_TEMPLATE_NO_FIO
+
+    for alvo in (excluido_pendente, excluido_alocado):
+        assert auth_client.delete(f"/api/bujo/recurring-templates/{alvo.id}/").status_code == 204
+
+    depois = auth_client.get(_URL_FONTE_RECORRENTES_SEMANAL).json()
+    assert {item["template"]["id"] for item in depois["items"]} == {str(vivo_pendente.id)}
+    assert {item["template"]["id"] for item in depois["alreadyPlaced"]["items"]} == {
+        str(vivo_alocado.id)
+    }
+    # O pendente excluído saiu do denominador do progresso, mas a fonte continua
+    # com pendência de pé — `reviewed` NÃO virou `true` por tabela.
+    assert (depois["eligibleCount"], depois["pendingDecisionCount"], depois["reviewed"]) == (
+        1,
+        1,
+        False,
+    )
+
+    # Excluir o último pendente encerra a pendência da fonte: é o soft delete
+    # atuando sobre o progresso do ritual, não só sobre a biblioteca. O bucket
+    # fora do progresso continua intacto (o já alocado não é pendência).
+    assert (
+        auth_client.delete(f"/api/bujo/recurring-templates/{vivo_pendente.id}/").status_code == 204
+    )
+    final = auth_client.get(_URL_FONTE_RECORRENTES_SEMANAL).json()
+    assert (final["eligibleCount"], final["pendingDecisionCount"], final["reviewed"]) == (
+        0,
+        0,
+        True,
+    )
+    assert {item["template"]["id"] for item in final["alreadyPlaced"]["items"]} == {
+        str(vivo_alocado.id)
+    }
+
+
+@pytest.mark.django_db
+def test_fonte_recorrentes_mensal_no_fio_perde_o_excluido_dos_quatro_buckets(auth_client, user):
+    """AC2 pontos 3 e 4 no FIO — e nos QUATRO buckets, não nos três da story.
+
+    A fonte mensal é a única com dois buckets fora do progresso, e o teste de
+    serviço da story cobriu `items` (mensal + anual elegível) e
+    `alreadyPlacedInYear`, deixando `alreadyPlaced` (o mensal JÁ colocado no
+    mês-alvo) sem nenhuma cobertura de exclusão em nenhuma camada. Aqui os quatro
+    são assertados, cada um com um vivo ao lado do excluído.
+
+    Ordenação por `recurrence_text` (prefixos `a-`…`h-`) para os asserts de
+    `items` poderem ser de LISTA: a ordem "mensais primeiro, anuais depois" é
+    contrato do M07 e não deve ser afrouxada para conjunto só porque a story
+    acrescentou um filtro.
+    """
+    with tenant_context(user):
+        MonthlyLogFactory(user=user, month_first=_R_MES, status=MonthlyLog.Status.PLANNING)
+        Group = RecurringTaskTemplate.RecurrenceGroup
+        # Os dois vivos que só aparecem em `items` não precisam de nome: o assert
+        # é sobre `recurrenceText`, e a ordenação do M07 é parte do contrato.
+        RecurringTaskTemplateFactory(
+            user=user, recurrence_text="a-mensal vivo", recurrence_group=Group.MONTHLY
+        )
+        mensal_excluido = RecurringTaskTemplateFactory(
+            user=user, recurrence_text="b-mensal excluido", recurrence_group=Group.MONTHLY
+        )
+        mensal_alocado_vivo = RecurringTaskTemplateFactory(
+            user=user, recurrence_text="c-mensal alocado vivo", recurrence_group=Group.MONTHLY
+        )
+        mensal_alocado_excluido = RecurringTaskTemplateFactory(
+            user=user, recurrence_text="d-mensal alocado excluido", recurrence_group=Group.MONTHLY
+        )
+        RecurringTaskTemplateFactory(
+            user=user, recurrence_text="e-anual vivo", recurrence_group=Group.ANNUAL
+        )
+        anual_excluido = RecurringTaskTemplateFactory(
+            user=user, recurrence_text="f-anual excluido", recurrence_group=Group.ANNUAL
+        )
+        anual_no_ano_vivo = RecurringTaskTemplateFactory(
+            user=user, recurrence_text="g-anual no ano vivo", recurrence_group=Group.ANNUAL
+        )
+        anual_no_ano_excluido = RecurringTaskTemplateFactory(
+            user=user, recurrence_text="h-anual no ano excluido", recurrence_group=Group.ANNUAL
+        )
+        place_template(user=user, template_id=mensal_alocado_vivo.id, month_first=_R_MES)
+        place_template(user=user, template_id=mensal_alocado_excluido.id, month_first=_R_MES)
+        # Instância em NOVEMBRO do mesmo ano resolve a elegibilidade anual de MARÇO.
+        place_template(user=user, template_id=anual_no_ano_vivo.id, month_first=date(2026, 11, 1))
+        place_template(
+            user=user, template_id=anual_no_ano_excluido.id, month_first=date(2026, 11, 1)
+        )
+
+    for alvo in (mensal_excluido, mensal_alocado_excluido, anual_excluido, anual_no_ano_excluido):
+        assert auth_client.delete(f"/api/bujo/recurring-templates/{alvo.id}/").status_code == 204
+
+    corpo = auth_client.get(_URL_FONTE_RECORRENTES_MENSAL).json()
+
+    # Bucket 1 e 2 — mensais pendentes e anuais elegíveis, na ordem do M07.
+    assert [item["template"]["recurrenceText"] for item in corpo["items"]] == [
+        "a-mensal vivo",
+        "e-anual vivo",
+    ]
+    # Bucket 3 — mensal já colocado no mês-alvo (sem cobertura de exclusão antes).
+    assert [item["template"]["recurrenceText"] for item in corpo["alreadyPlaced"]["items"]] == [
+        "c-mensal alocado vivo"
+    ]
+    # Bucket 4 — elegibilidade anual já resolvida no ano do alvo.
+    assert [
+        item["template"]["recurrenceText"] for item in corpo["alreadyPlacedInYear"]["items"]
+    ] == ["g-anual no ano vivo"]
+    assert (corpo["eligibleCount"], corpo["pendingDecisionCount"], corpo["reviewed"]) == (
+        2,
+        2,
+        False,
+    )
+
+
+@pytest.mark.django_db
+def test_post_decisao_skip_week_sobre_template_excluido_e_409_neutro_e_nao_persiste(
+    auth_client, user
+):
+    """AC2 ponto 7 no FIO. A story especifica o STATUS (409) e a MENSAGEM
+    (`_ILLEGAL`, neutra) — as duas coisas que o teste de serviço, que só assere a
+    exceção, não observa.
+
+    A neutralidade é contrato de SEGURANÇA herdado da 14.2: a mesma mensagem
+    responde a "combinação ilegal", "item de outro tenant" e "item inexistente",
+    porque um texto específico de "não existe" revelaria a ausência (ou a
+    presença) de linha alheia. Um 404 aqui também seria vazamento — e é a
+    tentação natural, já que o `PATCH` sobre excluído devolve exatamente 404.
+
+    O template VIVO ao lado prova que o cenário é decidível: o mesmo POST, com o
+    id do vivo, devolve 201. Sem ele, um 409 por qualquer outro motivo (alvo fora
+    de `planning`, matriz, corpo malformado) passaria por este teste.
+    """
+    with tenant_context(user):
+        WeeklyLogFactory(user=user, week_start=_R_SEMANA, status=WeeklyLog.Status.PLANNING)
+        vivo = RecurringTaskTemplateFactory(user=user, recurrence_text="a-vivo")
+        excluido = RecurringTaskTemplateFactory(user=user, recurrence_text="b-excluido")
+
+    assert auth_client.delete(f"/api/bujo/recurring-templates/{excluido.id}/").status_code == 204
+
+    def decidir(template_id):
+        return auth_client.post(
+            DECISOES_URL,
+            {
+                "decision": "skip_week",
+                "weekStart": _R_SEMANA.isoformat(),
+                "recurringTemplateId": str(template_id),
+            },
+            format="json",
+        )
+
+    sobre_excluido = decidir(excluido.id)
+    sobre_vivo = decidir(vivo.id)
+
+    assert sobre_excluido.status_code == 409
+    assert sobre_excluido.json()["detail"] == "Esta decisão não se aplica a este item neste ritual."
+    assert "não existe" not in sobre_excluido.json()["detail"]
+    assert "fields" not in sobre_excluido.json()
+    assert sobre_vivo.status_code == 201  # o cenário É decidível — o 409 é do excluído
+    with tenant_context(user):
+        assert {d.recurring_template_id for d in RitualDecision.objects.all()} == {vivo.id}
+
+
+@pytest.mark.django_db
+def test_excluir_template_com_decisao_snapshot_preserva_a_decisao_e_a_leitura_da_fonte(
+    auth_client, user
+):
+    """Interação 14.2 × 14.4, sem cobertura em nenhuma das duas stories.
+
+    `RitualDecision.recurring_template` é `on_delete=CASCADE`: num delete FÍSICO a
+    decisão-snapshot iria embora com o template. O soft delete não dispara
+    CASCADE — a linha da decisão SOBREVIVE (auditoria do ritual preservada, mesma
+    razão de ser da linhagem da AC5), enquanto o template desaparece da fonte.
+
+    O risco real coberto aqui é a órfã de leitura: `decisions_for_target` monta
+    `by_template` a partir das decisões DO ALVO, sem saber de exclusão, então uma
+    entrada aponta para um template que a fonte não lista mais. A fonte tem de
+    continuar respondendo 200 com o conjunto certo, e não contar a órfã em
+    `eligibleCount`.
+    """
+    with tenant_context(user):
+        WeeklyLogFactory(user=user, week_start=_R_SEMANA, status=WeeklyLog.Status.PLANNING)
+        decidido = RecurringTaskTemplateFactory(user=user, recurrence_text="a-decidido")
+        vivo = RecurringTaskTemplateFactory(user=user, recurrence_text="b-vivo")
+
+    decisao = auth_client.post(
+        DECISOES_URL,
+        {
+            "decision": "skip_week",
+            "weekStart": _R_SEMANA.isoformat(),
+            "recurringTemplateId": str(decidido.id),
+        },
+        format="json",
+    )
+    assert decisao.status_code == 201
+    antes = auth_client.get(_URL_FONTE_RECORRENTES_SEMANAL).json()
+    assert [(i["template"]["id"], i["decision"]) for i in antes["items"]] == [
+        (str(decidido.id), "skip_week"),
+        (str(vivo.id), None),
+    ]
+
+    assert auth_client.delete(f"/api/bujo/recurring-templates/{decidido.id}/").status_code == 204
+
+    depois = auth_client.get(_URL_FONTE_RECORRENTES_SEMANAL).json()
+    assert [(i["template"]["id"], i["decision"]) for i in depois["items"]] == [
+        (str(vivo.id), None)
+    ]
+    assert (depois["eligibleCount"], depois["pendingDecisionCount"], depois["reviewed"]) == (
+        1,
+        1,
+        False,
+    )
+    # A decisão-snapshot persiste apontando para o template excluído: nada de
+    # CASCADE, nada de órfã apagada em silêncio.
+    with tenant_context(user):
+        assert RitualDecision.objects.filter(recurring_template_id=decidido.id).count() == 1
+        assert RecurringTaskTemplate.objects.filter(pk=decidido.id).exists()

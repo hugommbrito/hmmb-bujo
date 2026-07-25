@@ -48,6 +48,7 @@ from bujo.services.cycles import (
     previous_operational_monthly,
     previous_operational_weekly,
 )
+from bujo.services.recurring import live_templates
 from core.calendar import months_of_week
 from core.exceptions import InvalidRitualDecision, InvalidTransition
 
@@ -141,7 +142,9 @@ def upsert_ritual_decision(
     if is_task:
         item = Task.objects.filter(pk=task_id).first()
     else:
-        item = RecurringTaskTemplate.objects.filter(pk=recurring_template_id).first()
+        # `live_templates`: um template excluído (Story 14.4) não é decidível —
+        # cai no `item is None` abaixo e devolve o mesmo 409 neutro de sempre.
+        item = live_templates().filter(pk=recurring_template_id).first()
     if item is None:
         raise InvalidRitualDecision(_ILLEGAL)
 
@@ -354,8 +357,10 @@ def list_weekly_recurring_candidates(*, user, week_start) -> dict:
     weekly_log = WeeklyLog.objects.filter(week_start=week_start).first()
     _, by_template = decisions_for_target(user=user, weekly_log=weekly_log)
     templates = (
-        RecurringTaskTemplate.objects.filter(
-            active=True, recurrence_group=RecurringTaskTemplate.RecurrenceGroup.WEEKLY
+        live_templates(
+            RecurringTaskTemplate.objects.filter(
+                active=True, recurrence_group=RecurringTaskTemplate.RecurrenceGroup.WEEKLY
+            )
         )
         .annotate(
             instances_in_target_count=Count(
@@ -452,14 +457,21 @@ def list_monthly_recurring_candidates(*, user, month_first) -> dict:
         distinct=True,
     )
     monthly_templates = (
-        RecurringTaskTemplate.objects.filter(active=True, recurrence_group=Group.MONTHLY)
+        live_templates(
+            RecurringTaskTemplate.objects.filter(active=True, recurrence_group=Group.MONTHLY)
+        )
         .annotate(instances_in_target_count=active_in_target)
         .order_by("recurrence_text")
     )
     monthly_pending, monthly_already = _partition_by_placement(monthly_templates)
 
+    # `live_templates` na ORIGEM da queryset anual: as três saídas derivadas
+    # (`annual_eligible`, `annual_in_year` e as contagens) herdam o filtro de uma
+    # vez, em vez de repeti-lo em cada uma.
     annual = (
-        RecurringTaskTemplate.objects.filter(active=True, recurrence_group=Group.ANNUAL)
+        live_templates(
+            RecurringTaskTemplate.objects.filter(active=True, recurrence_group=Group.ANNUAL)
+        )
         .annotate(instances_in_target_count=active_in_target)
         .order_by("recurrence_text")
     )

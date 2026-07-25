@@ -223,9 +223,28 @@ def test_task_source_template_aceita_none_e_instancia(user):
 
 
 @pytest.mark.django_db
+def test_recurring_task_template_nasce_com_deleted_at_nulo(user):
+    """Soft delete (M09/UX-DR24, Story 14.4): `deleted_at IS NULL` significa VIVO,
+    e é o estado em que toda linha nasce — pelo default da coluna nulável, sem
+    nenhuma escrita. É por isso que a migration `0009` é aditiva pura: nenhuma
+    linha pré-existente precisa de backfill para estar viva."""
+    with tenant_context(user):
+        template = RecurringTaskTemplateFactory(user=user)
+        template.refresh_from_db()
+
+        assert template.deleted_at is None
+
+
+@pytest.mark.django_db
 def test_deletar_template_nao_deleta_a_task_instancia_set_null(user):
     """AD-08 item 2: `source_template` não é referência viva — `on_delete=SET_NULL`
-    garante que deletar o template nunca quebra a instância já colocada."""
+    garante que deletar o template nunca quebra a instância já colocada.
+
+    A partir da Story 14.4 (soft delete), NENHUM caminho de produção chega aqui:
+    a API só faz exclusão lógica (`deleted_at`), e um teste-guard assere que
+    nenhuma linha de `services/recurring.py` nem da view de detalhe emite exclusão
+    física. Este teste exercita o `on_delete` no nível **ORM**, que permanece como
+    rede de segurança do banco — não como comportamento exposto pela API."""
     with tenant_context(user):
         template = RecurringTaskTemplateFactory(user=user)
         task = TaskFactory(user=user, source_template=template)

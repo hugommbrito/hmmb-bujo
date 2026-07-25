@@ -507,6 +507,8 @@ medication_day_entries (
 
 6. **`active` é booleano simples — SEM versionamento** (contraste consciente com AD-06/AD-07). Não há denominador retroativo dependente de "ativo no dia D": o template só é apresentado ou não, e instâncias passadas já são `tasks` congeladas. Se "adesão a recorrentes" virar métrica futura, adiciona-se effective-dating — YAGNI por ora.
 
+6b. **Exclusão é LÓGICA e ortogonal a `active`** (as-built da Story 14.4; M09/UX-DR24). `deleted_at TIMESTAMPTZ NULL` — `NULL` = vivo, preenchido = excluído — e **não há exclusão física em nenhum caminho de produção**: a linha persiste para preservar a linhagem (`tasks.source_template_id`, que é `SET_NULL` e apagaria a linhagem em silêncio num delete físico). Os dois eixos são independentes: `active` é reversível e prospectivo (o inativo continua na biblioteca, visível com filtro), `deleted_at` é terminal (some da biblioteca **e das fontes dos rituais**, sem endpoint de restauração). Um único helper — `live_templates(queryset=None)` em `bujo/services/recurring.py` — é a definição de "vivo" e é aplicado em **todos** os pontos de leitura de template; a única exceção é o próprio `soft_delete_template`, que precisa encontrar a linha já excluída para ser idempotente. Segue a mesma filosofia do item 6: um campo, sem versionamento, sem tabela de auditoria, sem índice parcial. `DELETE /api/bujo/recurring-templates/<pk>/` → **204** idempotente; `PATCH`/`place` sobre excluído → **404**.
+
 **Decisões — Subtarefas:**
 
 7. **Subtarefa = `task` com `parent_task_id` (árvore auto-referencial / lista de adjacência).** Uma subtarefa É uma tarefa, com a mesma estrutura — sem segunda entidade. `parent_task_id` nulo = raiz; preenchido = filho. Profundidade arbitrária no schema (UI pode limitar a 1–2 níveis).
@@ -535,9 +537,11 @@ recurring_task_templates (
   title            TEXT,
   description      TEXT NULL,
   eisenhower       ENUM(ui, u, i, none) NULL,    -- default copiado no placement
+  category         ENUM(teal, purple, pink, yellow, green, blue) NULL,  -- as-built (0005)
   recurrence_group ENUM(weekly, monthly, annual),
   recurrence_text  TEXT,                          -- livre, NÃO parseado; só exibição
-  active           BOOLEAN                        -- booleano simples, sem versão
+  active           BOOLEAN,                       -- booleano simples, sem versão
+  deleted_at       TIMESTAMPTZ NULL               -- soft delete (Story 14.4): NULL = vivo
 )                                                 -- template é plano: sem subtarefas
 ```
 

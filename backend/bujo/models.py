@@ -420,6 +420,17 @@ class RecurringTaskTemplate(TenantModel):
     recurrence_text = models.TextField()
     # booleano simples, SEM versionamento (AD-08 item 6 — YAGNI consciente)
     active = models.BooleanField(default=True)
+    # soft delete de M09/UX-DR24: NULL = vivo, preenchido = excluído. Contraste
+    # DELIBERADO com `active` logo acima — `active` é reversível e prospectivo (o
+    # inativo continua na biblioteca, visível com filtro), `deleted_at` é terminal
+    # (some da biblioteca E das fontes dos rituais, sem caminho de volta na API).
+    # Os dois eixos são ortogonais: excluir não mexe em `active`.
+    # O registro persiste porque `Task.source_template` (:229-235) aponta para ele
+    # com `SET_NULL`: exclusão física apagaria a linhagem em silêncio.
+    # SEM índice parcial de propósito: tabela de caderno pessoal (dezenas de
+    # linhas) com `user_id` já indexado — índice aqui seria otimização
+    # especulativa, não esquecimento.
+    deleted_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "recurring_task_templates"

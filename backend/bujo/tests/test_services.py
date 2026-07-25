@@ -44,7 +44,13 @@ from bujo.services.migration import (
     migrate_task,
     unified_migration_queue,
 )
-from bujo.services.recurring import create_template, place_template, update_template
+from bujo.services.recurring import (
+    create_template,
+    live_templates,
+    place_template,
+    soft_delete_template,
+    update_template,
+)
 from bujo.services.rituals import (
     ALLOWED_DECISIONS,
     decisions_for_target,
@@ -1467,6 +1473,208 @@ def test_place_template_escopado_por_tenant(user, other_user):
             )
 
 
+# --- soft delete de template (Story 14.4, AC1/AC3/AC5) --------------------------
+
+
+@pytest.mark.django_db
+def test_soft_delete_template_grava_deleted_at_sem_tocar_active_nem_conteudo(user):
+    """AC3: o `save(update_fields=["deleted_at"])` escreve UMA coluna. `active`
+    (o eixo ortogonal, reversível) e todo o conteúdo ficam byte-idênticos —
+    "excluído" e "inativo" são conceitos distintos também no schema, não só na UI.
+    """
+    with tenant_context(user):
+        template = RecurringTaskTemplateFactory(
+            user=user,
+            title="Regar as plantas",
+            description="com o regador pequeno",
+            eisenhower=Task.Eisenhower.IMPORTANT,
+            category=Task.Category.TEAL,
+            recurrence_text="toda segunda",
+            active=True,
+        )
+
+        excluido = soft_delete_template(user=user, template_id=template.id)
+
+        template.refresh_from_db()
+        assert template.deleted_at is not None
+        assert excluido.deleted_at == template.deleted_at
+        assert template.active is True  # NÃO foi desativado — os eixos são ortogonais
+        assert template.title == "Regar as plantas"
+        assert template.description == "com o regador pequeno"
+        assert template.eisenhower == Task.Eisenhower.IMPORTANT
+        assert template.category == Task.Category.TEAL
+        assert template.recurrence_text == "toda segunda"
+        assert template.recurrence_group == RecurringTaskTemplate.RecurrenceGroup.WEEKLY
+
+
+@pytest.mark.django_db
+def test_soft_delete_template_idempotente_preserva_o_deleted_at_original_sem_escrita(user):
+    """AC3: re-executar devolve o MESMO registro com o MESMO `deleted_at`, e o
+    "sem escrita" é provado no SQL por `_sem_escrita` (nenhum
+    `INSERT`/`UPDATE`/`DELETE`), não pelo valor de retorno."""
+    with tenant_context(user):
+        template = RecurringTaskTemplateFactory(user=user)
+
+        primeiro = soft_delete_template(user=user, template_id=template.id)
+        carimbo_original = primeiro.deleted_at
+
+        segundo = _sem_escrita(soft_delete_template, user=user, template_id=template.id)
+
+        assert segundo.id == template.id
+        assert segundo.deleted_at == carimbo_original
+        template.refresh_from_db()
+        assert template.deleted_at == carimbo_original
+
+
+@pytest.mark.django_db
+def test_soft_delete_template_escreve_SOMENTE_a_coluna_deleted_at_no_sql(user):
+    """AC3: `save(update_fields=["deleted_at"])` é o que garante MECANICAMENTE que
+    a exclusão não toca `active` nem conteúdo — e essa garantia só é observável no
+    SQL emitido, nunca por assert de valor.
+
+    Por que este teste existe (achado da code review desta story): sem
+    `update_fields`, o Django reescreve TODAS as colunas do model com os mesmos
+    valores que acabou de ler do banco, então nenhum assert de igualdade fica
+    vermelho — a suíte inteira seguia verde com a cláusula removida. O que se perde
+    ali é a proteção contra *lost update*: um `PATCH` concorrente teria seus campos
+    sobrescritos pela exclusão, numa operação que é terminal e irreversível. A
+    propriedade é do `UPDATE`, então é o `UPDATE` que precisa ser pinado.
+    """
+    with tenant_context(user):
+        template = RecurringTaskTemplateFactory(
+            user=user, active=True, title="Regar as plantas", recurrence_text="toda segunda"
+        )
+
+        with CaptureQueriesContext(connection) as capturadas:
+            soft_delete_template(user=user, template_id=template.id)
+
+        updates = [
+            q["sql"]
+            for q in capturadas.captured_queries
+            if q["sql"].lstrip().upper().startswith("UPDATE")
+        ]
+        assert len(updates) == 1, f"esperado UM update, veio {len(updates)}: {updates}"
+        assert "deleted_at" in updates[0], updates[0]
+        # Nenhuma outra coluna do model entra no `SET` — os dois eixos (`active` e
+        # `deleted_at`) são ortogonais até no statement.
+        for coluna in (
+            "active",
+            "title",
+            "description",
+            "eisenhower",
+            "category",
+            "recurrence_group",
+            "recurrence_text",
+        ):
+            assert coluna not in updates[0], (
+                f"`{coluna}` foi reescrita pelo soft delete "
+                f"(perdeu o `update_fields`): {updates[0]}"
+            )
+
+
+@pytest.mark.django_db
+def test_soft_delete_template_escopado_por_tenant(user, other_user):
+    """AD-12: o manager auto-escopado torna a linha alheia inexistente — a view
+    traduz em 404, exatamente como `update_template`/`place_template`."""
+    with tenant_context(user):
+        template = RecurringTaskTemplateFactory(user=user)
+
+    with tenant_context(other_user):
+        with pytest.raises(RecurringTaskTemplate.DoesNotExist):
+            soft_delete_template(user=other_user, template_id=template.id)
+
+    with tenant_context(user):
+        template.refresh_from_db()
+        assert template.deleted_at is None  # a tentativa alheia não escreveu nada
+
+
+@pytest.mark.django_db
+def test_soft_delete_template_preserva_a_linhagem_das_instancias_ja_alocadas(user):
+    """AC5 — a razão de ser da story: "a linhagem das tarefas já alocadas
+    permanece rastreável". Duas instâncias (uma weekly, uma monthly) mantêm
+    `source_template_id` IGUAL AO ID ORIGINAL (comparação com o id, não
+    `is not None`, que passaria vacuamente) e a linha do template continua
+    existindo pelos dois caminhos de leitura."""
+    with tenant_context(user):
+        semanal = RecurringTaskTemplateFactory(
+            user=user, recurrence_group=RecurringTaskTemplate.RecurrenceGroup.WEEKLY
+        )
+        mensal = RecurringTaskTemplateFactory(
+            user=user, recurrence_group=RecurringTaskTemplate.RecurrenceGroup.MONTHLY
+        )
+        semana = week_start_of(today_for(user))
+        instancia_semanal = place_template(user=user, template_id=semanal.id, week_start=semana)
+        instancia_mensal = place_template(
+            user=user, template_id=mensal.id, month_first=date(2026, 3, 1)
+        )
+
+        soft_delete_template(user=user, template_id=semanal.id)
+        soft_delete_template(user=user, template_id=mensal.id)
+
+        instancia_semanal.refresh_from_db()
+        instancia_mensal.refresh_from_db()
+        assert instancia_semanal.source_template_id == semanal.id
+        assert instancia_mensal.source_template_id == mensal.id
+        # A linha persiste: o manager auto-escopado NÃO filtra excluídos (só
+        # `live_templates()` filtra), e o escape hatch de admin também a enxerga.
+        assert RecurringTaskTemplate.objects.filter(pk=semanal.id).exists()
+        assert RecurringTaskTemplate.objects.filter(pk=mensal.id).exists()
+        assert RecurringTaskTemplate.all_objects.filter(pk=semanal.id).exists()
+        assert RecurringTaskTemplate.all_objects.filter(pk=mensal.id).exists()
+
+
+@pytest.mark.django_db
+def test_update_template_sobre_excluido_levanta_does_not_exist(user):
+    """AC2 ponto 5: `update_template` lê por `live_templates()`, então o excluído
+    é inexistente para edição — a view devolve 404, e é isso que torna o soft
+    delete irreversível pela API (não existe `PATCH {"deletedAt": null}`)."""
+    with tenant_context(user):
+        template = RecurringTaskTemplateFactory(user=user, deleted=True)
+
+        with pytest.raises(RecurringTaskTemplate.DoesNotExist):
+            update_template(user=user, template_id=template.id, title="Ressuscitado")
+
+        template.refresh_from_db()
+        assert template.title != "Ressuscitado"
+
+
+@pytest.mark.django_db
+def test_place_template_sobre_excluido_levanta_does_not_exist(user):
+    """AC2 ponto 6: um template excluído não pode gerar instância nova."""
+    with tenant_context(user):
+        template = RecurringTaskTemplateFactory(
+            user=user,
+            recurrence_group=RecurringTaskTemplate.RecurrenceGroup.WEEKLY,
+            deleted=True,
+        )
+        tarefas_antes = Task.objects.count()
+
+        with pytest.raises(RecurringTaskTemplate.DoesNotExist):
+            place_template(
+                user=user, template_id=template.id, week_start=week_start_of(today_for(user))
+            )
+
+        assert Task.objects.count() == tarefas_antes
+
+
+@pytest.mark.django_db
+def test_live_templates_devolve_so_os_vivos_e_aceita_queryset_de_entrada(user):
+    """AC2: UMA definição de "template vivo", na forma de `undisposed_roots` —
+    helper de módulo que recebe/devolve queryset. Sem queryset, parte de
+    `objects.all()`; com queryset, apenas acrescenta o filtro (é assim que as
+    fontes dos rituais o compõem com `active=True`/`recurrence_group`)."""
+    with tenant_context(user):
+        vivo = RecurringTaskTemplateFactory(user=user, active=True)
+        vivo_inativo = RecurringTaskTemplateFactory(user=user, active=False)
+        excluido = RecurringTaskTemplateFactory(user=user, deleted=True)
+
+        assert {t.id for t in live_templates()} == {vivo.id, vivo_inativo.id}
+        assert excluido.id not in {t.id for t in live_templates()}
+
+        composto = live_templates(RecurringTaskTemplate.objects.filter(active=True))
+        assert {t.id for t in composto} == {vivo.id}
+
+
 # --- archive.py (AC #1, #2) ----------------------------------------------------
 
 
@@ -2863,6 +3071,109 @@ def test_fonte_recorrentes_skip_week_sai_da_pendencia_sem_desativar_o_template(u
         assert fonte["eligible_count"] == 1
         assert fonte["pending_decision_count"] == 0
         assert fonte["reviewed"] is True
+
+
+@pytest.mark.django_db
+def test_fonte_recorrentes_semanais_exclui_o_template_excluido_de_items_E_de_already_placed(user):
+    """AC2 ponto 2 (Story 14.4): "some da biblioteca **e das fontes dos rituais**".
+
+    Os DOIS buckets são cobertos de uma vez porque `live_templates` entra na
+    ORIGEM da queryset, antes de `_partition_by_placement` — que parte a mesma
+    queryset. O excluído de `already_placed` tem instância semeada no alvo, senão
+    o bucket estaria vazio por acidente e o assert seria vacuoso; e cada bucket
+    tem um template VIVO ao lado, para o assert comparar CONJUNTO DE IDS em vez
+    de `len(...) == 0` (achado B1 da 14.2).
+    """
+    with tenant_context(user):
+        WeeklyLogFactory(user=user, week_start=_SEMANA, status=CycleStatus.PLANNING)
+        vivo_pendente = RecurringTaskTemplateFactory(user=user, recurrence_text="regar")
+        vivo_alocado = RecurringTaskTemplateFactory(user=user, recurrence_text="mercado")
+        excluido_pendente = RecurringTaskTemplateFactory(user=user, recurrence_text="antigo")
+        excluido_alocado = RecurringTaskTemplateFactory(user=user, recurrence_text="obsoleto")
+        place_template(user=user, template_id=vivo_alocado.id, week_start=_SEMANA)
+        place_template(user=user, template_id=excluido_alocado.id, week_start=_SEMANA)
+        soft_delete_template(user=user, template_id=excluido_pendente.id)
+        soft_delete_template(user=user, template_id=excluido_alocado.id)
+
+        fonte = list_weekly_recurring_candidates(user=user, week_start=_SEMANA)
+
+        assert {item["template"].id for item in fonte["items"]} == {vivo_pendente.id}
+        assert {item["template"].id for item in fonte["already_placed"]["items"]} == {
+            vivo_alocado.id
+        }
+        assert fonte["eligible_count"] == 1
+
+
+@pytest.mark.django_db
+def test_fonte_recorrentes_mensais_exclui_o_excluido_das_TRES_saidas(user):
+    """AC2 pontos 3 e 4: `monthly`, `annual_eligible` e `already_placed_in_year`
+    derivam das duas mesmas querysets — filtrar na ORIGEM (achado A1 da 14.2:
+    invariante por construção, não filtro colado em cada saída) cobre as três.
+
+    Cada saída tem um vivo ao lado do excluído, então nenhum assert é vacuoso.
+    """
+    with tenant_context(user):
+        MonthlyLogFactory(user=user, month_first=_MES, status=CycleStatus.PLANNING)
+        Group = RecurringTaskTemplate.RecurrenceGroup
+        mensal_vivo = RecurringTaskTemplateFactory(
+            user=user, recurrence_text="aluguel", recurrence_group=Group.MONTHLY
+        )
+        mensal_excluido = RecurringTaskTemplateFactory(
+            user=user, recurrence_text="assinatura cancelada", recurrence_group=Group.MONTHLY
+        )
+        anual_vivo = RecurringTaskTemplateFactory(
+            user=user, recurrence_text="aniversário", recurrence_group=Group.ANNUAL
+        )
+        anual_excluido = RecurringTaskTemplateFactory(
+            user=user, recurrence_text="evento extinto", recurrence_group=Group.ANNUAL
+        )
+        anual_no_ano_vivo = RecurringTaskTemplateFactory(
+            user=user, recurrence_text="checkup", recurrence_group=Group.ANNUAL
+        )
+        anual_no_ano_excluido = RecurringTaskTemplateFactory(
+            user=user, recurrence_text="revisão extinta", recurrence_group=Group.ANNUAL
+        )
+        place_template(user=user, template_id=anual_no_ano_vivo.id, month_first=_MES)
+        place_template(user=user, template_id=anual_no_ano_excluido.id, month_first=_MES)
+        for excluido in (mensal_excluido, anual_excluido, anual_no_ano_excluido):
+            soft_delete_template(user=user, template_id=excluido.id)
+
+        fonte = list_monthly_recurring_candidates(user=user, month_first=_MES)
+
+        # `items` = mensais pendentes + anuais elegíveis (as duas primeiras saídas)
+        assert [item["template"].id for item in fonte["items"]] == [
+            mensal_vivo.id,
+            anual_vivo.id,
+        ]
+        # 3ª saída: a elegibilidade anual JÁ RESOLVIDA no ano do alvo
+        assert {item["template"].id for item in fonte["already_placed_in_year"]["items"]} == {
+            anual_no_ano_vivo.id
+        }
+        assert fonte["eligible_count"] == 2
+
+
+@pytest.mark.django_db
+def test_upsert_ritual_decision_skip_week_sobre_template_excluido_levanta_invalid_ritual_decision(
+    user,
+):
+    """AC2 ponto 7 — o ponto que herda o filtro DE GRAÇA: com `live_templates()`
+    no lookup do item, um template excluído cai no caminho `item is None` que já
+    existia e devolve `InvalidRitualDecision` com a mensagem NEUTRA (409), sem
+    exceção nova e sem mensagem nova. O alvo está em `planning` de propósito: o
+    teste tem de morrer no item, não no gate de ciclo."""
+    with tenant_context(user):
+        WeeklyLogFactory(user=user, week_start=_SEMANA, status=CycleStatus.PLANNING)
+        template = RecurringTaskTemplateFactory(user=user, recurrence_text="regar", deleted=True)
+
+        with pytest.raises(InvalidRitualDecision):
+            upsert_ritual_decision(
+                user=user,
+                decision=RitualDecisionKind.SKIP_WEEK,
+                week_start=_SEMANA,
+                recurring_template_id=template.id,
+            )
+
+        assert RitualDecision.objects.count() == 0
 
 
 @pytest.mark.django_db

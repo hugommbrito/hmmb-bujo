@@ -11,7 +11,7 @@ não é `test_*.py`/`conftest.py`, então continua coberto pelo scanner que pro�
 fixa + `timedelta`, nunca `date.today()`.
 """
 
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import factory
 from factory.django import DjangoModelFactory
@@ -102,6 +102,11 @@ class RecurringTaskTemplateFactory(DjangoModelFactory):
 
     class Params:
         user = factory.SubFactory(UserFactory)
+        # Soft delete (Story 14.4): `RecurringTaskTemplateFactory(user=u, deleted=True)`.
+        # Data FIXA e nunca `now()` — o guardrail temporal de AST varre este
+        # arquivo (só `test_*.py`/`conftest.py` são pulados), e o instante em si
+        # é irrelevante para os testes: o que importa é `IS NOT NULL`.
+        deleted = factory.Trait(deleted_at=datetime(2026, 1, 1, tzinfo=UTC))
 
     user_id = factory.SelfAttribute("user.id")
     title = factory.Sequence(lambda n: f"Template {n}")

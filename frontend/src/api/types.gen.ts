@@ -359,7 +359,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        delete?: never;
+        delete: operations["bujo_recurring_templates_destroy"];
         options?: never;
         head?: never;
         patch: operations["bujo_recurring_templates_partial_update"];
@@ -3128,6 +3128,26 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["RecurringTaskTemplate"];
                 };
+            };
+        };
+    };
+    bujo_recurring_templates_destroy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

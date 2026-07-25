@@ -72,7 +72,13 @@ from bujo.services.logs import (
     get_or_create_weekly_log,
 )
 from bujo.services.migration import migrate_task, unified_migration_queue
-from bujo.services.recurring import create_template, place_template, update_template
+from bujo.services.recurring import (
+    create_template,
+    live_templates,
+    place_template,
+    soft_delete_template,
+    update_template,
+)
 from bujo.services.rituals import (
     list_future_log_items,
     list_monthly_recurring_candidates,
@@ -213,7 +219,9 @@ class TaskReorderView(APIView):
 class RecurringTaskTemplateListView(APIView):
     @extend_schema(responses=RecurringTaskTemplateSerializer(many=True))
     def get(self, request):
-        templates = RecurringTaskTemplate.objects.all().order_by("recurrence_text")
+        # `live_templates`: o excluído (soft delete, M09) some da biblioteca em
+        # TODA combinação de query param — os três filtros encadeiam depois.
+        templates = live_templates().order_by("recurrence_text")
         active_param = request.query_params.get("active")
         if active_param is not None:
             templates = templates.filter(active=active_param.lower() == "true")
@@ -244,6 +252,12 @@ class RecurringTaskTemplateListView(APIView):
 
 
 class RecurringTaskTemplateDetailView(APIView):
+    # `DELETE` aqui é exclusão LÓGICA (M09/UX-DR24): `soft_delete_template`
+    # carimba `deleted_at` e a linha permanece no banco, preservando a linhagem
+    # das instâncias já alocadas. Nada é apagado, em nenhum caminho desta classe.
+    # Comentário e NÃO docstring de propósito: o `drf-spectacular` promoveria o
+    # docstring da classe a `description` de TODAS as operações, e o `PATCH`
+    # passaria a carregar no contrato uma explicação sobre o `DELETE`.
     @extend_schema(
         request=RecurringTaskTemplateUpdateSerializer, responses=RecurringTaskTemplateSerializer
     )
@@ -257,6 +271,17 @@ class RecurringTaskTemplateDetailView(APIView):
         except RecurringTaskTemplate.DoesNotExist:
             raise NotFound() from None
         return Response(RecurringTaskTemplateSerializer(template).data)
+
+    @extend_schema(responses={204: None})
+    def delete(self, request, pk):
+        try:
+            soft_delete_template(user=request.user, template_id=pk)
+        except RecurringTaskTemplate.DoesNotExist:
+            raise NotFound() from None
+        # 204 sem corpo: devolver o template serializado seria devolver um objeto
+        # que nenhuma listagem volta a mostrar. Idempotente — a segunda chamada
+        # também responde 204, com o carimbo original preservado.
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class RecurringTaskTemplatePlaceView(APIView):
