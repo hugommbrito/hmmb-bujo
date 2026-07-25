@@ -167,3 +167,19 @@
 - Para épicos com stories HIGH, esperar 2 passadas de dev por padrão (não tratar corte como falha).
 - Aplicar migration à branch Neon e2e continua sendo requisito (12.2 fez sozinha pois a story codificou a lição nas ACs).
 - Monitorar limite de gasto antes de runs longos.
+
+## Epic 13 (App Shell novo) — 2026-07-24
+
+**Resultado:** 4/4 stories (13.1–13.4) done + commitadas; chore de infra e2e à parte (e9cba41); retrospectiva done. 0 CRITICAL/HIGH nas 4 reviews. Frontend tests 828→981 (+153), 7 specs E2E do shell novos (95 passed). Épico 100% frontend.
+
+**O que funcionou:**
+- **Full-suite E2E como gate real de regressão:** a 13.1 passou nos specs do shell mas o full-suite pegou uma colisão de locator (topbar × RouteAnnouncer em gratitude-history). Specs escopados à story NÃO bastam para AC "sem regressão" — rodar o full-suite (ou baseline-diff) pega o que o dev não vê.
+- **Baseline-diff para separar regressão de pré-existente:** `git stash` do gatilho (router.tsx / mudanças da story) + rodar as specs suspeitas no baseline prova o que a story causou. Fez isso na 13.1 (só gratitude era regressão; archive/recurring/task-reorder pré-existentes).
+- **Commits escopados pela File List da story:** com trabalho paralelo do usuário (Épico 14) na árvore, `git add -A` teria contaminado. Usar a File List da story como fonte de verdade + guard-check `git diff --cached --name-only | grep -v <padrões do outro épico>`.
+
+**Armadilhas (custaram tempo):**
+- **Diagnóstico precipitado de "Neon degradou":** 270 falhas de signup no full-suite da 13.2 foram lidas como colapso da branch Neon. ERRADO — o backend e2e estava 100% saudável (54× 201, zero 5xx). Causa real: edit local não-commitado `VITE_API_BASE_URL=http://localhost:8001` em .env.development vazando p/ o e2e (client.ts usa a base). LIÇÃO: falha em massa no fixture de signup com backend saudável = roteamento cliente errado, não infra. Checar `git diff .env*` + `lsof :5173/:8000` ANTES de culpar Neon.
+- **Codex configurado mas não instalado:** o preset "Suggested" roteava medium→codex; `which codex` falhava. Checar disponibilidade do agente ANTES de aceitar config complexity-based; all-claude é o default seguro deste projeto.
+- **Credencial da branch Neon e2e stale:** sessions contornaram com Postgres local (bujo_e2e). Pendência ops do dono (runbook e2e-neon-reset.md §2). A 14.1 tem migration → precisa resolver antes do Playwright.
+
+**Cadência:** dev-story da 13.4 (capstone paridade+a11y) levou 1h+; várias sessions >30min. O padrão de bloqueio em foreground (monitor-session / tail -f | grep) por janelas de 10min manteve o stop-hook satisfeito sem abandonar a orquestração.
