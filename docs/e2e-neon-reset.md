@@ -116,6 +116,87 @@ apontando para `config.settings.e2e` ainda de pé — pare-o antes do reset.
 
 ---
 
+## 4b. Ambiente E2E isolado e o fallback para Postgres local
+
+> Acrescentado pela retrospectiva do Épico 13 (2026-07-24): o fallback abaixo foi
+> reinventado em três stories seguidas (13.2, 13.3, 13.4) sem estar escrito aqui.
+
+### O ambiente que o Playwright sobe
+
+`frontend/playwright.config.ts` sobe **dois** servidores dedicados e os derruba no
+fim — não reutilize nem mate o seu dev local:
+
+| Papel | Porta | Como sobe |
+| ----- | ----- | --------- |
+| Frontend E2E | **5173** | `npm run dev -- --mode e2e --strictPort` → lê `frontend/.env.e2e` e **ignora** `.env.development*` |
+| Backend E2E | **8000** | `uv run python manage.py runserver 8000` sob `config.settings.e2e` |
+
+⚠️ O dev local do dono roda em **5174/8001**. **Nunca** derrube essas portas para
+"liberar" o E2E. Se a suíte falhar **em massa no fixture de signup**, a primeira
+hipótese é vazamento de `VITE_API_BASE_URL` (frontend do E2E falando com o backend
+errado), não o banco.
+
+### Sintoma: credencial da branch `e2e` stale
+
+Desde **2026-07-24** a connection string em `backend/.env.e2e` está inválida: o
+`webServer` do backend não sobe e o Playwright falha antes do primeiro teste
+(`authentication failed` no log do Django). A correção definitiva é o passo de ops
+manual do §2 (renovar a connection string da branch Neon `e2e`) — o dev agent não
+tem credenciais do Neon.
+
+### Fallback validado: Postgres local `bujo_e2e`
+
+Enquanto a credencial não é renovada, aponte o `DATABASE_URL` **numa execução só**
+para um banco dedicado no Postgres local do `docker-compose.yml` (o mesmo container
+`hmmb-test-db` usado pelo `pytest`):
+
+```bash
+docker compose up -d db        # se ainda não estiver de pé
+
+# uma vez: criar o banco dedicado do E2E (separado do hmmb_test do pytest)
+PGPASSWORD=postgres createdb -h localhost -U postgres bujo_e2e
+
+# uma vez por migration nova (obrigatório antes do Playwright):
+cd backend
+DJANGO_SETTINGS_MODULE=config.settings.e2e \
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/bujo_e2e \
+  uv run python manage.py migrate
+
+# rodar a suíte (escopada aos specs relevantes):
+cd ../frontend
+nvm use 22.15.1
+CI=1 DATABASE_URL=postgres://postgres:postgres@localhost:5432/bujo_e2e \
+  npx playwright test e2e/<spec>.spec.ts --reporter=line
+```
+
+O `DATABASE_URL` do comando chega ao `runserver` pelo `webServer` do Playwright e
+vence o valor de `.env.e2e`. Com isso o E2E **não fica "não verificado"** — foi
+assim que os gates das Stories 13.2/13.3/13.4 rodaram.
+
+> **Atenção Épico 14:** o banco de dados do E2E deixa de ser conveniência e vira
+> caminho crítico — a Story 14.1 cria *data migration* e o padrão do projeto exige
+> aplicá-la ao banco E2E **antes** do Playwright. Decidir qual dos dois caminhos é
+> o oficial (renovar a branch Neon ou promover o `bujo_e2e` local) é decisão do
+> dono, pendente.
+
+### Coletores fora do gate
+
+`frontend/e2e/tools/` guarda execuções de **diagnóstico**, não testes: hoje o
+inventário de acessibilidade do conteúdo legado (axe sem `exclude: 'main'`, por
+faixa — SHELL-DEBT-02). Elas ficam fora da suíte por `testIgnore: ['**/tools/**']`
+e rodam sob demanda:
+
+```bash
+CI=1 DATABASE_URL=… npx playwright test \
+  --config playwright.inventory.config.ts --reporter=line
+```
+
+O padrão é **config própria em vez de teste permanentemente `skip`ado** — a suíte
+não tem nenhum `skip`/`fixme`. Obrigação por onda (Ondas 3–5): rodar o coletor na
+superfície recém-migrada antes de declarar paridade de acessibilidade.
+
+---
+
 ## 5. Limpeza one-shot da branch de dev (histórica — Story 11.1 / AC3)
 
 Antes do isolamento, os testes acumularam ~220 usuários órfãos na branch de dev.
@@ -140,6 +221,10 @@ Após a Story 11.1, novas execuções de E2E não escrevem mais na branch de dev
 | `backend/.env.example`                            | Template versionado das três opções de settings  |
 | `backend/bujo/management/commands/purge_e2e_users.py` | Comando de limpeza reutilizável (dev e e2e)   |
 | `frontend/e2e/backendEnv.ts`                      | Ponto único do `DJANGO_SETTINGS_MODULE` dos E2E   |
-| `frontend/playwright.config.ts`                   | webServer do backend sob `config.settings.e2e`    |
+| `frontend/playwright.config.ts`                   | webServer (5173/8000), `workers: 1`, `testIgnore` |
+| `frontend/playwright.inventory.config.ts`         | Config sob demanda dos coletores de `e2e/tools/`  |
+| `frontend/.env.e2e`                               | Env do frontend no modo e2e (isola do dev local)  |
+| `docker-compose.yml`                              | Postgres local (`hmmb-test-db`) do fallback §4b   |
 | `README.md`                                       | Mapeamento de branches Neon dev/prod/e2e          |
 | Épico 4 — retro, ação #7                          | Origem do procedimento de `pg_terminate_backend`  |
+| Épico 13 — retro (2026-07-24), §9                 | Origem da seção §4b (ambiente isolado + fallback) |

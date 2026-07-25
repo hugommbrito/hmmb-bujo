@@ -11,14 +11,14 @@
 - [ ] Adicionar uma aba de análises com IA, onde eu possa colocar explicações sobre as métricas que uso em cada módulo (hábitos, saúde, medicamentos, etc.) para que essas métricas sejam agregadas ao prompt que usa /dataviz para gerar relatórios específicos.
   - [ ] Seria possível que esse prompt gerasse relatórios periódicos na tela para a pessoa acompanhar no dia a dia? Exemplo, se eu explicasse que três das métricas que eu uso são associadas (produtividade), a IA geraria uma query que ficaria salva no banco, para que um gráfico do meu dashboard ficasse sempre atualizando com ela.
 - [ ] Opção de habilitar/desabilitar um contador de tempo de foco para saber quanto tempo está dedicando ao preenchimento do bujo. Ele inicia/pausa automaticamente quando a janela do bujo entra/sai de foco.
-- [ ] Opção de habilitar/desabilitar todos os módulos, para que caso alguém não queira usar medicamentos, por exemplo, ele não fique aparecendo lá em branco.
+- [ ] Opção de habilitar/desabilitar todos os módulos, para que caso alguém não queira usar medicamentos, por exemplo, ele não fique aparecendo lá em branco. (Parcial: a navegação já **tolera** o módulo desligado — o shell da Onda 2a deriva os destinos de uma lista filtrada e os estados "nav mínima" com zero e com uma collection estão provados nas três superfícies (sidebar, bottom nav e menu mobile), sem heading vazio, sem grupo vazio e sem item desabilitado. Falta o que liga/desliga: as flags de ativação e a página de toggles são o Épico 10 — 10.4/10.5, com o empty-state do dashboard como oferta na 10.6.)
 - [ ] Adicionar estado de "Aguardando Terceiro", pode ser um standalone, caso dê muito trabalho mexer na máquina de estados. (Parcial: backend entregue no Épico 12.2 (#15) exatamente como o standalone sugerido — flag `waiting_on` booleana ortogonal, **sem** criar 7º estado; PATCH + filtro `?waitingOn=` + herança na migração. UI (indicador + filtro) fica na Onda 2b — Épico 17.5.)
 - [ ] METRICAS DE SAÚDE:
   - [ ] Poder reordenar
   - [ ] Poder Editar
   - [ ] Add Prcentual e Enum com mais de uma seleção
 - [ ] Criar um módulo apenas para controle de Pressão Arterial, que recebe foto e interpreta com IA
-- [ ] Um outro padrão de cores para quem não tiver apego à estética do caderno BuJo
+- [ ] Um outro padrão de cores para quem não tiver apego à estética do caderno BuJo (Parcial: o gate de UX do Épico 13 fechou **quatro** famílias cromáticas completas — Mineral, Horizonte Azul, Bosque Sálvia e Ameixa Editorial, cada uma com Light e Dark de composição própria, não inversão automática — e a camada de tokens do sistema novo já **tipa** as quatro. Em runtime só Mineral está wirada (as outras falham alto de propósito); o seletor de aparência com persistência por conta é a Story 18.1.)
 - [ ] Dividir ítens de saúde em grupos
 - [x] Quando uma task é migrada, ela chega no destino com o mesmo status que tinha na origem. (Entregue integralmente no Épico 12.1 (#23, AD-18 itens 1-2): sucessor herda o status da origem em todos os fluxos de migração; subtarefas herdam o próprio status. Backend-only — o efeito é visível pela superfície de status já existente do `TaskRow`.)
 - [ ] Opção de dar nomme às categorias

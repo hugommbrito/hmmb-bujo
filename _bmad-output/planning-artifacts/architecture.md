@@ -100,6 +100,7 @@ O sistema cobre 35 requisitos funcionais em 7 categorias:
 | IA (BYO key) | API Anthropic com **structured outputs**; Batch API (−50%) na fase c; default Haiku 4.5 (PA) / Sonnet (relatórios — recomendação, não trava) — ver AD-24/25/27 | Análises fase a |
 | Criptografia da chave de IA | `cryptography` (Fernet) com chave dedicada em env — ver AD-24 | Análises fase a |
 | Storage de mídia (fotos PA) | `django-storages` → **Cloudflare R2** (bucket privado dedicado, S3-compatível; URLs presignadas curtas) — ver AD-27 | #20 Pressão Arterial |
+| Iconografia (sistema novo) | **`@phosphor-icons/react`** — biblioteca de ícones da plataforma; o App Shell consome um **catálogo fechado** por destino/controle (`DESIGN.md` §Catálogo Phosphor), mapeado no frontend por identidade estável. `@mui/icons-material` permanece **só** no legado até o Épico 18; `icon_key` no backend é a Story 16.2 — ver AD-29 | Onda 2a (Épico 13) |
 
 _Versões e preços verificados no [TR] de 2026-07-22 (fontes citadas lá); revalidar preços/políticas de IA na implementação._
 
@@ -832,6 +833,8 @@ _Registram as decisões roteadas pelo §9 do `sprint-change-proposal-2026-07-22.
 2. **Uma entrada por collection coded:** `{id, name, icon, routes (referências lazy via React.lazy), nav: {label, group, order}, archetype, dashboardCard?, settingsSchema?}`. `dashboardCard` e `settingsSchema` são **campos reservados tipados, sem consumidores na fatia 1** (consumidores: spec da home/Onda 2b e configurações por collection).
 3. **Taxonomia como tipo do registro:** `archetype ∈ {coded_fixed, coded_user_fields, coded_integration, custom_container}` — registra em código a taxonomia do FR-1.2.
 4. **Navegação derivada:** Sidebar, BottomNav e as rotas de collection do router são geradas por map puro sobre o registro. **Aceite da fatia 1: app pixel-idêntico** antes e depois. **DoD estrutural:** collection nova = pasta da feature + **UMA** entrada no registro.
+
+   > **Nota as-built (Onda 2a — Épico 13, AD-29):** os consumidores da navegação derivada passaram a ser as três superfícies do shell novo (`ShellSidebar`, `ShellBottomNav`, `ShellNavigationSheet`), todas lendo a **mesma** derivação pura `app/layout/shell/shellDestinations.ts` (a `Sidebar`/`BottomNav` legadas seguem intocadas como rota de rollback). O **DoD estrutural desta AD virou teste executável** na Story 13.4: uma collection avulsa inédita injetada no registro aparece nas três superfícies, na posição ditada por `nav.order`, sem ícone e sem crash (`ST-08` do checklist de paridade) — as avulsas deixaram de ser escolhidas por `id` hardcoded. **Assimetria conhecida e deliberada:** o campo `icon` da entrada continua sendo um `SvgIconComponent` **MUI** (consumidor legado); o chrome novo resolve o ícone por um **catálogo Phosphor fechado** keyado pelo `id` da collection, com degradação sem ícone para chave desconhecida. A unificação (`icon_key` no backend) é a Story 16.2.
 5. **O núcleo BuJo fica FORA do registro** (FR-1.1 — não-gateável por construção): Daily/Weekly/Monthly/Future, migrações, recorrentes, arquivo e Brain Dump permanecem com rotas/navegação próprias no router/layout. O registro contém só collections.
 6. **Flags de ativação: a fatia 1 não tem flag** — todas as collections existentes ficam implicitamente ativas. A **granularidade da flag (espaço × usuário) é deferida ao desenho do Épico 10** (FR-1.6); o manifest é agnóstico a ela por construção: a ativação futura será uma consulta separada (server state do cardápio) que **filtra** o registro estático, nunca um campo dentro dele.
 7. **Backend:** nenhum modelo na fatia 1. O paralelo backend do manifest (catálogo de métricas de Análises) nasce só na fase a de Análises (AD-25, item 2).
@@ -1245,6 +1248,30 @@ ritual_decisions (
 - *Dois meses pulados:* materializar e planejar um ciclo por vez, sequencialmente — sem lote, sem fechamento automático.
 
 **Impacto em AD-05/AD-09:** a filosofia "fechamento computado, nunca armazenado" de `services/archive.py` é **substituída por estado explícito para o regime operacional** (os gates dos spines exigem estado persistido); a derivação por query permanece como regra para **filas** (AD-09 intacta) e como fallback read-only do Arquivo para ciclos legados `NULL`. Chaves semânticas de AD-05 (`week_start` segunda, `month_first` dia 1) inalteradas.
+
+---
+
+### AD-29 — Coexistência do design system: shell novo por rota + camada de tokens `--ds-*` sem repintar o legado (Onda 2a — Épico 13)
+
+**Contexto:** o `migration-plan.md` (§Artefatos downstream, item 2) exige que a arquitetura registre a estratégia de **coexistência, theming, rollout/rollback e teste visual** da migração de design system. A Onda 2a trocou o **chrome de todas as 22 rotas autenticadas** enquanto **todas** as superfícies internas continuam legadas até suas ondas (3–5), e prod permanece no sistema atual até ≈Épico 18. Esta AD registra o as-built entregue pelas Stories 13.1–13.4; não introduz decisão nova.
+
+**Decisões:**
+
+1. **Coexistência é por rota, declarativa e em dados puros.** `frontend/src/app/layout/shell/shellRouting.ts` mapeia cada rota autenticada para `{ routeId, shell: 'new' | 'legacy', surfaceMigrated: boolean }` — **sem hooks, sem TanStack Query, sem env, sem side effects**, mesma disciplina do registro da AD-17 e pelo mesmo motivo: server state no chrome obrigaria mocks de Query nos 3 testes compartilhados (`AppLayout`/`router`/`RouteAnnouncer`). `ProtectedLayout` lê a entrada da rota ativa via `useMatches()` e monta `ShellLayout` ou o `AppLayout` legado. **Rollback = trocar uma palavra numa linha.** Estado atual: 22 entradas `'new'`.
+2. **Sem toggle Legado/Moderno e sem feature flag.** A escolha é por rota, não por preferência de usuário nem por env — rejeitado explicitamente no gate de UX 13.0.
+3. **Theming por camada nova, não por reescrita de `theme.ts`.** `frontend/src/shared/design/tokens.ts` (dados puros) exporta os tokens estruturais e os papéis semânticos de cor, aplicados como **CSS custom properties `--ds-*` na raiz do shell**. Motivo: `theme.ts` é a paleta do sistema **legado**, consumida por ~20 superfícies não migradas — repintá-la agora as repintaria todas de uma vez e contradiria o seam ("esta área ainda usa a versão anterior"). Um `ThemeProvider` aninhado **não** serviria: vazaria a paleta nova para todo o conteúdo legado por herança de contexto. CSS vars só afetam quem as lê. **A troca global de tema é aceitável na consolidação (Épico 18), não antes.**
+4. **Quatro famílias cromáticas tipadas, uma wirada.** O tipo cobre `{família}-{modo}-{papel}` para Mineral, Horizonte Azul, Bosque Sálvia e Ameixa Editorial (× Light/Dark); só **Mineral** existe em runtime e a função de resolução **falha alto** para as outras. O seletor de aparência com persistência por conta é a Story 18.1.
+5. **Seam legado explícito.** Enquanto `surfaceMigrated === false`, o shell renderiza uma faixa editorial persistente no início do conteúdo (`aside`, landmark `complementary` — conteúdo solto fora de landmark reprova a regra `region` do axe), sem toggle, sem botão de dispensar e sem `role="alert"`. Ela desaparece rota a rota conforme cada onda migra sua superfície.
+6. **Fronteiras:** `app/layout/shell/` é **chrome com dono** (pode importar `features/`, `app/collections/registry`, `shared/`); `shared/design/tokens.ts` é **primitivo sem dono** e não importa `app/`/`features/` (regra de boundary do ESLint, §7.2). O chrome novo **não** consome TanStack Query diretamente: contagem entra encapsulada no `BrainDumpBadge` e a captura pelo `BrainDumpCaptureSheet`, ambos via barrel de `features/braindump`.
+7. **Teste visual: paridade medida por asserts semânticos e geométricos, não por screenshot.** Regressão visual automatizada **não** foi introduzida (divergência consciente `DIV-14` contra o item 9 do UX-DR30): o Playwright não roda no CI (§7.4), então baselines de imagem locais seriam custo sem gate. O substituto é uma checklist enumerada de paridade com evidência `arquivo::nome do teste` por item, mais o gate axe real por **faixa × rota × estado**.
+8. **Piso de acessibilidade com um waiver de produto explícito:** WCAG 2.2 AA é gate do chrome, **exceto `prefers-reduced-motion`**, conscientemente dispensado para o App Shell por decisão do dono (2026-07-24). É **waiver**, não dívida e não item deferido; registrado em `A11Y-07` do checklist de paridade. Os contratos de UX (`DESIGN.md`/`EXPERIENCE.md`) ainda precisam absorvê-lo pelo rito `bmad-ux`.
+
+**Sem impacto de schema. Sem impacto de backend.** A Onda 2a é 100% frontend.
+
+**Casos-âncora:**
+- *Migrar uma superfície (Ondas 3–5):* trocar `surfaceMigrated` para `true` naquela rota ⇒ o seam some só ali; nada mais no chrome muda.
+- *Rollback de uma superfície em dev:* `shell: 'legacy'` naquela entrada ⇒ a rota volta a montar o `AppLayout` legado, que nunca foi tocado. **Rollback de prod = não promover `dev → main`.**
+- *Consolidação (Épico 18):* com todas as superfícies migradas, `theme.ts` é substituído globalmente, `@mui/icons-material` e os componentes legados de chrome são removidos, e `shellRouting.ts` perde a razão de existir.
 
 ---
 
@@ -1663,6 +1690,7 @@ hmmb-bujo/
 - **Testes:** `core/tests/test_isolation.py` testa o `TenantManager` genérico (incl. fail-closed); o isolamento por-app é validado por uma **fixture parametrizada compartilhada** no `conftest.py` (não copy-paste de `test_isolation.py` por app). `factory_boy` por app; toda factory tenant declara `user = SubFactory(UserFactory)`.
 - **CI (`.github/workflows/ci.yml`):** `ruff` + `pytest` (backend) + **import-linter** (regra de porta do `core`) + guardrail de tenant (AD-12) + diff de `types.gen.ts`; `tsc` + ESLint (incl. regra de boundary de features) + `vite build` (frontend). **Decisão de escopo (Story 1.1, revisitada e mantida na Story 2.4):** Vitest **não** roda no CI — os testes de frontend (incl. regressão de acessibilidade via `jest-axe`) são a rede de segurança do desenvolvedor local e do code-review, não um gate de pipeline.
 - **Deploy:** Railway como alvo definido; estrutura preserva disciplina 12-factor/env. Migrations no release; frontend como estáticos/CDN. Branch Neon por ambiente; nada assume estado de banco no boot.
+- **E2E e gate de acessibilidade em browser real (as-built desde a Onda 2a — Épico 13):** `@playwright/test` roda contra servidores reais declarados em `frontend/playwright.config.ts` — frontend em `npm run dev -- --mode e2e` (porta **5173**, lê `frontend/.env.e2e`, ignorando `.env.development*`) e backend Django em **8000** sob `config.settings.e2e`. O config fixa `workers: 1` e `expect.timeout: 10_000` como default (contenção/cold-start da branch Neon `e2e` — não depender de lembrar a flag). **Gate de a11y:** `@axe-core/playwright` via `frontend/e2e/axeHelper.ts`, com as tags `wcag2a/2aa/21a/21aa/22aa` e **sem nenhum `disableRules` no repositório** — `jest-axe` (jsdom) não computa layout nem cor, então `color-contrast`, foco encoberto e portais só são medidos aqui; a matriz do shell cobre faixa × rota × estado. **Coletores fora do gate:** `e2e/tools/` guarda execuções de diagnóstico (hoje o inventário de a11y do conteúdo legado), excluídas da suíte por `testIgnore: ['**/tools/**']` e rodadas sob demanda com `playwright.inventory.config.ts` — o padrão é **config própria em vez de teste permanentemente `skip`ado** (a suíte não tem nenhum `skip`/`fixme`). Playwright, como o Vitest, **não** roda no CI: a rede é execução local + code review. Runbook de banco e workarounds: `docs/e2e-neon-reset.md`.
 
 ### 7.5 Extensões de Estrutura — Ciclo Pós-MVP (CC 2026-07-22)
 
@@ -1686,11 +1714,14 @@ _Delta sobre §7.1, na onda/tier em que cada peça entra (ordem mestre do propos
 - Env novas: `AI_KEY_ENCRYPTION_KEY` (AD-24); endpoint/bucket/credenciais R2 de mídia (AD-27); TTL de sync do foodLog (AD-23).
 
 **Frontend:**
-- `src/app/collections/registry.ts` — manifest estático de collections, **dados puros** (AD-17); consumido por router/Sidebar/BottomNav.
+- `src/app/collections/registry.ts` — manifest estático de collections, **dados puros** (AD-17); consumido pelo router e pelas superfícies de navegação.
+- **`src/shared/design/tokens.ts`** (Onda 2a, AD-29) — camada de tokens do design system novo: **dados puros**, sem React/MUI; estruturais + papéis semânticos de cor, aplicados como CSS custom properties **`--ds-*`** na raiz do shell. Vive em `shared/` porque os consumidores vão além do chrome (Ondas 3–5 e módulos futuros). **`theme.ts` permanece intocado** até a consolidação (Épico 18).
+- **`src/app/layout/shell/`** (Onda 2a, AD-29) — chrome do sistema novo, **com dono**: `ShellLayout` (composição, atalhos `[`/`B`, FAB de captura, instância única do capture sheet), `ShellTopbar`, `SkipLink`, `LegacySeamNotice`, `ShellSidebar` (240/64px), `ShellBottomNav` (3 atalhos + Menu), `ShellNavigationSheet` (navegação completa no compact), `ShellNavDestination` (linha de destino compartilhada por sidebar e sheet), `navIcons.tsx` (catálogo Phosphor fechado, com degradação para chave desconhecida), `shellDestinations.ts` (derivação pura da ordem canônica + predicado único de destino ativo) e `shellRouting.ts` (coexistência por rota, dados puros). O `app/layout/AppLayout.tsx`, `Sidebar.tsx` e `BottomNav.tsx` **legados permanecem no repositório como rota de rollback** até o Épico 18 (§AD-29, caso-âncora de consolidação).
+- **Nenhum componente de chrome consome TanStack Query diretamente** (AD-17/AD-29): os 3 testes compartilhados (`AppLayout`/`router`/`RouteAnnouncer`) montam a árvore sem `QueryClientProvider`. A exceção prevista é o Épico 19 (C6), abaixo.
 - Novas features espelhando os apps: `features/journalling/`, `features/customcollections/`, `features/food/`, `features/analytics/`, `features/bloodpressure/`; `features/gratitude/` aposentada na Onda 5, removida na Onda 6.
 - `pages/today/` + `pages/dashboard/` compõem o componente compartilhado de tasks do dia de `features/bujo/` (AD-21) — **delta na regra do barrel:** barrels podem expor componentes de composição designados.
 - **Exceção deliberada ao "dados puros":** o grupo "Custom Collections" da sidebar usa server state para as filhas dinâmicas (AD-22 item 5) → a story de C6 adiciona mocks de Query nos 3 testes compartilhados (AppLayout/router/RouteAnnouncer).
-- Nova dependência: **Recharts** (Análises fase b, AD-25).
+- Novas dependências: **`@phosphor-icons/react`** e **`@axe-core/playwright`** (Onda 2a, AD-29 — já instaladas); **Recharts** (Análises fase b, AD-25).
 
 ---
 

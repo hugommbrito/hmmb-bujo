@@ -16,7 +16,8 @@ hmmb-bujo/
 ## Pré-requisitos
 
 - Python 3.12+ e [`uv`](https://docs.astral.sh/uv/) (gerenciador do backend)
-- Node.js LTS (≥20) e npm
+- Node.js **`^20.19` ou `>=22.12`** e npm (exigência do Vite 8; **22.15.1** é a
+  versão usada no fluxo de E2E — `nvm use 22.15.1` antes de comandos de frontend)
 
 ## Backend
 
@@ -69,7 +70,14 @@ npm run lint
 npx tsc --noEmit
 npm run test:run   # vitest (inclui regressão de acessibilidade via jest-axe)
 npm run build      # gera estáticos em frontend/dist/
+npm run test:e2e   # Playwright: sobe frontend (5173, --mode e2e) + backend (8000)
 ```
+
+O E2E inclui o gate de acessibilidade em browser real (`@axe-core/playwright`,
+WCAG 2.2 AA). Ele precisa de um banco próprio — veja o
+[runbook da branch `e2e`](docs/e2e-neon-reset.md), inclusive o fallback para
+Postgres local quando a credencial do Neon estiver indisponível. Nem o Vitest nem
+o Playwright rodam no CI (decisão registrada em `architecture.md` §7.4).
 
 ## CI
 
