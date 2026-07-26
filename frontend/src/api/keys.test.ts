@@ -75,3 +75,24 @@ describe('bujo.monthlyCycle / ritualMonthlySource / ritualMonthlyDensity (Story 
     ])
   })
 })
+
+describe('bujo.futureHorizon (Story 14.7, AC9)', () => {
+  it('vive sob o MESMO prefixo de futureLog, com discriminador próprio', () => {
+    expect(keys.bujo.futureHorizon()).toEqual(['bujo', 'futureLog', 'horizon'])
+    expect(keys.bujo.futureLog()).toEqual(['bujo', 'futureLog', 'list'])
+  })
+
+  it('a chave EXATA de futureLog() não é prefixo de futureHorizon() — a razão da AC9', () => {
+    const horizon = keys.bujo.futureHorizon() as readonly string[]
+    const list = keys.bujo.futureLog() as readonly string[]
+    const isPrefixOf = (a: readonly string[], b: readonly string[]) =>
+      a.every((segment, index) => b[index] === segment)
+
+    // O match do TanStack Query é por prefixo: invalidar `['bujo','futureLog','list']`
+    // NÃO alcança `['bujo','futureLog','horizon']`...
+    expect(isPrefixOf(list, horizon)).toBe(false)
+    // ...mas invalidar `['bujo','futureLog']` alcança as duas.
+    expect(isPrefixOf(['bujo', 'futureLog'], horizon)).toBe(true)
+    expect(isPrefixOf(['bujo', 'futureLog'], list)).toBe(true)
+  })
+})

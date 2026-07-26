@@ -13,6 +13,7 @@ import {
   mediaQueries,
   mineralDark,
   mineralLight,
+  futureBoard,
   monthlyBoard,
   monthlyPlanning,
   palettes,
@@ -148,6 +149,13 @@ describe('tokens — componentes do Épico 14 (Story 14.5)', () => {
     expect(monthlyPlanning.densityPosition).toBe('sticky')
   })
 
+  it('test_future_board_bate_com_o_design_md', () => {
+    expect(futureBoard.trailWidth).toBe('230px')
+    expect(futureBoard.horizonMonths).toBe(8)
+    expect(futureBoard.focusScroll).toBe('internal')
+    expect(futureBoard.terminalOpacity).toBe(0.58)
+  })
+
   it('test_panel_bate_com_o_design_md', () => {
     expect(panel.background).toBe('surface')
     expect(panel.borderWidth).toBe('1px')
@@ -197,6 +205,19 @@ describe('tokens — componentes do Épico 14 (Story 14.5)', () => {
     // day-scroll/density-position/terminal-opacity REUSAM as vars já emitidas
     // pela 14.5 — não há `--ds-monthly-board-day-scroll` própria.
     expect(vars['--ds-task-row-terminal-opacity']).toBe(String(monthlyBoard.terminalOpacity))
+  })
+
+  it('test_future_board_emite_so_a_trail_width_em_shellCssVariables', () => {
+    const vars = shellCssVariables('light')
+    expect(vars['--ds-future-board-trail-width']).toBe(futureBoard.trailWidth)
+    // `horizonMonths`/`focusScroll` são DADOS PUROS (AC8): não são estilo, então
+    // não viram CSS var — quem consome o 8 é lógica TS, não o CSS.
+    expect(vars['--ds-future-board-horizon-months']).toBeUndefined()
+    expect(vars['--ds-future-board-focus-scroll']).toBeUndefined()
+    // `terminalOpacity` REUSA a var da Task Row (compartilhada por design entre
+    // Weekly/Monthly/Future) — nenhuma var própria do future-board.
+    expect(vars['--ds-future-board-terminal-opacity']).toBeUndefined()
+    expect(vars['--ds-task-row-terminal-opacity']).toBe(String(futureBoard.terminalOpacity))
   })
 })
 

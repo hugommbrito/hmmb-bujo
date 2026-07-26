@@ -16,6 +16,12 @@ export const keys = {
     weeklyLog: (weekStart?: string) => ['bujo', 'weeklyLog', weekStart ?? 'current'] as const,
     monthlyLog: (monthFirst?: string) => ['bujo', 'monthlyLog', monthFirst ?? 'current'] as const,
     futureLog: () => ['bujo', 'futureLog', 'list'] as const,
+    // Story 14.7 (M08) — trilho do Future Log. IRMÃ de `futureLog()` sob o
+    // MESMO prefixo `['bujo','futureLog']` de propósito: é isso que faz uma
+    // única invalidação por prefixo alcançar as duas. Invalidar a chave EXATA
+    // `['bujo','futureLog','list']` NÃO alcança esta (o match do TanStack Query
+    // é por prefixo, e `list` não é prefixo de `horizon`) — ver AC9.
+    futureHorizon: () => ['bujo', 'futureLog', 'horizon'] as const,
     migrationQueue: () => ['bujo', 'migrationQueue', 'list'] as const,
     weeklyReviewQueue: () => ['bujo', 'weeklyReviewQueue', 'list'] as const,
     monthlyReviewQueue: () => ['bujo', 'monthlyReviewQueue', 'list'] as const,

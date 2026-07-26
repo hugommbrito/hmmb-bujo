@@ -9,7 +9,15 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 import bujo.services.recurring
-from bujo.models import Log, MonthlyLog, RecurringTaskTemplate, RitualDecision, Task, WeeklyLog
+from bujo.models import (
+    CycleStatus,
+    Log,
+    MonthlyLog,
+    RecurringTaskTemplate,
+    RitualDecision,
+    Task,
+    WeeklyLog,
+)
 from bujo.services.cycles import add_months
 from bujo.services.logs import (
     get_or_create_daily_log,
@@ -1079,6 +1087,152 @@ def test_post_monthly_log_mes_futuro_aparece_no_future_log(auth_client):
     matching = [g for g in future_response.data if g["year"] == 2030 and g["month"] == 12]
     assert len(matching) == 1
     assert [task["title"] for task in matching[0]["tasks"]] == ["Item do futuro"]
+
+
+# --- FutureLogHorizonView (Story 14.7, AC2 — M08) -----------------------------
+
+
+@pytest.mark.django_db
+def test_get_future_log_horizon_devolve_8_meses_camelCase_e_distantes(auth_client, user):
+    """AC2: contrato do endpoint NOVO — 8 slots sempre presentes (zeros
+    inclusive), `distant` só com item, tudo em camelCase pelo renderer."""
+    with tenant_context(user):
+        mes_corrente = today_for(user).replace(day=1)
+        primeiro = add_months(mes_corrente, 1)
+        distante = add_months(mes_corrente, 18)
+        TaskFactory(user=user, monthly_log=MonthlyLogFactory(user=user, month_first=primeiro))
+        TaskFactory(user=user, monthly_log=MonthlyLogFactory(user=user, month_first=distante))
+
+    response = auth_client.get("/api/bujo/future-log/horizon/")
+
+    assert response.status_code == 200
+    corpo = response.json()
+    assert set(corpo) == {"anchorMonthFirst", "horizon", "distant"}
+    assert corpo["anchorMonthFirst"] == mes_corrente.isoformat()
+    assert len(corpo["horizon"]) == 8
+    assert set(corpo["horizon"][0]) == {"monthFirst", "taskCount"}
+    assert corpo["horizon"][0] == {"monthFirst": primeiro.isoformat(), "taskCount": 1}
+    assert [slot["taskCount"] for slot in corpo["horizon"]] == [1, 0, 0, 0, 0, 0, 0, 0]
+    assert corpo["distant"] == [{"monthFirst": distante.isoformat(), "taskCount": 1}]
+
+
+@pytest.mark.django_db
+def test_get_future_log_horizon_nao_materializa_nenhum_monthly_log(auth_client, user):
+    """AC2: a leitura é pura ponta-a-ponta — o endpoint varre 8 meses inexistentes
+    e a contagem de `monthly_log` fica IGUAL (contraste com `/logs/monthly/`, que
+    materializa de propósito)."""
+    antes = MonthlyLog.all_objects.count()
+
+    response = auth_client.get("/api/bujo/future-log/horizon/")
+
+    assert response.status_code == 200
+    assert len(response.json()["horizon"]) == 8
+    assert MonthlyLog.all_objects.count() == antes
+
+
+@pytest.mark.django_db
+def test_get_future_log_horizon_todos_os_meses_sao_maiores_que_o_corrente(auth_client, user):
+    """AC2/AC4: a invariante que faz `destination:'future'` NUNCA cair no 400
+    "Use 'month' para o mês corrente" — provada, não presumida."""
+    with tenant_context(user):
+        mes_corrente = today_for(user).replace(day=1)
+        # `active` ATRASADO (regularização de meses pulados): o pior caso.
+        MonthlyLogFactory(
+            user=user, month_first=add_months(mes_corrente, -3), status=CycleStatus.ACTIVE
+        )
+        distante = add_months(mes_corrente, 14)
+        TaskFactory(user=user, monthly_log=MonthlyLogFactory(user=user, month_first=distante))
+
+    corpo = auth_client.get("/api/bujo/future-log/horizon/").json()
+
+    meses = [slot["monthFirst"] for slot in corpo["horizon"] + corpo["distant"]]
+    assert meses, "sem mês nenhum o assert abaixo seria vácuo"
+    assert all(mes > mes_corrente.isoformat() for mes in meses), meses
+
+    # E o contrato do outro lado: migrar para o 1º mês do horizonte é aceito.
+    with tenant_context(user):
+        origem = TaskFactory(user=user, log=LogFactory(user=user), status=Task.Status.PENDING)
+    migrate = auth_client.post(
+        f"/api/bujo/tasks/{origem.id}/migrate/",
+        {"destination": "future", "monthFirst": corpo["horizon"][0]["monthFirst"]},
+        format="json",
+    )
+    assert migrate.status_code == 200, migrate.data
+
+
+@pytest.mark.django_db
+def test_get_future_log_horizon_conta_origem_E_sucessor_depois_de_datear(auth_client, user):
+    """AC2/AC4: a razão de `task_count` contar raízes de QUALQUER status.
+
+    Datear no lugar deixa a origem terminal (`postponed`, é o que
+    `migrate_task` devolve para `destination:'future'`) **e** o sucessor no MESMO
+    mês. Se a contagem excluísse status terminal, o trilho diria "1 item" no mês
+    em que a coluna de foco mostra duas linhas — divergência que a AC2 proíbe
+    nominalmente. Os dois lados são medidos aqui, no mesmo teste, pelos dois
+    endpoints reais que a superfície consome.
+    """
+    with tenant_context(user):
+        mes_corrente = today_for(user).replace(day=1)
+        primeiro = add_months(mes_corrente, 1)
+        origem = TaskFactory(
+            user=user,
+            monthly_log=MonthlyLogFactory(user=user, month_first=primeiro),
+            title="Consulta com a dentista",
+            scheduled_date=None,
+            status=Task.Status.PENDING,
+        )
+
+    antes = auth_client.get("/api/bujo/future-log/horizon/").json()
+    assert antes["horizon"][0] == {"monthFirst": primeiro.isoformat(), "taskCount": 1}
+
+    migrate = auth_client.post(
+        f"/api/bujo/tasks/{origem.id}/migrate/",
+        {
+            "destination": "future",
+            "monthFirst": primeiro.isoformat(),
+            "scheduledDate": primeiro.replace(day=14).isoformat(),
+        },
+        format="json",
+    )
+    assert migrate.status_code == 200, migrate.data
+
+    depois = auth_client.get("/api/bujo/future-log/horizon/").json()
+    foco = auth_client.get(f"/api/bujo/logs/monthly/?month_first={primeiro.isoformat()}").json()
+
+    # A origem NÃO some da lista: ela vira terminal com linhagem (a seta da AC4
+    # depende exatamente disso), e o sucessor entra ao lado dela.
+    status_por_titulo = sorted(tarefa["status"] for tarefa in foco["tasks"])
+    assert status_por_titulo == ["pending", "postponed"]
+    assert depois["horizon"][0]["taskCount"] == 2
+    assert depois["horizon"][0]["taskCount"] == len(foco["tasks"]), (
+        "trilho e coluna de foco divergiram depois de datear no lugar"
+    )
+
+
+@pytest.mark.django_db
+def test_get_future_log_horizon_exige_autenticacao(api_client):
+    assert api_client.get("/api/bujo/future-log/horizon/").status_code == 401
+
+
+@pytest.mark.django_db
+def test_get_future_log_legado_permanece_com_contrato_identico(auth_client, user):
+    """AC9: o endpoint novo é ADITIVO — `/future-log/` continua devolvendo só os
+    meses com item, agrupados por `year`/`month`, sem horizonte nem vazios."""
+    with tenant_context(user):
+        mes_corrente = today_for(user).replace(day=1)
+        com_item = add_months(mes_corrente, 2)
+        MonthlyLogFactory(user=user, month_first=add_months(mes_corrente, 1))  # vazio
+        TaskFactory(
+            user=user,
+            monthly_log=MonthlyLogFactory(user=user, month_first=com_item),
+            title="Só este",
+        )
+
+    grupos = auth_client.get("/api/bujo/future-log/").json()
+
+    assert [(g["year"], g["month"]) for g in grupos] == [(com_item.year, com_item.month)]
+    assert set(grupos[0]) == {"year", "month", "tasks"}
+    assert [t["title"] for t in grupos[0]["tasks"]] == ["Só este"]
 
 
 # --- ArchiveView (AC #2) -------------------------------------------------------

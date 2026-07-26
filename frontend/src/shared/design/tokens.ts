@@ -236,6 +236,32 @@ export const monthlyBoard = {
   minCellHeight: '140px',
 } as const
 
+// ─── Componentes do sistema novo (Épico 14, Story 14.7) ──────────────────────
+// [Source: DESIGN.md#components — future-board, L383-387]
+
+/**
+ * `{components.future-board}` — trilho de 8 meses + coluna de foco (M08).
+ *
+ *   ▶ `trailWidth` é a ÚNICA CSS var emitida daqui
+ *     (`--ds-future-board-trail-width`): é a única medida de layout que o CSS
+ *     precisa ler.
+ *   ▶ `horizonMonths`/`focusScroll` ficam como DADOS PUROS, sem var — não são
+ *     estilo. `horizonMonths` é a cardinalidade do horizonte, consumida por
+ *     lógica TypeScript (e é a ÚNICA fonte do número 8 no cliente: nenhum
+ *     componente escreve o literal); `focusScroll` é descritivo, mesmo racional
+ *     já documentado para `dayScroll` em `weeklyBoard`/`monthlyBoard`.
+ *   ▶ `terminalOpacity` REUSA `--ds-task-row-terminal-opacity` (emitida a
+ *     partir de `weeklyBoard.terminalOpacity`): o valor é idêntico nas três
+ *     superfícies por design do DESIGN.md, e quem recebe a de-ênfase é a Task
+ *     Row, não a grade. Não recriar var própria.
+ */
+export const futureBoard = {
+  trailWidth: '230px',
+  horizonMonths: 8,
+  focusScroll: 'internal',
+  terminalOpacity: 0.58,
+} as const
+
 /** `{components.monthly-planning}` — rails do ritual mensal (AC5/AC8). */
 export const monthlyPlanning = {
   sourceRail: '188px',
@@ -477,6 +503,7 @@ const structuralCssVariables: Readonly<Record<string, string>> = {
   '--ds-monthly-board-min-cell-height': monthlyBoard.minCellHeight,
   '--ds-monthly-planning-source-rail': monthlyPlanning.sourceRail,
   '--ds-monthly-planning-context-rail': monthlyPlanning.contextRail,
+  '--ds-future-board-trail-width': futureBoard.trailWidth,
   '--ds-panel-padding': panel.padding,
   '--ds-chip-height': chip.height,
   ...Object.fromEntries(

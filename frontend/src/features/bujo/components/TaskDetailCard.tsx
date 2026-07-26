@@ -78,6 +78,15 @@ export interface TaskDetailCardProps {
    * campo aceita edição e o rodapé de ações (Salvar/Mover/Cancelar/Excluir)
    * some inteiro. Só "Fechar" continua disponível. */
   readonly?: boolean
+  /**
+   * `Cancelar tarefa` no rodapé (Story 14.7, AC5). Default `true` =
+   * comportamento de sempre. `false` omite SÓ esse botão, mantendo
+   * `Salvar`/`Mover tarefa`/`Excluir tarefa` e a edição de título/categoria —
+   * é o que o Future Log exige (concluir e cancelar não existem naquela
+   * superfície, mas editar sim). `readonly` NÃO serve para isso: zera o rodapé
+   * inteiro e proíbe editar.
+   */
+  allowCancel?: boolean
 }
 
 export function TaskDetailCard({
@@ -87,6 +96,7 @@ export function TaskDetailCard({
   onMove,
   predecessor = null,
   readonly = false,
+  allowCancel = true,
 }: TaskDetailCardProps) {
   const queryClient = useQueryClient()
   const updateTask = useUpdateTaskMutation()
@@ -408,7 +418,7 @@ export function TaskDetailCard({
                 Mover tarefa
               </Button>
             )}
-            {!isSubtask && (
+            {!isSubtask && allowCancel && (
               <Button
                 onClick={handleCancel}
                 sx={{

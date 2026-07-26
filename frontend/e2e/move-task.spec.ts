@@ -20,6 +20,29 @@ function nextMonthValue(): string {
   return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}`
 }
 
+const MONTH_NAMES_PT_BR = [
+  'Janeiro',
+  'Fevereiro',
+  'Março',
+  'Abril',
+  'Maio',
+  'Junho',
+  'Julho',
+  'Agosto',
+  'Setembro',
+  'Outubro',
+  'Novembro',
+  'Dezembro',
+]
+
+/** "Agosto de 2026" — o rótulo do trilho do Future Log do sistema novo
+ * (Story 14.7). Par de `nextMonthValue()`, que dá o mesmo mês em "AAAA-MM". */
+function nextMonthTitle(): string {
+  const now = new Date()
+  const next = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+  return `${MONTH_NAMES_PT_BR[next.getMonth()]} de ${next.getFullYear()}`
+}
+
 test('move do Daily Log para um dia da semana corrente via calendário; origem vira Migrada (AC1, AC2, AC3)', async ({
   page,
 }) => {
@@ -204,6 +227,13 @@ test('move de Este Mês para Futuro (mês seguinte); aparece em Futuro (AC2, AC3
   await expect(originRow.getByLabel('Adiada')).toBeVisible()
 
   await page.getByRole('button', { name: 'Futuro' }).click()
+  // Story 14.7 (AC9): o Futuro virou trilho + coluna de foco. O destino aqui é o
+  // MÊS SEGUINTE, que É o foco default (1º mês do horizonte) — o assert final
+  // continua válido —, mas a seleção explícita no trilho tira a dependência
+  // desse default: se o horizonte mudar de âncora, o teste falha por motivo
+  // certo em vez de virar falso positivo/negativo silencioso.
+  const trilhoDoFuturo = page.getByRole('navigation', { name: 'Meses do horizonte' })
+  await trilhoDoFuturo.getByRole('button', { name: new RegExp(nextMonthTitle()) }).click()
   await expect(
     page.getByTestId('task-row').filter({ hasText: 'Tarefa a adiar no futuro' }),
   ).toBeVisible()

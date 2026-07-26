@@ -8,6 +8,7 @@ import type {
   BlockingTaskSource,
   CatchUpQueue,
   DensityResponse,
+  FutureLogHorizon,
   FutureLogMonthGroup,
   Log,
   MigrationQueue,
@@ -268,6 +269,15 @@ export function useDeleteTaskMutation() {
       queryClient.invalidateQueries({ queryKey: ['bujo', 'dailyLog'] })
       queryClient.invalidateQueries({ queryKey: ['bujo', 'weeklyLog'] })
       queryClient.invalidateQueries({ queryKey: ['bujo', 'monthlyLog'] })
+      // Story 14.7 (code review, 4ª ocorrência da classe de bug da AC9): o
+      // Future Log é a PRIMEIRA superfície a fiar "Excluir tarefa" do
+      // `TaskDetailCard` sobre `monthly_log` futuros (a AC5 mantém o botão de
+      // propósito) E a exibir contagens vindas de `keys.bujo.futureHorizon()`.
+      // Sem este prefixo, excluir um item pelo detalhe atualiza a coluna de
+      // foco (`monthlyLog` acima) e deixa o TRILHO dizendo "3 itens" enquanto a
+      // lista mostra 2 — exatamente o que a AC4 proíbe ("atualiza lista,
+      // contagens do trilho e cabeçalho de foco").
+      queryClient.invalidateQueries({ queryKey: ['bujo', 'futureLog'] })
       queryClient.invalidateQueries({ queryKey: ['bujo', 'taskDensity'] })
     },
   })
@@ -304,6 +314,23 @@ export function useFutureLogQuery() {
   })
 }
 
+async function fetchFutureHorizon(): Promise<FutureLogHorizon> {
+  const response = await client.get<FutureLogHorizon>('/api/bujo/future-log/horizon/')
+  return response.data
+}
+
+/**
+ * Trilho do Future Log (Story 14.7, AC2): horizonte fixo de 8 meses — vazios
+ * inclusive — + meses distantes com item. Endpoint NOVO, aditivo: `/future-log/`
+ * (consumido por `useFutureLogQuery` acima) segue com contrato idêntico.
+ */
+export function useFutureHorizonQuery() {
+  return useQuery({
+    queryKey: keys.bujo.futureHorizon(),
+    queryFn: fetchFutureHorizon,
+  })
+}
+
 interface CreateMonthlyTaskVariables {
   monthFirst: string
   title: string
@@ -328,7 +355,15 @@ export function useCreateMonthlyTaskMutation() {
       // 14.5 — a view SEM navegação explícita usa a chave sentinel 'current',
       // que nunca bate com a data real devolvida pelo servidor (Story 14.6, AC9).
       queryClient.invalidateQueries({ queryKey: ['bujo', 'monthlyLog'] })
-      queryClient.invalidateQueries({ queryKey: keys.bujo.futureLog() })
+      // PREFIXO `['bujo','futureLog']`, não a chave exata `keys.bujo.futureLog()`
+      // (Story 14.7, AC9): a partir do M08 existe uma SEGUNDA chave sob esse
+      // prefixo — `keys.bujo.futureHorizon()` = ['bujo','futureLog','horizon'],
+      // o trilho de 8 meses. `['bujo','futureLog','list']` não é prefixo de
+      // 'horizon', então a invalidação exata deixaria o trilho e as contagens
+      // desatualizados depois de capturar num mês distante. É a TERCEIRA
+      // ocorrência desta classe de bug (14.5: useCreateWeeklyTaskMutation;
+      // 14.6: o `monthlyLog` da linha acima).
+      queryClient.invalidateQueries({ queryKey: ['bujo', 'futureLog'] })
       // A densidade reflete tarefas recém-criadas — invalidação por prefixo
       // alcança o sentinel 'current' e qualquer mês (Story 11.3, Task 4.4).
       queryClient.invalidateQueries({ queryKey: ['bujo', 'taskDensity'] })
@@ -443,10 +478,20 @@ async function fetchRecurringTemplates(
   return response.data
 }
 
-export function useRecurringTemplatesQuery(params?: RecurringTemplatesParams) {
+// `enabled` (Story 14.7): mesmo molde de `useMonthlyLogQuery`/`useTaskDensityQuery`
+// — o Future Log só sabe qual ANO consultar depois que o horizonte responde (o
+// ano vem do âncora do servidor, nunca de `new Date()`), e sem o guard a query
+// dispararia uma vez com `unplacedYear: undefined` (chave diferente, resposta
+// inútil) antes de disparar de novo com o ano certo. Default `true` = todos os
+// consumidores anteriores intocados.
+export function useRecurringTemplatesQuery(
+  params?: RecurringTemplatesParams,
+  options?: { enabled?: boolean },
+) {
   return useQuery({
     queryKey: keys.bujo.recurringTemplates(params),
     queryFn: () => fetchRecurringTemplates(params),
+    enabled: options?.enabled ?? true,
   })
 }
 
@@ -535,8 +580,10 @@ export function usePlaceRecurringTemplateMutation() {
       // Story 11.4: colocar um anual do Future Log pode cair num mês futuro
       // (diferente de Weekly/MonthlyPage, que só colocam no período corrente
       // já visível) — sem isso, o grupo novo não aparece no Future Log sem
-      // refresh manual da página.
-      queryClient.invalidateQueries({ queryKey: keys.bujo.futureLog() })
+      // refresh manual da página. PREFIXO desde a 14.7 (AC9): alcança também
+      // `keys.bujo.futureHorizon()`, sem o qual alocar um anual num mês do
+      // horizonte não atualiza a contagem daquele mês no trilho.
+      queryClient.invalidateQueries({ queryKey: ['bujo', 'futureLog'] })
       // Colocar um recorrente cria uma Task no período → a densidade muda.
       // Prefixo alcança o sentinel 'current' e qualquer mês (Story 11.3).
       queryClient.invalidateQueries({ queryKey: ['bujo', 'taskDensity'] })
@@ -610,6 +657,12 @@ export function invalidateRitualQueries(queryClient: QueryClient) {
   queryClient.invalidateQueries({ queryKey: keys.bujo.monthlyCycle() })
   queryClient.invalidateQueries({ queryKey: ['bujo', 'ritualMonthlySource'] })
   queryClient.invalidateQueries({ queryKey: ['bujo', 'ritualMonthlyDensity'] })
+  // Story 14.7, AC9: toda decisão do ritual MENSAL que adia um item para o
+  // Future Log (`destination:'future'`) muda o conteúdo E as contagens do
+  // trilho do M08. Sem este prefixo, a superfície nova fica com trilho e
+  // cabeçalho de foco desatualizados depois de qualquer uma das 4 mutações que
+  // chamam esta função em `onSettled`.
+  queryClient.invalidateQueries({ queryKey: ['bujo', 'futureLog'] })
   queryClient.invalidateQueries({ queryKey: ['bujo', 'taskDensity'] })
 }
 

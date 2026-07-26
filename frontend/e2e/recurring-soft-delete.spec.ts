@@ -237,11 +237,14 @@ test('Future Log real: o anual excluído sai de "Anuais pendentes" (consumidor d
   await expect(page.getByLabel('Futuro')).toBeVisible()
 
   // Escopado ao container da seção (não à página): o Future Log lista instâncias
-  // colocadas com o mesmo texto em outros grupos, então `getByText` solto daria
+  // colocadas com o mesmo texto em outros meses, então `getByText` solto daria
   // falso positivo — mesma precaução de `future-log-annual.spec.ts`.
-  const secaoAnuaisPendentes = page
-    .getByText(`Anuais pendentes de ${anoCorrente}`)
-    .locator('xpath=..')
+  // Story 14.7 (AC6/AC9): o container passou a ser `role="region"` com nome
+  // próprio; a TESE deste teste (o excluído sai da elegibilidade sem levar a
+  // seção embora) fica literalmente preservada.
+  const secaoAnuaisPendentes = page.getByRole('region', {
+    name: `Anuais pendentes de ${anoCorrente}`,
+  })
   await expect(secaoAnuaisPendentes).toBeVisible({ timeout: 10_000 })
   await expect(secaoAnuaisPendentes.getByText('Balanço anual', { exact: true })).toBeVisible()
   await expect(secaoAnuaisPendentes.getByText('Evento extinto', { exact: true })).toBeVisible()
@@ -260,6 +263,15 @@ test('Future Log real: o anual excluído sai de "Anuais pendentes" (consumidor d
   expect(consoleErrors).toEqual([])
 })
 
+// Achado do passo de QA da Story 14.7 (registro, não conserto — a causa raiz é
+// de outra story e a decisão é de produto): este teste FALHA em
+// `getByText('Revisar finanças — Semanal')` porque a seção de placement de
+// recorrentes vive em `WeeklyPage.tsx` (legada) e `planner/week` monta o
+// `WeeklyBoardPage` desde a Story 14.5 — a superfície nova não porta a seção.
+// Mesma classe (e mesmo tratamento: manter EXECUTÁVEL, nunca deletar nem
+// `.skip`) dos 4 testes conhecidos de `move-task.spec.ts`. A tese sobre o
+// Future Log — o anual excluído sai de "Anuais pendentes" — está no teste
+// ACIMA, que a 14.7 atualizou e que passa.
 test('AC5 no banco real: a instância alocada sobrevive à exclusão do template, que sai da seção de placement até com "Mostrar já colocados"', async ({
   page,
   email,

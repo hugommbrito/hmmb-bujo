@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   addDaysIso,
+  addMonthsIso,
   formatDayLabel,
   isoOf,
   isoWeekNumber,
@@ -208,3 +209,21 @@ function weekdayIndexOfIso(iso: string): number {
   const [year, month, day] = iso.split('-').map(Number)
   return (new Date(year, month - 1, day).getDay() + 6) % 7
 }
+
+describe('addMonthsIso (Story 14.7)', () => {
+  it('avança e retrocede meses normalizando ao dia 1', () => {
+    expect(addMonthsIso('2026-07-01', 1)).toBe('2026-08-01')
+    expect(addMonthsIso('2026-07-01', 8)).toBe('2027-03-01')
+    expect(addMonthsIso('2026-07-01', -1)).toBe('2026-06-01')
+  })
+
+  it('vira o ano nos dois sentidos', () => {
+    expect(addMonthsIso('2026-12-01', 1)).toBe('2027-01-01')
+    expect(addMonthsIso('2027-01-01', -1)).toBe('2026-12-01')
+    expect(addMonthsIso('2026-01-01', -13)).toBe('2024-12-01')
+  })
+
+  it('delta 0 é identidade', () => {
+    expect(addMonthsIso('2026-02-01', 0)).toBe('2026-02-01')
+  })
+})

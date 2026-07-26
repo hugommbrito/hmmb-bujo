@@ -59,7 +59,9 @@ export const shellRoutes: readonly ShellRouteEntry[] = [
   // desaparece também nessas duas rotas.
   { routeId: 'planner/month', shell: 'new', surfaceMigrated: true },
   { routeId: 'planner/month/planning', shell: 'new', surfaceMigrated: true },
-  { routeId: 'planner/future', shell: 'new', surfaceMigrated: false },
+  // Story 14.7: TERCEIRA superfície interna migrada (Future Log / M08) — o
+  // `LegacySeamNotice` desaparece também nesta rota.
+  { routeId: 'planner/future', shell: 'new', surfaceMigrated: true },
   { routeId: 'planner/recurring', shell: 'new', surfaceMigrated: false },
   { routeId: 'brain-dump', shell: 'new', surfaceMigrated: false },
   { routeId: 'archive', shell: 'new', surfaceMigrated: false },

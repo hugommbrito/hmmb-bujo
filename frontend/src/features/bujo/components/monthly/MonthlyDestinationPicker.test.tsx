@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react'
+import { axe } from 'jest-axe'
 import { describe, expect, it, vi } from 'vitest'
 
 import { MonthlyDestinationPicker } from './MonthlyDestinationPicker'
@@ -74,5 +75,147 @@ describe('MonthlyDestinationPicker — calendário + entrada direta (AC5)', () =
       />,
     )
     expect(screen.getByRole('alert')).toHaveTextContent('Não foi possível migrar a tarefa.')
+  })
+})
+
+describe('MonthlyDestinationPicker — extensões aditivas do M08 (Story 14.7, AC4/AC5)', () => {
+  const HORIZONTE = ['2026-08-01', '2026-09-01', '2027-06-01']
+
+  it('sem selectableMonths NÃO existe aba "Outro mês" (composição da 14.6 intacta)', () => {
+    render(<MonthlyDestinationPicker targetMonthFirst="2026-08-01" onConfirm={vi.fn()} onClose={vi.fn()} />)
+    expect(screen.queryByRole('tablist')).not.toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: 'Outro mês' })).not.toBeInTheDocument()
+  })
+
+  it('com selectableMonths a aba "Outro mês" lista os meses e retarga a grade', () => {
+    const onTargetMonthChange = vi.fn()
+    render(
+      <MonthlyDestinationPicker
+        targetMonthFirst="2026-08-01"
+        selectableMonths={HORIZONTE}
+        onTargetMonthChange={onTargetMonthChange}
+        onConfirm={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+    fireEvent.click(screen.getByRole('tab', { name: 'Outro mês' }))
+    expect(screen.getAllByRole('option')).toHaveLength(3)
+    fireEvent.click(screen.getByRole('option', { name: 'Setembro de 2026' }))
+    expect(onTargetMonthChange).toHaveBeenCalledWith('2026-09-01')
+  })
+
+  it('a aba "Outro mês" esconde a grade de dias e "Dia em <mês>" a traz de volta', () => {
+    render(
+      <MonthlyDestinationPicker
+        targetMonthFirst="2026-08-01"
+        selectableMonths={HORIZONTE}
+        onTargetMonthChange={vi.fn()}
+        onConfirm={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+    expect(screen.getAllByRole('gridcell')).toHaveLength(31)
+    fireEvent.click(screen.getByRole('tab', { name: 'Outro mês' }))
+    expect(screen.queryByRole('gridcell')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('tab', { name: 'Dia em agosto' }))
+    expect(screen.getAllByRole('gridcell')).toHaveLength(31)
+  })
+
+  it('trocar o mês-alvo DESCARTA o dia armado (o componente não remonta)', () => {
+    const { rerender } = render(
+      <MonthlyDestinationPicker
+        targetMonthFirst="2026-08-01"
+        selectableMonths={HORIZONTE}
+        onTargetMonthChange={vi.fn()}
+        onConfirm={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+    fireEvent.click(screen.getByRole('gridcell', { name: '31' }))
+    expect(screen.getByLabelText('Número do dia')).toHaveValue(31)
+
+    rerender(
+      <MonthlyDestinationPicker
+        targetMonthFirst="2026-09-01"
+        selectableMonths={HORIZONTE}
+        onTargetMonthChange={vi.fn()}
+        onConfirm={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+    // Setembro tem 30 dias: um "31" sobrevivente seria um destino impossível.
+    expect(screen.getByLabelText('Número do dia')).toHaveValue(null)
+    expect(screen.getAllByRole('gridcell')).toHaveLength(30)
+  })
+
+  it('confirmLabelFor nomeia o PRÓPRIO botão por ato — nunca um "Confirmar" genérico', () => {
+    const onConfirm = vi.fn()
+    render(
+      <MonthlyDestinationPicker
+        targetMonthFirst="2026-08-01"
+        confirmLabelFor={({ scheduledDate }) =>
+          scheduledDate ? `Datar em ${Number(scheduledDate.slice(8))} de agosto` : 'Manter sem dia definido'
+        }
+        onConfirm={onConfirm}
+        onClose={vi.fn()}
+      />,
+    )
+    fireEvent.click(screen.getByRole('gridcell', { name: '14' }))
+    expect(screen.queryByRole('button', { name: 'Confirmar' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Datar em 14 de agosto' }))
+    expect(onConfirm).toHaveBeenCalledWith('2026-08-14')
+  })
+
+  it('confirmLabelFor nomeia também o ato "manter sem dia"', () => {
+    const onConfirm = vi.fn()
+    render(
+      <MonthlyDestinationPicker
+        targetMonthFirst="2026-08-01"
+        confirmLabelFor={({ scheduledDate }) => (scheduledDate ? 'Datar' : 'Manter sem dia definido')}
+        onConfirm={onConfirm}
+        onClose={vi.fn()}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Sem dia definido' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Manter sem dia definido' }))
+    expect(onConfirm).toHaveBeenCalledWith(null)
+  })
+})
+
+// A 14.6 nunca mediu este componente ABERTO e deixou passar um
+// `aria-required-children` CRITICAL (`role="grid"` sem `role="row"`), que só o
+// gate de 5 faixas da 14.7 pegou — no browser, tarde. Estes dois casos põem a
+// mesma medição no ciclo rápido, e cobrem as DUAS composições: a grade de dias
+// (14.6) e a estrutura ARIA que a 14.7 acrescentou (`tablist`/`tab` +
+// `listbox`/`option`), que nenhuma faixa de axe media na aba aberta.
+describe('MonthlyDestinationPicker — piso de acessibilidade nas duas abas (code review 14.7)', () => {
+  const HORIZONTE = ['2026-08-01', '2026-09-01', '2027-06-01']
+
+  it('não tem violações de axe na grade de dias', async () => {
+    const { container } = render(
+      <MonthlyDestinationPicker
+        targetMonthFirst="2026-08-01"
+        selectableMonths={HORIZONTE}
+        onTargetMonthChange={vi.fn()}
+        onConfirm={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+    expect(await axe(container)).toHaveNoViolations()
+  })
+
+  it('não tem violações de axe na aba "Outro mês" aberta', async () => {
+    const { container } = render(
+      <MonthlyDestinationPicker
+        targetMonthFirst="2026-08-01"
+        selectableMonths={HORIZONTE}
+        onTargetMonthChange={vi.fn()}
+        onConfirm={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+    fireEvent.click(screen.getByRole('tab', { name: 'Outro mês' }))
+    expect(screen.getByRole('listbox', { name: 'Meses de destino' })).toBeInTheDocument()
+    expect(await axe(container)).toHaveNoViolations()
   })
 })

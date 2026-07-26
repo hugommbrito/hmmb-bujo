@@ -36,6 +36,7 @@ from bujo.services.cycles import (
     weekly_cycle_readiness,
 )
 from bujo.services.density import compute_month_density, compute_week_density
+from bujo.services.future_log import HORIZON_MONTHS, future_log_horizon
 from bujo.services.logs import (
     get_or_create_daily_log,
     get_or_create_monthly_log,
@@ -4738,3 +4739,175 @@ def test_fila_unificada_sucessor_de_qualquer_destino_nao_reentra_na_fila(user, d
         )
         assert [secao["source_id"] for secao in fila["sections"]] == ["month", "week", "day"]
         assert mes_anterior < hoje.replace(day=1)  # sanidade da fronteira usada acima
+
+
+# --- horizonte do Future Log (Story 14.7, AC2 — M08) --------------------------
+
+
+def _mes_seguinte_ao(mes_first: date, passos: int = 1) -> date:
+    """Mesma aritmética de `add_months`, escrita à mão para o teste não herdar o
+    eventual bug da função sob teste."""
+    total = (mes_first.year * 12 + mes_first.month - 1) + passos
+    return date(total // 12, total % 12 + 1, 1)
+
+
+@pytest.mark.django_db
+def test_horizonte_tem_8_slots_sempre_presentes_mesmo_sem_nenhum_log(user):
+    """AC2: o horizonte é SCAFFOLDING, não resultado de query — os 8 meses
+    existem inclusive com `task_count: 0` e sem nenhuma linha em `monthly_log`."""
+    with tenant_context(user):
+        mes_corrente = today_for(user).replace(day=1)
+
+        horizonte = future_log_horizon(user=user)
+
+        assert horizonte["anchor_month_first"] == mes_corrente
+        assert len(horizonte["horizon"]) == HORIZON_MONTHS
+        assert [slot["month_first"] for slot in horizonte["horizon"]] == [
+            _mes_seguinte_ao(mes_corrente, passo) for passo in range(1, HORIZON_MONTHS + 1)
+        ]
+        assert [slot["task_count"] for slot in horizonte["horizon"]] == [0] * HORIZON_MONTHS
+        assert horizonte["distant"] == []
+
+
+@pytest.mark.django_db
+def test_horizonte_sem_active_ancora_no_mes_corrente_e_conta_raizes(user):
+    """AC2: sem nenhum `monthly_log` ACTIVE o âncora cai no mês corrente, e a
+    contagem é de tarefas RAIZ de qualquer status (mesma regra de `FutureLogView`)."""
+    with tenant_context(user):
+        mes_corrente = today_for(user).replace(day=1)
+        primeiro = _mes_seguinte_ao(mes_corrente, 1)
+        log = MonthlyLogFactory(user=user, month_first=primeiro)
+        raiz_pendente = TaskFactory(user=user, monthly_log=log, status=Task.Status.PENDING)
+        TaskFactory(user=user, monthly_log=log, status=Task.Status.POSTPONED)
+        TaskFactory(user=user, monthly_log=log, status=Task.Status.COMPLETED)
+        # Subtarefa NÃO conta (parent_task__isnull=True).
+        TaskFactory(user=user, monthly_log=log, parent_task=raiz_pendente)
+
+        horizonte = future_log_horizon(user=user)
+
+        assert horizonte["anchor_month_first"] == mes_corrente
+        assert horizonte["horizon"][0] == {"month_first": primeiro, "task_count": 3}
+
+
+@pytest.mark.django_db
+def test_horizonte_com_active_no_mes_corrente_ancora_no_active(user):
+    """AC2: com o `active` no mês corrente, `max(...)` devolve o próprio mês
+    corrente — o horizonte começa no mês seguinte (`+1`), nunca no corrente."""
+    with tenant_context(user):
+        mes_corrente = today_for(user).replace(day=1)
+        MonthlyLogFactory(user=user, month_first=mes_corrente, status=CycleStatus.ACTIVE)
+
+        horizonte = future_log_horizon(user=user)
+
+        assert horizonte["anchor_month_first"] == mes_corrente
+        assert horizonte["horizon"][0]["month_first"] == _mes_seguinte_ao(mes_corrente, 1)
+
+
+@pytest.mark.django_db
+def test_horizonte_com_active_ANTERIOR_ao_corrente_usa_o_piso_do_mes_corrente(user):
+    """AC2 — o `max(...)` é PISO, nunca teto (o caso que dissolve o bug CRÍTICO
+    da 14.6).
+
+    Durante a regularização de meses pulados o `active` fica ATRÁS do mês
+    corrente (`test_ciclo_monthly_dois_meses_pulados_exigem_materializacao_
+    sequencial` prova que esse estado é alcançável). Sem o piso, o horizonte
+    começaria num mês `<=` corrente — e `TaskMigrateView` responde 400
+    ("Use 'month' para o mês corrente") para todo `destination:'future'` com
+    `month_first <= mês corrente`, quebrando datear/mover na superfície inteira.
+    """
+    with tenant_context(user):
+        mes_corrente = today_for(user).replace(day=1)
+        active_atrasado = _mes_seguinte_ao(mes_corrente, -2)
+        MonthlyLogFactory(user=user, month_first=active_atrasado, status=CycleStatus.ACTIVE)
+
+        horizonte = future_log_horizon(user=user)
+
+        assert horizonte["anchor_month_first"] == mes_corrente, (
+            "o âncora recuou para o `active` atrasado — o `max(...)` virou teto"
+        )
+        # A INVARIANTE que a superfície inteira depende: todo mês exibido é
+        # estritamente MAIOR que o mês corrente.
+        assert all(slot["month_first"] > mes_corrente for slot in horizonte["horizon"])
+
+
+@pytest.mark.django_db
+def test_horizonte_distantes_so_com_item_ordenados_e_fora_do_horizonte(user):
+    """AC2: `distant` = todo mês além do 8º com `task_count > 0`, ascendente. Mês
+    distante VAZIO não entra (é o oposto da regra do horizonte, de propósito)."""
+    with tenant_context(user):
+        mes_corrente = today_for(user).replace(day=1)
+        ultimo_do_horizonte = _mes_seguinte_ao(mes_corrente, HORIZON_MONTHS)
+        distante_com_item = _mes_seguinte_ao(mes_corrente, 20)
+        distante_mais_longe = _mes_seguinte_ao(mes_corrente, 31)
+        distante_vazio = _mes_seguinte_ao(mes_corrente, 25)
+
+        # Criados fora de ordem cronológica de propósito (a ordenação é do serviço).
+        TaskFactory(
+            user=user,
+            monthly_log=MonthlyLogFactory(user=user, month_first=distante_mais_longe),
+        )
+        MonthlyLogFactory(user=user, month_first=distante_vazio)
+        log_perto = MonthlyLogFactory(user=user, month_first=distante_com_item)
+        TaskFactory(user=user, monthly_log=log_perto)
+        TaskFactory(user=user, monthly_log=log_perto)
+        # Fronteira: o 8º mês tem item e pertence ao HORIZONTE, não a `distant`.
+        TaskFactory(
+            user=user,
+            monthly_log=MonthlyLogFactory(user=user, month_first=ultimo_do_horizonte),
+        )
+
+        horizonte = future_log_horizon(user=user)
+
+        assert horizonte["distant"] == [
+            {"month_first": distante_com_item, "task_count": 2},
+            {"month_first": distante_mais_longe, "task_count": 1},
+        ]
+        assert horizonte["horizon"][-1] == {
+            "month_first": ultimo_do_horizonte,
+            "task_count": 1,
+        }
+
+
+@pytest.mark.django_db
+def test_horizonte_e_leitura_pura_sem_nenhuma_escrita(user):
+    """AC2: zero `INSERT`, zero materialização — consultar um horizonte inteiro de
+    meses inexistentes não pode criar oito `monthly_log` por requisição."""
+    with tenant_context(user):
+        antes = MonthlyLog.objects.count()
+
+        with CaptureQueriesContext(connection) as capturadas:
+            horizonte = future_log_horizon(user=user)
+
+        assert len(horizonte["horizon"]) == HORIZON_MONTHS, "o horizonte precisa ter sido varrido"
+        escritas = [
+            consulta["sql"]
+            for consulta in capturadas.captured_queries
+            if consulta["sql"].lstrip().upper().startswith(("INSERT", "UPDATE", "DELETE"))
+        ]
+        assert escritas == [], f"o horizonte escreveu no banco: {escritas}"
+        assert MonthlyLog.objects.count() == antes
+
+
+@pytest.mark.django_db
+def test_horizonte_nao_vaza_entre_tenants(user, other_user):
+    """AC2: contagem e meses distantes de OUTRO usuário não aparecem aqui."""
+    with tenant_context(other_user):
+        mes_corrente_outro = today_for(other_user).replace(day=1)
+        TaskFactory(
+            user=other_user,
+            monthly_log=MonthlyLogFactory(
+                user=other_user, month_first=_mes_seguinte_ao(mes_corrente_outro, 1)
+            ),
+        )
+        TaskFactory(
+            user=other_user,
+            monthly_log=MonthlyLogFactory(
+                user=other_user, month_first=_mes_seguinte_ao(mes_corrente_outro, 20)
+            ),
+        )
+
+    with tenant_context(user):
+        horizonte = future_log_horizon(user=user)
+
+        assert [slot["task_count"] for slot in horizonte["horizon"]] == [0] * HORIZON_MONTHS
+        assert horizonte["distant"] == []

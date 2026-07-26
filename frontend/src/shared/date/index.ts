@@ -119,6 +119,21 @@ export function lastDayOfMonth(monthFirst: string): number {
   return new Date(year, month, 0).getDate()
 }
 
+/**
+ * "AAAA-MM-01" + N meses (aceita negativo), sempre normalizado ao dia 1.
+ *
+ * Story 14.7: a função já existia COPIADA em 4 arquivos de produção
+ * (`MonthlyPage`, `MonthlyBoardPage`, `MonthlyPlanningPage`,
+ * `GratitudeHistorySurface`). Esta story não refatora os 4 consumidores
+ * existentes (fora de escopo) — só para de criar o 5º. Espelha `add_months`
+ * (`backend/bujo/services/cycles.py:73`).
+ */
+export function addMonthsIso(monthFirst: string, delta: number): string {
+  const [year, month] = monthFirst.split('-').map(Number)
+  const date = new Date(year, month - 1 + delta, 1)
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-01`
+}
+
 export interface MonthGridDay {
   iso: string
   /** `false` para dias fora do mês-alvo (início/fim da grade) — AC1: não

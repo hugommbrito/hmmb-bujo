@@ -333,6 +333,23 @@ class FutureLogMonthGroupSerializer(serializers.Serializer):
     tasks = TaskSerializer(many=True)
 
 
+# --- horizonte do Future Log (Story 14.7, AC2 — M08) --------------------------
+# `Serializer` puros (projeção do dict de `services/future_log.future_log_horizon`),
+# molde dos serializers de fila da 14.3. Aditivos: `FutureLogMonthGroupSerializer`
+# acima e o contrato de `GET /api/bujo/future-log/` seguem IDÊNTICOS.
+
+
+class FutureLogMonthCountSerializer(serializers.Serializer):
+    month_first = serializers.DateField()
+    task_count = serializers.IntegerField()
+
+
+class FutureLogHorizonSerializer(serializers.Serializer):
+    anchor_month_first = serializers.DateField()
+    horizon = FutureLogMonthCountSerializer(many=True)
+    distant = FutureLogMonthCountSerializer(many=True)
+
+
 class MigrationQueueSerializer(serializers.Serializer):
     log_date = serializers.DateField()
     tasks = TaskSerializer(many=True)

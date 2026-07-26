@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { axe } from 'jest-axe'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -322,5 +323,206 @@ describe('TaskRowBase — navegação de linhagem (Task 3)', () => {
 
     const arrow = screen.getByRole('button', { name: /o sucessor está em outro período/i })
     expect(arrow).toHaveAttribute('aria-disabled', 'true')
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Story 14.7 (M08) — as duas extensões aditivas da AC5
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('TaskRowBase — allowStatusCycle (Story 14.7, AC5 extensão a)', () => {
+  it('allowStatusCycle={false} degrada o ícone para role="img" (concluir/cancelar fora do Future Log)', () => {
+    const onTransition = vi.fn()
+    render(
+      <TaskRowBase
+        task={baseTask({ status: 'pending' })}
+        cycleStatus="active"
+        allowStatusCycle={false}
+        onTransition={onTransition}
+      />,
+    )
+    expect(screen.queryByRole('button', { name: 'Pendente' })).not.toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'Pendente' })).toBeInTheDocument()
+  })
+
+  it('caso irmão: sem a prop (default) o mesmo status É controle clicável', () => {
+    const onTransition = vi.fn()
+    render(
+      <TaskRowBase task={baseTask({ status: 'pending' })} cycleStatus="active" onTransition={onTransition} />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Pendente' }))
+    expect(onTransition).toHaveBeenCalledWith('task-1', 'started')
+  })
+
+  it('allowStatusCycle={false} PRESERVA o trailingSlot (é por isso que variant="readonly" não serve)', () => {
+    render(
+      <TaskRowBase
+        task={baseTask()}
+        cycleStatus="active"
+        allowStatusCycle={false}
+        trailingSlot={<button type="button">Definir dia</button>}
+      />,
+    )
+    expect(screen.getByRole('button', { name: 'Definir dia' })).toBeInTheDocument()
+  })
+
+  it('allowStatusCycle={false} NÃO desliga o controle de linhagem (navegação, não mutação)', async () => {
+    render(
+      <TaskRowBase
+        task={baseTask({ status: 'postponed', migratedToTask: 'em-outro-periodo' })}
+        cycleStatus="active"
+        allowStatusCycle={false}
+      />,
+    )
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(screen.getByRole('button', { name: /adiada/i })).toBeInTheDocument()
+  })
+})
+
+describe('TaskRowBase — seta de linhagem sobre postponed (Story 14.7, AC4/AC5 extensão b)', () => {
+  it('postponed COM migratedToTask e sucessor no DOM: botão navega, foca e destaca', async () => {
+    vi.useFakeTimers()
+    const origem = baseTask({ id: 'origem', status: 'postponed', migratedToTask: 'sucessor' })
+    const sucessor = baseTask({ id: 'sucessor', title: 'Consulta com a dentista' })
+
+    render(
+      <>
+        <TaskRowBase task={origem} cycleStatus="active" />
+        <TaskRowBase task={sucessor} cycleStatus="active" />
+      </>,
+    )
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    const arrow = screen.getByRole('button', { name: 'Adiada — ir para o sucessor' })
+    expect(arrow).toHaveAttribute('aria-disabled', 'false')
+
+    await act(async () => {
+      fireEvent.click(arrow)
+    })
+
+    const successorRow = screen.getAllByTestId('task-row')[1]
+    expect(successorRow).toHaveStyle({ backgroundColor: 'var(--ds-info-soft)' })
+    expect(successorRow).toHaveFocus()
+
+    await act(async () => {
+      vi.advanceTimersByTime(2000)
+    })
+    expect(successorRow).not.toHaveStyle({ backgroundColor: 'var(--ds-info-soft)' })
+    vi.useRealTimers()
+  })
+
+  it('postponed COM migratedToTask e sucessor AUSENTE: aria-disabled com motivo, nunca oculta', async () => {
+    render(
+      <TaskRowBase
+        task={baseTask({ status: 'postponed', migratedToTask: 'em-outro-periodo' })}
+        cycleStatus="active"
+      />,
+    )
+    await act(async () => {
+      await Promise.resolve()
+    })
+    const arrow = screen.getByRole('button', { name: 'Adiada — O sucessor está em outro período' })
+    expect(arrow).toHaveAttribute('aria-disabled', 'true')
+  })
+
+  it('IRMÃO DE NÃO-VACUIDADE: postponed SEM migratedToTask continua role="img" mudo', () => {
+    // Estado legal da matriz `ALLOWED` (pending/started → POSTPONED direto, sem
+    // passar por `migrate_task`): sem linhagem não há para onde navegar. É a
+    // guarda por `migratedToTask` que mantém isso — e que mantém o teste
+    // pré-existente `postponed NUNCA é controle de ciclo` verde sem edição.
+    render(<TaskRowBase task={baseTask({ status: 'postponed' })} cycleStatus="active" />)
+    expect(screen.queryByRole('button', { name: /adiada/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'Adiada' })).toBeInTheDocument()
+  })
+
+  it('IRMÃO DE NÃO-VACUIDADE: cancelled COM migratedToTask segue fora do controle de linhagem', () => {
+    // `destination:'cancel'` não cria sucessor; a generalização é só para os
+    // dois status que `migrate_task` produz com linhagem (Questão aberta #7).
+    render(
+      <TaskRowBase
+        task={baseTask({ status: 'cancelled', migratedToTask: 'seja-la-o-que-for' })}
+        cycleStatus="active"
+      />,
+    )
+    expect(screen.getByRole('img', { name: 'Cancelada' })).toBeInTheDocument()
+  })
+
+  it('a seta é ALCANÇÁVEL e ACIONÁVEL por teclado — Enter e Space (AC7)', async () => {
+    // A AC7 exige "ativação por Enter/Space", e isso não sai de graça só por
+    // existir um `<button>`: `fireEvent.keyDown` não sintetiza clique nenhum,
+    // então o assert precisa do `user-event`, que reproduz o comportamento
+    // nativo do browser (Enter/Space num botão focado disparam o clique).
+    const user = userEvent.setup()
+    const origem = baseTask({ id: 'origem', status: 'postponed', migratedToTask: 'sucessor' })
+    const sucessor = baseTask({ id: 'sucessor', title: 'Consulta com a dentista' })
+
+    render(
+      <>
+        <TaskRowBase task={origem} cycleStatus="active" />
+        <TaskRowBase task={sucessor} cycleStatus="active" />
+      </>,
+    )
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    const arrow = screen.getByRole('button', { name: 'Adiada — ir para o sucessor' })
+    const successorRow = screen.getAllByTestId('task-row')[1]
+
+    // Alcançável: a seta recebe foco de teclado.
+    arrow.focus()
+    expect(arrow).toHaveFocus()
+
+    await user.keyboard('{Enter}')
+    expect(successorRow).toHaveFocus()
+
+    // E de novo por Space, a partir da seta refocada — os dois mecanismos são
+    // exigidos nominalmente pela AC, então os dois são provados separadamente.
+    arrow.focus()
+    await user.keyboard(' ')
+    expect(successorRow).toHaveFocus()
+  })
+
+  it('IRMÃ DE NÃO-VACUIDADE: a seta aria-disabled não navega quando acionada', async () => {
+    // `aria-disabled` não é `disabled`: o browser ATIVA o botão normalmente. Se
+    // o handler não guardasse a ausência do sucessor, "sucessor em outro
+    // período" viraria um clique que rouba o foco para lugar nenhum.
+    const user = userEvent.setup()
+    render(
+      <TaskRowBase
+        task={baseTask({ id: 'origem', status: 'postponed', migratedToTask: 'em-outro-periodo' })}
+        cycleStatus="active"
+      />,
+    )
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    const arrow = screen.getByRole('button', { name: 'Adiada — O sucessor está em outro período' })
+    arrow.focus()
+    await user.keyboard('{Enter}')
+
+    // O foco não escapou e a própria linha não foi destacada (não há sucessor).
+    expect(arrow).toHaveFocus()
+    expect(screen.getByTestId('task-row')).not.toHaveStyle({ backgroundColor: 'var(--ds-info-soft)' })
+  })
+
+  it('REGRESSÃO migrated: rótulo e ícone derivados do status real produzem as MESMAS strings', async () => {
+    render(
+      <TaskRowBase
+        task={baseTask({ status: 'migrated', migratedToTask: 'em-outro-periodo' })}
+        cycleStatus="active"
+      />,
+    )
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(
+      screen.getByRole('button', { name: 'Migrada — O sucessor está em outro período' }),
+    ).toBeInTheDocument()
   })
 })

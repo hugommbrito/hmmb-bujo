@@ -3,6 +3,7 @@ from django.urls import path
 from bujo.views import (
     ArchiveView,
     CatchUpQueueView,
+    FutureLogHorizonView,
     FutureLogView,
     MigrationQueueView,
     MonthlyCycleView,
@@ -44,6 +45,14 @@ urlpatterns = [
     path("logs/monthly/cycle/", MonthlyCycleView.as_view(), name="bujo-monthly-cycle"),
     path("archive/", ArchiveView.as_view(), name="bujo-archive"),
     path("future-log/", FutureLogView.as_view(), name="bujo-future-log"),
+    # Story 14.7 (AC2): trilho do M08 — horizonte fixo de 8 meses (vazios
+    # inclusive) + meses distantes com item. Aditiva: `future-log/` acima
+    # mantém contrato idêntico.
+    path(
+        "future-log/horizon/",
+        FutureLogHorizonView.as_view(),
+        name="bujo-future-log-horizon",
+    ),
     path("migration/queue/", MigrationQueueView.as_view(), name="bujo-migration-queue"),
     # Fila unificada (Story 14.3, AD-28 item 7) — fonte de verdade das duas filas
     # legadas, que passaram a ser aliases finos dela. A AD escreve

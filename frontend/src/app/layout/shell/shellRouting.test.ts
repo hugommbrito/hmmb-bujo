@@ -67,6 +67,8 @@ describe('shellRouting — registro por rota', () => {
     'planner/week/planning',
     'planner/month',
     'planner/month/planning',
+    // Story 14.7 (M08) — Future Log no sistema novo.
+    'planner/future',
   ])
 
   it('test_shell_e_novo_em_tudo_e_apenas_as_rotas_migradas_tem_surfaceMigrated_true', () => {
@@ -79,6 +81,16 @@ describe('shellRouting — registro por rota', () => {
   it('test_planner_week_e_a_primeira_rota_migrada_desta_story', () => {
     const entry = shellRoutes.find((route) => route.routeId === 'planner/week')
     expect(entry?.surfaceMigrated).toBe(true)
+  })
+
+  it('test_planner_future_e_a_rota_migrada_da_story_14_7', () => {
+    const entry = shellRoutes.find((route) => route.routeId === 'planner/future')
+    expect(entry?.surfaceMigrated).toBe(true)
+    // Irmã de não-vacuidade: a rota vizinha do Recorrentes segue NÃO migrada
+    // (o seam continua aparecendo lá até a Story 14.8).
+    expect(shellRoutes.find((route) => route.routeId === 'planner/recurring')?.surfaceMigrated).toBe(
+      false,
+    )
   })
 
   it('test_resolve_rota_estatica_e_rota_parametrizada', () => {

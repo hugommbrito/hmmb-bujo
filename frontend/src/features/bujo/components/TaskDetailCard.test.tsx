@@ -479,3 +479,32 @@ describe('TaskDetailCard — jest-axe', () => {
     expect(await axe(container)).toHaveNoViolations()
   })
 })
+
+describe('TaskDetailCard — allowCancel (Story 14.7, AC5)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+    mockMutations()
+  })
+
+  it('allowCancel={false} omite SÓ "Cancelar tarefa" e preserva o resto do rodapé', () => {
+    render(<TaskDetailCard task={baseTask()} allowCancel={false} onMove={vi.fn()} onClose={vi.fn()} />, {
+      wrapper,
+    })
+    expect(screen.queryByRole('button', { name: 'Cancelar tarefa' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Salvar' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Mover tarefa' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Excluir tarefa' })).toBeInTheDocument()
+  })
+
+  it('allowCancel={false} continua permitindo editar título (readonly NÃO serve aqui)', () => {
+    render(<TaskDetailCard task={baseTask()} allowCancel={false} onClose={vi.fn()} />, { wrapper })
+    const titulo = screen.getByLabelText('Título')
+    fireEvent.change(titulo, { target: { value: 'Editado no Futuro' } })
+    expect(titulo).toHaveValue('Editado no Futuro')
+  })
+
+  it('caso irmão: sem a prop (default) "Cancelar tarefa" continua no rodapé', () => {
+    render(<TaskDetailCard task={baseTask()} onClose={vi.fn()} />, { wrapper })
+    expect(screen.getByRole('button', { name: 'Cancelar tarefa' })).toBeInTheDocument()
+  })
+})

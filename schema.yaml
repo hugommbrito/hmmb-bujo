@@ -202,6 +202,27 @@ paths:
                 items:
                   $ref: '#/components/schemas/FutureLogMonthGroup'
           description: ''
+  /api/bujo/future-log/horizon/:
+    get:
+      operationId: bujo_future_log_horizon_retrieve
+      description: |-
+        Trilho do Future Log do sistema novo (Story 14.7, AC2 — M08).
+
+        View NOVA ao lado de ``FutureLogView`` (que fica intocada, contrato idêntico):
+        o legado devolve só meses com item, esta devolve o horizonte fixo de 8 meses
+        **inclusive os vazios** + os meses distantes que têm item. Fina como todas as
+        outras — chama o serviço e serializa; nenhuma regra vive aqui.
+      tags:
+      - bujo
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FutureLogHorizon'
+          description: ''
   /api/bujo/logs/monthly/:
     get:
       operationId: bujo_logs_monthly_retrieve
@@ -2447,6 +2468,35 @@ components:
         * `u` - Urgent
         * `i` - Important
         * `none` - None
+    FutureLogHorizon:
+      type: object
+      properties:
+        anchorMonthFirst:
+          type: string
+          format: date
+        horizon:
+          type: array
+          items:
+            $ref: '#/components/schemas/FutureLogMonthCount'
+        distant:
+          type: array
+          items:
+            $ref: '#/components/schemas/FutureLogMonthCount'
+      required:
+      - anchorMonthFirst
+      - distant
+      - horizon
+    FutureLogMonthCount:
+      type: object
+      properties:
+        monthFirst:
+          type: string
+          format: date
+        taskCount:
+          type: integer
+      required:
+      - monthFirst
+      - taskCount
     FutureLogMonthGroup:
       type: object
       properties:

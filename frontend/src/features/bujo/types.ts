@@ -9,6 +9,11 @@ export type WeeklyDay = components['schemas']['WeeklyDay']
 export type WeeklyLog = components['schemas']['WeeklyLog']
 export type MonthlyLog = components['schemas']['MonthlyLog']
 export type FutureLogMonthGroup = components['schemas']['FutureLogMonthGroup']
+// Story 14.7 (M08) — trilho do Future Log: horizonte fixo de 8 meses + meses
+// distantes com item. Aditivos ao `FutureLogMonthGroup` acima, que segue servindo
+// o `GET /api/bujo/future-log/` legado.
+export type FutureLogHorizon = components['schemas']['FutureLogHorizon']
+export type FutureLogMonthCount = components['schemas']['FutureLogMonthCount']
 export type MigrationQueue = components['schemas']['MigrationQueue']
 export type WeeklyReviewQueue = components['schemas']['WeeklyReviewQueue']
 export type MonthlyReviewQueue = components['schemas']['MonthlyReviewQueue']

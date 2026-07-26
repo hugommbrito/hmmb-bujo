@@ -179,6 +179,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/bujo/future-log/horizon/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description Trilho do Future Log do sistema novo (Story 14.7, AC2 — M08).
+         *
+         *     View NOVA ao lado de ``FutureLogView`` (que fica intocada, contrato idêntico):
+         *     o legado devolve só meses com item, esta devolve o horizonte fixo de 8 meses
+         *     **inclusive os vazios** + os meses distantes que têm item. Fina como todas as
+         *     outras — chama o serviço e serializa; nenhuma regra vive aqui.
+         */
+        get: operations["bujo_future_log_horizon_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/bujo/logs/monthly/": {
         parameters: {
             query?: never;
@@ -1605,6 +1629,17 @@ export interface components {
          * @enum {string}
          */
         EisenhowerEnum: "ui" | "u" | "i" | "none";
+        FutureLogHorizon: {
+            /** Format: date */
+            anchorMonthFirst: string;
+            horizon: components["schemas"]["FutureLogMonthCount"][];
+            distant: components["schemas"]["FutureLogMonthCount"][];
+        };
+        FutureLogMonthCount: {
+            /** Format: date */
+            monthFirst: string;
+            taskCount: number;
+        };
         FutureLogMonthGroup: {
             year: number;
             month: number;
@@ -2999,6 +3034,25 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FutureLogMonthGroup"][];
+                };
+            };
+        };
+    };
+    bujo_future_log_horizon_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FutureLogHorizon"];
                 };
             };
         };

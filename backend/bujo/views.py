@@ -19,6 +19,7 @@ from bujo.serializers import (
     BlockingTaskSourceSerializer,
     CatchUpQueueSerializer,
     DensityResponseSerializer,
+    FutureLogHorizonSerializer,
     FutureLogMonthGroupSerializer,
     LogSerializer,
     MigrationQueueSerializer,
@@ -72,6 +73,7 @@ from bujo.services.cycles import (
     weekly_cycle_readiness,
 )
 from bujo.services.density import compute_month_density, compute_week_density
+from bujo.services.future_log import future_log_horizon
 from bujo.services.logs import (
     get_or_create_daily_log,
     get_or_create_monthly_log,
@@ -536,6 +538,20 @@ class FutureLogView(APIView):
             for monthly_log in monthly_logs
         ]
         return Response(FutureLogMonthGroupSerializer(groups, many=True).data)
+
+
+class FutureLogHorizonView(APIView):
+    """Trilho do Future Log do sistema novo (Story 14.7, AC2 — M08).
+
+    View NOVA ao lado de ``FutureLogView`` (que fica intocada, contrato idêntico):
+    o legado devolve só meses com item, esta devolve o horizonte fixo de 8 meses
+    **inclusive os vazios** + os meses distantes que têm item. Fina como todas as
+    outras — chama o serviço e serializa; nenhuma regra vive aqui.
+    """
+
+    @extend_schema(responses=FutureLogHorizonSerializer)
+    def get(self, request):
+        return Response(FutureLogHorizonSerializer(future_log_horizon(user=request.user)).data)
 
 
 class TaskDensityView(APIView):

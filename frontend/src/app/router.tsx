@@ -16,7 +16,7 @@ import { WeeklyPlanningPage } from '../pages/planner/WeeklyPlanningPage'
 import { MonthlyPage } from '../pages/planner/MonthlyPage'
 import { MonthlyBoardPage } from '../pages/planner/MonthlyBoardPage'
 import { MonthlyPlanningPage } from '../pages/planner/MonthlyPlanningPage'
-import { FuturePage } from '../pages/planner/FuturePage'
+import { FutureBoardPage } from '../pages/planner/FutureBoardPage'
 import { RecurringPage } from '../pages/planner/RecurringPage'
 import { ArchivePage } from '../pages/archive/ArchivePage'
 import { BrainDumpPage } from '../pages/braindump/BrainDumpPage'
@@ -137,8 +137,12 @@ export const routeDefinitions: RouteObject[] = [
         handle: { title: 'Planejar o mês' },
       },
       {
+        // Story 14.7: `planner/future` passa a montar o Future Log do sistema
+        // novo (M08). `FuturePage` legada permanece no repositório, apenas
+        // DESMONTADA da rota — a remoção do legado é o Épico 18, junto com
+        // `TaskRow.tsx` e as demais páginas legadas (AC9).
         path: 'planner/future',
-        element: <FuturePage />,
+        element: <FutureBoardPage />,
         handle: { title: 'Futuro' },
       },
       {

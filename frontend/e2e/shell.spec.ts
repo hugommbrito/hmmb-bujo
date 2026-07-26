@@ -133,7 +133,15 @@ test.describe('Shell novo — comportamento (wide 1440×900)', () => {
 
   // G6 · AC3 — Seam A (faixa editorial): visível no início do conteúdo, texto
   // aprovado, SEM botão de dispensar, não é live region, e persiste ao navegar
-  // (todas as superfícies ainda legadas nesta story ⇒ o seam nunca some aqui).
+  // ENTRE SUPERFÍCIES AINDA LEGADAS.
+  //
+  // Story 14.7 (passo de QA): a rota de destino deste teste era `Esta Semana`,
+  // legada quando ele nasceu (13.x) e `surfaceMigrated: true` desde a 14.5 — o
+  // seam some lá de propósito, e o teste estava VERMELHO desde então. A tese
+  // ("persiste ao navegar") é preservada literalmente: só o destino passou a ser
+  // uma rota que ainda é legada de fato (Recorrentes, até a Story 14.8). O par
+  // oposto — o seam SUMIR numa rota migrada — é provado em
+  // `future-log-board.spec.ts`, com esta mesma rota como irmã de não-vacuidade.
   test('seam legado é persistente, editorial e sem botão de dispensar', async ({ page }) => {
     const seam = page.getByRole('complementary')
     await expect(seam).toContainText(SEAM_TEXT)
@@ -141,9 +149,9 @@ test.describe('Shell novo — comportamento (wide 1440×900)', () => {
     await expect(seam).not.toHaveAttribute('aria-live')
     await expect(seam.getByRole('button')).toHaveCount(0)
 
-    // Persiste em outra rota (também legada nesta story).
-    await page.getByRole('navigation', { name: 'Navegação principal' }).getByText('Esta Semana').click()
-    await expect(page).toHaveURL('/planner/week')
+    // Persiste em outra rota AINDA LEGADA (`surfaceMigrated: false`).
+    await page.getByRole('navigation', { name: 'Navegação principal' }).getByText('Recorrentes').click()
+    await expect(page).toHaveURL('/planner/recurring')
     await expect(page.getByRole('complementary')).toContainText(SEAM_TEXT)
   })
 })

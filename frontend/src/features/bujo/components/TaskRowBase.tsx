@@ -74,9 +74,40 @@ function prefersReducedMotion(): boolean {
  * readonly, nem finalized) é tratado como operável, mesmo padrão de
  * "planning"/"active".
  */
-function isStatusCycleControl(status: TaskStatus, readonly: boolean): boolean {
+function isStatusCycleControl(
+  status: TaskStatus,
+  readonly: boolean,
+  allowStatusCycle: boolean,
+): boolean {
   if (readonly) return false
+  // Story 14.7 (M08): superfície onde concluir/cancelar NÃO EXISTEM como regra
+  // de produto (Future Log). Cai no ramo `role="img"` que já existe abaixo —
+  // zero mudança de layout, `trailingSlot` preservado (é por isso que
+  // `variant='readonly'` não serve: ele suprime a coluna 5 inteira).
+  if (!allowStatusCycle) return false
   return status === 'pending' || status === 'started' || status === 'completed'
+}
+
+/**
+ * "Terminal COM linhagem" — os únicos dois status que `migrate_task` produz na
+ * origem com `migrated_to_task` preenchido (Story 14.7, AC4):
+ *
+ * - `migrated`  → `destination` `today`/`week`;
+ * - `postponed` → `destination` `month`/`future` (é o que o Future Log gera).
+ *
+ * A assimetria é DELIBERADA e retrocompatível: `migrated` renderiza o controle
+ * mesmo SEM sucessor (anunciando "O sucessor está em outro período" — mudar isso
+ * seria regressão), enquanto `postponed` exige `migratedToTask`, porque
+ * `postponed` SEM linhagem é estado legal (a matriz `ALLOWED` do
+ * `state_machine.py` permite `pending`/`started` → `POSTPONED` direto, sem passar
+ * por `migrate_task`) e precisa continuar caindo no ramo `role="img"` mudo.
+ *
+ * `cancelled` fica fora por construção: `destination:'cancel'` não cria sucessor
+ * nem linhagem (Questão aberta #7 da Story 14.7).
+ */
+function isLineageControl(status: TaskStatus, migratedToTask?: string | null): boolean {
+  if (status === 'migrated') return true
+  return status === 'postponed' && Boolean(migratedToTask)
 }
 
 export interface TaskRowBaseProps {
@@ -94,6 +125,14 @@ export interface TaskRowBaseProps {
   /** Slot de reordenação/overflow (24px) — o painel decide o conjunto de
    * comandos (Task 7); ausente = coluna vazia. */
   trailingSlot?: ReactNode
+  /**
+   * Ciclo de status por clique no ícone (Story 14.7, AC5). Default `true` =
+   * comportamento de sempre. `false` desliga SÓ a mutação de status (o ícone
+   * vira `role="img"`); NÃO desliga o controle de linhagem — a seta é
+   * navegação, não mutação, mesmo racional que já faz `migrated` sobreviver a
+   * `cycleStatus='finalized'`. `trailingSlot` continua renderizado.
+   */
+  allowStatusCycle?: boolean
 }
 
 export function TaskRowBase({
@@ -105,6 +144,7 @@ export function TaskRowBase({
   onOpenDetail,
   isSubtask = false,
   trailingSlot,
+  allowStatusCycle = true,
 }: TaskRowBaseProps) {
   const [announcement, setAnnouncement] = useState('')
   const [highlighted, setHighlighted] = useState(false)
@@ -118,10 +158,10 @@ export function TaskRowBase({
   const subtasks = task.subtasks ?? []
   const eisenhower = task.eisenhower
 
-  // Sucessor no DOM = sucessor na semana carregada (o board só renderiza os 7
-  // dias + pool da MESMA semana) — nenhum lookup de rede, nenhum estado extra.
+  // Sucessor no DOM = sucessor no período carregado (o board só renderiza um
+  // período por vez) — nenhum lookup de rede, nenhum estado extra.
   useEffect(() => {
-    if (status !== 'migrated' || !task.migratedToTask) {
+    if (!isLineageControl(status, task.migratedToTask) || !task.migratedToTask) {
       setSuccessorAvailable(false)
       return
     }
@@ -213,16 +253,19 @@ export function TaskRowBase({
         }}
       >
         {/* Coluna 1 — status (18px) */}
-        {status === 'migrated' ? (
+        {isLineageControl(status, task.migratedToTask) ? (
           <Box
             component="button"
             type="button"
             onClick={handleLineageClick}
             aria-disabled={!successorAvailable}
+            // Rótulo e ícone derivam do STATUS REAL (Story 14.7, AC4): para
+            // `migrated` produz exatamente as mesmas strings de antes, e para
+            // `postponed` produz "Adiada — …" com o ícone `ArrowLineRight`.
             aria-label={
               successorAvailable
-                ? `${STATUS_LABEL.migrated} — ir para o sucessor`
-                : `${STATUS_LABEL.migrated} — O sucessor está em outro período`
+                ? `${STATUS_LABEL[status]} — ir para o sucessor`
+                : `${STATUS_LABEL[status]} — O sucessor está em outro período`
             }
             sx={{
               width: 'var(--ds-task-row-status-icon-size)',
@@ -238,9 +281,9 @@ export function TaskRowBase({
               alignItems: 'center',
             }}
           >
-            {taskStatusIconFor('migrated')}
+            {taskStatusIconFor(status)}
           </Box>
-        ) : isStatusCycleControl(status, readonly) ? (
+        ) : isStatusCycleControl(status, readonly, allowStatusCycle) ? (
           <Box
             component="button"
             type="button"
@@ -366,6 +409,7 @@ export function TaskRowBase({
                   cycleStatus={cycleStatus}
                   onTransition={onTransition}
                   onOpenDetail={onOpenDetail}
+                  allowStatusCycle={allowStatusCycle}
                   isSubtask
                 />
               ))}

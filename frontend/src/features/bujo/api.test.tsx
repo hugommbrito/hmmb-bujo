@@ -19,6 +19,7 @@ import {
   useWeeklyLogQuery,
   useMonthlyLogQuery,
   useFutureLogQuery,
+  useFutureHorizonQuery,
   useCreateMonthlyTaskMutation,
   useCreateWeeklyTaskMutation,
   useDeleteTaskMutation,
@@ -53,6 +54,7 @@ import type {
   BlockingTaskSource,
   CatchUpQueue,
   DensityResponse,
+  FutureLogHorizon,
   FutureLogMonthGroup,
   Log,
   MigrationQueue,
@@ -617,7 +619,10 @@ describe('useCreateMonthlyTaskMutation (AC2)', () => {
     expect(invalidateSpy).not.toHaveBeenCalledWith({
       queryKey: keys.bujo.monthlyLog('2026-08-01'),
     })
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.bujo.futureLog() })
+    // Story 14.7, AC9: PREFIXO, não mais a chave exata `keys.bujo.futureLog()` —
+    // desde o M08 existe uma segunda chave (`futureHorizon`) sob esse prefixo.
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'futureLog'] })
+    expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: keys.bujo.futureLog() })
   })
 
   it('a invalidação por prefixo alcança o sentinel "current" (caso comum: criar vendo o mês corrente)', async () => {
@@ -1096,7 +1101,9 @@ describe('usePlaceRecurringTemplateMutation (AC2)', () => {
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'monthlyLog'] })
     // Story 11.4: colocar um anual do Future Log pode cair num mês futuro —
     // sem invalidar futureLog, o grupo novo não aparece sem refresh manual.
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.bujo.futureLog() })
+    // Story 14.7, AC9: por PREFIXO desde o M08 (alcança também o trilho).
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'futureLog'] })
+    expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: keys.bujo.futureLog() })
   })
 
   it('a invalidação por prefixo alcança a query com unplacedYear no cache (Story 11.4, Task 3.4)', async () => {
@@ -1624,5 +1631,146 @@ describe('useMonthlyDensityQuery (Story 14.6, AC6)', () => {
     expect(mockGet).toHaveBeenCalledWith('/api/bujo/rituals/monthly/density/', {
       params: { month_first: '2026-08-01' },
     })
+  })
+})
+
+// =============================================================================
+// Story 14.7 (M08) — trilho do Future Log e as 3 invalidações da AC9
+// =============================================================================
+
+const FUTURE_HORIZON: FutureLogHorizon = {
+  anchorMonthFirst: '2026-07-01',
+  horizon: [
+    { monthFirst: '2026-08-01', taskCount: 3 },
+    { monthFirst: '2026-09-01', taskCount: 0 },
+    { monthFirst: '2026-10-01', taskCount: 1 },
+    { monthFirst: '2026-11-01', taskCount: 0 },
+    { monthFirst: '2026-12-01', taskCount: 2 },
+    { monthFirst: '2027-01-01', taskCount: 2 },
+    { monthFirst: '2027-02-01', taskCount: 0 },
+    { monthFirst: '2027-03-01', taskCount: 1 },
+  ],
+  distant: [
+    { monthFirst: '2027-06-01', taskCount: 2 },
+    { monthFirst: '2028-01-01', taskCount: 4 },
+  ],
+}
+
+describe('useFutureHorizonQuery (Story 14.7, AC2)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+  })
+
+  it('busca o horizonte de 8 meses + os meses distantes na chave futureHorizon', async () => {
+    mockGet.mockResolvedValueOnce({ data: FUTURE_HORIZON })
+    const { qc, wrapper } = makeWrapper()
+
+    const { result } = renderHook(() => useFutureHorizonQuery(), { wrapper })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(mockGet).toHaveBeenCalledWith('/api/bujo/future-log/horizon/')
+    expect(result.current.data).toEqual(FUTURE_HORIZON)
+    expect(qc.getQueryData(keys.bujo.futureHorizon())).toEqual(FUTURE_HORIZON)
+  })
+})
+
+// As três correções de invalidação da AC9. Cada teste semeia o cache do TRILHO
+// (`keys.bujo.futureHorizon()`) e exige que a mutação o marque como invalidado:
+// com a invalidação pela chave EXATA `keys.bujo.futureLog()` (o código anterior)
+// o assert fica VERMELHO, porque `['bujo','futureLog','list']` não é prefixo de
+// `['bujo','futureLog','horizon']`. Cada um foi confirmado revertendo
+// cirurgicamente a correspondente linha de `api.ts` (ver Debug Log References).
+describe('AC9 — invalidação do Future Log por PREFIXO alcança o trilho do M08', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+  })
+
+  it('useCreateMonthlyTaskMutation invalida o trilho (captura num mês distante)', async () => {
+    const { qc, wrapper } = makeWrapper()
+    qc.setQueryData(keys.bujo.futureHorizon(), FUTURE_HORIZON)
+    qc.setQueryData(keys.bujo.futureLog(), [])
+    mockPost.mockResolvedValueOnce({
+      data: { id: 'task-1', title: 'Item distante', status: 'pending', subtasks: [] },
+    })
+
+    const { result } = renderHook(() => useCreateMonthlyTaskMutation(), { wrapper })
+    result.current.mutate({ monthFirst: '2028-05-01', title: 'Item distante' })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(qc.getQueryState(keys.bujo.futureHorizon())?.isInvalidated).toBe(true)
+    // Irmã de não-vacuidade: a lista legada continua sendo alcançada.
+    expect(qc.getQueryState(keys.bujo.futureLog())?.isInvalidated).toBe(true)
+  })
+
+  it('usePlaceRecurringTemplateMutation invalida o trilho (alocar anual num mês do horizonte)', async () => {
+    const { qc, wrapper } = makeWrapper()
+    qc.setQueryData(keys.bujo.futureHorizon(), FUTURE_HORIZON)
+    qc.setQueryData(keys.bujo.futureLog(), [])
+    mockPost.mockResolvedValueOnce({
+      data: { id: 'task-2', title: 'Check-up médico anual', status: 'pending', subtasks: [] },
+    })
+
+    const { result } = renderHook(() => usePlaceRecurringTemplateMutation(), { wrapper })
+    result.current.mutate({
+      templateId: 'tpl-1',
+      monthFirst: '2026-10-01',
+      scheduledDate: '2026-10-14',
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(qc.getQueryState(keys.bujo.futureHorizon())?.isInvalidated).toBe(true)
+    expect(qc.getQueryState(keys.bujo.futureLog())?.isInvalidated).toBe(true)
+  })
+
+  it('invalidateRitualQueries invalida o Future Log (decisão do ritual que adia ao futuro)', () => {
+    const { qc } = makeWrapper()
+    qc.setQueryData(keys.bujo.futureHorizon(), FUTURE_HORIZON)
+    qc.setQueryData(keys.bujo.futureLog(), [])
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+
+    invalidateRitualQueries(qc)
+
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'futureLog'] })
+    expect(qc.getQueryState(keys.bujo.futureHorizon())?.isInvalidated).toBe(true)
+    expect(qc.getQueryState(keys.bujo.futureLog())?.isInvalidated).toBe(true)
+  })
+
+  // 4ª ocorrência da MESMA classe, achada no code review da 14.7: o Future Log
+  // é a primeira superfície a fiar "Excluir tarefa" do `TaskDetailCard` sobre
+  // `monthly_log` futuros (a AC5 mantém o botão) E a mostrar contagem de trilho.
+  // Sem o prefixo aqui, excluir pelo detalhe atualizava só a coluna de foco e
+  // deixava o trilho com a contagem velha. Não-vacuidade: removendo a linha
+  // `['bujo','futureLog']` de `useDeleteTaskMutation`, este teste fica vermelho.
+  it('useDeleteTaskMutation invalida o trilho (excluir pelo detalhe do Future Log)', async () => {
+    const { qc, wrapper } = makeWrapper()
+    qc.setQueryData(keys.bujo.futureHorizon(), FUTURE_HORIZON)
+    qc.setQueryData(keys.bujo.futureLog(), [])
+    mockDelete.mockResolvedValueOnce({ status: 204, data: null })
+
+    const { result } = renderHook(() => useDeleteTaskMutation(), { wrapper })
+    result.current.mutate({ taskId: 'task-4' })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(qc.getQueryState(keys.bujo.futureHorizon())?.isInvalidated).toBe(true)
+    expect(qc.getQueryState(keys.bujo.futureLog())?.isInvalidated).toBe(true)
+  })
+
+  it('useMigrateTaskMutation já usava o prefixo — conferência, não mudança', async () => {
+    const { qc, wrapper } = makeWrapper()
+    qc.setQueryData(keys.bujo.futureHorizon(), FUTURE_HORIZON)
+    mockPost.mockResolvedValueOnce({
+      data: { id: 'task-3', title: 'Datada', status: 'postponed', subtasks: [] },
+    })
+
+    const { result } = renderHook(() => useMigrateTaskMutation(), { wrapper })
+    result.current.mutate({
+      taskId: 'task-3',
+      destination: 'future',
+      monthFirst: '2026-09-01',
+      scheduledDate: '2026-09-14',
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(qc.getQueryState(keys.bujo.futureHorizon())?.isInvalidated).toBe(true)
   })
 })

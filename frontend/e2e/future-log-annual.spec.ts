@@ -21,6 +21,22 @@ const MONTH_NAMES = [
   'Dezembro',
 ]
 
+// Story 14.7 (AC6/AC9): a superfície do Futuro passou a ser `FutureBoardPage`
+// (M08). Três acoplamentos deste spec mudaram, e a TESE dele não:
+//   (a) o botão do item agora diz "Alocar" (termo canônico do decision-log) —
+//       o TÍTULO do dialog continua "Definir placement" até a Story 14.8, que é
+//       a dona da padronização na biblioteca;
+//   (b) a seção é `role="region"` com nome próprio, então o container deixa de
+//       ser um `xpath=..` frágil ao DOM;
+//   (c) cada anual pendente virou um `listitem` — dois botões "Alocar"
+//       idênticos precisam de um contorno por linha, e `locator('div')` seria
+//       ambíguo (casa a linha E o próprio título);
+//   (d) o Future Log novo é trilho + foco: os 8 meses do horizonte aparecem no
+//       trilho O TEMPO TODO, então o heading do mês sozinho viraria FALSO
+//       POSITIVO — o spec precisa SELECIONAR o mês no trilho antes de assertar
+//       a Task Row (o placement cai 2 meses à frente, e o foco default é o 1º
+//       mês do horizonte = mês corrente + 1).
+
 test('Future Log lista anuais pendentes do ano, placement reusa o fluxo da 11.3 e some sem deixar estado vazio (AC1, AC2, AC3)', async ({
   page,
 }) => {
@@ -39,7 +55,9 @@ test('Future Log lista anuais pendentes do ano, placement reusa o fluxo da 11.3 
   // mês corrente (o Future Log só cobre meses futuros — `month_first__gt`).
   const futureDate = new Date(now.getFullYear(), now.getMonth() + 2, 15)
   const futureDateStr = `${futureDate.getFullYear()}-${String(futureDate.getMonth() + 1).padStart(2, '0')}-15`
-  const futureGroupHeading = `${MONTH_NAMES[futureDate.getMonth()]} ${futureDate.getFullYear()}`
+  // "Agosto de 2026" — o rótulo do trilho/cabeçalho de foco do sistema novo
+  // (o Future Log legado usava "Agosto 2026", sem o "de").
+  const futureGroupHeading = `${MONTH_NAMES[futureDate.getMonth()]} de ${futureDate.getFullYear()}`
 
   // AC3 (estado inicial): usuário novo, sem templates — a seção não existe.
   await page.getByRole('button', { name: 'Futuro' }).click()
@@ -70,19 +88,27 @@ test('Future Log lista anuais pendentes do ano, placement reusa o fluxo da 11.3 
   // "sumiu da seção" mais abaixo.
   await page.getByRole('button', { name: 'Futuro' }).click()
   await expect(page.getByLabel('Futuro')).toBeVisible()
-  const pendingAnnualSection = page
-    .getByText(`Anuais pendentes de ${currentYear}`)
-    .locator('xpath=..')
+  const pendingAnnualSection = page.getByRole('region', {
+    name: `Anuais pendentes de ${currentYear}`,
+  })
   await expect(pendingAnnualSection).toBeVisible({ timeout: 10_000 })
   await expect(pendingAnnualSection.getByText('Revisão anual', { exact: true })).toBeVisible()
   await expect(pendingAnnualSection.getByText('Balanço anual', { exact: true })).toBeVisible()
 
-  // AC2: "Definir placement" reusa o dialog/calendário da 11.3 — confirmar
-  // com uma data preenchida (mês futuro).
+  // Estado ANTES do placement: a linha do mês de destino existe no trilho e
+  // está ZERADA. É a metade não-vacuosa do assert de contagem lá embaixo — sem
+  // ela, "o mês aparece no trilho" seria sempre verdade (os 8 meses do
+  // horizonte são scaffolding e estão lá o tempo todo, com item ou sem).
+  const trilho = page.getByRole('navigation', { name: 'Meses do horizonte' })
+  const linhaDoMesDestino = trilho.getByRole('button', { name: new RegExp(futureGroupHeading) })
+  await expect(linhaDoMesDestino).toContainText('0 itens')
+
+  // AC2: "Alocar" reusa o MESMO dialog/calendário da 11.3 — confirmar com uma
+  // data preenchida (mês futuro).
   const revisaoRow = pendingAnnualSection
-    .getByText('Revisão anual', { exact: true })
-    .locator('xpath=ancestor::div[1]')
-  await revisaoRow.getByRole('button', { name: 'Definir placement' }).click()
+    .getByRole('listitem')
+    .filter({ hasText: 'Revisão anual' })
+  await revisaoRow.getByRole('button', { name: 'Alocar' }).click()
 
   const dialog = page.getByRole('dialog')
   await expect(dialog.getByText('Definir placement')).toBeVisible()
@@ -111,18 +137,27 @@ test('Future Log lista anuais pendentes do ano, placement reusa o fluxo da 11.3 
   ).toHaveCount(0, { timeout: 10_000 })
   await expect(pendingAnnualSection.getByText('Balanço anual', { exact: true })).toBeVisible()
 
-  // A instância colocada aparece no grupo do mês futuro correspondente — prova
-  // que a invalidação de `futureLog` (achado real desta story) funciona.
-  await expect(page.getByText(futureGroupHeading)).toBeVisible({ timeout: 10_000 })
+  // A instância colocada aparece no mês futuro correspondente — prova que a
+  // invalidação do Future Log (agora POR PREFIXO, alcançando também o trilho —
+  // Story 14.7, AC9) funciona. O placement cai 2 meses à frente, que NÃO é o
+  // foco default: selecionar o mês no trilho é obrigatório, senão o assert
+  // seria um falso positivo (os 8 meses estão sempre no trilho).
+  // A CONTAGEM do trilho é o que prova a invalidação por prefixo: a linha do mês
+  // aparecer não prova nada (ela nunca some), mas ela sair de "0 itens" para
+  // "1 item" só acontece se `usePlaceRecurringTemplateMutation` alcançar
+  // `keys.bujo.futureHorizon()` — que é exatamente a correção da AC9.
+  await expect(linhaDoMesDestino).toContainText('1 item', { timeout: 10_000 })
+  await linhaDoMesDestino.click()
+  await expect(page.getByRole('heading', { name: futureGroupHeading, level: 2 })).toBeVisible()
   await expect(
     page.getByTestId('task-row').filter({ hasText: 'Revisão anual' }),
   ).toBeVisible({ timeout: 10_000 })
 
   // Coloca o segundo anual sem preencher data — cai no mês corrente.
   const balancoRow = pendingAnnualSection
-    .getByText('Balanço anual', { exact: true })
-    .locator('xpath=ancestor::div[1]')
-  await balancoRow.getByRole('button', { name: 'Definir placement' }).click()
+    .getByRole('listitem')
+    .filter({ hasText: 'Balanço anual' })
+  await balancoRow.getByRole('button', { name: 'Alocar' }).click()
   const secondDialog = page.getByRole('dialog')
   await expect(secondDialog.getByLabel('Data (opcional)')).toHaveValue('')
   await Promise.all([
