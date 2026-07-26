@@ -46,3 +46,32 @@ describe('bujo.weeklyCycle / ritualWeeklySource / ritualWeeklyDensity (Story 14.
     ])
   })
 })
+
+describe('bujo.monthlyCycle / ritualMonthlySource / ritualMonthlyDensity (Story 14.6)', () => {
+  it('monthlyCycle é uma chave fixa (sem discriminador)', () => {
+    expect(keys.bujo.monthlyCycle()).toEqual(['bujo', 'monthlyCycle'])
+  })
+
+  it('ritualMonthlySource discrimina por sourceId e monthFirst', () => {
+    expect(keys.bujo.ritualMonthlySource('recurring', '2026-08-01')).toEqual([
+      'bujo',
+      'ritualMonthlySource',
+      'recurring',
+      '2026-08-01',
+    ])
+    expect(keys.bujo.ritualMonthlySource('recurring', '2026-09-01')).not.toEqual(
+      keys.bujo.ritualMonthlySource('recurring', '2026-08-01'),
+    )
+    expect(keys.bujo.ritualMonthlySource('previous-monthly', '2026-08-01')).not.toEqual(
+      keys.bujo.ritualMonthlySource('recurring', '2026-08-01'),
+    )
+  })
+
+  it('ritualMonthlyDensity discrimina por monthFirst', () => {
+    expect(keys.bujo.ritualMonthlyDensity('2026-08-01')).toEqual([
+      'bujo',
+      'ritualMonthlyDensity',
+      '2026-08-01',
+    ])
+  })
+})

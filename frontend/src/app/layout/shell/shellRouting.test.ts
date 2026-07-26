@@ -61,7 +61,13 @@ describe('shellRouting — registro por rota', () => {
   // A partir da Story 14.5, `planner/week` é a PRIMEIRA superfície migrada —
   // o nome do teste original ("nenhuma superfície migrada") descrevia o
   // estado inicial da Story 13.1 e deixou de ser verdade por construção.
-  const MIGRATED_ROUTE_IDS = new Set(['planner/week', 'planner/week/planning'])
+  // Story 14.6 acrescenta a segunda superfície (`planner/month`).
+  const MIGRATED_ROUTE_IDS = new Set([
+    'planner/week',
+    'planner/week/planning',
+    'planner/month',
+    'planner/month/planning',
+  ])
 
   it('test_shell_e_novo_em_tudo_e_apenas_as_rotas_migradas_tem_surfaceMigrated_true', () => {
     for (const entry of shellRoutes) {

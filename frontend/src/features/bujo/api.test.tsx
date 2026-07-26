@@ -40,6 +40,13 @@ import {
   usePendingDailiesSourceQuery,
   useWeeklyDensityQuery,
   useRitualDecisionMutation,
+  useMonthlyCycleReadinessQuery,
+  useMonthlyCycleActionMutation,
+  useMonthlyRecurringSourceQuery,
+  useMonthlyFutureLogSourceQuery,
+  usePreviousMonthlySourceQuery,
+  useMonthlyDensityQuery,
+  invalidateRitualQueries,
 } from './api'
 import type {
   ArchiveEntry,
@@ -49,7 +56,9 @@ import type {
   FutureLogMonthGroup,
   Log,
   MigrationQueue,
+  MonthlyCycleReadiness,
   MonthlyLog,
+  MonthlyRecurringSource,
   MonthlyReviewQueue,
   PendingDailiesSource,
   RecurringTaskTemplate,
@@ -584,7 +593,11 @@ describe('useCreateMonthlyTaskMutation (AC2)', () => {
     vi.resetAllMocks()
   })
 
-  it('invalida monthlyLog e futureLog no sucesso', async () => {
+  it('invalida monthlyLog POR PREFIXO (não a chave exata) e futureLog no sucesso', async () => {
+    // Story 14.6, AC9: mesma classe de bug que useCreateWeeklyTaskMutation teve
+    // corrigida na 14.5 — a chave exata `keys.bujo.monthlyLog(variables.monthFirst)`
+    // nunca bate com a view sem navegação explícita, que usa o sentinel
+    // 'current' (`useMonthlyLogQuery()`); invalidar por prefixo alcança as duas.
     const { qc, wrapper } = makeWrapper()
     const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
     mockPost.mockResolvedValueOnce({
@@ -600,8 +613,31 @@ describe('useCreateMonthlyTaskMutation (AC2)', () => {
       monthFirst: '2026-08-01',
       title: 'Item do futuro',
     })
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.bujo.monthlyLog('2026-08-01') })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'monthlyLog'] })
+    expect(invalidateSpy).not.toHaveBeenCalledWith({
+      queryKey: keys.bujo.monthlyLog('2026-08-01'),
+    })
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.bujo.futureLog() })
+  })
+
+  it('a invalidação por prefixo alcança o sentinel "current" (caso comum: criar vendo o mês corrente)', async () => {
+    const { qc, wrapper } = makeWrapper()
+    qc.setQueryData(keys.bujo.monthlyLog(), {
+      monthFirst: '2026-08-01',
+      status: null,
+      planningCompletedAt: null,
+      tasks: [],
+      closed: false,
+    })
+    mockPost.mockResolvedValueOnce({
+      data: { id: 'task-1', title: 'Item novo', status: 'pending', subtasks: [] },
+    })
+
+    const { result } = renderHook(() => useCreateMonthlyTaskMutation(), { wrapper })
+    result.current.mutate({ monthFirst: '2026-08-01', title: 'Item novo' })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(qc.getQueryState(keys.bujo.monthlyLog())?.isInvalidated).toBe(true)
   })
 })
 
@@ -1375,5 +1411,218 @@ describe('useRitualDecisionMutation (Story 14.5, AC5)', () => {
     await waitFor(() => expect(result.current.isError).toBe(true))
     // Sem otimismo: nenhuma entrada de cache foi escrita para esta mutação.
     expect(qc.getQueryData(keys.bujo.ritualWeeklySource('monthly-in-week', '2026-07-20'))).toBeUndefined()
+  })
+})
+
+// =============================================================================
+// Story 14.6 — ciclo mensal, fontes do ritual mensal e densidade real
+// =============================================================================
+
+describe('invalidateRitualQueries (Story 14.6, AC9) — estendida com os 4 prefixos mensais', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+  })
+
+  it('invalida os 5 prefixos semanais E os 4 mensais numa única chamada', () => {
+    const { qc } = makeWrapper()
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+
+    invalidateRitualQueries(qc)
+
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'weeklyLog'] })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.bujo.weeklyCycle() })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'ritualWeeklySource'] })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'ritualWeeklyDensity'] })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'monthlyLog'] })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.bujo.monthlyCycle() })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'ritualMonthlySource'] })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'ritualMonthlyDensity'] })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'taskDensity'] })
+  })
+})
+
+const MONTHLY_READINESS: MonthlyCycleReadiness = {
+  active: null,
+  planning: null,
+  start: null,
+  finalize: null,
+}
+
+describe('useMonthlyCycleReadinessQuery (Story 14.6, AC4)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+  })
+
+  it('busca a prontidão do ciclo mensal sem nenhum param (o alvo é sempre do servidor)', async () => {
+    mockGet.mockResolvedValueOnce({ data: MONTHLY_READINESS })
+    const { wrapper } = makeWrapper()
+
+    const { result } = renderHook(() => useMonthlyCycleReadinessQuery(), { wrapper })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data).toEqual(MONTHLY_READINESS)
+    expect(mockGet).toHaveBeenCalledWith('/api/bujo/logs/monthly/cycle/')
+  })
+})
+
+describe('useMonthlyCycleActionMutation (Story 14.6, AC4/AC5)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+  })
+
+  it('posta a ação e invalida (via invalidateRitualQueries) os prefixos semanais e mensais', async () => {
+    const { qc, wrapper } = makeWrapper()
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+    mockPost.mockResolvedValueOnce({
+      data: {
+        status: 'planning',
+        planningCompletedAt: null,
+        monthFirst: '2026-08-01',
+        regularWindowStart: '2026-07-27',
+        regularWindowEnd: '2026-08-02',
+      },
+    })
+
+    const { result } = renderHook(() => useMonthlyCycleActionMutation(), { wrapper })
+    result.current.mutate({ action: 'open_planning_target' })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(mockPost).toHaveBeenCalledWith('/api/bujo/logs/monthly/cycle/', {
+      action: 'open_planning_target',
+    })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'monthlyLog'] })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.bujo.monthlyCycle() })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'ritualMonthlySource'] })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'ritualMonthlyDensity'] })
+  })
+})
+
+const MONTHLY_RECURRING_SOURCE: MonthlyRecurringSource = {
+  sourceId: 'recurring',
+  blocking: false,
+  countsTowardProgress: true,
+  eligibleCount: 0,
+  pendingDecisionCount: 0,
+  reviewed: true,
+  items: [],
+  alreadyPlaced: { countsTowardProgress: false, items: [] },
+  alreadyPlacedInYear: { countsTowardProgress: false, items: [] },
+}
+
+describe('useMonthlyRecurringSourceQuery (Story 14.6, AC5)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+  })
+
+  it('busca a fonte de recorrentes com month_first em snake_case e os 4 buckets', async () => {
+    mockGet.mockResolvedValueOnce({ data: MONTHLY_RECURRING_SOURCE })
+    const { wrapper } = makeWrapper()
+
+    const { result } = renderHook(() => useMonthlyRecurringSourceQuery('2026-08-01'), { wrapper })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data).toEqual(MONTHLY_RECURRING_SOURCE)
+    expect(mockGet).toHaveBeenCalledWith('/api/bujo/rituals/monthly/sources/recurring/', {
+      params: { month_first: '2026-08-01' },
+    })
+  })
+})
+
+const MONTHLY_FUTURE_LOG_SOURCE: TaskSource = {
+  sourceId: 'future-log',
+  blocking: false,
+  countsTowardProgress: true,
+  eligibleCount: 0,
+  pendingDecisionCount: 0,
+  reviewed: true,
+  items: [],
+}
+
+describe('useMonthlyFutureLogSourceQuery (Story 14.6, AC5)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+  })
+
+  it('busca a fonte Future Log com month_first em snake_case', async () => {
+    mockGet.mockResolvedValueOnce({ data: MONTHLY_FUTURE_LOG_SOURCE })
+    const { wrapper } = makeWrapper()
+
+    const { result } = renderHook(() => useMonthlyFutureLogSourceQuery('2026-08-01'), { wrapper })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data).toEqual(MONTHLY_FUTURE_LOG_SOURCE)
+    expect(mockGet).toHaveBeenCalledWith('/api/bujo/rituals/monthly/sources/future-log/', {
+      params: { month_first: '2026-08-01' },
+    })
+  })
+})
+
+const PREVIOUS_MONTHLY_SOURCE: BlockingTaskSource = {
+  sourceId: 'previous-monthly',
+  blocking: true,
+  countsTowardProgress: true,
+  eligibleCount: 0,
+  pendingDecisionCount: 0,
+  reviewed: true,
+  items: [],
+  readyToFinalize: true,
+  previousPeriodStart: '2026-07-01',
+}
+
+describe('usePreviousMonthlySourceQuery (Story 14.6, AC5)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+  })
+
+  it('busca a fonte bloqueante do mês anterior, incluindo previousPeriodStart', async () => {
+    mockGet.mockResolvedValueOnce({ data: PREVIOUS_MONTHLY_SOURCE })
+    const { wrapper } = makeWrapper()
+
+    const { result } = renderHook(() => usePreviousMonthlySourceQuery('2026-08-01'), { wrapper })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data?.previousPeriodStart).toBe('2026-07-01')
+    expect(mockGet).toHaveBeenCalledWith('/api/bujo/rituals/monthly/sources/previous-monthly/', {
+      params: { month_first: '2026-08-01' },
+    })
+  })
+})
+
+const MONTHLY_DENSITY: DensityResponse = {
+  days: Array.from({ length: 31 }, (_, index) => ({
+    date: `2026-08-${String(index + 1).padStart(2, '0')}`,
+    total: 0,
+    byStatus: {
+      pending: 0,
+      started: 0,
+      completed: 0,
+      cancelled: 0,
+      migrated: 0,
+      postponed: 0,
+    },
+  })),
+  undated: {
+    total: 0,
+    byStatus: { pending: 0, started: 0, completed: 0, cancelled: 0, migrated: 0, postponed: 0 },
+  },
+  total: 0,
+}
+
+describe('useMonthlyDensityQuery (Story 14.6, AC6)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+  })
+
+  it('busca a densidade real do mês (grade completa 28-31 dias + undated)', async () => {
+    mockGet.mockResolvedValueOnce({ data: MONTHLY_DENSITY })
+    const { wrapper } = makeWrapper()
+
+    const { result } = renderHook(() => useMonthlyDensityQuery('2026-08-01'), { wrapper })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data).toEqual(MONTHLY_DENSITY)
+    expect(mockGet).toHaveBeenCalledWith('/api/bujo/rituals/monthly/density/', {
+      params: { month_first: '2026-08-01' },
+    })
   })
 })

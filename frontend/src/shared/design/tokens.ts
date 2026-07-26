@@ -207,6 +207,42 @@ export const weeklyPlanning = {
   densityPosition: 'sticky',
 } as const
 
+// ─── Componentes do sistema novo (Épico 14, Story 14.6) ──────────────────────
+// [Source: DESIGN.md#components — monthly-board/monthly-planning, L373-382]
+
+/**
+ * `{components.monthly-board}`. `dayScroll`/`terminalOpacity` são dados puros
+ * de molde (mesmo valor de `weeklyBoard`) — REUSAM as CSS vars já emitidas
+ * pela 14.5 (`--ds-weekly-board-day-scroll` não existe como var própria hoje
+ * porque é sempre `'internal'`; `--ds-task-row-terminal-opacity` já é
+ * compartilhada entre Weekly/Monthly/Future por design), não recriar.
+ */
+export const monthlyBoard = {
+  columns: 7,
+  gap: spacing[2],
+  undatedWidth: '268px',
+  dayScroll: 'internal',
+  terminalOpacity: 0.58,
+  /**
+   * Altura mínima de cada linha do calendário (não documentada no
+   * DESIGN.md — decisão de implementação). Achado real do axe
+   * (`target-size`, Story 14.6): sem um piso, `grid-auto-rows: minmax(0,
+   * 1fr)` deixa a linha encolher a ponto de comprimir o formulário de
+   * criação da célula abaixo do alvo de toque mínimo AA em viewports
+   * mais curtos (ex. tablet 800×720). A grade em si rola verticalmente
+   * quando o total excede a viewport — mesmo espírito do "rola sem
+   * alterar a altura" já aplicado à lista interna de cada célula.
+   */
+  minCellHeight: '140px',
+} as const
+
+/** `{components.monthly-planning}` — rails do ritual mensal (AC5/AC8). */
+export const monthlyPlanning = {
+  sourceRail: '188px',
+  contextRail: '310px',
+  densityPosition: 'sticky',
+} as const
+
 /** `{components.panel}` — painel diário/pool e cartões do rail. */
 export const panel = {
   background: 'surface',
@@ -435,6 +471,12 @@ const structuralCssVariables: Readonly<Record<string, string>> = {
   '--ds-weekly-board-unscheduled-min-width': weeklyBoard.unscheduledMinWidth,
   '--ds-weekly-planning-source-rail': weeklyPlanning.sourceRail,
   '--ds-weekly-planning-context-rail': weeklyPlanning.contextRail,
+  '--ds-monthly-board-columns': String(monthlyBoard.columns),
+  '--ds-monthly-board-gap': monthlyBoard.gap,
+  '--ds-monthly-board-undated-width': monthlyBoard.undatedWidth,
+  '--ds-monthly-board-min-cell-height': monthlyBoard.minCellHeight,
+  '--ds-monthly-planning-source-rail': monthlyPlanning.sourceRail,
+  '--ds-monthly-planning-context-rail': monthlyPlanning.contextRail,
   '--ds-panel-padding': panel.padding,
   '--ds-chip-height': chip.height,
   ...Object.fromEntries(

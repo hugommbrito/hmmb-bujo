@@ -11,7 +11,11 @@ import type {
   FutureLogMonthGroup,
   Log,
   MigrationQueue,
+  MonthlyCycle,
+  MonthlyCycleAction,
+  MonthlyCycleReadiness,
   MonthlyLog,
+  MonthlyRecurringSource,
   MonthlyReviewQueue,
   PendingDailiesSource,
   RecurrenceGroup,
@@ -318,8 +322,12 @@ export function useCreateMonthlyTaskMutation() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: createMonthlyTask,
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: keys.bujo.monthlyLog(variables.monthFirst) })
+    onSuccess: () => {
+      // Prefixo (não a chave exata `keys.bujo.monthlyLog(variables.monthFirst)`):
+      // mesma classe de bug que useCreateWeeklyTaskMutation teve corrigida na
+      // 14.5 — a view SEM navegação explícita usa a chave sentinel 'current',
+      // que nunca bate com a data real devolvida pelo servidor (Story 14.6, AC9).
+      queryClient.invalidateQueries({ queryKey: ['bujo', 'monthlyLog'] })
       queryClient.invalidateQueries({ queryKey: keys.bujo.futureLog() })
       // A densidade reflete tarefas recém-criadas — invalidação por prefixo
       // alcança o sentinel 'current' e qualquer mês (Story 11.3, Task 4.4).
@@ -578,22 +586,30 @@ export function useArchiveQuery() {
 // por prefixo em `onSettled` é suficiente e mais simples.
 
 /**
- * Invalidação única pós-decisão do ritual: cobre os 5 prefixos que qualquer
- * ação do ritual pode afetar — `weeklyLog` (o board), `weeklyCycle` (o painel
- * de prontidão), `ritualWeeklySource`/`ritualWeeklyDensity` (as fontes e o
- * rail) e `taskDensity` (densidade legada, ainda consumida pelo Mês).
+ * Invalidação única pós-decisão do ritual: cobre os prefixos que qualquer ação
+ * de QUALQUER um dos dois rituais pode afetar — `weeklyLog`/`monthlyLog` (os
+ * boards), `weeklyCycle`/`monthlyCycle` (os painéis de prontidão),
+ * `ritualWeeklySource`/`ritualWeeklyDensity` + `ritualMonthlySource`/
+ * `ritualMonthlyDensity` (as fontes e os rails) e `taskDensity` (densidade
+ * legada, ainda consumida pelo Mês).
  *
- * Exportada para os call sites do ritual (Tasks 8-10) que reusam
+ * Exportada para os call sites de AMBOS os rituais que reusam
  * `useMigrateTaskMutation`/`useRitualTaskTransitionMutation`/
  * `usePlaceRecurringTemplateMutation` para as ações mutantes (Migrar/Adiar/
- * Concluir/Cancelar/Alocar): passar esta função ao `onSuccess`/`onSettled` do
- * `mutate(...)» garante que nenhum call site esqueça um dos 5 alvos.
+ * Concluir/Cancelar/Alocar) — os 4 prefixos mensais foram acrescentados na
+ * Story 14.6, AC9: sem eles, qualquer decisão do ritual MENSAL que passe por
+ * essas mutações compartilhadas deixaria o Monthly Board e as fontes do
+ * próprio ritual mensal com cache desatualizado após a ação.
  */
 export function invalidateRitualQueries(queryClient: QueryClient) {
   queryClient.invalidateQueries({ queryKey: ['bujo', 'weeklyLog'] })
   queryClient.invalidateQueries({ queryKey: keys.bujo.weeklyCycle() })
   queryClient.invalidateQueries({ queryKey: ['bujo', 'ritualWeeklySource'] })
   queryClient.invalidateQueries({ queryKey: ['bujo', 'ritualWeeklyDensity'] })
+  queryClient.invalidateQueries({ queryKey: ['bujo', 'monthlyLog'] })
+  queryClient.invalidateQueries({ queryKey: keys.bujo.monthlyCycle() })
+  queryClient.invalidateQueries({ queryKey: ['bujo', 'ritualMonthlySource'] })
+  queryClient.invalidateQueries({ queryKey: ['bujo', 'ritualMonthlyDensity'] })
   queryClient.invalidateQueries({ queryKey: ['bujo', 'taskDensity'] })
 }
 
@@ -728,5 +744,109 @@ export function useRitualDecisionMutation() {
   return useMutation({
     mutationFn: createRitualDecision,
     onSettled: () => invalidateRitualQueries(queryClient),
+  })
+}
+
+// ─── Story 14.6: ciclo mensal (leitura de prontidão) e fontes do ritual ──────
+// Molde direto do bloco Weekly acima — mesmas convenções (sem otimismo, params
+// em snake_case, `enabled` repassado).
+
+async function fetchMonthlyCycleReadiness(): Promise<MonthlyCycleReadiness> {
+  const response = await client.get<MonthlyCycleReadiness>('/api/bujo/logs/monthly/cycle/')
+  return response.data
+}
+
+export function useMonthlyCycleReadinessQuery() {
+  return useQuery({
+    queryKey: keys.bujo.monthlyCycle(),
+    queryFn: fetchMonthlyCycleReadiness,
+  })
+}
+
+async function runMonthlyCycleAction(variables: MonthlyCycleAction): Promise<MonthlyCycle> {
+  const response = await client.post<MonthlyCycle>('/api/bujo/logs/monthly/cycle/', variables)
+  return response.data
+}
+
+export function useMonthlyCycleActionMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: runMonthlyCycleAction,
+    onSettled: () => invalidateRitualQueries(queryClient),
+  })
+}
+
+async function fetchMonthlyRecurringSource(monthFirst: string): Promise<MonthlyRecurringSource> {
+  const response = await client.get<MonthlyRecurringSource>(
+    '/api/bujo/rituals/monthly/sources/recurring/',
+    { params: { month_first: monthFirst } },
+  )
+  return response.data
+}
+
+export function useMonthlyRecurringSourceQuery(
+  monthFirst: string,
+  options?: { enabled?: boolean },
+) {
+  return useQuery({
+    queryKey: keys.bujo.ritualMonthlySource('recurring', monthFirst),
+    queryFn: () => fetchMonthlyRecurringSource(monthFirst),
+    enabled: options?.enabled ?? true,
+  })
+}
+
+// `future-log` não tem equivalente semanal 1:1 (o ritual semanal não tem fonte
+// "Future Log") — segue o padrão geral de `TaskSourceSerializer`, mesma forma
+// de `useMonthlyInWeekSourceQuery`, que também devolve `TaskSource`.
+async function fetchMonthlyFutureLogSource(monthFirst: string): Promise<TaskSource> {
+  const response = await client.get<TaskSource>(
+    '/api/bujo/rituals/monthly/sources/future-log/',
+    { params: { month_first: monthFirst } },
+  )
+  return response.data
+}
+
+export function useMonthlyFutureLogSourceQuery(
+  monthFirst: string,
+  options?: { enabled?: boolean },
+) {
+  return useQuery({
+    queryKey: keys.bujo.ritualMonthlySource('future-log', monthFirst),
+    queryFn: () => fetchMonthlyFutureLogSource(monthFirst),
+    enabled: options?.enabled ?? true,
+  })
+}
+
+async function fetchPreviousMonthlySource(monthFirst: string): Promise<BlockingTaskSource> {
+  const response = await client.get<BlockingTaskSource>(
+    '/api/bujo/rituals/monthly/sources/previous-monthly/',
+    { params: { month_first: monthFirst } },
+  )
+  return response.data
+}
+
+export function usePreviousMonthlySourceQuery(
+  monthFirst: string,
+  options?: { enabled?: boolean },
+) {
+  return useQuery({
+    queryKey: keys.bujo.ritualMonthlySource('previous-monthly', monthFirst),
+    queryFn: () => fetchPreviousMonthlySource(monthFirst),
+    enabled: options?.enabled ?? true,
+  })
+}
+
+async function fetchMonthlyDensity(monthFirst: string): Promise<DensityResponse> {
+  const response = await client.get<DensityResponse>('/api/bujo/rituals/monthly/density/', {
+    params: { month_first: monthFirst },
+  })
+  return response.data
+}
+
+export function useMonthlyDensityQuery(monthFirst: string, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: keys.bujo.ritualMonthlyDensity(monthFirst),
+    queryFn: () => fetchMonthlyDensity(monthFirst),
+    enabled: options?.enabled ?? true,
   })
 }

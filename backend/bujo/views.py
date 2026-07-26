@@ -23,7 +23,9 @@ from bujo.serializers import (
     LogSerializer,
     MigrationQueueSerializer,
     MonthlyCycleActionSerializer,
+    MonthlyCycleReadinessSerializer,
     MonthlyCycleSerializer,
+    MonthlyLogQuerySerializer,
     MonthlyLogSerializer,
     MonthlyRecurringSourceSerializer,
     MonthlyReviewQueueSerializer,
@@ -62,6 +64,7 @@ from bujo.services.cycles import (
     complete_weekly_planning,
     finalize_monthly,
     finalize_weekly,
+    monthly_cycle_readiness,
     open_monthly_planning_target,
     open_weekly_planning_target,
     start_monthly,
@@ -368,7 +371,10 @@ class WeeklyLogView(APIView):
 
 
 class MonthlyLogView(APIView):
-    @extend_schema(responses=MonthlyLogSerializer)
+    # `month_first` era omitido do OpenAPI — `MonthlyLogQuerySerializer` só
+    # DECLARA o parâmetro (opcional, normalizado em silêncio); a validação real
+    # permanece manual abaixo, sem mudança de comportamento (Story 14.6, AC4).
+    @extend_schema(parameters=[MonthlyLogQuerySerializer], responses=MonthlyLogSerializer)
     def get(self, request):
         month_first_param = request.query_params.get("month_first")
         if month_first_param:
@@ -474,7 +480,16 @@ class MonthlyCycleView(APIView):
 
     `open_planning_target` não recebe alvo: ele é determinístico (mês seguinte ao
     `active`), sem escolha nem retargeting (M07).
+
+    `get` é NOVO (Story 14.6, AC4) — mesma rota, método novo, sem rota nova:
+    espelha byte-a-byte `WeeklyCycleView.get` (Story 14.5), trocando
+    `weekly_cycle_readiness` por `monthly_cycle_readiness`.
     """
+
+    @extend_schema(responses=MonthlyCycleReadinessSerializer)
+    def get(self, request):
+        readiness = monthly_cycle_readiness(user=request.user)
+        return Response(MonthlyCycleReadinessSerializer(readiness).data)
 
     @extend_schema(request=MonthlyCycleActionSerializer, responses=MonthlyCycleSerializer)
     def post(self, request):

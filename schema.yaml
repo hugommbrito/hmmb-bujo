@@ -205,6 +205,12 @@ paths:
   /api/bujo/logs/monthly/:
     get:
       operationId: bujo_logs_monthly_retrieve
+      parameters:
+      - in: query
+        name: month_first
+        schema:
+          type: string
+          format: date
       tags:
       - bujo
       security:
@@ -236,6 +242,28 @@ paths:
                 $ref: '#/components/schemas/Task'
           description: ''
   /api/bujo/logs/monthly/cycle/:
+    get:
+      operationId: bujo_logs_monthly_cycle_retrieve
+      description: |-
+        Ações do ciclo mensal (Story 14.1, AC8).
+
+        `open_planning_target` não recebe alvo: ele é determinístico (mês seguinte ao
+        `active`), sem escolha nem retargeting (M07).
+
+        `get` é NOVO (Story 14.6, AC4) — mesma rota, método novo, sem rota nova:
+        espelha byte-a-byte `WeeklyCycleView.get` (Story 14.5), trocando
+        `weekly_cycle_readiness` por `monthly_cycle_readiness`.
+      tags:
+      - bujo
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MonthlyCycleReadiness'
+          description: ''
     post:
       operationId: bujo_logs_monthly_cycle_create
       description: |-
@@ -243,6 +271,10 @@ paths:
 
         `open_planning_target` não recebe alvo: ele é determinístico (mês seguinte ao
         `active`), sem escolha nem retargeting (M07).
+
+        `get` é NOVO (Story 14.6, AC4) — mesma rota, método novo, sem rota nova:
+        espelha byte-a-byte `WeeklyCycleView.get` (Story 14.5), trocando
+        `weekly_cycle_readiness` por `monthly_cycle_readiness`.
       tags:
       - bujo
       requestBody:
@@ -3584,6 +3616,59 @@ components:
         * `complete_planning` - complete_planning
         * `start` - start
         * `finalize` - finalize
+    MonthlyCycleReadiness:
+      type: object
+      description: |-
+        Resposta de `GET /api/bujo/logs/monthly/cycle/` (AC4) — os quatro blocos,
+        `null` nos inexistentes. Cada booleano REUSA o predicado do serviço de
+        transição (ver `services/cycles.monthly_cycle_readiness`); este serializer
+        só projeta, nunca decide.
+      properties:
+        active:
+          allOf:
+          - $ref: '#/components/schemas/_MonthlyCycleSnapshot'
+          nullable: true
+        planning:
+          allOf:
+          - $ref: '#/components/schemas/_MonthlyCycleSnapshot'
+          nullable: true
+        start:
+          allOf:
+          - $ref: '#/components/schemas/MonthlyStartReadiness'
+          nullable: true
+        finalize:
+          allOf:
+          - $ref: '#/components/schemas/MonthlyFinalizeReadiness'
+          nullable: true
+      required:
+      - active
+      - finalize
+      - planning
+      - start
+    MonthlyFinalizeGates:
+      type: object
+      properties:
+        noOpenTasks:
+          type: boolean
+        nextPlanningExists:
+          type: boolean
+      required:
+      - nextPlanningExists
+      - noOpenTasks
+    MonthlyFinalizeReadiness:
+      type: object
+      properties:
+        allowed:
+          type: boolean
+        target:
+          type: string
+          format: date
+        gates:
+          $ref: '#/components/schemas/MonthlyFinalizeGates'
+      required:
+      - allowed
+      - gates
+      - target
     MonthlyLog:
       type: object
       properties:
@@ -3655,6 +3740,35 @@ components:
       required:
       - monthFirst
       - tasks
+    MonthlyStartGates:
+      type: object
+      description: Os TRÊS gates de `start` — hoje indistinguíveis no `detail` do
+        409.
+      properties:
+        dateReached:
+          type: boolean
+        planningCompleted:
+          type: boolean
+        previousFinalized:
+          type: boolean
+      required:
+      - dateReached
+      - planningCompleted
+      - previousFinalized
+    MonthlyStartReadiness:
+      type: object
+      properties:
+        allowed:
+          type: boolean
+        target:
+          type: string
+          format: date
+        gates:
+          $ref: '#/components/schemas/MonthlyStartGates'
+      required:
+      - allowed
+      - gates
+      - target
     MonthlyTaskCreate:
       type: object
       properties:
@@ -4844,6 +4958,23 @@ components:
       required:
       - title
       - weekStart
+    _MonthlyCycleSnapshot:
+      type: object
+      description: Projeção mínima de um `MonthlyLog` operacional (`active` ou `planning`).
+      properties:
+        monthFirst:
+          type: string
+          format: date
+        status:
+          type: string
+        planningCompletedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - monthFirst
+      - planningCompletedAt
+      - status
     _TemplateBucket:
       type: object
       description: |-

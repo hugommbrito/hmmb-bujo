@@ -2859,6 +2859,96 @@ def test_get_weekly_cycle_sem_autenticacao_retorna_401():
     assert client.get(WEEKLY_CYCLE_URL).status_code == 401
 
 
+# --- Story 14.6, AC4: GET /api/bujo/logs/monthly/cycle/ (leitura de prontidão) -
+# Molde direto do bloco `GET .../weekly/cycle/` acima.
+@pytest.mark.django_db
+def test_get_monthly_cycle_sem_ciclo_nenhum_devolve_os_quatro_blocos_nulos(auth_client):
+    response = auth_client.get(MONTHLY_CYCLE_URL)
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "active": None,
+        "planning": None,
+        "start": None,
+        "finalize": None,
+    }
+
+
+@pytest.mark.django_db
+def test_get_monthly_cycle_devolve_os_quatro_blocos_no_fio_camelcase(auth_client, user):
+    """Story 14.6, AC4: forma exata da projeção — os 3 gates de `start`, os 2 de
+    `finalize`, e nenhuma escrita (provado no fio: repetir a chamada devolve
+    exatamente o mesmo corpo)."""
+    mes = today_for(user).replace(day=1)
+    proximo = add_months(mes, 1)
+    auth_client.post(
+        MONTHLY_CYCLE_URL,
+        {"action": "open_planning_target"},
+        format="json",
+    )
+    auth_client.post(
+        MONTHLY_CYCLE_URL,
+        {"action": "complete_planning", "monthFirst": mes.isoformat()},
+        format="json",
+    )
+    auth_client.post(
+        MONTHLY_CYCLE_URL, {"action": "start", "monthFirst": mes.isoformat()}, format="json"
+    )
+    auth_client.post(
+        MONTHLY_CYCLE_URL,
+        {"action": "open_planning_target"},
+        format="json",
+    )
+
+    corpo = auth_client.get(MONTHLY_CYCLE_URL).json()
+
+    assert corpo["active"]["monthFirst"] == mes.isoformat()
+    assert corpo["active"]["status"] == "active"
+    assert corpo["planning"]["monthFirst"] == proximo.isoformat()
+    assert corpo["planning"]["status"] == "planning"
+    assert corpo["planning"]["planningCompletedAt"] is None
+    assert corpo["start"] == {
+        "allowed": False,
+        "target": proximo.isoformat(),
+        "gates": {
+            "dateReached": False,
+            "planningCompleted": False,
+            "previousFinalized": False,
+        },
+    }
+    assert corpo["finalize"] == {
+        "allowed": True,
+        "target": mes.isoformat(),
+        "gates": {"noOpenTasks": True, "nextPlanningExists": True},
+    }
+    # Repetir a leitura devolve exatamente o mesmo corpo — nenhuma escrita no GET.
+    assert auth_client.get(MONTHLY_CYCLE_URL).json() == corpo
+
+
+@pytest.mark.django_db
+def test_get_monthly_cycle_isolamento_entre_tenants_com_bearer_real(user, other_user):
+    with tenant_context(other_user):
+        mes = today_for(other_user).replace(day=1)
+        MonthlyLogFactory(user=other_user, month_first=mes, status=MonthlyLog.Status.ACTIVE)
+
+    client = APIClient()
+    client.credentials(HTTP_AUTHORIZATION=f"Bearer {AccessToken.for_user(user)}")
+
+    assert client.get(MONTHLY_CYCLE_URL).json() == {
+        "active": None,
+        "planning": None,
+        "start": None,
+        "finalize": None,
+    }
+
+
+@pytest.mark.django_db
+def test_get_monthly_cycle_sem_autenticacao_retorna_401():
+    client = APIClient()
+
+    assert client.get(MONTHLY_CYCLE_URL).status_code == 401
+
+
 @pytest.mark.django_db
 def test_post_monthly_cycle_abrir_planejamento_devolve_janela_regular(auth_client, user):
     mes = today_for(user).replace(day=1)

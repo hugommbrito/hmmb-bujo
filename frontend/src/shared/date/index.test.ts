@@ -5,7 +5,9 @@ import {
   formatDayLabel,
   isoOf,
   isoWeekNumber,
+  lastDayOfMonth,
   mondayIsoOf,
+  monthGridWeeks,
   parseLocalDate,
   weekPositionInMonth,
 } from './index'
@@ -119,3 +121,90 @@ describe('formatDayLabel', () => {
     expect(formatDayLabel('2026-07-20')).toBe(formatDayLabel('2026-07-20', 'weekday'))
   })
 })
+
+describe('lastDayOfMonth (Story 14.6, AC1/Task 2) — espelha calendar.monthrange', () => {
+  it('test_meses_de_31_dias', () => {
+    expect(lastDayOfMonth('2026-07-01')).toBe(31)
+  })
+
+  it('test_meses_de_30_dias', () => {
+    expect(lastDayOfMonth('2026-04-01')).toBe(30)
+  })
+
+  it('test_fevereiro_comum', () => {
+    expect(lastDayOfMonth('2026-02-01')).toBe(28)
+  })
+
+  it('test_fevereiro_bissexto', () => {
+    expect(lastDayOfMonth('2028-02-01')).toBe(29)
+  })
+
+  it('test_virada_dez_jan_nao_interfere', () => {
+    expect(lastDayOfMonth('2026-12-01')).toBe(31)
+    expect(lastDayOfMonth('2027-01-01')).toBe(31)
+  })
+})
+
+describe('monthGridWeeks — grade segunda→domingo cobrindo o mês inteiro (Story 14.6, AC1)', () => {
+  it('test_julho_2026_comeca_numa_quarta_e_tem_5_semanas', () => {
+    // 01/07/2026 é quarta — a grade começa na segunda anterior (29/06) e
+    // termina na semana que contém 31/07 (sexta).
+    const weeks = monthGridWeeks('2026-07-01')
+    expect(weeks).toHaveLength(5)
+    expect(weeks[0][0]).toEqual({ iso: '2026-06-29', inMonth: false })
+    expect(weeks[0][2]).toEqual({ iso: '2026-07-01', inMonth: true })
+    expect(weeks[4][6]).toEqual({ iso: '2026-08-02', inMonth: false })
+    expect(weeks[4][4]).toEqual({ iso: '2026-07-31', inMonth: true })
+  })
+
+  it('test_todas_as_semanas_tem_7_dias_segunda_a_domingo', () => {
+    const weeks = monthGridWeeks('2026-07-01')
+    for (const week of weeks) {
+      expect(week).toHaveLength(7)
+      expect(weekdayIndexOfIso(week[0].iso)).toBe(0)
+      expect(weekdayIndexOfIso(week[6].iso)).toBe(6)
+    }
+  })
+
+  it('test_fevereiro_bissexto_2028_cobre_29_dias_sem_faltar_nenhum', () => {
+    const weeks = monthGridWeeks('2028-02-01')
+    const diasDoMes = weeks.flat().filter((d) => d.inMonth)
+    expect(diasDoMes).toHaveLength(29)
+    expect(diasDoMes[0].iso).toBe('2028-02-01')
+    expect(diasDoMes[28].iso).toBe('2028-02-29')
+  })
+
+  it('test_virada_dez_jan_marca_dias_do_mes_seguinte_como_fora_do_mes', () => {
+    const weeks = monthGridWeeks('2026-12-01')
+    const foraDoMes = weeks.flat().filter((d) => !d.inMonth && d.iso.startsWith('2027-01'))
+    expect(foraDoMes.length).toBeGreaterThan(0)
+    const dentroDoMes = weeks.flat().filter((d) => d.inMonth)
+    expect(dentroDoMes).toHaveLength(31)
+  })
+
+  it('test_mes_que_precisa_de_6_linhas', () => {
+    // 01/08/2026 é sábado: a grade cresce até 6 semanas para cobrir o mês
+    // inteiro (início próximo do fim de uma semana + 31 dias).
+    const weeks = monthGridWeeks('2026-08-01')
+    expect(weeks).toHaveLength(6)
+    const dentroDoMes = weeks.flat().filter((d) => d.inMonth)
+    expect(dentroDoMes).toHaveLength(31)
+  })
+
+  it('test_fevereiro_nao_bissexto_comecando_numa_segunda_precisa_de_so_4_linhas', () => {
+    // Achado de revisão: o comentário de `monthGridWeeks` afirmava "5 ou 6
+    // linhas" sem cobrir o caso mínimo. 01/02/2027 é segunda-feira e 2027 não
+    // é bissexto (28 dias) — a grade cabe inteira em exatamente 4 semanas.
+    const weeks = monthGridWeeks('2027-02-01')
+    expect(weeks).toHaveLength(4)
+    const dentroDoMes = weeks.flat().filter((d) => d.inMonth)
+    expect(dentroDoMes).toHaveLength(28)
+    expect(dentroDoMes[0].iso).toBe('2027-02-01')
+    expect(dentroDoMes[27].iso).toBe('2027-02-28')
+  })
+})
+
+function weekdayIndexOfIso(iso: string): number {
+  const [year, month, day] = iso.split('-').map(Number)
+  return (new Date(year, month - 1, day).getDay() + 6) % 7
+}

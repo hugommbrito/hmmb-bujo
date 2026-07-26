@@ -263,6 +263,64 @@ class MonthlyCycleSerializer(_CycleFieldsMixin, serializers.Serializer):
     regular_window_end = serializers.DateField()
 
 
+# --- Prontidão do ciclo mensal (Story 14.6, AC4) — GET novo, leitura pura ------
+# Espelha byte-a-byte o bloco `Weekly*` acima (linhas 203-246), trocando
+# `week_start`→`month_first`. Mesmos nomes de campo (`date_reached`/
+# `planning_completed`/`previous_finalized`, `no_open_tasks`/
+# `next_planning_exists`).
+class _MonthlyCycleSnapshotSerializer(serializers.Serializer):
+    """Projeção mínima de um `MonthlyLog` operacional (`active` ou `planning`)."""
+
+    month_first = serializers.DateField()
+    status = serializers.CharField()
+    planning_completed_at = serializers.DateTimeField(allow_null=True)
+
+
+class MonthlyStartGatesSerializer(serializers.Serializer):
+    """Os TRÊS gates de `start` — hoje indistinguíveis no `detail` do 409."""
+
+    date_reached = serializers.BooleanField()
+    planning_completed = serializers.BooleanField()
+    previous_finalized = serializers.BooleanField()
+
+
+class MonthlyStartReadinessSerializer(serializers.Serializer):
+    allowed = serializers.BooleanField()
+    target = serializers.DateField()
+    gates = MonthlyStartGatesSerializer()
+
+
+class MonthlyFinalizeGatesSerializer(serializers.Serializer):
+    no_open_tasks = serializers.BooleanField()
+    next_planning_exists = serializers.BooleanField()
+
+
+class MonthlyFinalizeReadinessSerializer(serializers.Serializer):
+    allowed = serializers.BooleanField()
+    target = serializers.DateField()
+    gates = MonthlyFinalizeGatesSerializer()
+
+
+class MonthlyCycleReadinessSerializer(serializers.Serializer):
+    """Resposta de `GET /api/bujo/logs/monthly/cycle/` (AC4) — os quatro blocos,
+    `null` nos inexistentes. Cada booleano REUSA o predicado do serviço de
+    transição (ver `services/cycles.monthly_cycle_readiness`); este serializer
+    só projeta, nunca decide."""
+
+    active = _MonthlyCycleSnapshotSerializer(allow_null=True)
+    planning = _MonthlyCycleSnapshotSerializer(allow_null=True)
+    start = MonthlyStartReadinessSerializer(allow_null=True)
+    finalize = MonthlyFinalizeReadinessSerializer(allow_null=True)
+
+
+# `month_first` é OPCIONAL aqui (default = mês corrente, normalizado em
+# silêncio) — serve só para a declaração de OpenAPI de `MonthlyLogView.get`
+# (AC4): a validação real continua manual na view, sem mudança de
+# comportamento (molde de `WeeklyLogQuerySerializer`).
+class MonthlyLogQuerySerializer(serializers.Serializer):
+    month_first = serializers.DateField(required=False)
+
+
 class ArchiveEntrySerializer(serializers.Serializer):
     type = serializers.ChoiceField(choices=["weekly", "monthly"])
     week_start = serializers.DateField(required=False, allow_null=True)

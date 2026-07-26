@@ -147,6 +147,27 @@ test('move de Esta Semana clicando no calendário da própria aba "Esta semana" 
   expect(consoleErrors).toEqual([])
 })
 
+// Achado de revisão (AC9 exige "a mesma atualização" para este teste, não a
+// remoção que a story original aplicou): a criação abaixo foi migrada para
+// contextual (mesmo padrão de `weekly-monthly-task-crud.spec.ts`), mas o teste
+// permanece FALHANDO deliberadamente no passo "Mover tarefa" — affordance que
+// só `TaskRow.tsx` (legado, ainda usado por Hoje/Futuro/Recorrentes/Arquivo)
+// expõe. `TaskRowBase` (Weekly Board desde a 14.5, Monthly Board desde esta
+// story) não tem controle de linha equivalente — só "Reordenar tarefa" (Mover
+// acima/abaixo/Mover para…, entre irmãos do MESMO container). A outra via
+// possível, o botão "Mover tarefa" DENTRO do `TaskDetailCard`, existe no
+// componente mas seu `onClick={onMove}` fica deliberadamente sem handler em
+// `WeeklyBoardPage`/`MonthlyBoardPage` (AC2: "TaskDetailCard aberto
+// inalterado" — nenhuma story do Épico 14 até aqui pediu essa integração).
+// Mantido (não deletado nem `.skip`) para preservar um registro EXECUTÁVEL da
+// regressão — mesmo padrão dos outros 3 testes deste arquivo com a MESMA
+// causa raiz e origem em "Esta Semana" ('move de Esta Semana para Este Mês',
+// 'move de Esta Semana clicando no calendário', 'mover para Hoje a partir de
+// Esta Semana' — pré-existentes desde a 14.5, não desta story) — todos os 4
+// excluídos do gate via `--grep-invert` até uma decisão de produto sobre
+// wireup de `onMove` nos boards novos. A cobertura de "adiar ao Future Log" a
+// partir do Monthly, sem depender dessa affordance, já existe via o RITUAL
+// (`monthly-planning-ritual.spec.ts`), que é o caminho real disponível hoje.
 test('move de Este Mês para Futuro (mês seguinte); aparece em Futuro (AC2, AC3)', async ({
   page,
 }) => {
@@ -158,9 +179,11 @@ test('move de Este Mês para Futuro (mês seguinte); aparece em Futuro (AC2, AC3
   page.on('pageerror', (err) => consoleErrors.push(err.message))
 
   await page.getByRole('button', { name: 'Este Mês' }).click()
-  await expect(page.getByLabel('Este Mês')).toBeVisible()
-  await page.getByLabel('Título').fill('Tarefa a adiar no futuro')
-  await page.getByRole('button', { name: 'Adicionar' }).click()
+  const main = page.getByRole('main', { name: 'Este Mês' })
+  await expect(main).toBeVisible()
+  const pool = main.getByRole('region', { name: 'Sem dia definido' })
+  await pool.getByLabel('Título').fill('Tarefa a adiar no futuro')
+  await pool.getByRole('button', { name: 'Adicionar' }).click()
   const originRow = page.getByTestId('task-row').filter({ hasText: 'Tarefa a adiar no futuro' })
   await expect(originRow).toBeVisible()
 

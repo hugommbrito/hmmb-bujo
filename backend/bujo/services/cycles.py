@@ -288,13 +288,14 @@ def has_undisposed(log) -> bool:
     return _has_undisposed(log)
 
 
-def _cycle_snapshot(log) -> dict | None:
-    """Projeção mínima de um `WeeklyLog` para o painel de prontidão (Story 14.5,
-    AC4), ou ``None`` quando o log não existe/não está no regime operacional."""
+def _cycle_snapshot(log, *, key_field: str) -> dict | None:
+    """Projeção mínima de um log de ciclo para o painel de prontidão (Story
+    14.5/14.6, AC4), ou ``None`` quando o log não existe/não está no regime
+    operacional."""
     if log is None:
         return None
     return {
-        "week_start": log.week_start,
+        key_field: getattr(log, key_field),
         "status": log.status,
         "planning_completed_at": log.planning_completed_at,
     }
@@ -338,8 +339,47 @@ def weekly_cycle_readiness(*, user) -> dict:
         finalize = {"allowed": all(gates.values()), "target": active.week_start, "gates": gates}
 
     return {
-        "active": _cycle_snapshot(active),
-        "planning": _cycle_snapshot(planning),
+        "active": _cycle_snapshot(active, key_field="week_start"),
+        "planning": _cycle_snapshot(planning, key_field="week_start"),
+        "start": start,
+        "finalize": finalize,
+    }
+
+
+def monthly_cycle_readiness(*, user) -> dict:
+    """Leitura pura e agregada do ciclo mensal (Story 14.6, AC4).
+
+    Molde direto de `weekly_cycle_readiness` trocando `_WEEKLY`→`_MONTHLY` e
+    `week_start`→`month_first` — a única divergência de produto é
+    `_monthly_next_planning_exists`, que exige o mês EXATAMENTE seguinte (sem
+    lacuna), ao contrário do Weekly, que aceita qualquer planning futuro.
+    Zero predicado novo, zero escrita, zero `get_or_create`.
+    """
+    today = today_for(user)
+    active = MonthlyLog.objects.filter(status=CycleStatus.ACTIVE).first()
+    planning = MonthlyLog.objects.filter(status=CycleStatus.PLANNING).first()
+
+    start = None
+    if planning is not None:
+        previous = _previous_operational(_MONTHLY, key=planning.month_first)
+        gates = {
+            "date_reached": today >= planning.month_first,
+            "planning_completed": planning.planning_completed_at is not None,
+            "previous_finalized": previous is None or previous.status == CycleStatus.FINALIZED,
+        }
+        start = {"allowed": all(gates.values()), "target": planning.month_first, "gates": gates}
+
+    finalize = None
+    if active is not None:
+        gates = {
+            "no_open_tasks": not _has_undisposed(active),
+            "next_planning_exists": _monthly_next_planning_exists(active.month_first),
+        }
+        finalize = {"allowed": all(gates.values()), "target": active.month_first, "gates": gates}
+
+    return {
+        "active": _cycle_snapshot(active, key_field="month_first"),
+        "planning": _cycle_snapshot(planning, key_field="month_first"),
         "start": start,
         "finalize": finalize,
     }

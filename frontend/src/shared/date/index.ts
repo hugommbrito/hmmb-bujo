@@ -110,6 +110,48 @@ export function weekPositionInMonth(weekStartIso: string): WeekPositionInMonth[]
   }))
 }
 
+/** Último dia do mês de `monthFirst` ("AAAA-MM-01") — 28–31, incl. bissexto.
+ * Espelha a mesma regra que `TaskMigrateSerializer`/`MonthlyTaskCreateSerializer`
+ * já validam no backend (`calendar.monthrange`), para dar feedback client-side
+ * antes do POST (Story 14.6, Task 2). */
+export function lastDayOfMonth(monthFirst: string): number {
+  const [year, month] = monthFirst.split('-').map(Number)
+  return new Date(year, month, 0).getDate()
+}
+
+export interface MonthGridDay {
+  iso: string
+  /** `false` para dias fora do mês-alvo (início/fim da grade) — AC1: não
+   * clicáveis, só a data em texto. */
+  inMonth: boolean
+}
+
+/** Semanas segunda→domingo cobrindo o mês inteiro de `monthFirst`
+ * ("AAAA-MM-01") — 4 a 6 linhas (fevereiro não bissexto começando numa
+ * segunda-feira produz exatamente 4), cada dia marcado `inMonth` (Story 14.6,
+ * AC1: "todos os dias do mês, inclusive vazios"). Construído a partir dos
+ * primitivos já existentes acima — não duplica a cópia própria de
+ * `MonthDensityCalendar.tsx` (componente legado da Story 11.3, fora do
+ * escopo desta story). */
+export function monthGridWeeks(monthFirst: string): MonthGridDay[][] {
+  const [targetYear, targetMonth] = monthFirst.split('-').map(Number)
+  const lastDayIso = isoOf(new Date(targetYear, targetMonth - 1, lastDayOfMonth(monthFirst)))
+  const gridStart = mondayIsoOf(monthFirst)
+  const gridEnd = mondayIsoOf(lastDayIso)
+
+  const weeks: MonthGridDay[][] = []
+  for (let weekStart = gridStart; weekStart <= gridEnd; weekStart = addDaysIso(weekStart, 7)) {
+    const week: MonthGridDay[] = []
+    for (let offset = 0; offset < 7; offset += 1) {
+      const iso = addDaysIso(weekStart, offset)
+      const [year, month] = iso.split('-').map(Number)
+      week.push({ iso, inMonth: year === targetYear && month === targetMonth })
+    }
+    weeks.push(week)
+  }
+  return weeks
+}
+
 const WEEKDAY_LONG_PT_BR = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo']
 
 function intlPart(date: Date, options: Intl.DateTimeFormatOptions, type: string): string {

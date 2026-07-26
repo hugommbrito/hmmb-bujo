@@ -202,13 +202,27 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * @description Ações do ciclo mensal (Story 14.1, AC8).
+         *
+         *     `open_planning_target` não recebe alvo: ele é determinístico (mês seguinte ao
+         *     `active`), sem escolha nem retargeting (M07).
+         *
+         *     `get` é NOVO (Story 14.6, AC4) — mesma rota, método novo, sem rota nova:
+         *     espelha byte-a-byte `WeeklyCycleView.get` (Story 14.5), trocando
+         *     `weekly_cycle_readiness` por `monthly_cycle_readiness`.
+         */
+        get: operations["bujo_logs_monthly_cycle_retrieve"];
         put?: never;
         /**
          * @description Ações do ciclo mensal (Story 14.1, AC8).
          *
          *     `open_planning_target` não recebe alvo: ele é determinístico (mês seguinte ao
          *     `active`), sem escolha nem retargeting (M07).
+         *
+         *     `get` é NOVO (Story 14.6, AC4) — mesma rota, método novo, sem rota nova:
+         *     espelha byte-a-byte `WeeklyCycleView.get` (Story 14.5), trocando
+         *     `weekly_cycle_readiness` por `monthly_cycle_readiness`.
          */
         post: operations["bujo_logs_monthly_cycle_create"];
         delete?: never;
@@ -2143,6 +2157,28 @@ export interface components {
          * @enum {string}
          */
         MonthlyCycleActionActionEnum: "open_planning_target" | "complete_planning" | "start" | "finalize";
+        /**
+         * @description Resposta de `GET /api/bujo/logs/monthly/cycle/` (AC4) — os quatro blocos,
+         *     `null` nos inexistentes. Cada booleano REUSA o predicado do serviço de
+         *     transição (ver `services/cycles.monthly_cycle_readiness`); este serializer
+         *     só projeta, nunca decide.
+         */
+        MonthlyCycleReadiness: {
+            active: components["schemas"]["_MonthlyCycleSnapshot"] | null;
+            planning: components["schemas"]["_MonthlyCycleSnapshot"] | null;
+            start: components["schemas"]["MonthlyStartReadiness"] | null;
+            finalize: components["schemas"]["MonthlyFinalizeReadiness"] | null;
+        };
+        MonthlyFinalizeGates: {
+            noOpenTasks: boolean;
+            nextPlanningExists: boolean;
+        };
+        MonthlyFinalizeReadiness: {
+            allowed: boolean;
+            /** Format: date */
+            target: string;
+            gates: components["schemas"]["MonthlyFinalizeGates"];
+        };
         MonthlyLog: {
             status: string | null;
             /** Format: date-time */
@@ -2167,6 +2203,18 @@ export interface components {
             /** Format: date */
             monthFirst: string;
             tasks: components["schemas"]["Task"][];
+        };
+        /** @description Os TRÊS gates de `start` — hoje indistinguíveis no `detail` do 409. */
+        MonthlyStartGates: {
+            dateReached: boolean;
+            planningCompleted: boolean;
+            previousFinalized: boolean;
+        };
+        MonthlyStartReadiness: {
+            allowed: boolean;
+            /** Format: date */
+            target: string;
+            gates: components["schemas"]["MonthlyStartGates"];
         };
         MonthlyTaskCreate: {
             /** Format: date */
@@ -2695,6 +2743,14 @@ export interface components {
             eisenhower?: (components["schemas"]["EisenhowerEnum"] | components["schemas"]["NullEnum"]) | null;
             category?: (components["schemas"]["CategoryEnum"] | components["schemas"]["NullEnum"]) | null;
         };
+        /** @description Projeção mínima de um `MonthlyLog` operacional (`active` ou `planning`). */
+        _MonthlyCycleSnapshot: {
+            /** Format: date */
+            monthFirst: string;
+            status: string;
+            /** Format: date-time */
+            planningCompletedAt: string | null;
+        };
         /**
          * @description `alreadyPlaced`/`alreadyPlacedInYear` — fora do progresso e dos avisos, mas
          *     permanentemente consultáveis (novas instâncias continuam permitidas).
@@ -2949,7 +3005,9 @@ export interface operations {
     };
     bujo_logs_monthly_retrieve: {
         parameters: {
-            query?: never;
+            query?: {
+                month_first?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -2985,6 +3043,25 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Task"];
+                };
+            };
+        };
+    };
+    bujo_logs_monthly_cycle_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MonthlyCycleReadiness"];
                 };
             };
         };

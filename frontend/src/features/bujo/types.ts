@@ -38,6 +38,14 @@ export type RitualDecision = components['schemas']['RitualDecision']
 export type RitualDecisionCreate = components['schemas']['RitualDecisionCreate']
 export type DecisionEnum = components['schemas']['DecisionEnum']
 
+// --- Story 14.6: ciclo mensal (leitura de prontidão) e fonte recorrente -------
+export type MonthlyCycle = components['schemas']['MonthlyCycle']
+export type MonthlyCycleAction = components['schemas']['MonthlyCycleAction']
+export type MonthlyCycleReadiness = components['schemas']['MonthlyCycleReadiness']
+export type MonthlyStartReadiness = components['schemas']['MonthlyStartReadiness']
+export type MonthlyFinalizeReadiness = components['schemas']['MonthlyFinalizeReadiness']
+export type MonthlyRecurringSource = components['schemas']['MonthlyRecurringSource']
+
 // Uniões que o gerador NÃO produz — `openapi-typescript` não estreita campos
 // declarados como `CharField(allow_null=True)` no backend (não `ChoiceField`),
 // então `WeeklyLog.status`/`WeeklyCycle.status` chegam como `string | null` e

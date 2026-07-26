@@ -55,7 +55,10 @@ export const shellRoutes: readonly ShellRouteEntry[] = [
   // Segmentos diferentes de `planner/week` — `matchesPattern` exige
   // igualdade de contagem de segmentos, então precisa de entrada própria.
   { routeId: 'planner/week/planning', shell: 'new', surfaceMigrated: true },
-  { routeId: 'planner/month', shell: 'new', surfaceMigrated: false },
+  // Story 14.6: SEGUNDA superfície interna migrada — `LegacySeamNotice`
+  // desaparece também nessas duas rotas.
+  { routeId: 'planner/month', shell: 'new', surfaceMigrated: true },
+  { routeId: 'planner/month/planning', shell: 'new', surfaceMigrated: true },
   { routeId: 'planner/future', shell: 'new', surfaceMigrated: false },
   { routeId: 'planner/recurring', shell: 'new', surfaceMigrated: false },
   { routeId: 'brain-dump', shell: 'new', surfaceMigrated: false },

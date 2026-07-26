@@ -14,6 +14,8 @@ import { WeeklyPage } from '../pages/planner/WeeklyPage'
 import { WeeklyBoardPage } from '../pages/planner/WeeklyBoardPage'
 import { WeeklyPlanningPage } from '../pages/planner/WeeklyPlanningPage'
 import { MonthlyPage } from '../pages/planner/MonthlyPage'
+import { MonthlyBoardPage } from '../pages/planner/MonthlyBoardPage'
+import { MonthlyPlanningPage } from '../pages/planner/MonthlyPlanningPage'
 import { FuturePage } from '../pages/planner/FuturePage'
 import { RecurringPage } from '../pages/planner/RecurringPage'
 import { ArchivePage } from '../pages/archive/ArchivePage'
@@ -122,9 +124,17 @@ export const routeDefinitions: RouteObject[] = [
         handle: { title: 'Planejar a semana' },
       },
       {
+        // Story 14.6: `MonthlyPage` legada continua servindo só
+        // `archive/monthly/:monthFirst` — `planner/month` passa a montar o
+        // Monthly Board do sistema novo (mesmo padrão da 14.5 para o Weekly).
         path: 'planner/month',
-        element: <MonthlyPage />,
+        element: <MonthlyBoardPage />,
         handle: { title: 'Este Mês' },
+      },
+      {
+        path: 'planner/month/planning',
+        element: <MonthlyPlanningPage />,
+        handle: { title: 'Planejar o mês' },
       },
       {
         path: 'planner/future',

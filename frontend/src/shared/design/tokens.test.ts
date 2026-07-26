@@ -13,6 +13,8 @@ import {
   mediaQueries,
   mineralDark,
   mineralLight,
+  monthlyBoard,
+  monthlyPlanning,
   palettes,
   panel,
   radius,
@@ -129,6 +131,23 @@ describe('tokens — componentes do Épico 14 (Story 14.5)', () => {
     expect(weeklyPlanning.densityPosition).toBe('sticky')
   })
 
+  it('test_monthly_board_bate_com_o_design_md', () => {
+    expect(monthlyBoard.columns).toBe(7)
+    expect(monthlyBoard.gap).toBe(spacing[2])
+    expect(monthlyBoard.undatedWidth).toBe('268px')
+    expect(monthlyBoard.dayScroll).toBe('internal')
+    expect(monthlyBoard.terminalOpacity).toBe(0.58)
+    // Não documentado no DESIGN.md — piso de altura por linha adicionado para
+    // corrigir um achado real do axe (`target-size`), Story 14.6.
+    expect(monthlyBoard.minCellHeight).toBe('140px')
+  })
+
+  it('test_monthly_planning_bate_com_o_design_md', () => {
+    expect(monthlyPlanning.sourceRail).toBe('188px')
+    expect(monthlyPlanning.contextRail).toBe('310px')
+    expect(monthlyPlanning.densityPosition).toBe('sticky')
+  })
+
   it('test_panel_bate_com_o_design_md', () => {
     expect(panel.background).toBe('surface')
     expect(panel.borderWidth).toBe('1px')
@@ -165,6 +184,19 @@ describe('tokens — componentes do Épico 14 (Story 14.5)', () => {
     expect(vars['--ds-weekly-planning-context-rail']).toBe(weeklyPlanning.contextRail)
     expect(vars['--ds-panel-padding']).toBe(panel.padding)
     expect(vars['--ds-chip-height']).toBe(chip.height)
+  })
+
+  it('test_cada_token_de_monthly_board_planning_aparece_em_shellCssVariables', () => {
+    const vars = shellCssVariables('light')
+    expect(vars['--ds-monthly-board-columns']).toBe(String(monthlyBoard.columns))
+    expect(vars['--ds-monthly-board-gap']).toBe(monthlyBoard.gap)
+    expect(vars['--ds-monthly-board-undated-width']).toBe(monthlyBoard.undatedWidth)
+    expect(vars['--ds-monthly-board-min-cell-height']).toBe(monthlyBoard.minCellHeight)
+    expect(vars['--ds-monthly-planning-source-rail']).toBe(monthlyPlanning.sourceRail)
+    expect(vars['--ds-monthly-planning-context-rail']).toBe(monthlyPlanning.contextRail)
+    // day-scroll/density-position/terminal-opacity REUSAM as vars já emitidas
+    // pela 14.5 — não há `--ds-monthly-board-day-scroll` própria.
+    expect(vars['--ds-task-row-terminal-opacity']).toBe(String(monthlyBoard.terminalOpacity))
   })
 })
 

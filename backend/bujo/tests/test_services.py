@@ -27,6 +27,7 @@ from bujo.services.cycles import (
     complete_weekly_planning,
     finalize_monthly,
     finalize_weekly,
+    monthly_cycle_readiness,
     next_monthly_target,
     open_monthly_planning_target,
     open_weekly_planning_target,
@@ -2636,6 +2637,208 @@ def test_readiness_e_leitura_pura_sem_escrita_nem_get_or_create(user):
         resultado = _sem_escrita(weekly_cycle_readiness, user=user)
 
         assert WeeklyLog.objects.count() == antes
+        assert resultado["active"]["status"] == CycleStatus.ACTIVE
+
+
+# --- Story 14.6, AC4: prontidão agregada do ciclo mensal (leitura pura) --------
+# Molde direto do bloco `weekly_cycle_readiness` acima, trocando `_WEEKLY`→
+# `_MONTHLY` e `week_start`→`month_first` — a única divergência de produto é
+# `next_planning_exists`: o Monthly exige o mês EXATAMENTE seguinte (sem
+# lacuna), não qualquer planning futuro.
+@pytest.mark.django_db
+def test_readiness_monthly_sem_nenhum_ciclo_operacional_devolve_os_quatro_blocos_nulos(user):
+    with tenant_context(user):
+        assert monthly_cycle_readiness(user=user) == {
+            "active": None,
+            "planning": None,
+            "start": None,
+            "finalize": None,
+        }
+
+
+@pytest.mark.django_db
+def test_readiness_monthly_reflete_active_e_planning_com_os_tres_gates_de_start(user):
+    with tenant_context(user):
+        mes = _current_month(user)
+        proximo = add_months(mes, 1)
+        ativo = MonthlyLogFactory(
+            user=user,
+            month_first=mes,
+            status=CycleStatus.ACTIVE,
+            planning_completed_at=cal_now(),
+        )
+        planejamento = MonthlyLogFactory(
+            user=user, month_first=proximo, status=CycleStatus.PLANNING
+        )
+
+        readiness = monthly_cycle_readiness(user=user)
+
+        assert readiness["active"] == {
+            "month_first": mes,
+            "status": CycleStatus.ACTIVE,
+            "planning_completed_at": ativo.planning_completed_at,
+        }
+        assert readiness["planning"] == {
+            "month_first": proximo,
+            "status": CycleStatus.PLANNING,
+            "planning_completed_at": None,
+        }
+        assert readiness["start"] == {
+            "allowed": False,
+            "target": proximo,
+            "gates": {
+                "date_reached": False,
+                "planning_completed": False,
+                # O `active` do mês corrente É o anterior operacional de
+                # `proximo` e ainda não está `finalized`.
+                "previous_finalized": False,
+            },
+        }
+        assert readiness["finalize"] == {
+            "allowed": True,
+            "target": mes,
+            "gates": {"no_open_tasks": True, "next_planning_exists": True},
+        }
+        assert planejamento.status == CycleStatus.PLANNING  # sanity: nada escreveu
+
+
+@pytest.mark.django_db
+def test_readiness_monthly_start_allowed_true_quando_os_tres_gates_passam(user):
+    with tenant_context(user):
+        mes = _current_month(user)
+        anterior = add_months(mes, -1)
+        MonthlyLogFactory(user=user, month_first=anterior, status=CycleStatus.FINALIZED)
+        MonthlyLogFactory(
+            user=user,
+            month_first=mes,
+            status=CycleStatus.PLANNING,
+            planning_completed_at=cal_now(),
+        )
+
+        readiness = monthly_cycle_readiness(user=user)
+
+        assert readiness["start"]["allowed"] is True
+        assert readiness["start"]["gates"] == {
+            "date_reached": True,
+            "planning_completed": True,
+            "previous_finalized": True,
+        }
+
+
+@pytest.mark.django_db
+def test_readiness_monthly_finalize_allowed_true_quando_os_dois_gates_passam(user):
+    with tenant_context(user):
+        mes = _current_month(user)
+        log = MonthlyLogFactory(user=user, month_first=mes, status=CycleStatus.ACTIVE)
+        MonthlyLogFactory(
+            user=user, month_first=add_months(mes, 1), status=CycleStatus.PLANNING
+        )
+
+        readiness = monthly_cycle_readiness(user=user)
+
+        assert readiness["finalize"] == {
+            "allowed": True,
+            "target": mes,
+            "gates": {"no_open_tasks": True, "next_planning_exists": True},
+        }
+        assert log.status == CycleStatus.ACTIVE  # nada escreveu por trás
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "gate_alterado,setup,esperado_start,esperado_post",
+    [
+        ("date_reached", "futuro", False, 409),
+        ("planning_completed", "sem_marco", False, 409),
+        ("previous_finalized", "anterior_nao_finalizado", False, 409),
+    ],
+)
+def test_readiness_monthly_start_e_o_gate_real_nao_podem_divergir(
+    user, gate_alterado, setup, esperado_start, esperado_post
+):
+    """AC4: 'um teste prova que o painel e o gate real não podem divergir
+    (mesma condição → mesma resposta em GET e POST)' — molde de
+    `test_readiness_start_e_o_gate_real_nao_podem_divergir` (Weekly, 14.5)."""
+    with tenant_context(user):
+        hoje = _current_month(user)
+        if setup == "futuro":
+            mes = add_months(hoje, 2)
+        else:
+            mes = hoje
+
+        if setup != "anterior_nao_finalizado":
+            anterior = add_months(mes, -1)
+            if setup == "futuro":
+                MonthlyLogFactory(user=user, month_first=anterior, status=CycleStatus.FINALIZED)
+        else:
+            anterior = add_months(mes, -1)
+            MonthlyLogFactory(user=user, month_first=anterior, status=CycleStatus.ACTIVE)
+
+        marco = None if setup == "sem_marco" else cal_now()
+        MonthlyLogFactory(
+            user=user, month_first=mes, status=CycleStatus.PLANNING, planning_completed_at=marco
+        )
+
+        readiness = monthly_cycle_readiness(user=user)
+        assert readiness["start"]["gates"][gate_alterado] is esperado_start
+        assert readiness["start"]["allowed"] is False
+
+        if esperado_post == 409:
+            with pytest.raises(InvalidTransition):
+                start_monthly(user=user, month_first=mes)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "gate_alterado,setup",
+    [
+        ("no_open_tasks", "tarefa_aberta"),
+        ("next_planning_exists", "sem_proxima_planning"),
+    ],
+)
+def test_readiness_monthly_finalize_e_o_gate_real_nao_podem_divergir(user, gate_alterado, setup):
+    """Mesma prova do lado de `finalize`, agora para o Monthly (AC4)."""
+    with tenant_context(user):
+        mes = _current_month(user)
+        ativo = MonthlyLogFactory(user=user, month_first=mes, status=CycleStatus.ACTIVE)
+
+        if setup == "tarefa_aberta":
+            TaskFactory(user=user, monthly_log=ativo, status=Task.Status.PENDING)
+            MonthlyLogFactory(
+                user=user, month_first=add_months(mes, 1), status=CycleStatus.PLANNING
+            )
+        # else ("sem_proxima_planning"): nenhuma tarefa criada ⇒ `no_open_tasks`
+        # satisfeito; nenhum mês seguinte em planning ⇒ `next_planning_exists`
+        # falha — é o gate sob teste.
+
+        readiness = monthly_cycle_readiness(user=user)
+        assert readiness["finalize"]["gates"][gate_alterado] is False
+        assert readiness["finalize"]["allowed"] is False
+
+        with pytest.raises(InvalidTransition):
+            finalize_monthly(user=user, month_first=mes)
+
+
+@pytest.mark.django_db
+def test_readiness_monthly_e_leitura_pura_sem_escrita_nem_get_or_create(user):
+    """Zero efeito colateral: `MonthlyLog.objects.count()` inalterado e nenhum
+    INSERT/UPDATE/DELETE emitido, provado no SQL (molde de `_sem_escrita`)."""
+    with tenant_context(user):
+        mes = _current_month(user)
+        MonthlyLogFactory(
+            user=user,
+            month_first=mes,
+            status=CycleStatus.ACTIVE,
+            planning_completed_at=cal_now(),
+        )
+        MonthlyLogFactory(
+            user=user, month_first=add_months(mes, 1), status=CycleStatus.PLANNING
+        )
+        antes = MonthlyLog.objects.count()
+
+        resultado = _sem_escrita(monthly_cycle_readiness, user=user)
+
+        assert MonthlyLog.objects.count() == antes
         assert resultado["active"]["status"] == CycleStatus.ACTIVE
 
 

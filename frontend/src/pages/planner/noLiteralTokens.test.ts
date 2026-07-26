@@ -7,12 +7,28 @@ import { describe, expect, it } from 'vitest'
 // separados).
 import weeklyBoardPageSource from './WeeklyBoardPage.tsx?raw'
 import weeklyPlanningPageSource from './WeeklyPlanningPage.tsx?raw'
+import monthlyBoardPageSource from './MonthlyBoardPage.tsx?raw'
+import monthlyPlanningPageSource from './MonthlyPlanningPage.tsx?raw'
 
-const FORBIDDEN_LITERALS = ['240px', '235px', '315px', '190px', '0.58', '36px', '48px', '3px']
+const FORBIDDEN_LITERALS = [
+  '240px',
+  '235px',
+  '315px',
+  '190px',
+  '268px',
+  '188px',
+  '310px',
+  '0.58',
+  '36px',
+  '48px',
+  '3px',
+]
 
 const SOURCES: Record<string, string> = {
   'WeeklyBoardPage.tsx': weeklyBoardPageSource,
   'WeeklyPlanningPage.tsx': weeklyPlanningPageSource,
+  'MonthlyBoardPage.tsx': monthlyBoardPageSource,
+  'MonthlyPlanningPage.tsx': monthlyPlanningPageSource,
 }
 
 describe('AC8 — zero literal estrutural/cromático nas páginas novas', () => {

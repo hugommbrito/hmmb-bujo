@@ -12,15 +12,20 @@ import { seedClosedCycleScenario, seedWeeklyTaskWithLineage } from './seedClosed
 // Atualizado na Story 14.5 (Weekly Board): "Esta Semana" trocou o formulário
 // único + Select "Dia (opcional)" por CRIAÇÃO CONTEXTUAL — um formulário por
 // painel (cada dia + o pool "Sem dia definido"), então `getByLabel('Título')`
-// precisa ser escopado ao painel-alvo (nunca `page.getByLabel` puro). "Este
-// Mês" é legado e intocado — mantém o formulário único, só ganhou o mesmo
-// escopo por `main`/label da página para evitar colisão com o `Título *`
-// oculto e portalizado do `BrainDumpCaptureSheet` (presente em toda rota
-// desde a Story 13.3 — a causa real das falhas pré-existentes deste spec).
-// O painel de detalhe da Semana também trocou: `TaskDetailCard` novo usa 2
-// checkboxes reais para Eisenhower (Urgente/Importante), não mais um Select
-// "Eisenhower" com opções — o painel do Mês (`TaskDetailPanel` legado)
-// continua com o Select antigo.
+// precisa ser escopado ao painel-alvo (nunca `page.getByLabel` puro).
+//
+// Atualizado NOVAMENTE na Story 14.6 (Monthly Board): "Este Mês" deixa de ser
+// o `MonthlyPage` legado (formulário único + Select "Dia (opcional)") — o
+// `MonthlyBoardPage` novo usa a MESMA criação contextual do Weekly (uma célula
+// do calendário ou o pool "Sem dia definido"), então os testes que criavam
+// tarefa direto no `main` do Mês também precisam de escopo por painel/célula.
+// O painel de detalhe do Mês também passa a ser `TaskDetailCard` (2
+// checkboxes reais de Eisenhower) — `detailPanel()` já cobre as duas
+// variantes (`.MuiDrawer-paper`/`.MuiDialog-paper`), sem mudança de helper.
+function todayIso(): string {
+  const now = new Date()
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+}
 
 test('cria tarefa em Esta Semana com dia específico e sem dia (AC1)', async ({ page }) => {
   // Duas criações + asserções de rede contra Neon real — orçamento maior que
@@ -72,9 +77,8 @@ test('cria tarefa em Esta Semana com dia específico e sem dia (AC1)', async ({ 
   expect(consoleErrors).toEqual([])
 })
 
-test('cria tarefa em Este Mês (fluxo já existente desde a 4.1, coberto por completude)', async ({
-  page,
-}) => {
+test('cria tarefa em Este Mês com dia específico e sem dia (AC1)', async ({ page }) => {
+  test.setTimeout(60_000)
   const consoleErrors: string[] = []
   page.on('console', (msg) => {
     if (msg.type() === 'error') consoleErrors.push(msg.text())
@@ -82,13 +86,32 @@ test('cria tarefa em Este Mês (fluxo já existente desde a 4.1, coberto por com
   page.on('pageerror', (err) => consoleErrors.push(err.message))
 
   await page.getByRole('button', { name: 'Este Mês' }).click()
-  const main = page.getByLabel('Este Mês')
+  const main = page.getByRole('main', { name: 'Este Mês' })
   await expect(main).toBeVisible()
 
-  await main.getByLabel('Título').fill('Tarefa do mês')
-  await main.getByRole('button', { name: 'Adicionar' }).click()
+  // Com dia: a célula de HOJE tem seu PRÓPRIO formulário — o dia nasce da
+  // célula, não de um Select à parte (mesmo contrato do Weekly Board).
+  const todayCell = main.locator(`[data-date="${todayIso()}"]`)
+  const postResponse = page.waitForResponse(
+    (r) => r.url().includes('/api/bujo/logs/monthly/') && r.request().method() === 'POST',
+  )
+  await todayCell.getByLabel('Título').fill('Tarefa com dia no mês')
+  await todayCell.getByRole('button', { name: 'Adicionar' }).click()
+  const postPayload = await (await postResponse).json()
+  expect(postPayload.scheduledDate).toBe(todayIso())
+  await expect(page.getByTestId('task-row').filter({ hasText: 'Tarefa com dia no mês' })).toBeVisible()
 
-  await expect(page.getByTestId('task-row').filter({ hasText: 'Tarefa do mês' })).toBeVisible()
+  // Sem dia: painel "Sem dia definido" (o pool).
+  const pool = main.getByRole('region', { name: 'Sem dia definido' })
+  const postResponse2 = page.waitForResponse(
+    (r) => r.url().includes('/api/bujo/logs/monthly/') && r.request().method() === 'POST',
+  )
+  await pool.getByLabel('Título').fill('Tarefa sem dia no mês')
+  await pool.getByRole('button', { name: 'Adicionar' }).click()
+  const postPayload2 = await (await postResponse2).json()
+  expect(postPayload2.scheduledDate).toBeNull()
+  await expect(pool.getByTestId('task-row').filter({ hasText: 'Tarefa sem dia no mês' })).toBeVisible()
+
   expect(consoleErrors).toEqual([])
 })
 
@@ -125,9 +148,10 @@ test('edita título e eisenhower via painel compartilhado em Semana e Mês (AC2)
   await expect(page.getByTestId('task-row').filter({ hasText: 'Editada na semana' })).toBeVisible()
 
   await page.getByRole('button', { name: 'Este Mês' }).click()
-  const monthlyMain = page.getByLabel('Este Mês')
-  await monthlyMain.getByLabel('Título').fill('Editar no mês')
-  await monthlyMain.getByRole('button', { name: 'Adicionar' }).click()
+  const monthlyMain = page.getByRole('main', { name: 'Este Mês' })
+  const monthlyPool = monthlyMain.getByRole('region', { name: 'Sem dia definido' })
+  await monthlyPool.getByLabel('Título').fill('Editar no mês')
+  await monthlyPool.getByRole('button', { name: 'Adicionar' }).click()
   await expect(page.getByTestId('task-row').filter({ hasText: 'Editar no mês' })).toBeVisible()
 
   await page.getByRole('button', { name: 'Ver detalhes de Editar no mês' }).click()
@@ -248,12 +272,27 @@ test('período fechado esconde formulário de criação e clique-pra-editar na r
   await weeklyPanel.getByRole('button', { name: 'Fechar' }).click()
 
   await page.getByRole('button', { name: 'Este Mês' }).click()
-  await expect(page.getByLabel('Este Mês')).toBeVisible()
-  await expect(page.getByText('Fechado')).toBeVisible()
-  await expect(page.getByLabel('Adicionar tarefa ao mês')).toHaveCount(0)
-  await expect(
-    page.getByRole('button', { name: 'Ver detalhes de Tarefa concluída (fecha o mês)' }),
-  ).toHaveCount(0)
+  const monthlyMain = page.getByRole('main', { name: 'Este Mês' })
+  await expect(monthlyMain).toBeVisible()
+  // Fechado por CONTEÚDO (mesmo padrão AD-28 do Weekly acima): nenhum badge
+  // de status aparece (`status` fica `null`, não `finalized`) — o readonly
+  // se prova pela AUSÊNCIA de formulário, e "Ver detalhes" CONTINUA acessível
+  // (Story 14.6 alinha o Monthly Board à mesma divergência que a 14.5 já
+  // fixou para o Weekly: consulta permanece, só a escrita desaparece — o
+  // `MonthlyPage` legado escondia o próprio botão de detalhe quando fechado,
+  // contrato que o Monthly Board novo não repete).
+  await expect(monthlyMain.getByLabel('Título')).toHaveCount(0)
+
+  const monthlyDetailButton = page.getByRole('button', {
+    name: 'Ver detalhes de Tarefa concluída (fecha o mês)',
+  })
+  await expect(monthlyDetailButton).toBeVisible()
+  await monthlyDetailButton.click()
+  const monthlyPanel = detailPanel(page)
+  await expect(monthlyPanel).toBeVisible()
+  await expect(monthlyPanel.getByLabel('Título')).toBeDisabled()
+  await expect(monthlyPanel.getByRole('button', { name: 'Salvar' })).toHaveCount(0)
+  await monthlyPanel.getByRole('button', { name: 'Fechar' }).click()
 
   expect(consoleErrors).toEqual([])
 })

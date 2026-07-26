@@ -35,6 +35,13 @@ export const keys = {
       ['bujo', 'ritualWeeklySource', sourceId, weekStart] as const,
     ritualWeeklyDensity: (weekStart: string) =>
       ['bujo', 'ritualWeeklyDensity', weekStart] as const,
+    // Story 14.6 — molde direto do bloco Weekly acima, trocando week_start por
+    // month_first.
+    monthlyCycle: () => ['bujo', 'monthlyCycle'] as const,
+    ritualMonthlySource: (sourceId: string, monthFirst: string) =>
+      ['bujo', 'ritualMonthlySource', sourceId, monthFirst] as const,
+    ritualMonthlyDensity: (monthFirst: string) =>
+      ['bujo', 'ritualMonthlyDensity', monthFirst] as const,
   },
   // Sem userId (mesmo racional de bujo.*): logout limpa o cache inteiro.
   habits: {

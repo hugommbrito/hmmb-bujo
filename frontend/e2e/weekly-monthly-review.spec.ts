@@ -78,8 +78,17 @@ test('revisão semanal + mensal + pull do Future Log, ponta a ponta (AC1, AC2)',
   await expect(
     page.getByTestId('task-row').filter({ hasText: 'Planejar sprint' }),
   ).toBeVisible({ timeout: 10_000 })
+  // `TaskRowBase` (Weekly Board, Story 14.5) renderiza subtarefas ANINHADAS
+  // dentro do próprio nó da tarefa-pai com o MESMO `data-testid="task-row"` —
+  // sem excluir o pai, o filtro por texto casa os DOIS nós (o pai também
+  // contém "Subtarefa pendente" no texto agregado dos filhos), violando o
+  // strict mode. Achado real verificado em execução (pré-existente desde a
+  // 14.5, exposto agora por esta suíte de regressão).
   await expect(
-    page.getByTestId('task-row').filter({ hasText: 'Subtarefa pendente' }),
+    page
+      .getByTestId('task-row')
+      .filter({ hasText: 'Subtarefa pendente' })
+      .filter({ hasNotText: 'Planejar sprint' }),
   ).toBeVisible()
   await expect(
     page.getByTestId('task-row').filter({ hasText: 'Subtarefa concluída' }),
@@ -117,33 +126,28 @@ test('revisão semanal + mensal + pull do Future Log, ponta a ponta (AC1, AC2)',
     page.getByText('Mês anterior tem 1 tarefas sem disposição. Revisar mês anterior?'),
   ).toHaveCount(0)
 
-  // Monthly Log corrente: seção "Itens do Future Log para [Mês]" no topo com
-  // o item pré-existente sem data. Navegação via clique na Sidebar (não
-  // `page.goto`) — evita um reload completo da SPA/reautenticação.
+  // Monthly Board novo (Story 14.6): itens do Future Log aparecem na própria
+  // célula/pool como qualquer outra tarefa — sem a seção dedicada "Itens do
+  // Future Log para [Mês]" nem o campo "Confirmar data" inline, ambos
+  // contrato exclusivo do `MonthlyPage` legado (que não existe mais nesta
+  // rota). O item sem data cai no pool "Sem dia definido"; a tarefa recém-
+  // migrada COM data cai na própria célula do dia. Confirmar data para um
+  // item do Future Log passa a ser decisão do RITUAL mensal (fonte "Future
+  // Log", ver `monthly-planning-ritual.spec.ts`), não mais um campo inline
+  // na grade. Navegação via clique na Sidebar (não `page.goto`) — evita um
+  // reload completo da SPA/reautenticação.
   await page.getByRole('button', { name: 'Este Mês' }).click()
-  await expect(page.getByLabel('Este Mês')).toBeVisible()
-  const monthTitle = await page
-    .getByText(/^Itens do Future Log para /)
-    .textContent()
-  expect(monthTitle).toBeTruthy()
-  await expect(page.getByTestId('task-row').filter({ hasText: 'Item do Future Log' })).toBeVisible()
-  // A tarefa recém-migrada com data já aparece na seção com data (DayHeader).
+  const monthlyMain = page.getByRole('main', { name: 'Este Mês' })
+  await expect(monthlyMain).toBeVisible()
+  await expect(page.getByText(/^Itens do Future Log para /)).toHaveCount(0)
+  await expect(page.getByLabel('Confirmar data')).toHaveCount(0)
+
+  const monthlyPool = monthlyMain.getByRole('region', { name: 'Sem dia definido' })
+  await expect(
+    monthlyPool.getByTestId('task-row').filter({ hasText: 'Item do Future Log' }),
+  ).toBeVisible()
+  // A tarefa recém-migrada com data já aparece na própria célula do dia.
   await expect(page.getByTestId('task-row').filter({ hasText: 'Revisar orçamento' })).toBeVisible()
-
-  // Task 8.1: no mês corrente a seção "Itens do Future Log" precisa vir ANTES
-  // da seção com data (ordem invertida em relação a qualquer outro mês) —
-  // checar só a presença dos textos não basta, a ordem no DOM é a própria AC.
-  const mainText = await page.locator('main').innerText()
-  expect(mainText.indexOf('Itens do Future Log para')).toBeLessThan(
-    mainText.indexOf('Revisar orçamento'),
-  )
-
-  // Preencher a data do item sem data — sai da seção "Itens do Future Log"
-  // após o refetch (mutação otimista não alcança este cache; invalidação por
-  // prefixo de monthlyLog garante o refetch, Task 5.3/8.2).
-  await page.getByLabel('Confirmar data').fill(chosenDate)
-  await expect(page.getByText(/^Itens do Future Log para /)).toHaveCount(0, { timeout: 10_000 })
-  await expect(page.getByTestId('task-row').filter({ hasText: 'Item do Future Log' })).toBeVisible()
 
   // Reabrir a Daily Log: nenhum dos banners resolvidos reaparece.
   await page.getByRole('button', { name: 'Hoje' }).click()
