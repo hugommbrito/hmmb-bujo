@@ -69,6 +69,8 @@ describe('shellRouting — registro por rota', () => {
     'planner/month/planning',
     // Story 14.7 (M08) — Future Log no sistema novo.
     'planner/future',
+    // Story 14.8 (M09) — biblioteca de Recorrentes no sistema novo.
+    'planner/recurring',
   ])
 
   it('test_shell_e_novo_em_tudo_e_apenas_as_rotas_migradas_tem_surfaceMigrated_true', () => {
@@ -86,11 +88,17 @@ describe('shellRouting — registro por rota', () => {
   it('test_planner_future_e_a_rota_migrada_da_story_14_7', () => {
     const entry = shellRoutes.find((route) => route.routeId === 'planner/future')
     expect(entry?.surfaceMigrated).toBe(true)
-    // Irmã de não-vacuidade: a rota vizinha do Recorrentes segue NÃO migrada
-    // (o seam continua aparecendo lá até a Story 14.8).
-    expect(shellRoutes.find((route) => route.routeId === 'planner/recurring')?.surfaceMigrated).toBe(
-      false,
-    )
+  })
+
+  it('test_planner_recurring_e_a_rota_migrada_da_story_14_8', () => {
+    const entry = shellRoutes.find((route) => route.routeId === 'planner/recurring')
+    expect(entry?.surfaceMigrated).toBe(true)
+    // Irmã de NÃO-VACUIDADE, reancorada: até a 14.7 o par era
+    // `planner/future` × `planner/recurring`, mas a M09 migrou o segundo. O
+    // novo controle é `settings` — destino de TOPO (imune ao rail colapsado do
+    // tablet) e a superfície legada de vida mais longa da fila (Épico 18.1),
+    // exatamente pela mesma razão registrada nos specs de seam E2E.
+    expect(shellRoutes.find((route) => route.routeId === 'settings')?.surfaceMigrated).toBe(false)
   })
 
   it('test_resolve_rota_estatica_e_rota_parametrizada', () => {

@@ -237,10 +237,10 @@ describe('RecurringPlacementSection integration (AC2)', () => {
     renderWeeklyPage()
 
     expect(await screen.findByText(/Revisão semanal/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Definir placement' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Alocar' })).toBeInTheDocument()
   })
 
-  it('clicar "Definir placement" + confirmar chama a mutation com os parâmetros certos', async () => {
+  it('clicar "Alocar" + confirmar chama a mutation com os parâmetros certos', async () => {
     routeRecurringTemplatesGet([WEEKLY_TEMPLATE])
     mockPost.mockResolvedValueOnce({
       data: { id: 'task-1', title: 'Revisão semanal', status: 'pending', subtasks: [] },
@@ -248,7 +248,7 @@ describe('RecurringPlacementSection integration (AC2)', () => {
 
     renderWeeklyPage()
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Definir placement' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Alocar' }))
     fireEvent.change(screen.getByLabelText('Data (opcional)'), {
       target: { value: '2026-07-15' },
     })
@@ -310,7 +310,7 @@ describe('Dedup + densidade (Story 11.3)', () => {
 
     renderWeeklyPage()
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Definir placement' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Alocar' }))
 
     // weekStart 2026-07-13 → mês 2026-07-01.
     await waitFor(() =>
@@ -352,7 +352,7 @@ describe('Indicador "Fechada" e modo Arquivo (AC1/AC2)', () => {
     expect(mockUseWeeklyLogQuery.mock.calls[0][0]).toBe('2026-07-13')
     expect(screen.getByLabelText('Arquivo — Semana de 2026-07-13')).toBeInTheDocument()
     expect(mockGet).not.toHaveBeenCalledWith('/api/bujo/recurring-templates/')
-    expect(screen.queryByRole('button', { name: 'Definir placement' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Alocar' })).not.toBeInTheDocument()
   })
 })
 

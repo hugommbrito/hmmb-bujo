@@ -130,10 +130,13 @@ test.describe('Future Log — wide 1440×900', () => {
     // este: a faixa editorial do legado desaparece nesta rota.
     await expect(page.getByTestId('legacy-seam-notice')).toHaveCount(0)
 
-    // IRMÃ DE NÃO-VACUIDADE: a rota vizinha (Recorrentes, ainda legada até a
-    // 14.8) continua com o seam — o assert acima não é "o seam sumiu do app".
-    await page.getByRole('button', { name: 'Recorrentes' }).click()
-    await expect(page.getByLabel('Recorrentes')).toBeVisible()
+    // IRMÃ DE NÃO-VACUIDADE: uma rota AINDA legada continua com o seam — o
+    // assert acima não é "o seam sumiu do app". Recorrentes era esse controle
+    // até a Story 14.8 migrá-lo também; o novo é `Configurações` — destino de
+    // TOPO (imune ao rail colapsado do tablet) e a superfície legada de vida
+    // mais longa da fila (Épico 18.1), mesma razão registrada em `shell.spec.ts`.
+    await page.getByRole('button', { name: 'Configurações' }).click()
+    await expect(page.getByLabel('Configurações')).toBeVisible()
     await expect(page.getByTestId('legacy-seam-notice')).toBeVisible()
 
     // E voltar ao Futuro faz sumir de novo (não é estado de uma visita só).

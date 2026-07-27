@@ -20,6 +20,7 @@ export {
   useRecurringTemplatesQuery,
   useCreateRecurringTemplateMutation,
   useUpdateRecurringTemplateMutation,
+  useDeleteRecurringTemplateMutation,
   usePlaceRecurringTemplateMutation,
   useTaskDensityQuery,
   useArchiveQuery,
@@ -49,6 +50,13 @@ export { RecurringPlacementSection } from './components/RecurringPlacementSectio
 export { MonthDensityCalendar } from './components/MonthDensityCalendar'
 export { TaskRowBase } from './components/TaskRowBase'
 export { TaskDetailCard } from './components/TaskDetailCard'
+// Story 14.8 (M09): componentes de RAIZ do sistema novo — a Item Row (irmã da
+// Task Row, sem máquina de estados) e os dois controles canônicos extraídos do
+// `TaskDetailCard`, compartilhados pelos dois cards de detalhe.
+export { ItemRowBase } from './components/ItemRowBase'
+export { CategorySwatchGroup } from './components/CategorySwatchGroup'
+export { EisenhowerCheckboxPair } from './components/EisenhowerCheckboxPair'
+export { TemplateDetailCard } from './components/TemplateDetailCard'
 export { taskStatusIconFor, taskStatusIcons, TASK_STATUS_ICON_SIZE } from './components/taskStatusIcons'
 export type { MigrationDestination } from './api'
 export type {

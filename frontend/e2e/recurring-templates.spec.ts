@@ -8,6 +8,32 @@ import { test, expect } from './fixtures'
 // O fluxo Recorrentes → placement → Weekly/Monthly Log continua sendo
 // exercitado ponta-a-ponta contra o backend de verdade, provando a
 // independência instância/template (AC3) real.
+//
+// ATUALIZADO pela Story 14.8 (M09): `/planner/recurring` passou a montar a
+// biblioteca nova (`RecurringLibraryPage`), então os passos de CRIAÇÃO/EDIÇÃO
+// deste arquivo foram PORTADOS do form legado (`RecurringTemplateManager`)
+// para o card de detalhe compartilhado. Isso NÃO muda a causa raiz nem a
+// posição das 4 falhas conhecidas abaixo — os passos portados só cobrem o
+// trecho ANTES do assert que falha; o resto do arquivo (a seção de placement)
+// continua intocado, porque falha por um motivo TOTALMENTE alheio à criação:
+//
+//   `getByText('{título} — {Grupo}')` da `RecurringPlacementSection` não
+//   encontra nada porque essa seção vive nas páginas legadas `WeeklyPage.tsx`/
+//   `MonthlyPage.tsx`, enquanto `planner/week`/`planner/month` montam os
+//   boards NOVOS (`WeeklyBoardPage`/`MonthlyBoardPage`) desde as Stories
+//   14.5/14.6 — a alocação de recorrentes virou ato do RITUAL lá, por desenho
+//   de produto (M06/M07), e os boards novos simplesmente não renderizam a
+//   seção antiga. Consertar isso reintroduzindo a seção no board novo
+//   desfaria duas decisões de produto de stories anteriores — não é desta
+//   story, nem desta. Dono: Épico 17/18 (quando o legado de placement sair).
+//
+// Critério de aceite POSICIONAL (Story 14.8, AC9): depois desta entrega, as 4
+// falhas continuam exatamente no passo de placement (nunca antes, nunca num
+// passo de biblioteca) — nenhum teste é deletado nem `.skip`ado. A cobertura
+// REAL da biblioteca nova (criar/editar/desativar/excluir na UI nova) é
+// `recurring-library.spec.ts`, não este arquivo — portar aqui só evita que os
+// 4 testes morram na PRIMEIRA interação (o form legado não existe mais na
+// rota), não dá cobertura nova.
 
 test('CRUD de templates em Recorrentes + placement filtra por grupo e chega ao Weekly/Monthly Log real (AC1, AC2)', async ({
   page,
@@ -26,33 +52,51 @@ test('CRUD de templates em Recorrentes + placement filtra por grupo e chega ao W
   await page.getByRole('button', { name: 'Recorrentes' }).click()
   await expect(page.getByLabel('Recorrentes')).toBeVisible()
 
-  // Aba "Semanal" é a default → o template nasce weekly (form segue a aba).
-  const form = page.getByRole('form', { name: 'Novo template recorrente' })
-  await form.getByLabel('Título').fill('Reunião semanal')
-  await form.getByLabel('Recorrência (texto livre)').fill('toda segunda')
-  await form.getByRole('button', { name: 'Criar' }).click()
+  // Story 14.8: criação passou do form legado para o card de detalhe
+  // compartilhado. `getByLabel('Título')` sem escopo casa também o campo
+  // oculto do `BrainDumpCaptureSheet` (portalizado em toda rota desde a 13.3)
+  // — escopar ao card evita o falso positivo/negativo.
+  const card = page.getByRole('dialog', { name: 'Detalhe do template' })
+
+  // Aba "Semanal" é a default → o Grupo herda a aba (AC3 da 14.8).
+  await page.getByRole('button', { name: 'Novo template', exact: true }).click()
+  await expect(card).toBeVisible()
+  await card.getByLabel('Título').fill('Reunião semanal')
+  await card.getByLabel('Recorrência', { exact: true }).fill('toda segunda')
+  await card.getByRole('button', { name: 'Criar' }).click()
+  await expect(card).toHaveCount(0)
   await expect(page.getByText('Semanal — toda segunda')).toBeVisible({ timeout: 10_000 })
 
-  // Trocar para a aba "Mensal" → o próximo template nasce monthly (sem
-  // <Select> de grupo, que foi removido em favor das abas).
-  await page.getByRole('tab', { name: 'Mensal' }).click()
-  await form.getByLabel('Título').fill('Pagar contas')
-  await form.getByLabel('Recorrência (texto livre)').fill('todo dia 5')
-  await form.getByRole('button', { name: 'Criar' }).click()
+  // Trocar para a aba "Mensal" → o próximo template nasce monthly (o Grupo
+  // do card herda a aba ativa no momento da criação).
+  await page.getByRole('tab', { name: /Mensal/ }).click()
+  await page.getByRole('button', { name: 'Novo template', exact: true }).click()
+  await expect(card).toBeVisible()
+  await card.getByLabel('Título').fill('Pagar contas')
+  await card.getByLabel('Recorrência', { exact: true }).fill('todo dia 5')
+  await card.getByRole('button', { name: 'Criar' }).click()
+  await expect(card).toHaveCount(0)
   await expect(page.getByText('Mensal — todo dia 5')).toBeVisible({ timeout: 10_000 })
   // Segmentação por aba: o weekly não aparece na aba Mensal.
   await expect(page.getByText(/Semanal — toda segunda/)).toHaveCount(0)
 
+  // A PARTIR DAQUI: seção de placement, causa raiz documentada no cabeçalho do
+  // arquivo — o assert abaixo falha (posicionalmente, como já falhava antes
+  // desta story) porque `RecurringPlacementSection` não existe em
+  // `WeeklyBoardPage`. Tudo depois desta linha é código que NÃO EXECUTA hoje
+  // (inclusive "Desativar o template mensal" mais abaixo) — não está coberto
+  // por ninguém, e não é reescrito por esta story (ver cabeçalho).
+  //
   // AC2: na abertura da semana, só o template weekly ativo aparece — sem
-  // auto-placement, o botão "Definir placement" é a única ação disponível.
+  // auto-placement, o botão "Alocar" é a única ação disponível.
   await page.getByRole('button', { name: 'Esta Semana' }).click()
   await expect(page.getByLabel('Esta Semana')).toBeVisible()
   await expect(page.getByText('Reunião semanal — Semanal')).toBeVisible({ timeout: 10_000 })
   await expect(page.getByText(/Pagar contas/)).toHaveCount(0)
 
-  await page.getByRole('button', { name: 'Definir placement' }).click()
+  await page.getByRole('button', { name: 'Alocar' }).click()
   const weekDialog = page.getByRole('dialog')
-  await expect(weekDialog.getByText('Definir placement')).toBeVisible()
+  await expect(weekDialog.getByText('Alocar')).toBeVisible()
   await expect(weekDialog.getByLabel('Data (opcional)')).toBeVisible()
   // Story 11.3 (AC2): o modal mostra as infos da recorrência e o calendário de
   // densidade do mês (informativo). Densidade real vem do endpoint novo.
@@ -79,7 +123,7 @@ test('CRUD de templates em Recorrentes + placement filtra por grupo e chega ao W
   await expect(page.getByText('Pagar contas — Mensal')).toBeVisible({ timeout: 10_000 })
   await expect(page.getByText(/Reunião semanal/)).toHaveCount(0)
 
-  await page.getByRole('button', { name: 'Definir placement' }).click()
+  await page.getByRole('button', { name: 'Alocar' }).click()
   const monthDialog = page.getByRole('dialog')
   await expect(monthDialog.getByLabel('Dia (opcional)')).toBeVisible()
   await Promise.all([
@@ -139,18 +183,27 @@ test('AC3 — editar o template depois de um placement não muda a instância j�
   await page.getByRole('button', { name: 'Recorrentes' }).click()
   await expect(page.getByLabel('Recorrentes')).toBeVisible()
 
-  // Aba "Semanal" default → Standup nasce weekly.
-  const form = page.getByRole('form', { name: 'Novo template recorrente' })
-  await form.getByLabel('Título').fill('Standup')
-  await form.getByLabel('Recorrência (texto livre)').fill('toda manhã')
-  await form.getByRole('button', { name: 'Criar' }).click()
+  // Aba "Semanal" default → Standup nasce weekly (Story 14.8: card em vez do
+  // form legado — ver cabeçalho do arquivo).
+  const card = page.getByRole('dialog', { name: 'Detalhe do template' })
+  await page.getByRole('button', { name: 'Novo template', exact: true }).click()
+  await expect(card).toBeVisible()
+  await card.getByLabel('Título').fill('Standup')
+  await card.getByLabel('Recorrência', { exact: true }).fill('toda manhã')
+  await card.getByRole('button', { name: 'Criar' }).click()
+  await expect(card).toHaveCount(0)
   await expect(page.getByText('Semanal — toda manhã')).toBeVisible({ timeout: 10_000 })
 
+  // A PARTIR DAQUI: seção de placement — mesma causa raiz do cabeçalho do
+  // arquivo (RecurringPlacementSection não existe em WeeklyBoardPage). Tudo
+  // depois desta linha, incl. "editar o template depois do placement" mais
+  // abaixo, é código que NÃO EXECUTA hoje — não é reescrito por esta story.
+  //
   // Primeiro placement, antes de qualquer edição no template.
   await page.getByRole('button', { name: 'Esta Semana' }).click()
   await expect(page.getByLabel('Esta Semana')).toBeVisible()
   await expect(page.getByText('Standup — Semanal')).toBeVisible({ timeout: 10_000 })
-  await page.getByRole('button', { name: 'Definir placement' }).click()
+  await page.getByRole('button', { name: 'Alocar' }).click()
   const firstDialog = page.getByRole('dialog')
   await Promise.all([
     page.waitForResponse(
@@ -201,7 +254,7 @@ test('AC3 — editar o template depois de um placement não muda a instância j�
   await expect(page.getByText('Standup (renomeado) — Semanal (já colocado)')).toBeVisible({
     timeout: 10_000,
   })
-  await page.getByRole('button', { name: 'Definir placement' }).click()
+  await page.getByRole('button', { name: 'Alocar' }).click()
   const secondDialog = page.getByRole('dialog')
   await Promise.all([
     page.waitForResponse(
@@ -255,18 +308,25 @@ test('AC2/AC3 — modal do Monthly mostra título/descrição/recorrência + cal
   // outro teste, cujos templates nascem sem descrição).
   await page.getByRole('button', { name: 'Recorrentes' }).click()
   await expect(page.getByLabel('Recorrentes')).toBeVisible()
-  await page.getByRole('tab', { name: 'Mensal' }).click()
-  const form = page.getByRole('form', { name: 'Novo template recorrente' })
-  await form.getByLabel('Título').fill('Fechar o mês')
-  await form.getByLabel('Descrição').fill('Conferir saldo e categorizar gastos')
-  await form.getByLabel('Recorrência (texto livre)').fill('todo fim de mês')
-  await form.getByRole('button', { name: 'Criar' }).click()
+  await page.getByRole('tab', { name: /Mensal/ }).click()
+  // Story 14.8: criação passou do form legado para o card compartilhado.
+  const card = page.getByRole('dialog', { name: 'Detalhe do template' })
+  await page.getByRole('button', { name: 'Novo template', exact: true }).click()
+  await expect(card).toBeVisible()
+  await card.getByLabel('Título').fill('Fechar o mês')
+  await card.getByLabel('Descrição').fill('Conferir saldo e categorizar gastos')
+  await card.getByLabel('Recorrência', { exact: true }).fill('todo fim de mês')
+  await card.getByRole('button', { name: 'Criar' }).click()
+  await expect(card).toHaveCount(0)
   await expect(page.getByText('Mensal — todo fim de mês')).toBeVisible({ timeout: 10_000 })
 
+  // A PARTIR DAQUI: seção de placement — mesma causa raiz do cabeçalho do
+  // arquivo (RecurringPlacementSection não existe em MonthlyBoardPage). Não é
+  // reescrito por esta story.
   await page.getByRole('button', { name: 'Este Mês' }).click()
   await expect(page.getByLabel('Este Mês')).toBeVisible()
   await expect(page.getByText('Fechar o mês — Mensal')).toBeVisible({ timeout: 10_000 })
-  await page.getByRole('button', { name: 'Definir placement' }).click()
+  await page.getByRole('button', { name: 'Alocar' }).click()
 
   const dialog = page.getByRole('dialog')
   await expect(dialog.getByText('Fechar o mês')).toBeVisible()
@@ -317,26 +377,34 @@ test('AC1/AC3 (Story 11.8) — modal de placement exibe a etiqueta Eisenhower do
   await page.getByRole('button', { name: 'Recorrentes' }).click()
   await expect(page.getByLabel('Recorrentes')).toBeVisible()
 
-  // Template COM prioridade Eisenhower "Urgente + Importante" (ui). O Select é
-  // um MUI Select (aria-label "Eisenhower"): abrir e escolher a opção — mesmo
-  // padrão de daily-tasks.spec.ts. O snapshot de placement copia `eisenhower`
-  // do template, então esse valor precisa vir do backend de verdade, não de uma
-  // fixture.
-  const form = page.getByRole('form', { name: 'Novo template recorrente' })
-  await form.getByLabel('Título').fill('Planejamento crítico')
-  await form.getByLabel('Recorrência (texto livre)').fill('toda segunda')
-  await form.getByLabel('Eisenhower').click()
-  await page.getByRole('option', { name: 'Urgente + Importante' }).click()
-  await form.getByRole('button', { name: 'Criar' }).click()
+  // Template COM prioridade Eisenhower "Urgente + Importante" (ui). Story
+  // 14.8: o `<Select>` legado virou o par de checkboxes canônico
+  // (`EisenhowerCheckboxPair`) — marcar as duas é o equivalente de "Urgente +
+  // Importante". O snapshot de placement copia `eisenhower` do template,
+  // então esse valor precisa vir do backend de verdade, não de uma fixture.
+  const card = page.getByRole('dialog', { name: 'Detalhe do template' })
+  await page.getByRole('button', { name: 'Novo template', exact: true }).click()
+  await expect(card).toBeVisible()
+  await card.getByLabel('Título').fill('Planejamento crítico')
+  await card.getByLabel('Recorrência', { exact: true }).fill('toda segunda')
+  await card.getByRole('checkbox', { name: 'Urgente (U)' }).check()
+  await card.getByRole('checkbox', { name: 'Importante (I)' }).check()
+  await card.getByRole('button', { name: 'Criar' }).click()
+  await expect(card).toHaveCount(0)
   await expect(page.getByText('Semanal — toda segunda')).toBeVisible({ timeout: 10_000 })
 
   // Template SEM prioridade (Eisenhower deixado em "Nenhum") — controle da
   // regra de nulos (AC3).
-  await form.getByLabel('Título').fill('Rotina neutra')
-  await form.getByLabel('Recorrência (texto livre)').fill('toda sexta')
-  await form.getByRole('button', { name: 'Criar' }).click()
+  await page.getByRole('button', { name: 'Novo template', exact: true }).click()
+  await expect(card).toBeVisible()
+  await card.getByLabel('Título').fill('Rotina neutra')
+  await card.getByLabel('Recorrência', { exact: true }).fill('toda sexta')
+  await card.getByRole('button', { name: 'Criar' }).click()
+  await expect(card).toHaveCount(0)
   await expect(page.getByText('Semanal — toda sexta')).toBeVisible({ timeout: 10_000 })
 
+  // A PARTIR DAQUI: seção de placement — mesma causa raiz do cabeçalho do
+  // arquivo. Não é reescrito por esta story.
   await page.getByRole('button', { name: 'Esta Semana' }).click()
   await expect(page.getByLabel('Esta Semana')).toBeVisible()
   await expect(page.getByText('Planejamento crítico — Semanal')).toBeVisible({ timeout: 10_000 })
@@ -344,11 +412,11 @@ test('AC1/AC3 (Story 11.8) — modal de placement exibe a etiqueta Eisenhower do
 
   // AC1: o modal do template com prioridade real mostra "Prioridade: …" junto
   // de título e recorrência (que a 11.3 já exibia). Escopa o botão à linha certa
-  // (há dois "Definir placement" na seção).
+  // (há dois "Alocar" na seção).
   const criticalRow = page
     .getByText('Planejamento crítico — Semanal', { exact: true })
     .locator('xpath=ancestor::div[1]')
-  await criticalRow.getByRole('button', { name: 'Definir placement' }).click()
+  await criticalRow.getByRole('button', { name: 'Alocar' }).click()
   const criticalDialog = page.getByRole('dialog')
   await expect(criticalDialog.getByText('Planejamento crítico', { exact: true })).toBeVisible()
   await expect(criticalDialog.getByText('Recorrência: toda segunda')).toBeVisible()
@@ -362,7 +430,7 @@ test('AC1/AC3 (Story 11.8) — modal de placement exibe a etiqueta Eisenhower do
   const neutralRow = page
     .getByText('Rotina neutra — Semanal', { exact: true })
     .locator('xpath=ancestor::div[1]')
-  await neutralRow.getByRole('button', { name: 'Definir placement' }).click()
+  await neutralRow.getByRole('button', { name: 'Alocar' }).click()
   const neutralDialog = page.getByRole('dialog')
   await expect(neutralDialog.getByText('Rotina neutra', { exact: true })).toBeVisible()
   await expect(neutralDialog.getByText('Recorrência: toda sexta')).toBeVisible()

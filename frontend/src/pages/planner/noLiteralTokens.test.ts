@@ -10,6 +10,7 @@ import weeklyPlanningPageSource from './WeeklyPlanningPage.tsx?raw'
 import monthlyBoardPageSource from './MonthlyBoardPage.tsx?raw'
 import monthlyPlanningPageSource from './MonthlyPlanningPage.tsx?raw'
 import futureBoardPageSource from './FutureBoardPage.tsx?raw'
+import recurringLibraryPageSource from './RecurringLibraryPage.tsx?raw'
 
 const FORBIDDEN_LITERALS = [
   '230px',
@@ -24,6 +25,10 @@ const FORBIDDEN_LITERALS = [
   '36px',
   '48px',
   '3px',
+  // Story 14.8 (M09): `44px` tem token e CSS var próprios
+  // (`--ds-touch-target-min`) — escrevê-lo cru é o mesmo defeito que os
+  // demais literais desta lista.
+  '44px',
 ]
 
 const SOURCES: Record<string, string> = {
@@ -32,6 +37,7 @@ const SOURCES: Record<string, string> = {
   'MonthlyBoardPage.tsx': monthlyBoardPageSource,
   'MonthlyPlanningPage.tsx': monthlyPlanningPageSource,
   'FutureBoardPage.tsx': futureBoardPageSource,
+  'RecurringLibraryPage.tsx': recurringLibraryPageSource,
 }
 
 describe('AC8 — zero literal estrutural/cromático nas páginas novas', () => {

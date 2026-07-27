@@ -165,32 +165,46 @@ test('AC6 na biblioteca real: o excluído não volta nem com "Mostrar inativos" 
   await expect(page.getByText('Assinatura cancelada', { exact: true })).toBeVisible()
   await expect(page.getByText('Alongar de manhã', { exact: true })).toHaveCount(0)
 
-  expect((await api.remove(excluido.id)).status()).toBe(204)
-  await reloadAndWaitTemplates(page)
+  // Story 14.8: agora existe botão Excluir para clicar — a exclusão passa a
+  // acontecer PELA UI (card de edição → lixeira → confirmar no alertdialog),
+  // não mais por `api.remove()` direto. A tese do teste (AC6) é a mesma.
+  await page.getByRole('button', { name: `Editar ${excluido.title}` }).click()
+  const card = page.getByRole('dialog', { name: 'Detalhe do template' })
+  await expect(card).toBeVisible()
+  await card.getByRole('button', { name: 'Excluir template' }).click()
+  const confirmDialog = page.getByRole('alertdialog', { name: 'Confirmar exclusão' })
+  await expect(confirmDialog).toBeVisible()
+  await confirmDialog.getByRole('button', { name: 'Excluir' }).click()
+  await expect(confirmDialog).toHaveCount(0)
+  await expect(card).toHaveCount(0)
 
   // Ordem deliberada: primeiro o assert de PRESENÇA (prova que a listagem fresca
   // renderizou), depois o de ausência.
   await expect(page.getByText('Regar as plantas', { exact: true })).toBeVisible({ timeout: 10_000 })
   await expect(page.getByText('Assinatura cancelada', { exact: true })).toHaveCount(0)
 
-  // O CORAÇÃO DESTE SPEC: ligar "Mostrar inativos" traz o inativo de volta, com o
-  // sufixo "(inativo)" — e NÃO traz o excluído. Os dois estados são indistintos
-  // nesta tela sem o toggle; com ele, a distinção da AC6 fica visível.
+  // O CORAÇÃO DESTE SPEC: ligar "Mostrar inativos" traz o inativo de volta —
+  // com o CHIP textual "inativo" (M09 trocou o sufixo " (inativo)" concatenado
+  // na subline por um chip próprio; a tese "o inativo volta com o filtro" é a
+  // mesma, só o locator muda) — e NÃO traz o excluído. Os dois estados são
+  // indistintos nesta tela sem o toggle; com ele, a distinção da AC6 fica
+  // visível. Escopo por `listitem` (papel/nome estável) em vez do antigo
+  // `xpath=ancestor::div[2]`, frágil por construção.
   await page.getByRole('checkbox', { name: 'Mostrar inativos' }).click()
-  await expect(page.getByText(/Semanal — todo dia útil \(inativo\)/)).toBeVisible({
-    timeout: 10_000,
-  })
-  await expect(page.getByText('Alongar de manhã', { exact: true })).toBeVisible()
+  const linhaDoInativo = page.getByRole('listitem').filter({ hasText: 'Alongar de manhã' })
+  await expect(linhaDoInativo).toBeVisible({ timeout: 10_000 })
+  await expect(linhaDoInativo.getByText('Semanal — todo dia útil', { exact: true })).toBeVisible()
+  await expect(linhaDoInativo.getByText('inativo', { exact: true })).toBeVisible()
   await expect(page.getByText('Assinatura cancelada', { exact: true })).toHaveCount(0)
 
   // Reversibilidade do `active` na superfície, contra a irreversibilidade do
   // `deleted_at`: o inativo tem botão "Ativar" e volta a ativo pela UI; o
   // excluído não tem linha, logo não tem botão nenhum.
-  const linhaDoInativo = page
-    .getByText('Alongar de manhã', { exact: true })
-    .locator('xpath=ancestor::div[2]')
   await linhaDoInativo.getByRole('button', { name: 'Ativar' }).click()
-  await expect(page.getByText(/Semanal — todo dia útil$/)).toBeVisible({ timeout: 10_000 })
+  const linhaReativada = page.getByRole('listitem').filter({ hasText: 'Alongar de manhã' })
+  await expect(linhaReativada.getByText('inativo', { exact: true })).toHaveCount(0, {
+    timeout: 10_000,
+  })
 
   await page.getByRole('checkbox', { name: 'Mostrar inativos' }).click()
   await expect(page.getByText('Alongar de manhã', { exact: true })).toBeVisible()

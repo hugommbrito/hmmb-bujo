@@ -501,8 +501,9 @@ describe('FutureBoardPage — anuais pendentes (AC6)', () => {
     const secao = await screen.findByRole('region', { name: 'Anuais pendentes de 2026' })
     expect(within(secao).getAllByRole('button', { name: 'Alocar' })).toHaveLength(2)
     expect(within(secao).getByText('Check-up médico anual')).toBeInTheDocument()
-    // O TÍTULO do dialog segue "Definir placement" até a 14.8 — só o botão mudou.
-    expect(within(secao).queryByRole('button', { name: 'Definir placement' })).not.toBeInTheDocument()
+    // O dialog (título "Alocar" desde a 14.8) não está aberto ainda — só o
+    // botão da seção existe neste ponto do teste.
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
   it('"banner vazio = sem DOM": sem anual pendente, a seção não renderiza', async () => {
@@ -525,8 +526,12 @@ describe('FutureBoardPage — anuais pendentes (AC6)', () => {
       .find((li) => li.textContent?.includes('Check-up médico anual'))!
     fireEvent.click(within(linhaCheckup).getByRole('button', { name: 'Alocar' }))
 
-    // O TÍTULO do dialog segue "Definir placement" até a 14.8 (reuso intocado).
-    expect(await screen.findByText('Definir placement')).toBeInTheDocument()
+    // O TÍTULO do dialog é "Alocar" desde a 14.8 (reuso intocado do componente).
+    // Escopado ao `dialog`: a seção por trás continua com botões "Alocar"
+    // próprios (um por anual pendente), e `screen.findByText` sem escopo bate
+    // em mais de um nó com o rename — ambíguo por construção, não regressão.
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText('Alocar')).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('Data (opcional)'), { target: { value: '2026-12-09' } })
     fireEvent.click(screen.getByRole('button', { name: 'Confirmar' }))
 

@@ -138,9 +138,12 @@ test.describe('Shell novo — comportamento (wide 1440×900)', () => {
   // Story 14.7 (passo de QA): a rota de destino deste teste era `Esta Semana`,
   // legada quando ele nasceu (13.x) e `surfaceMigrated: true` desde a 14.5 — o
   // seam some lá de propósito, e o teste estava VERMELHO desde então. A tese
-  // ("persiste ao navegar") é preservada literalmente: só o destino passou a ser
-  // uma rota que ainda é legada de fato (Recorrentes, até a Story 14.8). O par
-  // oposto — o seam SUMIR numa rota migrada — é provado em
+  // ("persiste ao navegar") é preservada literalmente: o destino precisou trocar
+  // de novo na Story 14.8, que migrou Recorrentes (o destino anterior). O novo
+  // controle é `Configurações` — destino de TOPO (não aninhado sob o Planner,
+  // logo imune ao rail colapsado do tablet) e a superfície legada de vida mais
+  // longa da fila (Épico 18.1) — registrar a razão aqui encerra a troca a cada
+  // story. O par oposto — o seam SUMIR numa rota migrada — é provado em
   // `future-log-board.spec.ts`, com esta mesma rota como irmã de não-vacuidade.
   test('seam legado é persistente, editorial e sem botão de dispensar', async ({ page }) => {
     const seam = page.getByRole('complementary')
@@ -150,8 +153,8 @@ test.describe('Shell novo — comportamento (wide 1440×900)', () => {
     await expect(seam.getByRole('button')).toHaveCount(0)
 
     // Persiste em outra rota AINDA LEGADA (`surfaceMigrated: false`).
-    await page.getByRole('navigation', { name: 'Navegação principal' }).getByText('Recorrentes').click()
-    await expect(page).toHaveURL('/planner/recurring')
+    await page.getByRole('navigation', { name: 'Navegação principal' }).getByText('Configurações').click()
+    await expect(page).toHaveURL('/settings')
     await expect(page.getByRole('complementary')).toContainText(SEAM_TEXT)
   })
 })

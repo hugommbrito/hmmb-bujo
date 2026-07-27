@@ -99,7 +99,7 @@ test('lista ciclos fechados e navega para semana/mês com estado final, sem affo
   // `getByLabel` casa por substring e viola o strict mode.
   await expect(migratedRow.getByLabel('Migrada', { exact: true })).toBeVisible()
 
-  await expect(page.getByRole('button', { name: 'Definir placement' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Alocar' })).toHaveCount(0)
   expect(templatesRequested).toBe(false)
 
   // Linhagem de migração (AC #2: "o que foi feito com ela, incl. linhagem de
@@ -123,7 +123,7 @@ test('lista ciclos fechados e navega para semana/mês com estado final, sem affo
   await expect(monthCompletedRow.getByLabel('Concluída')).toBeVisible()
 
   await expect(page.getByLabel('Adicionar tarefa ao mês')).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Definir placement' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Alocar' })).toHaveCount(0)
 
   expect(consoleErrors).toEqual([])
 })

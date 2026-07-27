@@ -129,7 +129,7 @@ export function FuturePage() {
               variant="outlined"
               onClick={() => setPlacingAnnualTemplate(template)}
             >
-              Definir placement
+              Alocar
             </Button>
           </Box>
         ))}

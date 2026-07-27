@@ -31,6 +31,7 @@ import {
   useRecurringTemplatesQuery,
   useCreateRecurringTemplateMutation,
   useUpdateRecurringTemplateMutation,
+  useDeleteRecurringTemplateMutation,
   usePlaceRecurringTemplateMutation,
   useArchiveQuery,
   useWeeklyCycleReadinessQuery,
@@ -1073,6 +1074,147 @@ describe('useUpdateRecurringTemplateMutation (AC3)', () => {
       active: false,
     })
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.bujo.recurringTemplates() })
+  })
+})
+
+// ── Story 14.8 (M09): o verbo DELETE que o cliente NUNCA fiou ───────────────
+// A 14.4 entregou `DELETE /api/bujo/recurring-templates/<pk>/ → 204` idempotente
+// e `live_templates()` nos 6 pontos de leitura; do lado do cliente não existia
+// mutação nenhuma para o verbo. Ela nasce aqui (AC4/AC8).
+describe('useDeleteRecurringTemplateMutation (Story 14.8, AC4)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+  })
+
+  it('faz DELETE na URL de detalhe, SEM corpo, e invalida a lista por prefixo', async () => {
+    const { qc, wrapper } = makeWrapper()
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+    mockDelete.mockResolvedValueOnce({ status: 204, data: undefined })
+
+    const { result } = renderHook(() => useDeleteRecurringTemplateMutation(), { wrapper })
+
+    result.current.mutate({ templateId: 'tpl-1' })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(mockDelete).toHaveBeenCalledWith('/api/bujo/recurring-templates/tpl-1/')
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.bujo.recurringTemplates() })
+  })
+
+  it('a invalidação por prefixo alcança a query parametrizada no cache (partial deep match)', async () => {
+    const { qc, wrapper } = makeWrapper()
+    const parametrizedKey = keys.bujo.recurringTemplates({
+      active: true,
+      recurrenceGroup: 'annual',
+      unplacedYear: 2026,
+    })
+    qc.setQueryData(parametrizedKey, [])
+    mockDelete.mockResolvedValueOnce({ status: 204, data: undefined })
+
+    const { result } = renderHook(() => useDeleteRecurringTemplateMutation(), { wrapper })
+
+    result.current.mutate({ templateId: 'tpl-annual-1' })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(qc.getQueryState(parametrizedKey)?.isInvalidated).toBe(true)
+  })
+
+  it('erro do DELETE NÃO invalida nada (o card precisa continuar utilizável para retry)', async () => {
+    const { qc, wrapper } = makeWrapper()
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+    mockDelete.mockRejectedValueOnce(new Error('boom'))
+
+    const { result } = renderHook(() => useDeleteRecurringTemplateMutation(), { wrapper })
+
+    result.current.mutate({ templateId: 'tpl-1' })
+
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    expect(invalidateSpy).not.toHaveBeenCalled()
+  })
+})
+
+// AC8: as TRÊS mutações da biblioteca (create/update/delete) invalidam também
+// os prefixos das fontes de ritual e do Future Log. É consistência ADITIVA, não
+// conserto de bug — com `staleTime: 0` a navegação entre rotas já refaz o
+// fetch. A justificativa concreta está no passo de QA da 14.4: excluir o último
+// recorrente pendente ENCERRA a pendência da fonte (`pendingDecisionCount`/
+// `reviewed` são computados na leitura).
+describe('mutações de template invalidam as fontes de ritual e o Future Log (Story 14.8, AC8)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+  })
+
+  const CONSUMER_PREFIXES = [
+    ['bujo', 'ritualWeeklySource'],
+    ['bujo', 'ritualMonthlySource'],
+    ['bujo', 'futureLog'],
+  ]
+
+  it('create invalida os três prefixos consumidores', async () => {
+    const { qc, wrapper } = makeWrapper()
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+    mockPost.mockResolvedValueOnce({ data: RECURRING_TEMPLATES[0] })
+
+    const { result } = renderHook(() => useCreateRecurringTemplateMutation(), { wrapper })
+    result.current.mutate({ title: 'T', recurrenceGroup: 'weekly', recurrenceText: 'sexta' })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    for (const queryKey of CONSUMER_PREFIXES) {
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey })
+    }
+  })
+
+  it('update invalida os três prefixos consumidores', async () => {
+    const { qc, wrapper } = makeWrapper()
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+    mockPatch.mockResolvedValueOnce({ data: RECURRING_TEMPLATES[0] })
+
+    const { result } = renderHook(() => useUpdateRecurringTemplateMutation(), { wrapper })
+    result.current.mutate({ templateId: 'tpl-1', active: false })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    for (const queryKey of CONSUMER_PREFIXES) {
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey })
+    }
+  })
+
+  it('delete invalida os três prefixos consumidores', async () => {
+    const { qc, wrapper } = makeWrapper()
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+    mockDelete.mockResolvedValueOnce({ status: 204, data: undefined })
+
+    const { result } = renderHook(() => useDeleteRecurringTemplateMutation(), { wrapper })
+    result.current.mutate({ templateId: 'tpl-1' })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    for (const queryKey of CONSUMER_PREFIXES) {
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey })
+    }
+  })
+
+  it('a invalidação do Future Log é por PREFIXO (alcança lista E trilho), nunca pela chave exata', async () => {
+    const { qc, wrapper } = makeWrapper()
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+    mockDelete.mockResolvedValueOnce({ status: 204, data: undefined })
+
+    const { result } = renderHook(() => useDeleteRecurringTemplateMutation(), { wrapper })
+    result.current.mutate({ templateId: 'tpl-1' })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'futureLog'] })
+    expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: keys.bujo.futureLog() })
+  })
+
+  it('caso irmão de não-vacuidade: uma query de fonte no cache é de fato marcada invalidada', async () => {
+    const { qc, wrapper } = makeWrapper()
+    const sourceKey = keys.bujo.ritualWeeklySource('recurring', '2026-07-20')
+    qc.setQueryData(sourceKey, { items: [] })
+    mockDelete.mockResolvedValueOnce({ status: 204, data: undefined })
+
+    const { result } = renderHook(() => useDeleteRecurringTemplateMutation(), { wrapper })
+    result.current.mutate({ templateId: 'tpl-1' })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(qc.getQueryState(sourceKey)?.isInvalidated).toBe(true)
   })
 })
 

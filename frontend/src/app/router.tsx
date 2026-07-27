@@ -17,7 +17,7 @@ import { MonthlyPage } from '../pages/planner/MonthlyPage'
 import { MonthlyBoardPage } from '../pages/planner/MonthlyBoardPage'
 import { MonthlyPlanningPage } from '../pages/planner/MonthlyPlanningPage'
 import { FutureBoardPage } from '../pages/planner/FutureBoardPage'
-import { RecurringPage } from '../pages/planner/RecurringPage'
+import { RecurringLibraryPage } from '../pages/planner/RecurringLibraryPage'
 import { ArchivePage } from '../pages/archive/ArchivePage'
 import { BrainDumpPage } from '../pages/braindump/BrainDumpPage'
 import { SettingsPage } from '../pages/settings/SettingsPage'
@@ -146,8 +146,14 @@ export const routeDefinitions: RouteObject[] = [
         handle: { title: 'Futuro' },
       },
       {
+        // Story 14.8: `planner/recurring` passa a montar a biblioteca do
+        // sistema novo (M09). `RecurringPage` legada (e o
+        // `RecurringTemplateManager` que ela monta) permanecem no repositório,
+        // apenas DESMONTADAS da rota — a remoção do legado é o Épico 18, junto
+        // com `FuturePage.tsx` e `TaskRow.tsx` (AC9). O rollback por superfície
+        // continua sendo UMA LINHA: trocar o `element` de volta.
         path: 'planner/recurring',
-        element: <RecurringPage />,
+        element: <RecurringLibraryPage />,
         handle: { title: 'Recorrentes' },
       },
       // Rotas de collection (Hábitos, Saúde-Métricas, Medicamentos, Gratidão)

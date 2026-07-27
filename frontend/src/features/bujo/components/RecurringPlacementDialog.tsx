@@ -66,7 +66,7 @@ export function RecurringPlacementDialog({
 
   return (
     <Dialog open={open} onClose={handleClose} fullWidth maxWidth="xs">
-      <DialogTitle>Definir placement</DialogTitle>
+      <DialogTitle>Alocar</DialogTitle>
       <Box sx={{ px: 3, pb: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
         {template && (
           <Box>

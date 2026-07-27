@@ -360,7 +360,7 @@ describe('RecurringPlacementSection integration (AC2)', () => {
     expect(screen.queryByText(/Revisão mensal/)).not.toBeInTheDocument()
   })
 
-  it('clicar "Definir placement" + confirmar chama a mutation com monthFirst e o dia informado', async () => {
+  it('clicar "Alocar" + confirmar chama a mutation com monthFirst e o dia informado', async () => {
     routeRecurringTemplatesGet([MONTHLY_TEMPLATE])
     mockUseMonthlyLogQuery.mockReturnValue({
       isPending: false,
@@ -374,7 +374,7 @@ describe('RecurringPlacementSection integration (AC2)', () => {
     renderMonthlyPage()
     vi.useRealTimers()
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Definir placement' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Alocar' }))
     // "Dia (opcional)" também é o rótulo do form "Adicionar tarefa ao mês" —
     // o campo do diálogo é o último no DOM (MUI Dialog é renderizado por
     // último via portal).
@@ -444,7 +444,7 @@ describe('Dedup + densidade (Story 11.3)', () => {
     renderMonthlyPage()
     vi.useRealTimers()
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Definir placement' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Alocar' }))
 
     await waitFor(() =>
       expect(mockGet).toHaveBeenCalledWith('/api/bujo/task-density/', {
@@ -502,7 +502,7 @@ describe('Indicador "Fechado" e modo Arquivo (AC1/AC2)', () => {
     expect(mockUseMonthlyLogQuery.mock.calls[0][0]).toBe('2026-06-01')
     expect(screen.getByLabelText('Arquivo — Mês de 2026-06-01')).toBeInTheDocument()
     expect(screen.queryByLabelText('Adicionar tarefa ao mês')).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Definir placement' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Alocar' })).not.toBeInTheDocument()
   })
 
   it('form aparece em período passado aberto (closed: false) mesmo via rota parametrizada', () => {

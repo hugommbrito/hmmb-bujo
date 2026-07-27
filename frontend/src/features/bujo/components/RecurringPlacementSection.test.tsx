@@ -100,12 +100,12 @@ describe('RecurringPlacementSection (AC2)', () => {
     expect(screen.getByText(/Revisão mensal — Anual/)).toBeInTheDocument()
   })
 
-  it('clicar "Definir placement" chama onPlace com o template certo', () => {
+  it('clicar "Alocar" chama onPlace com o template certo', () => {
     mockUseRecurringTemplatesQuery.mockReturnValue({ isPending: false, data: [WEEKLY_TEMPLATE] })
 
     const { onPlace } = renderSection(['weekly'])
 
-    fireEvent.click(screen.getByRole('button', { name: 'Definir placement' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Alocar' }))
 
     expect(onPlace).toHaveBeenCalledWith(WEEKLY_TEMPLATE)
   })
@@ -128,7 +128,7 @@ describe('RecurringPlacementSection (AC2)', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: 'Mostrar já colocados' }))
 
     expect(screen.getByText(/Revisão semanal — Semanal \(já colocado\)/)).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Definir placement' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Alocar' }))
     expect(onPlace).toHaveBeenCalledWith(WEEKLY_TEMPLATE)
   })
 

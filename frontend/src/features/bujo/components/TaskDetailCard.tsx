@@ -5,6 +5,12 @@
 //     + 6 swatches), seleção por anel `--ds-primary`, SEM dropdown e SEM
 //     checkmark. Eisenhower: 2 checkboxes REAIS e independentes, `checked`
 //     DERIVADO do enum combinado (`none|u|i|ui`), nunca dois booleans soltos.
+//     Story 14.8 (AC3): os DOIS controles saíram daqui para
+//     `CategorySwatchGroup.tsx` / `EisenhowerCheckboxPair.tsx` e são
+//     COMPARTILHADOS com `TemplateDetailCard.tsx` — o `DESIGN.md` L673 declara
+//     o tratamento único "para toda superfície com detalhe — tarefa e template
+//     recorrente". Este arquivo passou a CONSUMI-los, sem uma linha de
+//     `TaskDetailCard.test.tsx` alterada (aceite da extração).
 //   ▶ Rascunho local dos 4 campos e um ÚNICO PATCH ao salvar (molde de
 //     `TaskDetailPanel.tsx`) — fechar explícito (X/Esc/backdrop) DESCARTA;
 //     falha de escrita PRESERVA o rascunho inteiro.
@@ -19,9 +25,9 @@
 //
 // [Source: DESIGN.md#Task Row; EXPERIENCE.md#Tarefas e logs L179-195; UX-DR26]
 // ─────────────────────────────────────────────────────────────────────────────
-import { useRef, useState, type KeyboardEvent } from 'react'
+import { useState, type KeyboardEvent } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { Box, Button, Checkbox, Dialog, IconButton } from '@mui/material'
+import { Box, Button, Dialog, IconButton } from '@mui/material'
 import { Trash } from '@phosphor-icons/react'
 
 import {
@@ -31,33 +37,10 @@ import {
   useTransitionTaskMutation,
   useUpdateTaskMutation,
 } from '../api'
+import { CategorySwatchGroup } from './CategorySwatchGroup'
+import { EisenhowerCheckboxPair } from './EisenhowerCheckboxPair'
 import { shellCssVariables, typography } from '../../../shared/design/tokens'
 import type { Task, TaskCategory, TaskEisenhower } from '../types'
-
-const CATEGORY_LABEL: Record<TaskCategory, string> = {
-  teal: 'Teal',
-  purple: 'Purple',
-  pink: 'Pink',
-  yellow: 'Yellow',
-  green: 'Green',
-  blue: 'Blue',
-}
-const CATEGORIES = Object.keys(CATEGORY_LABEL) as TaskCategory[]
-/** `null` ("Sem categoria") + as 6 cores, na mesma ordem visual do radiogroup
- * — usada pela navegação por seta (roving tabindex). */
-const CATEGORY_OPTIONS: (TaskCategory | null)[] = [null, ...CATEGORIES]
-
-function toggleUrgent(current: TaskEisenhower | null, checked: boolean): TaskEisenhower | null {
-  const important = current === 'i' || current === 'ui'
-  if (checked) return important ? 'ui' : 'u'
-  return important ? 'i' : null
-}
-
-function toggleImportant(current: TaskEisenhower | null, checked: boolean): TaskEisenhower | null {
-  const urgent = current === 'u' || current === 'ui'
-  if (checked) return urgent ? 'ui' : 'i'
-  return urgent ? 'u' : null
-}
 
 export interface TaskDetailCardPredecessor {
   /** Rótulo do período de origem (ex.: "Segunda-feira", "Semana anterior"). */
@@ -113,10 +96,6 @@ export function TaskDetailCard({
   const [titleError, setTitleError] = useState<string | null>(null)
   const [writeError, setWriteError] = useState<string | null>(null)
   const [subtaskDraft, setSubtaskDraft] = useState('')
-  const categoryRefs = useRef<(HTMLElement | null)[]>([])
-
-  const urgent = eisenhower === 'u' || eisenhower === 'ui'
-  const important = eisenhower === 'i' || eisenhower === 'ui'
 
   function handleSaveAndClose() {
     if (readonly) return
@@ -174,26 +153,6 @@ export function TaskDetailCard({
       event.preventDefault()
       handleAddSubtask()
     }
-  }
-
-  // Roving tabindex do radiogroup de categoria: ArrowRight/Down avança,
-  // ArrowLeft/Up recua, com wrap nas duas pontas — sem isso só a opção JÁ
-  // selecionada é alcançável por teclado (as demais ficam com tabIndex -1 e
-  // nenhum handler as move), quebrando a operabilidade por teclado do radio
-  // group inteiro.
-  function handleCategoryKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    if (readonly) return
-    const forward = event.key === 'ArrowRight' || event.key === 'ArrowDown'
-    const backward = event.key === 'ArrowLeft' || event.key === 'ArrowUp'
-    if (!forward && !backward) return
-    event.preventDefault()
-    const currentIndex = CATEGORY_OPTIONS.indexOf(category)
-    const delta = forward ? 1 : -1
-    const nextIndex = (currentIndex + delta + CATEGORY_OPTIONS.length) % CATEGORY_OPTIONS.length
-    setCategory(CATEGORY_OPTIONS[nextIndex])
-    // `tabIndex={-1}` continua focável via script (só sai da ordem de Tab) —
-    // não é preciso esperar o re-render aplicar `tabIndex={0}` no próximo item.
-    categoryRefs.current[nextIndex]?.focus()
   }
 
   function handleCancel() {
@@ -294,68 +253,9 @@ export function TaskDetailCard({
           />
         </Box>
 
-        <Box>
-          <Box sx={{ ...typography.label, mb: 'var(--ds-space-1)' }}>Categoria</Box>
-          <Box
-            role="radiogroup"
-            aria-label="Categoria"
-            onKeyDown={handleCategoryKeyDown}
-            sx={{ display: 'flex', gap: 'var(--ds-space-2)', flexWrap: 'wrap' }}
-          >
-            <CategorySwatch
-              ref={(el) => {
-                categoryRefs.current[0] = el
-              }}
-              selected={category === null}
-              label="Sem categoria"
-              readonly={readonly}
-              onSelect={() => setCategory(null)}
-            />
-            {CATEGORIES.map((option, index) => (
-              <CategorySwatch
-                key={option}
-                ref={(el) => {
-                  categoryRefs.current[index + 1] = el
-                }}
-                selected={category === option}
-                label={`Categoria ${CATEGORY_LABEL[option]}`}
-                color={`var(--ds-category-${option})`}
-                readonly={readonly}
-                onSelect={() => setCategory(option)}
-              />
-            ))}
-          </Box>
-        </Box>
+        <CategorySwatchGroup value={category} onChange={setCategory} readonly={readonly} />
 
-        <Box>
-          <Box sx={{ ...typography.label, mb: 'var(--ds-space-1)' }}>Eisenhower</Box>
-          <Box sx={{ display: 'flex', gap: 'var(--ds-space-3)' }}>
-            <Box component="label" sx={{ display: 'flex', alignItems: 'center', gap: 'var(--ds-space-1)' }}>
-              <Checkbox
-                checked={urgent}
-                disabled={readonly}
-                onChange={(event) => setEisenhower(toggleUrgent(eisenhower, event.target.checked))}
-                sx={{
-                  color: 'var(--ds-priority-u)',
-                  '&.Mui-checked': { color: 'var(--ds-priority-u)' },
-                }}
-              />
-              Urgente (U)
-            </Box>
-            <Box component="label" sx={{ display: 'flex', alignItems: 'center', gap: 'var(--ds-space-1)' }}>
-              <Checkbox
-                checked={important}
-                disabled={readonly}
-                onChange={(event) => setEisenhower(toggleImportant(eisenhower, event.target.checked))}
-                sx={{
-                  color: 'var(--ds-priority-i)',
-                  '&.Mui-checked': { color: 'var(--ds-priority-i)' },
-                }}
-              />
-              Importante (I)
-            </Box>
-          </Box>
-        </Box>
+        <EisenhowerCheckboxPair value={eisenhower} onChange={setEisenhower} readonly={readonly} />
 
         {!isSubtask && (
           <Box>
@@ -442,51 +342,5 @@ export function TaskDetailCard({
         )}
       </Box>
     </Dialog>
-  )
-}
-
-function CategorySwatch({
-  selected,
-  label,
-  color,
-  readonly = false,
-  onSelect,
-  ref,
-}: {
-  selected: boolean
-  label: string
-  color?: string
-  readonly?: boolean
-  onSelect: () => void
-  // React 19: `ref` é prop normal, sem `forwardRef` (Latest Tech Information).
-  ref?: (el: HTMLElement | null) => void
-}) {
-  return (
-    <Box
-      ref={ref}
-      role="radio"
-      aria-checked={selected}
-      aria-disabled={readonly}
-      aria-label={label}
-      tabIndex={readonly ? -1 : selected ? 0 : -1}
-      onClick={readonly ? undefined : onSelect}
-      onKeyDown={(event) => {
-        if (readonly) return
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault()
-          onSelect()
-        }
-      }}
-      sx={{
-        width: '28px',
-        height: '28px',
-        borderRadius: 'var(--ds-radius-full)',
-        cursor: readonly ? 'default' : 'pointer',
-        backgroundColor: color ?? 'var(--ds-surface-subtle)',
-        border: color ? 'none' : '1px solid var(--ds-border)',
-        outline: selected ? '2px solid var(--ds-primary)' : 'none',
-        outlineOffset: '2px',
-      }}
-    />
   )
 }

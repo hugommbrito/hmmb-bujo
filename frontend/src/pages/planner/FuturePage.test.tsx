@@ -208,14 +208,14 @@ describe('Anuais pendentes de [ano] (AC1/AC2/AC3 — Story 11.4)', () => {
     expect(screen.queryByText(/Anuais pendentes de/)).not.toBeInTheDocument()
   })
 
-  it('clicar "Definir placement" abre o RecurringPlacementDialog com as infos do template', async () => {
+  it('clicar "Alocar" abre o RecurringPlacementDialog com as infos do template', async () => {
     routeRecurringTemplatesGet([ANNUAL_TEMPLATE])
     mockUseFutureLogQuery.mockReturnValue({ isPending: false, data: [] })
 
     renderFuturePage()
     vi.useRealTimers()
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Definir placement' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Alocar' }))
 
     expect(screen.getByText('Recorrência: toda virada de ano')).toBeInTheDocument()
   })
@@ -230,7 +230,7 @@ describe('Anuais pendentes de [ano] (AC1/AC2/AC3 — Story 11.4)', () => {
     renderFuturePage()
     vi.useRealTimers()
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Definir placement' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Alocar' }))
     fireEvent.change(screen.getByLabelText('Data (opcional)'), {
       target: { value: '2026-11-20' },
     })
@@ -254,7 +254,7 @@ describe('Anuais pendentes de [ano] (AC1/AC2/AC3 — Story 11.4)', () => {
     renderFuturePage()
     vi.useRealTimers()
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Definir placement' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Alocar' }))
     fireEvent.click(screen.getByRole('button', { name: 'Confirmar' }))
 
     await waitFor(() =>

@@ -512,13 +512,37 @@ async function createRecurringTemplate(
   return response.data
 }
 
+/**
+ * Invalidação COMPARTILHADA das três mutações da biblioteca de templates
+ * (create/update/delete) — Story 14.8, AC8.
+ *
+ *   ▶ `keys.bujo.recurringTemplates()` resolve para
+ *     `['bujo','recurringTemplates','list',{}]` e JÁ alcança as variantes
+ *     parametrizadas: `partialMatchKey` do `@tanstack/query-core` faz *partial
+ *     deep match* (`Object.keys(b).every(...)`) e `{}` é subconjunto de
+ *     qualquer objeto de params. Isto NÃO é a classe de bug das 14.5/14.6/14.7
+ *     (lá as chaves eram irmãs por SUFIXO — `list` × `horizon`; aqui é o mesmo
+ *     sufixo com params) e não deve ser "corrigido".
+ *
+ *   ▶ Os três prefixos consumidores são ADITIVOS e baratos — CONSISTÊNCIA, não
+ *     conserto de bug: com `staleTime: 0` (`api/queryClient.ts`) a navegação
+ *     entre rotas já refaz o fetch. A razão concreta está registrada pelo passo
+ *     de QA da 14.4: excluir o último recorrente pendente ENCERRA a pendência
+ *     da fonte — `pendingDecisionCount`/`reviewed` são computados na leitura, e
+ *     o soft delete mexe no progresso do ritual.
+ */
+function invalidateRecurringTemplateConsumers(queryClient: QueryClient) {
+  queryClient.invalidateQueries({ queryKey: keys.bujo.recurringTemplates() })
+  queryClient.invalidateQueries({ queryKey: ['bujo', 'ritualWeeklySource'] })
+  queryClient.invalidateQueries({ queryKey: ['bujo', 'ritualMonthlySource'] })
+  queryClient.invalidateQueries({ queryKey: ['bujo', 'futureLog'] })
+}
+
 export function useCreateRecurringTemplateMutation() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: createRecurringTemplate,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: keys.bujo.recurringTemplates() })
-    },
+    onSuccess: () => invalidateRecurringTemplateConsumers(queryClient),
   })
 }
 
@@ -541,9 +565,33 @@ export function useUpdateRecurringTemplateMutation() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: updateRecurringTemplate,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: keys.bujo.recurringTemplates() })
-    },
+    onSuccess: () => invalidateRecurringTemplateConsumers(queryClient),
+  })
+}
+
+interface DeleteRecurringTemplateVariables {
+  templateId: string
+}
+
+/**
+ * SOFT DELETE (Story 14.4, backend; Story 14.8, cliente). O servidor responde
+ * **204** e é IDEMPOTENTE: repetir o DELETE sobre um template já excluído
+ * continua respondendo 204. A exclusão é LÓGICA — `deleted_at` sai de todos os
+ * pontos de leitura via `live_templates()` (AD-08 item 6b), mas as tarefas já
+ * criadas a partir do template PRESERVAM a linhagem (`sourceTemplate` continua
+ * válido). Sem corpo na requisição.
+ */
+async function deleteRecurringTemplate({
+  templateId,
+}: DeleteRecurringTemplateVariables): Promise<void> {
+  await client.delete(`/api/bujo/recurring-templates/${templateId}/`)
+}
+
+export function useDeleteRecurringTemplateMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: deleteRecurringTemplate,
+    onSuccess: () => invalidateRecurringTemplateConsumers(queryClient),
   })
 }
 

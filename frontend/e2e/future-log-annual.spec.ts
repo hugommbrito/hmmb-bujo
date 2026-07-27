@@ -24,8 +24,8 @@ const MONTH_NAMES = [
 // Story 14.7 (AC6/AC9): a superfície do Futuro passou a ser `FutureBoardPage`
 // (M08). Três acoplamentos deste spec mudaram, e a TESE dele não:
 //   (a) o botão do item agora diz "Alocar" (termo canônico do decision-log) —
-//       o TÍTULO do dialog continua "Definir placement" até a Story 14.8, que é
-//       a dona da padronização na biblioteca;
+//       a Story 14.8 fechou a padronização: o TÍTULO do dialog também virou
+//       "Alocar" (era "Definir placement" até então), como dona da biblioteca;
 //   (b) a seção é `role="region"` com nome próprio, então o container deixa de
 //       ser um `xpath=..` frágil ao DOM;
 //   (c) cada anual pendente virou um `listitem` — dois botões "Alocar"
@@ -64,20 +64,34 @@ test('Future Log lista anuais pendentes do ano, placement reusa o fluxo da 11.3 
   await expect(page.getByLabel('Futuro')).toBeVisible()
   await expect(page.getByText(/Anuais pendentes de/)).toHaveCount(0)
 
-  // Cria dois templates `annual` em Recorrentes (aba "Anual").
+  // Cria dois templates `annual` em Recorrentes (aba "Anual") — Story 14.8:
+  // a criação passou do form legado (`RecurringTemplateManager`) para o card
+  // de detalhe compartilhado (`TemplateDetailCard`), o mesmo card de
+  // criar/editar. O Grupo herda a aba ativa (AC3), então com "Anual" já
+  // selecionada não é preciso trocar o radio.
   await page.getByRole('button', { name: 'Recorrentes' }).click()
   await expect(page.getByLabel('Recorrentes')).toBeVisible()
-  await page.getByRole('tab', { name: 'Anual' }).click()
+  await page.getByRole('tab', { name: /Anual/ }).click()
 
-  const form = page.getByRole('form', { name: 'Novo template recorrente' })
-  await form.getByLabel('Título').fill('Revisão anual')
-  await form.getByLabel('Recorrência (texto livre)').fill('todo dezembro')
-  await form.getByRole('button', { name: 'Criar' }).click()
+  // `getByLabel('Título')`/`getByRole('dialog')` sem escopo casam também o
+  // campo oculto do `BrainDumpCaptureSheet`, portalizado em toda rota desde a
+  // Story 13.3 — escopar ao card evita o falso positivo/negativo.
+  const card = page.getByRole('dialog', { name: 'Detalhe do template' })
+
+  await page.getByRole('button', { name: 'Novo template', exact: true }).click()
+  await expect(card).toBeVisible()
+  await card.getByLabel('Título').fill('Revisão anual')
+  await card.getByLabel('Recorrência', { exact: true }).fill('todo dezembro')
+  await card.getByRole('button', { name: 'Criar' }).click()
+  await expect(card).toHaveCount(0)
   await expect(page.getByText('Anual — todo dezembro')).toBeVisible({ timeout: 10_000 })
 
-  await form.getByLabel('Título').fill('Balanço anual')
-  await form.getByLabel('Recorrência (texto livre)').fill('todo janeiro')
-  await form.getByRole('button', { name: 'Criar' }).click()
+  await page.getByRole('button', { name: 'Novo template', exact: true }).click()
+  await expect(card).toBeVisible()
+  await card.getByLabel('Título').fill('Balanço anual')
+  await card.getByLabel('Recorrência', { exact: true }).fill('todo janeiro')
+  await card.getByRole('button', { name: 'Criar' }).click()
+  await expect(card).toHaveCount(0)
   await expect(page.getByText('Anual — todo janeiro')).toBeVisible({ timeout: 10_000 })
 
   // AC1: os dois aparecem em "Anuais pendentes de [ano]" no Future Log.
@@ -111,7 +125,7 @@ test('Future Log lista anuais pendentes do ano, placement reusa o fluxo da 11.3 
   await revisaoRow.getByRole('button', { name: 'Alocar' }).click()
 
   const dialog = page.getByRole('dialog')
-  await expect(dialog.getByText('Definir placement')).toBeVisible()
+  await expect(dialog.getByText('Alocar')).toBeVisible()
   await expect(dialog.getByText('Revisão anual', { exact: true })).toBeVisible()
   await expect(dialog.getByText('Recorrência: todo dezembro')).toBeVisible()
   await expect(dialog.getByLabel('Data (opcional)')).toBeVisible()
