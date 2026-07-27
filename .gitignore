@@ -39,5 +39,3 @@ frontend/playwright/.cache/
 # Build / logs
 *.log
 .claude/.story-automator-active
-
-CIandDeploymentLogs.md
