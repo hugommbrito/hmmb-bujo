@@ -116,10 +116,10 @@ apontando para `config.settings.e2e` ainda de pé — pare-o antes do reset.
 
 ---
 
-## 4b. Ambiente E2E isolado e o fallback para Postgres local
+## 4b. Ambiente E2E isolado e o banco local oficial
 
-> Acrescentado pela retrospectiva do Épico 13 (2026-07-24): o fallback abaixo foi
-> reinventado em três stories seguidas (13.2, 13.3, 13.4) sem estar escrito aqui.
+> Acrescentado pela retrospectiva do Épico 13 (2026-07-24); banco local promovido a
+> oficial em 2026-07-28 (achado da Story 14.9 — ver seção abaixo).
 
 ### O ambiente que o Playwright sobe
 
@@ -132,35 +132,25 @@ fim — não reutilize nem mate o seu dev local:
 | Backend E2E | **8000** | `uv run python manage.py runserver 8000` sob `config.settings.e2e` |
 
 ⚠️ O dev local do dono roda em **5174/8001**. **Nunca** derrube essas portas para
-"liberar" o E2E. Se a suíte falhar **em massa no fixture de signup**, a primeira
-hipótese é vazamento de `VITE_API_BASE_URL` (frontend do E2E falando com o backend
-errado), não o banco.
+"liberar" o E2E. Se a suíte falhar **em massa no fixture de signup**, veja as DUAS
+hipóteses antes de suspeitar do código da story: (1) vazamento de
+`VITE_API_BASE_URL` (frontend falando com o backend errado — checar
+`git diff frontend/.env*` e `lsof -i :5173 -i :8000`); (2) latência/cold-start do
+banco (ver §4c) — a distinção é: (1) dá erro/dado errado, (2) dá timeout com o
+backend saudável (2xx no log).
 
-### Sintoma: credencial da branch `e2e` stale
+### Banco OFICIAL: Postgres local `bujo_e2e`
 
-> **Status em 2026-07-25 (Story 14.1): RESOLVIDO — a credencial atual é válida.**
-> A connection string de `backend/.env.e2e` foi renovada e verificada:
-> `DJANGO_SETTINGS_MODULE=config.settings.e2e uv run python manage.py migrate` aplica
-> normalmente contra a branch Neon `e2e` (a `0007_weekly_monthly_cycle_status` foi
-> aplicada por esse caminho). O fallback local abaixo permanece documentado porque a
-> credencial **já expirou uma vez** e pode expirar de novo — não porque esteja
-> inválida agora.
-
-O sintoma, quando a credencial expira: o `webServer` do backend não sobe e o
-Playwright falha antes do primeiro teste (`authentication failed` no log do Django).
-A correção definitiva é o passo de ops manual do §2 (renovar a connection string da
-branch Neon `e2e`) — o dev agent não tem credenciais do Neon.
-
-### Fallback validado: Postgres local `bujo_e2e`
-
-Se a credencial voltar a expirar, aponte o `DATABASE_URL` **numa execução só**
-para um banco dedicado no Postgres local do `docker-compose.yml` (o mesmo container
-`hmmb-test-db` usado pelo `pytest`):
+Desde 2026-07-28, `frontend/e2e/backendEnv.ts` **defaulta** `DATABASE_URL` para o
+Postgres local `bujo_e2e` (mesmo container `hmmb-test-db` do `docker-compose.yml`
+usado pelo `pytest`, banco separado do `hmmb_test`) — nenhum comando extra é
+necessário no dia a dia:
 
 ```bash
-docker compose up -d db        # se ainda não estiver de pé
+# uma vez (se o container ainda não estiver de pé):
+docker compose up -d db
 
-# uma vez: criar o banco dedicado do E2E (separado do hmmb_test do pytest)
+# uma vez: criar o banco dedicado do E2E:
 PGPASSWORD=postgres createdb -h localhost -U postgres bujo_e2e
 
 # uma vez por migration nova (obrigatório antes do Playwright):
@@ -169,22 +159,50 @@ DJANGO_SETTINGS_MODULE=config.settings.e2e \
 DATABASE_URL=postgres://postgres:postgres@localhost:5432/bujo_e2e \
   uv run python manage.py migrate
 
-# rodar a suíte (escopada aos specs relevantes):
+# rodar a suíte normalmente — sem passar DATABASE_URL, o default já aponta pro local:
 cd ../frontend
 nvm use 22.15.1
-CI=1 DATABASE_URL=postgres://postgres:postgres@localhost:5432/bujo_e2e \
+CI=1 npx playwright test e2e/<spec>.spec.ts --reporter=line
+```
+
+⚠️ **O container roda em tmpfs** (dados em memória, mesma trade-off do `pytest`) —
+um restart do container **apaga** `bujo_e2e` por completo. Depois de qualquer
+restart do Docker, refaça `createdb` + `migrate` antes do próximo Playwright.
+
+### Fallback opcional: branch `e2e` do Neon
+
+Pra validar contra um Postgres gerenciado real (paridade de infra com produção),
+exporte a connection string da branch **antes** de rodar o Playwright — isso
+sobrescreve o default local:
+
+```bash
+cd backend
+DJANGO_SETTINGS_MODULE=config.settings.e2e uv run python manage.py migrate  # aplica na branch Neon e2e (usa o DATABASE_URL de .env.e2e)
+
+cd ../frontend
+DATABASE_URL=<connection-string-da-branch-e2e> \
   npx playwright test e2e/<spec>.spec.ts --reporter=line
 ```
 
-O `DATABASE_URL` do comando chega ao `runserver` pelo `webServer` do Playwright e
-vence o valor de `.env.e2e`. Com isso o E2E **não fica "não verificado"** — foi
-assim que os gates das Stories 13.2/13.3/13.4 rodaram.
+O `DATABASE_URL` do comando chega ao `runserver` pelo `webServer` do Playwright
+(que já espelha `process.env`, ver `backendEnv.ts`) e aos seeds via
+`manage.py shell`. Sintoma quando a credencial da branch expira: o `webServer` do
+backend não sobe e o Playwright falha antes do primeiro teste
+(`authentication failed` no log do Django) — a correção é o passo de ops manual do
+§2 (renovar a connection string), o dev agent não tem credenciais do Neon.
 
-> **Atenção Épico 14:** o banco de dados do E2E deixa de ser conveniência e vira
-> caminho crítico — a Story 14.1 cria *data migration* e o padrão do projeto exige
-> aplicá-la ao banco E2E **antes** do Playwright. Decidir qual dos dois caminhos é
-> o oficial (renovar a branch Neon ou promover o `bujo_e2e` local) é decisão do
-> dono, pendente.
+### §4c. Por que o Neon deixou de ser o caminho oficial (achado da Story 14.9, 2026-07-28)
+
+Investigando falhas em massa do e2e na 14.9, medimos a branch Neon `e2e`: o
+`manage.py runserver` levou **~2 minutos** só para abrir a 1ª conexão Postgres
+(muito acima do timeout de 30s do `webServer` do Playwright), e mesmo já "aquecido"
+respondeu com **gaps de 8-20s entre requisições** de uma mesma sequência
+signup→token→cargas iniciais — todas retornando 200/201 (backend saudável, sem
+erro). Como o fixture `signUpAndLandOnToday` (usado por TODO spec) espera `/today`
+em 10s, isso derrubava a suíte inteira nesse ponto compartilhado, mascarando
+qualquer defeito real das stories. Rodando os mesmos specs contra `bujo_e2e` local
+a suíte caiu de ~23min para ~2,5min e o sintoma de "trava no signup" desapareceu
+por completo — foi o que motivou promover o banco local a oficial nesta seção.
 
 ### Coletores fora do gate
 

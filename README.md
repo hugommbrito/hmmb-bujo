@@ -45,8 +45,10 @@ A configuração é lida via `django-environ`. Crie `.env.dev`, `.env.prod` e
 
 - `.env.dev` → branch **dev** do Neon
 - `.env.prod` → branch **main** do Neon
-- `.env.e2e` → branch **e2e** do Neon (usada pela suíte E2E do Playwright; ver
-  [runbook de reset](docs/e2e-neon-reset.md))
+- `.env.e2e` → settings da suíte E2E do Playwright (`config.settings.e2e`). O
+  banco é o Postgres LOCAL `bujo_e2e` por padrão desde 2026-07-28 (mesmo
+  container do pytest) — a branch **e2e** do Neon vira fallback opcional via
+  `DATABASE_URL`; ver [runbook](docs/e2e-neon-reset.md)
 
 `DJANGO_SETTINGS_MODULE` seleciona o settings (`config.settings.dev`,
 `config.settings.prod` ou `config.settings.e2e`). CORS e base-URL da API são
@@ -74,10 +76,11 @@ npm run test:e2e   # Playwright: sobe frontend (5173, --mode e2e) + backend (800
 ```
 
 O E2E inclui o gate de acessibilidade em browser real (`@axe-core/playwright`,
-WCAG 2.2 AA). Ele precisa de um banco próprio — veja o
-[runbook da branch `e2e`](docs/e2e-neon-reset.md), inclusive o fallback para
-Postgres local quando a credencial do Neon estiver indisponível. Nem o Vitest nem
-o Playwright rodam no CI (decisão registrada em `architecture.md` §7.4).
+WCAG 2.2 AA). Ele precisa de um banco próprio — Postgres LOCAL `bujo_e2e` por
+padrão (zero setup extra além do `docker compose up -d db` do pytest); veja o
+[runbook](docs/e2e-neon-reset.md) para criar o banco na 1ª vez e para o fallback
+opcional contra a branch `e2e` do Neon. Nem o Vitest nem o Playwright rodam no
+CI (decisão registrada em `architecture.md` §7.4).
 
 ## CI
 

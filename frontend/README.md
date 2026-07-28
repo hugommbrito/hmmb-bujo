@@ -12,7 +12,7 @@ Frontend do hmmb-bujo: **Vite + React + TypeScript + MUI**. Parte do monorepo (v
 | `npm run lint` | ESLint (flat config em `eslint.config.js`). |
 | `npm run test` | Vitest em modo watch. |
 | `npm run test:run` | Vitest em modo single-run (inclui regressão de acessibilidade via `jest-axe`). |
-| `npm run test:e2e` | Playwright. Sobe frontend em `--mode e2e` (5173) + backend `config.settings.e2e` (8000) e os derruba no fim — **não** usa o dev local. Inclui o gate de a11y em browser real (`@axe-core/playwright`, WCAG 2.2 AA). Banco: ver [runbook](../docs/e2e-neon-reset.md). |
+| `npm run test:e2e` | Playwright. Sobe frontend em `--mode e2e` (5173) + backend `config.settings.e2e` (8000) e os derruba no fim — **não** usa o dev local. Inclui o gate de a11y em browser real (`@axe-core/playwright`, WCAG 2.2 AA). Banco: Postgres LOCAL `bujo_e2e` por padrão desde 2026-07-28 (ver [runbook](../docs/e2e-neon-reset.md) pra criar o banco na 1ª vez e pro fallback contra a branch Neon `e2e`). |
 | `npm run preview` | Servir o build de produção localmente. |
 | `npm run generate-types` | Gera `src/api/types.gen.ts` a partir do `schema.yaml` do backend (`openapi-typescript`). |
 
