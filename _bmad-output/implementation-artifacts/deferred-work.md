@@ -30,3 +30,18 @@ Contexto: a regeneração de `schema.yaml`/`frontend/src/api/types.gen.ts` (ante
 - source_spec: `_bmad-output/implementation-artifacts/spec-14-9-migracao-catch-up-como-ritual-no-shell.md`
   summary: `WeeklyPlanningPage`/`WeeklyDecisionList` (Story 14.5) têm as mesmas violações axe de color-contrast e target-size (WCAG 2.5.8) em compact/tablet/reflow-320 que a 14.9 corrigiu localmente na página de Migração, sem tocar tokens compartilhados.
   evidence: confirmado rodando o teste axe da própria `weekly-planning-ritual.spec.ts` em compact contra o `dev` HEAD atual — falha com as violações idênticas, independente de qualquer mudança desta sessão. Pré-existente desde a 14.5, fora do Code Map da 14.9 (corrigir ali tocaria `--ds-weekly-planning-source-rail`/`context-rail`, tokens consumidos por Weekly/Monthly/Future).
+
+## Deferred from: review of story-14-10-arquivo-no-sistema-novo (2026-07-28)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-14-10-arquivo-no-sistema-novo.md`
+  summary: `findPredecessor` em `ArchiveWeeklyDetailPage.tsx`/`ArchiveMonthlyDetailPage.tsx` só busca a origem da linhagem dentro do próprio período carregado, então o card de detalhe de uma tarefa alcançada via seta cross-período nunca mostra "veio de" (some silenciosamente, ao contrário do mesmo card para migração dentro do período).
+  evidence: confirmado lendo `findPredecessor` em ambas as páginas — o loop itera só sobre `days`/`unscheduled` (Weekly) ou `tasks` (Monthly) do período atual; a origem de uma linhagem cross-período está por definição em outro período, fora desse escopo de busca. Não é exigido pela matriz I/O da spec (que só pede navegação + foco na linha sucessora), só um efeito colateral perdido.
+- source_spec: `_bmad-output/implementation-artifacts/spec-14-10-arquivo-no-sistema-novo.md`
+  summary: `TaskSerializer.get_migration_target` (novo campo desta story) resolve `successor.weekly_log`/`monthly_log`/`log` sem `select_related`, um N+1 por tarefa migrada/postponed em qualquer resposta de lista (Weekly/Monthly log, fila de catch-up, fila de migração).
+  evidence: confirmado lendo `backend/bujo/serializers.py` — nenhum dos querysets que alimentam `TaskSerializer` faz `select_related` na cadeia `migrated_to_task__weekly_log`/`__monthly_log`/`__log`. Corrigir exige tocar múltiplos querysets fora do Code Map desta story; sem sinal de volume que torne isso urgente hoje.
+- source_spec: `_bmad-output/implementation-artifacts/spec-14-10-arquivo-no-sistema-novo.md`
+  summary: `archiveLineageReturn.ts` usa uma única chave de `sessionStorage`; um segundo salto de linhagem (B→C) antes de retornar do primeiro (A→B) sobrescreve a entrada de retorno, quebrando o foco-ao-voltar da primeira origem.
+  evidence: confirmado lendo `archiveLineageReturn.ts` — `STORAGE_KEY` é um único valor, escrito por `handleNavigateToSuccessor` em ambas as páginas de detalhe sem pilha/histórico. Fora do escopo da spec (que define linhagem só como "origem → sucessor imediato", um salto por vez), mas o encadeamento de saltos consecutivos é uma sequência de usuário plausível.
+- source_spec: `_bmad-output/implementation-artifacts/spec-14-10-arquivo-no-sistema-novo.md`
+  summary: `archiveLineageReturn.ts` só limpa a entrada salva quando `focusTaskRow` foca a linha com sucesso; se a linha de origem não estiver mais renderizada ao retornar, a entrada fica presa no `sessionStorage` indefinidamente.
+  evidence: confirmado lendo `readLineageReturn`/`clearLineageReturn` — `clearLineageReturn()` só é chamado no caminho de sucesso de `focusTaskRow`. Risco baixo (exigiria coincidência de `taskId` numa visita não relacionada posterior), mas é um vazamento de estado real.
