@@ -30,6 +30,7 @@ import type {
   TaskEisenhower,
   TaskSource,
   TaskStatus,
+  UnifiedMigrationQueue,
   WeeklyCycle,
   WeeklyCycleAction,
   WeeklyCycleReadiness,
@@ -419,6 +420,24 @@ export function useCatchUpQueueQuery() {
   })
 }
 
+async function fetchUnifiedMigrationQueue(): Promise<UnifiedMigrationQueue> {
+  const response = await client.get<UnifiedMigrationQueue>('/api/bujo/migration/unified-queue/')
+  return response.data
+}
+
+/**
+ * Fila única de migração (Story 14.3, sem consumidor de frontend até a 14.9) —
+ * único dado de leitura do ritual roteado (`MigrationRitualPage`) e do banner
+ * unificado no Hoje (`MigrationRitualBanner`). Mesmo endpoint que já alimenta
+ * `useMigrationQueueQuery`/`useCatchUpQueueQuery` (aliases finos, Story 14.3).
+ */
+export function useUnifiedMigrationQueueQuery() {
+  return useQuery({
+    queryKey: keys.bujo.unifiedMigrationQueue(),
+    queryFn: fetchUnifiedMigrationQueue,
+  })
+}
+
 export type MigrationDestination = 'today' | 'week' | 'month' | 'future' | 'cancel'
 
 interface MigrateTaskVariables {
@@ -444,6 +463,11 @@ export function useMigrateTaskMutation() {
       queryClient.invalidateQueries({ queryKey: keys.bujo.weeklyReviewQueue() })
       queryClient.invalidateQueries({ queryKey: keys.bujo.monthlyReviewQueue() })
       queryClient.invalidateQueries({ queryKey: keys.bujo.catchUpQueue() })
+      // Story 14.9 (M10): a fila unificada é o único dado de leitura do ritual
+      // roteado e do banner unificado — toda decisão de migração precisa
+      // re-derivar essa fila, do mesmo jeito que já invalida os dois aliases
+      // finos acima (mesmo endpoint na origem, `services/migration.py`).
+      queryClient.invalidateQueries({ queryKey: keys.bujo.unifiedMigrationQueue() })
       // Prefixo (não a chave exata 'today') — alcança também um Daily Log
       // passado (Story 11.11, Task 6.4).
       queryClient.invalidateQueries({ queryKey: ['bujo', 'dailyLog'] })

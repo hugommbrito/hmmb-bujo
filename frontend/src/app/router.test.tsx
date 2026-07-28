@@ -27,6 +27,7 @@ vi.mock('../features/bujo', () => ({
   useCreateTaskMutation: () => ({ mutate: vi.fn() }),
   useReorderTaskMutation: () => ({ mutate: vi.fn() }),
   MigrationBanner: () => null,
+  MigrationRitualBanner: () => null,
   WeeklyReviewBanner: () => null,
   MonthlyReviewBanner: () => null,
   CatchUpBanner: () => null,

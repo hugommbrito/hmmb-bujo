@@ -10,6 +10,7 @@ import { ShellLayout } from './layout/shell/ShellLayout'
 import { resolveShellRoute } from './layout/shell/shellRouting'
 import { collections } from './collections/registry'
 import { DailyPage } from '../pages/daily/DailyPage'
+import { MigrationRitualPage } from '../pages/MigrationRitualPage'
 import { WeeklyPage } from '../pages/planner/WeeklyPage'
 import { WeeklyBoardPage } from '../pages/planner/WeeklyBoardPage'
 import { WeeklyPlanningPage } from '../pages/planner/WeeklyPlanningPage'
@@ -106,6 +107,16 @@ export const routeDefinitions: RouteObject[] = [
       { index: true, element: <Navigate to="/today" replace /> },
       { path: 'today', element: <DailyPage />, handle: { title: 'Hoje' } },
       { path: 'daily/:date', element: <DailyPage />, handle: { title: 'Daily Log' } },
+      {
+        // Story 14.9 (M10): ritual de migração/catch-up ROTEADO dentro do
+        // shell (não `Dialog`, não overlay full-screen — decisão fechada do
+        // mockup `key-migracao.html`). Irmã de `today`/`archive`/`settings`,
+        // não filha de `planner/*` (a migração não pertence a nenhum dos
+        // quatro logs — é o ritual que une os três níveis mês/semana/dia).
+        path: 'migration',
+        element: <MigrationRitualPage />,
+        handle: { title: 'Migração' },
+      },
       {
         // Story 14.5: `WeeklyPage` legada continua servindo só
         // `archive/weekly/:weekStart` (a variante de Arquivo é da 14.10) —

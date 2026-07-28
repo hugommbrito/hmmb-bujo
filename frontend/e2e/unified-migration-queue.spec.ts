@@ -1,7 +1,7 @@
 import type { APIRequestContext } from '@playwright/test'
 
 import { countRitualContainers } from './countRitualContainers'
-import { test, expect, syncAfter, E2E_PASSWORD } from './fixtures'
+import { test, expect, E2E_PASSWORD } from './fixtures'
 import { seedCatchUpScenario } from './seedCatchUpScenario'
 import { seedYesterdayQueue } from './seedYesterdayQueue'
 
@@ -89,7 +89,7 @@ function topLevelIds(queue: UnifiedQueue): string[] {
   )
 }
 
-test('os dois banners legados e a fila unificada contam a mesma coisa no banco real (AC5, AC6)', async ({
+test('o banner unificado (Story 14.9) e a fila unificada contam a mesma coisa no banco real (AC5, AC6)', async ({
   page,
   email,
   request,
@@ -107,14 +107,12 @@ test('os dois banners legados e a fila unificada contam a mesma coisa no banco r
   seedYesterdayQueue(email, [{ title: 'Pendência de ontem' }])
   await page.reload()
 
-  // A superfície legada: DOIS banners, cada um com sua contagem, ambos agora
-  // servidos pela projeção do serviço unificado.
-  await expect(page.getByText('1 tarefas pendentes de ontem. Iniciar migração?')).toBeVisible()
-  await expect(
-    page.getByText(
-      '3 tarefas sem disposição de dias, semanas ou meses anteriores. Iniciar Catch-Up?',
-    ),
-  ).toBeVisible()
+  // A superfície NOVA (Story 14.9): UM banner só, com a soma das 3 fontes —
+  // `MigrationBanner`/`CatchUpBanner` legados seguem no repo (intocados em
+  // comportamento), só desmontados de `DailyPage.tsx`.
+  const banner = page.getByRole('region', { name: /tarefas precisam de decisão/ })
+  await expect(banner).toBeVisible()
+  await expect(banner).toHaveAccessibleName('4 tarefas precisam de decisão · 1 de meses · 1 de semanas · 2 de dias')
 
   const api = await queueApi(request, email)
   const [unified, migration, catchUp] = await Promise.all([
@@ -158,7 +156,7 @@ test('os dois banners legados e a fila unificada contam a mesma coisa no banco r
   expect(catchUp.dailyTasks.map((task) => task.id)).not.toContain(migration.tasks[0].id)
 })
 
-test('decidir pelo fluxo legado escoa a fila unificada e não grava decisão de ritual (AC3)', async ({
+test('decidir pelo ritual roteado (Story 14.9) escoa a fila unificada e não grava decisão de ritual (AC3)', async ({
   page,
   email,
   request,
@@ -173,14 +171,14 @@ test('decidir pelo fluxo legado escoa a fila unificada e não grava decisão de 
   expect(antes.totalCount).toBe(2)
   expect(topLevelIds(antes)).toContain(decidido)
 
-  // Decisão pela UI LEGADA (atalho "1" = migrar para hoje), a única superfície
-  // existente nesta onda. Nenhum endpoint de escrita novo participa.
-  // `exact: true` porque o banner de Catch-Up também está na tela, com "Iniciar
-  // Catch-Up" — sem isso o locator casaria os dois botões.
-  await page.getByRole('button', { name: 'Iniciar', exact: true }).click()
-  await expect(page.getByRole('dialog')).toBeVisible()
-  await syncAfter(page, async () => page.keyboard.press('1'))
-  await expect(page.getByRole('dialog')).toHaveCount(0)
+  // Decisão pela superfície NOVA (Story 14.9): banner unificado → ritual
+  // ROTEADO → "Migrar para hoje". Mesmo verbo de escrita (`POST /migrate/`),
+  // nenhum endpoint novo participa.
+  await page.getByRole('link', { name: 'Migrar ›' }).click()
+  await expect(page).toHaveURL('/migration')
+  await expect(page.getByText('Revisar PR de ontem')).toBeVisible()
+  await page.getByRole('button', { name: 'Migrar para hoje' }).click()
+  await expect(page.getByText('Revisar PR de ontem')).toHaveCount(0)
 
   // Re-derivação: o item decidido saiu, o resto permaneceu, e a seção `day` continua
   // PRESENTE (a UI da 14.9 desenha o rail completo).

@@ -49,6 +49,11 @@ export const shellRoutes: readonly ShellRouteEntry[] = [
   // ─── Núcleo ────────────────────────────────────────────────────────────────
   { routeId: 'today', shell: 'new', surfaceMigrated: false },
   { routeId: 'daily/:date', shell: 'new', surfaceMigrated: false },
+  // Story 14.9 (M10): ritual de migração/catch-up — rota NOVA, já nasce com
+  // `surfaceMigrated: true` (é uma superfície do sistema novo desde o dia 1,
+  // nunca teve seam legado). `today`/`daily/:date` acima permanecem `false` —
+  // só o RITUAL é migrado, o Daily legado segue intocado até o Épico 17.
+  { routeId: 'migration', shell: 'new', surfaceMigrated: true },
   // Story 14.5: PRIMEIRA superfície interna migrada — `LegacySeamNotice`
   // desaparece só nesta rota (e na do ritual, abaixo).
   { routeId: 'planner/week', shell: 'new', surfaceMigrated: true },

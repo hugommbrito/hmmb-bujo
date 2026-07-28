@@ -23,6 +23,12 @@ export const keys = {
     // é por prefixo, e `list` não é prefixo de `horizon`) — ver AC9.
     futureHorizon: () => ['bujo', 'futureLog', 'horizon'] as const,
     migrationQueue: () => ['bujo', 'migrationQueue', 'list'] as const,
+    // Story 14.9 (M10) — fila unificada de migração, consumida pelo ritual
+    // roteado (`MigrationRitualPage`) e pelo banner unificado no Hoje
+    // (`MigrationRitualBanner`). Chave IRMÃ de `migrationQueue`/`catchUpQueue`
+    // acima (mesmo endpoint que já alimenta os dois aliases legados desde a
+    // 14.3) — `useMigrateTaskMutation` invalida as três.
+    unifiedMigrationQueue: () => ['bujo', 'unifiedMigrationQueue', 'list'] as const,
     weeklyReviewQueue: () => ['bujo', 'weeklyReviewQueue', 'list'] as const,
     monthlyReviewQueue: () => ['bujo', 'monthlyReviewQueue', 'list'] as const,
     catchUpQueue: () => ['bujo', 'catchUpQueue', 'list'] as const,

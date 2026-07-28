@@ -18,6 +18,12 @@ export type MigrationQueue = components['schemas']['MigrationQueue']
 export type WeeklyReviewQueue = components['schemas']['WeeklyReviewQueue']
 export type MonthlyReviewQueue = components['schemas']['MonthlyReviewQueue']
 export type CatchUpQueue = components['schemas']['CatchUpQueue']
+// Story 14.9 (M10) — fila unificada de migração (Story 14.3, sem consumidor de
+// frontend até aqui). Mesma projeção pura que os dois aliases acima já servem;
+// `sections`/`groups` chegam em ordem mês→semana→dia (contrato do backend).
+export type UnifiedMigrationQueue = components['schemas']['UnifiedMigrationQueue']
+export type UnifiedQueueSection = components['schemas']['UnifiedQueueSection']
+export type UnifiedQueueGroup = components['schemas']['UnifiedQueueGroup']
 export type RecurringTaskTemplate = components['schemas']['RecurringTaskTemplate']
 export type RecurrenceGroup = components['schemas']['RecurrenceGroupEnum']
 export type TaskDensityEntry = components['schemas']['TaskDensityEntry']

@@ -13,6 +13,7 @@ export {
   useCreateWeeklyTaskMutation,
   useDeleteTaskMutation,
   useMigrationQueueQuery,
+  useUnifiedMigrationQueueQuery,
   useMigrateTaskMutation,
   useWeeklyReviewQueueQuery,
   useMonthlyReviewQueueQuery,
@@ -45,6 +46,9 @@ export { MigrationBanner } from './components/MigrationBanner'
 export { WeeklyReviewBanner } from './components/WeeklyReviewBanner'
 export { MonthlyReviewBanner } from './components/MonthlyReviewBanner'
 export { CatchUpBanner } from './components/CatchUpBanner'
+// Story 14.9 (M10) — banner unificado que substitui MigrationBanner+CatchUpBanner
+// em DailyPage.tsx (os dois seguem exportados acima, intocados, para rollback).
+export { MigrationRitualBanner } from './components/migration/MigrationRitualBanner'
 export { RecurringTemplateManager } from './components/RecurringTemplateManager'
 export { RecurringPlacementSection } from './components/RecurringPlacementSection'
 export { MonthDensityCalendar } from './components/MonthDensityCalendar'
@@ -75,6 +79,9 @@ export type {
   WeeklyReviewQueue,
   MonthlyReviewQueue,
   CatchUpQueue,
+  UnifiedMigrationQueue,
+  UnifiedQueueSection,
+  UnifiedQueueGroup,
   RecurringTaskTemplate,
   RecurrenceGroup,
   TaskDensityEntry,

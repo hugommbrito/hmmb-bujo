@@ -2,8 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link as RouterLink, useParams } from 'react-router-dom'
 import { Box, Button, Typography } from '@mui/material'
 import {
-  CatchUpBanner,
-  MigrationBanner,
+  MigrationRitualBanner,
   MonthlyReviewBanner,
   WeeklyReviewBanner,
   useCreateTaskMutation,
@@ -99,10 +98,13 @@ export function DailyPage() {
         </Button>
       ) : (
         <>
-          <MigrationBanner />
+          {/* Story 14.9 (M10): banner unificado no lugar de MigrationBanner +
+              CatchUpBanner (os dois seguem no repo, intocados, para rollback
+              por arquivo — mesmo padrão das 14.5-14.8). Abre o ritual roteado
+              `/migration`, nunca um Dialog. */}
+          <MigrationRitualBanner />
           <WeeklyReviewBanner />
           <MonthlyReviewBanner />
-          <CatchUpBanner />
           {/* Fluxo da manhã (Épico 6): tracker de hábitos de hoje. Só no today
               view — navegar dias passados de hábitos é 6.4. */}
           <HabitTracker />

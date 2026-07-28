@@ -45,7 +45,6 @@ import client from '../../api/client'
 
 const mockUseTodayLogQuery = useTodayLogQuery as ReturnType<typeof vi.fn>
 const mockGet = client.get as ReturnType<typeof vi.fn>
-const mockPost = client.post as ReturnType<typeof vi.fn>
 
 // `MigrationBanner`/`WeeklyReviewBanner`/`MonthlyReviewBanner`/`CatchUpBanner`
 // chamam 4 GETs distintos (todos via `client.get`, sem passar por
@@ -54,11 +53,23 @@ const mockPost = client.post as ReturnType<typeof vi.fn>
 // resposta. Este helper roteia por URL, com um "once" opcional por endpoint
 // (para simular a query antes/depois de uma invalidação) e um valor
 // persistente por endpoint depois disso.
+const EMPTY_UNIFIED_QUEUE = {
+  totalCount: 0,
+  sections: [
+    { sourceId: 'month', count: 0, groups: [] },
+    { sourceId: 'week', count: 0, groups: [] },
+    { sourceId: 'day', count: 0, groups: [] },
+  ],
+}
+
 const GET_DEFAULTS: Record<string, unknown> = {
   '/api/bujo/migration/queue/': { logDate: '2026-06-14', tasks: [] },
   '/api/bujo/weekly-review/queue/': { weekStart: '2026-06-08', tasks: [] },
   '/api/bujo/monthly-review/queue/': { monthFirst: '2026-06-01', tasks: [] },
   '/api/bujo/catch-up/queue/': { monthlyTasks: [], weeklyTasks: [], dailyTasks: [] },
+  // Story 14.9 (M10) — banner unificado (`MigrationRitualBanner`), único
+  // consumidor de frontend desta fila além dos dois aliases finos acima.
+  '/api/bujo/migration/unified-queue/': EMPTY_UNIFIED_QUEUE,
   // HabitTracker do fluxo da manhã (Story 6.2) — dia vazio por padrão.
   '/api/habits/days/': { date: '2026-06-15', totalCompletion: 0, groups: [], entries: [] },
 }
@@ -67,10 +78,6 @@ let getOnceQueues: Record<string, unknown[]> = {}
 
 function setGetResponse(url: string, data: unknown) {
   getPersistent[url] = data
-}
-
-function queueGetResponseOnce(url: string, data: unknown) {
-  ;(getOnceQueues[url] ??= []).push(data)
 }
 
 function resetGetRouting() {
@@ -437,7 +444,15 @@ const YESTERDAY_TASK = {
   subtasks: [],
 }
 
-describe('MigrationBanner integration (AC1)', () => {
+// Story 14.9 (M10): MigrationBanner/CatchUpBanner saíram de DailyPage.tsx,
+// substituídos por `MigrationRitualBanner` — único banner, alimentado pela
+// fila unificada (`/api/bujo/migration/unified-queue/`), que abre o ritual
+// ROTEADO (`/migration`) em vez de um `Dialog`. Os dois banners legados
+// seguem no repo, intocados (`MigrationBanner.tsx`/`CatchUpBanner.tsx`), só
+// desmontados daqui — cobertos à parte por `unified-migration-queue.spec.ts`/
+// `migration-flow.spec.ts` (E2E) e pelos próprios testes de
+// `MigrationRitualBanner`/`MigrationRitualPage` (co-locados).
+describe('MigrationRitualBanner integration (Story 14.9)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     resetGetRouting()
@@ -447,54 +462,57 @@ describe('MigrationBanner integration (AC1)', () => {
     })
   })
 
-  it('banner aparece quando useMigrationQueueQuery retorna tarefas', async () => {
-    setGetResponse('/api/bujo/migration/queue/', { logDate: '2026-06-14', tasks: [YESTERDAY_TASK] })
-
-    renderDailyPage()
-
-    expect(
-      await screen.findByText('1 tarefas pendentes de ontem. Iniciar migração?'),
-    ).toBeInTheDocument()
-  })
-
-  it('clicar em Iniciar abre o fluxo de migração com o Migration Card', async () => {
-    setGetResponse('/api/bujo/migration/queue/', { logDate: '2026-06-14', tasks: [YESTERDAY_TASK] })
-
-    renderDailyPage()
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Iniciar' }))
-
-    expect(await screen.findByText('1 de 1 revisadas')).toBeInTheDocument()
-    expect(screen.getAllByText('Pendente de ontem').length).toBeGreaterThan(0)
-  })
-
-  it('banner some depois que a fila esvazia (migração da última tarefa invalida a query)', async () => {
-    queueGetResponseOnce('/api/bujo/migration/queue/', {
-      logDate: '2026-06-14',
-      tasks: [YESTERDAY_TASK],
-    })
-    setGetResponse('/api/bujo/migration/queue/', { logDate: '2026-06-14', tasks: [] })
-    mockPost.mockResolvedValue({
-      data: { id: 'y1', title: 'Pendente de ontem', status: 'migrated', subtasks: [] },
+  it('banner aparece com a contagem e o detalhamento por fonte quando a fila unificada tem itens', async () => {
+    setGetResponse('/api/bujo/migration/unified-queue/', {
+      totalCount: 1,
+      sections: [
+        { sourceId: 'month', count: 0, groups: [] },
+        { sourceId: 'week', count: 0, groups: [] },
+        { sourceId: 'day', count: 1, groups: [{ periodStart: '2026-06-14', items: [YESTERDAY_TASK] }] },
+      ],
     })
 
     renderDailyPage()
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Iniciar' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'Migrar para hoje' }))
-
-    await waitFor(() =>
-      expect(
-        screen.queryByText('1 tarefas pendentes de ontem. Iniciar migração?'),
-      ).not.toBeInTheDocument(),
+    // O texto vem partido entre um `<b>` aninhado e nós de texto irmãos — o
+    // aria-label da região carrega a sentença inteira (mesma técnica de
+    // `MigrationRitualBanner.test.tsx`).
+    const region = await screen.findByRole('region')
+    expect(region).toHaveAttribute(
+      'aria-label',
+      '1 tarefa precisa de decisão · 0 de meses · 0 de semanas · 1 de dias',
     )
+  })
+
+  it('o botão do banner aponta para a rota /migration — ritual roteado, nunca um Dialog', async () => {
+    setGetResponse('/api/bujo/migration/unified-queue/', {
+      totalCount: 1,
+      sections: [
+        { sourceId: 'month', count: 0, groups: [] },
+        { sourceId: 'week', count: 0, groups: [] },
+        { sourceId: 'day', count: 1, groups: [{ periodStart: '2026-06-14', items: [YESTERDAY_TASK] }] },
+      ],
+    })
+
+    renderDailyPage()
+
+    const link = await screen.findByRole('link', { name: /Migrar/ })
+    expect(link).toHaveAttribute('href', '/migration')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('vazio = sem DOM: banner não renderiza quando a fila unificada não tem pendências', async () => {
+    renderDailyPage()
+
+    await waitFor(() => expect(mockGet).toHaveBeenCalled())
+    expect(screen.queryByRole('region')).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /Migrar/ })).not.toBeInTheDocument()
   })
 })
 
-describe('WeeklyReviewBanner/MonthlyReviewBanner/CatchUpBanner integration (AC1, AC2, Task 9/10)', () => {
+describe('WeeklyReviewBanner/MonthlyReviewBanner/MigrationRitualBanner integration (AC1, AC2, Task 9/10 + Story 14.9)', () => {
   const WEEK_TASK = { ...YESTERDAY_TASK, id: 'w1', title: 'Pendente da semana anterior' }
   const MONTH_TASK = { ...YESTERDAY_TASK, id: 'm1', title: 'Pendente do mês anterior' }
-  const CATCH_UP_TASK = { ...YESTERDAY_TASK, id: 'c1', title: 'Pendente de 10 dias atrás' }
 
   beforeEach(() => {
     vi.clearAllMocks()
@@ -505,53 +523,31 @@ describe('WeeklyReviewBanner/MonthlyReviewBanner/CatchUpBanner integration (AC1,
     })
   })
 
-  it('os 4 banners aparecem/desaparecem independentemente conforme cada query retorna tarefas ou não', async () => {
-    setGetResponse('/api/bujo/migration/queue/', { logDate: '2026-06-14', tasks: [YESTERDAY_TASK] })
+  it('os 3 banners aparecem/desaparecem independentemente conforme cada query retorna tarefas ou não', async () => {
+    setGetResponse('/api/bujo/migration/unified-queue/', {
+      totalCount: 1,
+      sections: [
+        { sourceId: 'month', count: 0, groups: [] },
+        { sourceId: 'week', count: 0, groups: [] },
+        { sourceId: 'day', count: 1, groups: [{ periodStart: '2026-06-14', items: [YESTERDAY_TASK] }] },
+      ],
+    })
     setGetResponse('/api/bujo/weekly-review/queue/', { weekStart: '2026-06-08', tasks: [] })
     setGetResponse('/api/bujo/monthly-review/queue/', { monthFirst: '2026-06-01', tasks: [MONTH_TASK] })
-    setGetResponse('/api/bujo/catch-up/queue/', {
-      monthlyTasks: [],
-      weeklyTasks: [],
-      dailyTasks: [CATCH_UP_TASK],
-    })
 
     renderDailyPage()
 
-    expect(
-      await screen.findByText('1 tarefas pendentes de ontem. Iniciar migração?'),
-    ).toBeInTheDocument()
+    const region = await screen.findByRole('region')
+    expect(region).toHaveAttribute(
+      'aria-label',
+      '1 tarefa precisa de decisão · 0 de meses · 0 de semanas · 1 de dias',
+    )
     expect(
       await screen.findByText('Mês anterior tem 1 tarefas sem disposição. Revisar mês anterior?'),
     ).toBeInTheDocument()
     expect(
-      await screen.findByText(
-        '1 tarefas sem disposição de dias, semanas ou meses anteriores. Iniciar Catch-Up?',
-      ),
-    ).toBeInTheDocument()
-    expect(
       screen.queryByText(/Semana anterior tem \d+ tarefas sem disposição\. Revisar\?/),
     ).not.toBeInTheDocument()
-  })
-
-  it('CatchUpBanner sozinho: aparece com fila de catch-up e abre o fluxo com flowType daily', async () => {
-    setGetResponse('/api/bujo/catch-up/queue/', {
-      monthlyTasks: [],
-      weeklyTasks: [],
-      dailyTasks: [CATCH_UP_TASK],
-    })
-
-    renderDailyPage()
-
-    expect(
-      await screen.findByText(
-        '1 tarefas sem disposição de dias, semanas ou meses anteriores. Iniciar Catch-Up?',
-      ),
-    ).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Iniciar Catch-Up' }))
-
-    expect(await screen.findByText('1 de 1 revisadas')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Migrar para hoje' })).toBeInTheDocument()
   })
 
   it('WeeklyReviewBanner sozinho: aparece com fila da semana anterior e abre o fluxo com flowType weekly', async () => {
@@ -584,13 +580,12 @@ describe('WeeklyReviewBanner/MonthlyReviewBanner/CatchUpBanner integration (AC1,
     expect(screen.queryByRole('button', { name: 'Migrar para hoje' })).not.toBeInTheDocument()
   })
 
-  it('nenhum banner aparece quando as 4 filas estão vazias', () => {
+  it('nenhum banner aparece quando as filas estão vazias', () => {
     renderDailyPage()
 
-    expect(screen.queryByText(/tarefas pendentes de ontem/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('region')).not.toBeInTheDocument()
     expect(screen.queryByText(/Semana anterior tem/)).not.toBeInTheDocument()
     expect(screen.queryByText(/Mês anterior tem/)).not.toBeInTheDocument()
-    expect(screen.queryByText(/sem disposição de dias, semanas ou meses anteriores/)).not.toBeInTheDocument()
   })
 })
 
@@ -612,8 +607,15 @@ describe('Rota /daily/:date — Daily Log de um dia passado (Story 11.11, AC2/AC
     expect(screen.getByLabelText('Daily Log de 2026-06-10')).toBeInTheDocument()
   })
 
-  it('não renderiza banners de ritual num dia passado', () => {
-    setGetResponse('/api/bujo/migration/queue/', { logDate: '2026-06-14', tasks: [YESTERDAY_TASK] })
+  it('não renderiza banners de ritual num dia passado (Story 14.9: inclui o banner unificado)', () => {
+    setGetResponse('/api/bujo/migration/unified-queue/', {
+      totalCount: 1,
+      sections: [
+        { sourceId: 'month', count: 0, groups: [] },
+        { sourceId: 'week', count: 0, groups: [] },
+        { sourceId: 'day', count: 1, groups: [{ periodStart: '2026-06-14', items: [YESTERDAY_TASK] }] },
+      ],
+    })
     mockUseTodayLogQuery.mockReturnValue({
       isPending: false,
       data: { id: 'log-past', logDate: '2026-06-10', tasks: [] },
@@ -621,9 +623,8 @@ describe('Rota /daily/:date — Daily Log de um dia passado (Story 11.11, AC2/AC
 
     renderDailyPageAtDate('2026-06-10')
 
-    expect(
-      screen.queryByText('1 tarefas pendentes de ontem. Iniciar migração?'),
-    ).not.toBeInTheDocument()
+    expect(screen.queryByRole('region')).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /Migrar/ })).not.toBeInTheDocument()
   })
 
   it('não renderiza AddTaskRow num dia passado (criação restrita a hoje)', () => {

@@ -71,6 +71,8 @@ describe('shellRouting — registro por rota', () => {
     'planner/future',
     // Story 14.8 (M09) — biblioteca de Recorrentes no sistema novo.
     'planner/recurring',
+    // Story 14.9 (M10) — ritual de migração/catch-up no sistema novo.
+    'migration',
   ])
 
   it('test_shell_e_novo_em_tudo_e_apenas_as_rotas_migradas_tem_surfaceMigrated_true', () => {
@@ -101,10 +103,21 @@ describe('shellRouting — registro por rota', () => {
     expect(shellRoutes.find((route) => route.routeId === 'settings')?.surfaceMigrated).toBe(false)
   })
 
+  it('test_migration_e_a_rota_migrada_da_story_14_9', () => {
+    const entry = shellRoutes.find((route) => route.routeId === 'migration')
+    expect(entry?.surfaceMigrated).toBe(true)
+    // Irmã de NÃO-VACUIDADE: `today`/`daily/:date` continuam `false` — só o
+    // RITUAL roteado é migrado, o Daily legado (com seus banners) segue
+    // intocado até o Épico 17.
+    expect(shellRoutes.find((route) => route.routeId === 'today')?.surfaceMigrated).toBe(false)
+    expect(shellRoutes.find((route) => route.routeId === 'daily/:date')?.surfaceMigrated).toBe(false)
+  })
+
   it('test_resolve_rota_estatica_e_rota_parametrizada', () => {
     expect(resolveShellRoute('/today').routeId).toBe('today')
     expect(resolveShellRoute('/planner/week').routeId).toBe('planner/week')
     expect(resolveShellRoute('/daily/2026-07-24').routeId).toBe('daily/:date')
+    expect(resolveShellRoute('/migration').routeId).toBe('migration')
     expect(resolveShellRoute('/archive/weekly/2026-07-20').routeId).toBe(
       'archive/weekly/:weekStart',
     )
