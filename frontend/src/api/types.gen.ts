@@ -2168,6 +2168,22 @@ export interface components {
             logDate: string;
             tasks: components["schemas"]["Task"][];
         };
+        MigrationTarget: {
+            type: components["schemas"]["MigrationTargetTypeEnum"];
+            /** Format: date */
+            weekStart?: string | null;
+            /** Format: date */
+            monthFirst?: string | null;
+            /** Format: date */
+            logDate?: string | null;
+        };
+        /**
+         * @description * `daily` - daily
+         *     * `weekly` - weekly
+         *     * `monthly` - monthly
+         * @enum {string}
+         */
+        MigrationTargetTypeEnum: "daily" | "weekly" | "monthly";
         MonthlyCycle: {
             status: string | null;
             /** Format: date-time */
@@ -2583,6 +2599,7 @@ export interface components {
             migratedToTask?: string | null;
             /** Format: uuid */
             sourceTemplate?: string | null;
+            readonly migrationTarget: components["schemas"]["MigrationTarget"] | null;
         };
         TaskCreate: {
             title: string;

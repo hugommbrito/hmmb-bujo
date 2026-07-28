@@ -15,6 +15,7 @@ from rest_framework.views import APIView
 
 from bujo.models import MonthlyLog, RecurringTaskTemplate, Task, WeeklyLog
 from bujo.serializers import (
+    MIGRATED_TO_TASK_SELECT_RELATED,
     ArchiveEntrySerializer,
     BlockingTaskSourceSerializer,
     CatchUpQueueSerializer,
@@ -329,17 +330,20 @@ class WeeklyLogView(APIView):
         else:
             week_start = week_start_of(today_for(request.user))
         weekly_log = get_or_create_weekly_log(user=request.user, week_start=week_start)
+        # `select_related` (Story 14.10 review): evita N+1 em `migration_target`
+        # do `TaskSerializer` para toda tarefa `migrated`/`postponed` da semana.
+        base_tasks = weekly_log.tasks.filter(parent_task__isnull=True).select_related(
+            *MIGRATED_TO_TASK_SELECT_RELATED
+        )
 
         days = [
             {
                 "date": day,
-                "tasks": weekly_log.tasks.filter(scheduled_date=day, parent_task__isnull=True),
+                "tasks": base_tasks.filter(scheduled_date=day),
             }
             for day in (week_start + timedelta(days=offset) for offset in range(7))
         ]
-        unscheduled = weekly_log.tasks.filter(
-            scheduled_date__isnull=True, parent_task__isnull=True
-        )
+        unscheduled = base_tasks.filter(scheduled_date__isnull=True)
 
         data = {
             "week_start": weekly_log.week_start,
@@ -389,7 +393,11 @@ class MonthlyLogView(APIView):
         else:
             month_first = today_for(request.user).replace(day=1)
         monthly_log = get_or_create_monthly_log(user=request.user, month_first=month_first)
-        tasks = monthly_log.tasks.filter(parent_task__isnull=True)
+        # `select_related` (Story 14.10 review): evita N+1 em `migration_target`
+        # do `TaskSerializer` para toda tarefa `migrated`/`postponed` do mês.
+        tasks = monthly_log.tasks.filter(parent_task__isnull=True).select_related(
+            *MIGRATED_TO_TASK_SELECT_RELATED
+        )
 
         data = {
             "month_first": monthly_log.month_first,
@@ -533,7 +541,9 @@ class FutureLogView(APIView):
             {
                 "year": monthly_log.month_first.year,
                 "month": monthly_log.month_first.month,
-                "tasks": monthly_log.tasks.filter(parent_task__isnull=True),
+                "tasks": monthly_log.tasks.filter(parent_task__isnull=True).select_related(
+                    *MIGRATED_TO_TASK_SELECT_RELATED
+                ),
             }
             for monthly_log in monthly_logs
         ]

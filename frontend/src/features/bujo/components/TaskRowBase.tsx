@@ -3,9 +3,11 @@
 //
 //   ▶ NASCE aqui: é a anatomia canônica de 5 colunas que toda superfície do
 //     sistema novo (Weekly, e depois Monthly/Future/Arquivo) reusa a partir
-//     do Épico 14. O `TaskRow.tsx` LEGADO continua existindo, intocado, e
-//     serve os 5 consumidores atuais (Daily, Monthly, Future, Arquivo e a
-//     `WeeklyPage` legada de `archive/weekly/:weekStart`) até o Épico 17.
+//     do Épico 14. O `TaskRow.tsx` LEGADO continua existindo, intocado, até o
+//     Épico 17 (Story 14.10 removeu `WeeklyPage`/`MonthlyPage` legadas, que
+//     eram consumidoras dele nas rotas de Arquivo — só sobrevive fora do
+//     Arquivo, que agora reusa `TaskRowBase` como toda superfície do sistema
+//     novo).
 //
 //   ▶ O Épico 17 especializa, SEM alterar a anatomia: variantes de densidade
 //     adicionais, o conjunto de ações permitidas por superfície (o slot
@@ -23,7 +25,7 @@ import { Box } from '@mui/material'
 
 import { taskStatusIconFor, STATUS_LABEL } from './taskStatusIcons'
 import { typography } from '../../../shared/design/tokens'
-import type { CycleStatus, Task, TaskStatus } from '../types'
+import type { CycleStatus, MigrationTarget, Task, TaskStatus } from '../types'
 
 export type TaskRowVariant = 'full' | 'compact' | 'readonly'
 
@@ -52,7 +54,10 @@ const TERMINAL_OPACITY_STATUSES: ReadonlySet<TaskStatus> = new Set([
 ])
 
 const LINEAGE_HIGHLIGHT_MS = 2000
-const LINEAGE_HIGHLIGHT_EVENT = 'bujo:lineage-highlight'
+// Exportado (Story 14.10): o Arquivo reusa o MESMO "farol" para focar/destacar
+// a linha de retorno depois de uma navegação cross-período (troca de rota, não
+// scroll local) — ver `pages/archive/archiveLineageReturn.ts`.
+export const LINEAGE_HIGHLIGHT_EVENT = 'bujo:lineage-highlight'
 
 function prefersReducedMotion(): boolean {
   return (
@@ -133,6 +138,23 @@ export interface TaskRowBaseProps {
    * `cycleStatus='finalized'`. `trailingSlot` continua renderizado.
    */
   allowStatusCycle?: boolean
+  /**
+   * Navegação cross-período da seta de linhagem (Story 14.10, Arquivo).
+   * Invocado com `(successorTaskId, originTaskId, migrationTarget)` SÓ quando
+   * a seta é acionada, o sucessor NÃO está no DOM atual (fora do período
+   * carregado) e `task.migrationTarget` está resolvido. `TaskRowBase` não sabe
+   * navegar sozinho — quem recebe o callback decide a rota (Weekly/Monthly via
+   * Arquivo, Daily via `daily/:date`) e o retorno.
+   *
+   * Ausente por padrão (todos os boards — Weekly/Monthly/Future/Migration —
+   * NÃO passam esta prop): o comportamento atual (`aria-disabled` mudo)
+   * sobrevive inalterado fora do Arquivo. Zero regressão.
+   */
+  onNavigateToSuccessor?: (
+    successorTaskId: string,
+    originTaskId: string,
+    migrationTarget: MigrationTarget,
+  ) => void
 }
 
 export function TaskRowBase({
@@ -145,6 +167,7 @@ export function TaskRowBase({
   isSubtask = false,
   trailingSlot,
   allowStatusCycle = true,
+  onNavigateToSuccessor,
 }: TaskRowBaseProps) {
   const [announcement, setAnnouncement] = useState('')
   const [highlighted, setHighlighted] = useState(false)
@@ -207,17 +230,29 @@ export function TaskRowBase({
     setAnnouncement(`Tarefa marcada como ${STATUS_LABEL[nextStatus]}`)
   }
 
+  // Story 14.10: navegar cross-período é acionável mesmo com o sucessor fora
+  // do DOM, DESDE que a página tenha resolvido `migrationTarget` E passado o
+  // callback — os demais consumidores (sem a prop) preservam o `aria-disabled`
+  // mudo de sempre.
+  const canNavigateCrossPeriod = Boolean(onNavigateToSuccessor && task.migrationTarget)
+  const successorReachable = successorAvailable || canNavigateCrossPeriod
+
   function handleLineageClick() {
     if (!task.migratedToTask) return
     const successorEl = document.querySelector<HTMLElement>(
       `[data-task-id="${task.migratedToTask}"]`,
     )
-    if (!successorEl) return
-    successorEl.scrollIntoView(
-      prefersReducedMotion() ? { block: 'center' } : { block: 'center', behavior: 'smooth' },
-    )
-    successorEl.dispatchEvent(new CustomEvent(LINEAGE_HIGHLIGHT_EVENT))
-    successorEl.focus()
+    if (successorEl) {
+      successorEl.scrollIntoView(
+        prefersReducedMotion() ? { block: 'center' } : { block: 'center', behavior: 'smooth' },
+      )
+      successorEl.dispatchEvent(new CustomEvent(LINEAGE_HIGHLIGHT_EVENT))
+      successorEl.focus()
+      return
+    }
+    if (onNavigateToSuccessor && task.migrationTarget) {
+      onNavigateToSuccessor(task.migratedToTask, task.id, task.migrationTarget)
+    }
   }
 
   // Coluna 1 = exatamente `--ds-task-row-status-icon-size` (nunca um literal
@@ -258,12 +293,14 @@ export function TaskRowBase({
             component="button"
             type="button"
             onClick={handleLineageClick}
-            aria-disabled={!successorAvailable}
+            aria-disabled={!successorReachable}
             // Rótulo e ícone derivam do STATUS REAL (Story 14.7, AC4): para
             // `migrated` produz exatamente as mesmas strings de antes, e para
             // `postponed` produz "Adiada — …" com o ícone `ArrowLineRight`.
+            // `successorReachable` (Story 14.10) cobre TAMBÉM o caso do
+            // Arquivo, onde o sucessor está em outro período mas navegável.
             aria-label={
-              successorAvailable
+              successorReachable
                 ? `${STATUS_LABEL[status]} — ir para o sucessor`
                 : `${STATUS_LABEL[status]} — O sucessor está em outro período`
             }
@@ -272,7 +309,7 @@ export function TaskRowBase({
               background: 'none',
               border: 'none',
               padding: 0,
-              cursor: successorAvailable ? 'pointer' : 'not-allowed',
+              cursor: successorReachable ? 'pointer' : 'not-allowed',
               color: 'var(--ds-ink-muted)',
               // Sempre em opacidade plena: é um controle de navegação acionável
               // (ir para o sucessor) — de-enfatizar a linha nunca de-enfatiza o
@@ -410,6 +447,7 @@ export function TaskRowBase({
                   onTransition={onTransition}
                   onOpenDetail={onOpenDetail}
                   allowStatusCycle={allowStatusCycle}
+                  onNavigateToSuccessor={onNavigateToSuccessor}
                   isSubtask
                 />
               ))}

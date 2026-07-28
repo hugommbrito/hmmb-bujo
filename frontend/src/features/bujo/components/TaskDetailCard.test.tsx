@@ -30,6 +30,7 @@ function baseTask(overrides: Partial<Task> = {}): Task {
     eisenhower: null,
     category: null,
     subtasks: [],
+    migrationTarget: null,
     ...overrides,
   }
 }

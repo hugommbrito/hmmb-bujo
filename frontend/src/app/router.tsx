@@ -11,15 +11,15 @@ import { resolveShellRoute } from './layout/shell/shellRouting'
 import { collections } from './collections/registry'
 import { DailyPage } from '../pages/daily/DailyPage'
 import { MigrationRitualPage } from '../pages/MigrationRitualPage'
-import { WeeklyPage } from '../pages/planner/WeeklyPage'
 import { WeeklyBoardPage } from '../pages/planner/WeeklyBoardPage'
 import { WeeklyPlanningPage } from '../pages/planner/WeeklyPlanningPage'
-import { MonthlyPage } from '../pages/planner/MonthlyPage'
 import { MonthlyBoardPage } from '../pages/planner/MonthlyBoardPage'
 import { MonthlyPlanningPage } from '../pages/planner/MonthlyPlanningPage'
 import { FutureBoardPage } from '../pages/planner/FutureBoardPage'
 import { RecurringLibraryPage } from '../pages/planner/RecurringLibraryPage'
 import { ArchivePage } from '../pages/archive/ArchivePage'
+import { ArchiveWeeklyDetailPage } from '../pages/archive/ArchiveWeeklyDetailPage'
+import { ArchiveMonthlyDetailPage } from '../pages/archive/ArchiveMonthlyDetailPage'
 import { BrainDumpPage } from '../pages/braindump/BrainDumpPage'
 import { SettingsPage } from '../pages/settings/SettingsPage'
 import { HabitsSettingsPage } from '../pages/settings/HabitsSettingsPage'
@@ -118,9 +118,10 @@ export const routeDefinitions: RouteObject[] = [
         handle: { title: 'Migração' },
       },
       {
-        // Story 14.5: `WeeklyPage` legada continua servindo só
-        // `archive/weekly/:weekStart` (a variante de Arquivo é da 14.10) —
-        // `planner/week` passa a montar o Weekly Board do sistema novo.
+        // Story 14.5: `planner/week` passa a montar o Weekly Board do sistema
+        // novo. `WeeklyPage` legada (que servia `archive/weekly/:weekStart`)
+        // foi excluída na Story 14.10 — a rota de Arquivo agora monta
+        // `ArchiveWeeklyDetailPage`.
         path: 'planner/week',
         element: <WeeklyBoardPage />,
         handle: { title: 'Esta Semana' },
@@ -135,9 +136,9 @@ export const routeDefinitions: RouteObject[] = [
         handle: { title: 'Planejar a semana' },
       },
       {
-        // Story 14.6: `MonthlyPage` legada continua servindo só
-        // `archive/monthly/:monthFirst` — `planner/month` passa a montar o
-        // Monthly Board do sistema novo (mesmo padrão da 14.5 para o Weekly).
+        // Story 14.6: `planner/month` passa a montar o Monthly Board do
+        // sistema novo (mesmo padrão da 14.5). `MonthlyPage` legada (que
+        // servia `archive/monthly/:monthFirst`) foi excluída na Story 14.10.
         path: 'planner/month',
         element: <MonthlyBoardPage />,
         handle: { title: 'Este Mês' },
@@ -174,13 +175,16 @@ export const routeDefinitions: RouteObject[] = [
       { path: 'brain-dump', element: <BrainDumpPage />, handle: { title: 'Brain Dump' } },
       { path: 'archive', element: <ArchivePage />, handle: { title: 'Arquivo' } },
       {
+        // Story 14.10: `WeeklyPage`/`MonthlyPage` legadas foram excluídas —
+        // as duas rotas de detalhe do Arquivo agora montam os componentes
+        // novos, readonly/mutável derivado do estado REAL do período.
         path: 'archive/weekly/:weekStart',
-        element: <WeeklyPage />,
+        element: <ArchiveWeeklyDetailPage />,
         handle: { title: 'Arquivo — Semana' },
       },
       {
         path: 'archive/monthly/:monthFirst',
-        element: <MonthlyPage />,
+        element: <ArchiveMonthlyDetailPage />,
         handle: { title: 'Arquivo — Mês' },
       },
       {

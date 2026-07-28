@@ -73,6 +73,10 @@ describe('shellRouting — registro por rota', () => {
     'planner/recurring',
     // Story 14.9 (M10) — ritual de migração/catch-up no sistema novo.
     'migration',
+    // Story 14.10 — Arquivo no sistema novo (índice + as 2 rotas de detalhe).
+    'archive',
+    'archive/weekly/:weekStart',
+    'archive/monthly/:monthFirst',
   ])
 
   it('test_shell_e_novo_em_tudo_e_apenas_as_rotas_migradas_tem_surfaceMigrated_true', () => {

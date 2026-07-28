@@ -71,9 +71,11 @@ export const shellRoutes: readonly ShellRouteEntry[] = [
   // `LegacySeamNotice` desaparece também nesta rota.
   { routeId: 'planner/recurring', shell: 'new', surfaceMigrated: true },
   { routeId: 'brain-dump', shell: 'new', surfaceMigrated: false },
-  { routeId: 'archive', shell: 'new', surfaceMigrated: false },
-  { routeId: 'archive/weekly/:weekStart', shell: 'new', surfaceMigrated: false },
-  { routeId: 'archive/monthly/:monthFirst', shell: 'new', surfaceMigrated: false },
+  // Story 14.10: QUINTA superfície interna migrada (Arquivo) — o
+  // `LegacySeamNotice` desaparece também nas 3 rotas do Arquivo.
+  { routeId: 'archive', shell: 'new', surfaceMigrated: true },
+  { routeId: 'archive/weekly/:weekStart', shell: 'new', surfaceMigrated: true },
+  { routeId: 'archive/monthly/:monthFirst', shell: 'new', surfaceMigrated: true },
   { routeId: 'settings', shell: 'new', surfaceMigrated: false },
   { routeId: 'settings/habits', shell: 'new', surfaceMigrated: false },
   { routeId: 'settings/health-metrics', shell: 'new', surfaceMigrated: false },

@@ -3224,6 +3224,11 @@ LEGACY_TASK_KEYS = {
     "migrationCount",
     "migratedToTask",
     "sourceTemplate",
+    # Story 14.10 (Arquivo): campo aditivo em `TaskSerializer` — localização do
+    # sucessor de uma migração, `null` quando não há sucessor. Compartilhado
+    # por TODA resposta que usa `TaskSerializer` (mesmo motivo de
+    # `sourceTemplate`/`migratedToTask` já estarem aqui).
+    "migrationTarget",
 }
 
 
@@ -4181,20 +4186,7 @@ def test_ac8_task_serializer_nao_ganhou_campo_de_decisao(auth_client, user):
 
     dias = auth_client.get(f"/api/bujo/logs/weekly/?week_start={_R_SEMANA.isoformat()}").json()
     tarefa = dias["days"][0]["tasks"][0]
-    assert set(tarefa) == {
-        "id",
-        "title",
-        "description",
-        "status",
-        "eisenhower",
-        "category",
-        "scheduledDate",
-        "subtasks",
-        "waitingOn",
-        "migrationCount",
-        "migratedToTask",
-        "sourceTemplate",
-    }
+    assert set(tarefa) == LEGACY_TASK_KEYS
 
 
 # --- fila unificada de migração (Story 14.3; AD-28 itens 7-8) -------------------

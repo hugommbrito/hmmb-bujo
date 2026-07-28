@@ -56,6 +56,7 @@ def test_task_serializer_expoe_exatamente_os_campos_esperados():
         "migration_count",
         "migrated_to_task",
         "source_template",
+        "migration_target",
     }
 
 
@@ -184,6 +185,89 @@ def test_task_serializer_migrated_to_task_e_o_id_da_tarefa_de_destino_apos_migra
         assert data["migrated_to_task"] == migrated_source.migrated_to_task_id
         new_task = migrated_source.migrated_to_task
         assert TaskSerializer(new_task).data["migration_count"] == 1
+
+
+# --- Story 14.10 (Arquivo): migration_target -----------------------------------
+
+
+@pytest.mark.django_db
+def test_task_serializer_migration_target_e_null_sem_sucessor(user):
+    with tenant_context(user):
+        task = TaskFactory(user=user)
+
+        data = TaskSerializer(task).data
+
+        assert data["migration_target"] is None
+
+
+@pytest.mark.django_db
+def test_task_serializer_migration_target_aponta_para_daily_apos_migrar_para_hoje(user):
+    with tenant_context(user):
+        task = TaskFactory(user=user, status=Task.Status.PENDING)
+
+        migrated_source = migrate_task(user=user, task_id=task.id, destination="today")
+        data = TaskSerializer(migrated_source).data
+
+        assert data["migration_target"] == {
+            "type": "daily",
+            "week_start": None,
+            "month_first": None,
+            "log_date": migrated_source.migrated_to_task.log.log_date.isoformat(),
+        }
+
+
+@pytest.mark.django_db
+def test_task_serializer_migration_target_aponta_para_weekly_apos_migrar_para_semana(user):
+    with tenant_context(user):
+        task = TaskFactory(user=user, status=Task.Status.PENDING)
+
+        migrated_source = migrate_task(user=user, task_id=task.id, destination="week")
+        data = TaskSerializer(migrated_source).data
+
+        successor = migrated_source.migrated_to_task
+        assert data["migration_target"] == {
+            "type": "weekly",
+            "week_start": successor.weekly_log.week_start.isoformat(),
+            "month_first": None,
+            "log_date": None,
+        }
+
+
+@pytest.mark.django_db
+def test_task_serializer_migration_target_aponta_para_monthly_apos_adiar(user):
+    with tenant_context(user):
+        MonthlyLogFactory(user=user, month_first=date(2026, 8, 1))
+        task = TaskFactory(user=user, status=Task.Status.PENDING)
+
+        migrated_source = migrate_task(
+            user=user, task_id=task.id, destination="future", month_first=date(2026, 8, 1)
+        )
+        data = TaskSerializer(migrated_source).data
+
+        assert data["migration_target"] == {
+            "type": "monthly",
+            "week_start": None,
+            "month_first": "2026-08-01",
+            "log_date": None,
+        }
+
+
+@pytest.mark.django_db
+def test_task_serializer_migration_target_e_null_quando_sucessor_sem_container_valido(user):
+    """Ramo defensivo de `get_migration_target`: `task_exactly_one_log`
+    (CheckConstraint de banco) proíbe UM sucessor persistido sem nenhum
+    container, mas o serializer precisa sobreviver, sem lançar exceção, a uma
+    inconsistência de dados real (ex.: migração incompleta) — daí o objeto
+    (não persistido) montado à mão em vez de `TaskFactory`, que sempre atribui
+    exatamente um container."""
+    with tenant_context(user):
+        task = TaskFactory(user=user, status=Task.Status.MIGRATED)
+        sucessor_invalido = Task(user_id=user.id, title="Sucessor sem container", order_index=1.0)
+        task.migrated_to_task = sucessor_invalido
+
+        data = TaskSerializer(task).data
+
+        assert data["migration_target"] is None
 
 
 @pytest.mark.django_db

@@ -29,6 +29,10 @@ export type RecurrenceGroup = components['schemas']['RecurrenceGroupEnum']
 export type TaskDensityEntry = components['schemas']['TaskDensityEntry']
 export type TaskDensityResponse = components['schemas']['TaskDensityResponse']
 export type ArchiveEntry = components['schemas']['ArchiveEntry']
+// Story 14.10 (Arquivo): localização do sucessor de uma migração — habilita a
+// seta de linhagem a navegar cross-período sem endpoint de detalhe novo.
+export type MigrationTarget = components['schemas']['MigrationTarget']
+export type MigrationTargetType = components['schemas']['MigrationTargetTypeEnum']
 
 // --- Épico 14 (Story 14.5): ciclo, rituais, decisões e densidade real --------
 export type WeeklyCycle = components['schemas']['WeeklyCycle']

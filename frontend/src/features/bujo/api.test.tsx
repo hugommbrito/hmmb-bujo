@@ -103,6 +103,7 @@ const LOG: Log = {
       eisenhower: null,
       category: null,
       subtasks: [],
+      migrationTarget: null,
     },
   ],
 }
@@ -301,8 +302,8 @@ describe('useReorderTaskMutation', () => {
     id: 'log-1',
     logDate: '2026-07-03',
     tasks: [
-      { id: 'task-1', title: 'Primeira', status: 'pending', eisenhower: null, category: null, subtasks: [] },
-      { id: 'task-2', title: 'Segunda', status: 'pending', eisenhower: null, category: null, subtasks: [] },
+      { id: 'task-1', title: 'Primeira', status: 'pending', eisenhower: null, category: null, subtasks: [], migrationTarget: null },
+      { id: 'task-2', title: 'Segunda', status: 'pending', eisenhower: null, category: null, subtasks: [], migrationTarget: null },
     ],
   }
 
@@ -753,7 +754,7 @@ describe('useDeleteTaskMutation (Story 11.5, AC3)', () => {
 const MIGRATION_QUEUE: MigrationQueue = {
   logDate: '2026-07-12',
   tasks: [
-    { id: 'task-1', title: 'Pendente de ontem', status: 'pending', eisenhower: null, category: null, subtasks: [] },
+    { id: 'task-1', title: 'Pendente de ontem', status: 'pending', eisenhower: null, category: null, subtasks: [], migrationTarget: null },
   ],
 }
 
@@ -896,7 +897,7 @@ describe('useMigrateTaskMutation (AC3)', () => {
 const WEEKLY_REVIEW_QUEUE: WeeklyReviewQueue = {
   weekStart: '2026-07-06',
   tasks: [
-    { id: 'task-1', title: 'Pendente da semana anterior', status: 'pending', eisenhower: null, category: null, subtasks: [] },
+    { id: 'task-1', title: 'Pendente da semana anterior', status: 'pending', eisenhower: null, category: null, subtasks: [], migrationTarget: null },
   ],
 }
 
@@ -920,7 +921,7 @@ describe('useWeeklyReviewQueueQuery (AC1)', () => {
 const MONTHLY_REVIEW_QUEUE: MonthlyReviewQueue = {
   monthFirst: '2026-06-01',
   tasks: [
-    { id: 'task-2', title: 'Pendente do mês anterior', status: 'pending', eisenhower: null, category: null, subtasks: [] },
+    { id: 'task-2', title: 'Pendente do mês anterior', status: 'pending', eisenhower: null, category: null, subtasks: [], migrationTarget: null },
   ],
 }
 
@@ -943,11 +944,11 @@ describe('useMonthlyReviewQueueQuery (AC2)', () => {
 
 const CATCH_UP_QUEUE: CatchUpQueue = {
   monthlyTasks: [
-    { id: 'task-3', title: 'Pendente de 3 meses atrás', status: 'pending', eisenhower: null, category: null, subtasks: [] },
+    { id: 'task-3', title: 'Pendente de 3 meses atrás', status: 'pending', eisenhower: null, category: null, subtasks: [], migrationTarget: null },
   ],
   weeklyTasks: [],
   dailyTasks: [
-    { id: 'task-4', title: 'Pendente de 10 dias atrás', status: 'pending', eisenhower: null, category: null, subtasks: [] },
+    { id: 'task-4', title: 'Pendente de 10 dias atrás', status: 'pending', eisenhower: null, category: null, subtasks: [], migrationTarget: null },
   ],
 }
 

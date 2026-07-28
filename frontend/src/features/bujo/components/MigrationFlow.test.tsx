@@ -13,8 +13,8 @@ vi.mock('../api', () => ({
 }))
 
 const QUEUE: Task[] = [
-  { id: 't1', title: 'Primeira', status: 'pending', eisenhower: null, category: null, subtasks: [] },
-  { id: 't2', title: 'Segunda', status: 'pending', eisenhower: null, category: null, subtasks: [] },
+  { id: 't1', title: 'Primeira', status: 'pending', eisenhower: null, category: null, subtasks: [], migrationTarget: null },
+  { id: 't2', title: 'Segunda', status: 'pending', eisenhower: null, category: null, subtasks: [], migrationTarget: null },
 ]
 
 function renderFlow(

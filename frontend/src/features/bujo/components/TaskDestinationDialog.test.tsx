@@ -26,6 +26,7 @@ function baseTask(overrides: Partial<Task> = {}): Task {
     eisenhower: null,
     category: null,
     subtasks: [],
+    migrationTarget: null,
     ...overrides,
   }
 }
@@ -68,7 +69,7 @@ describe('TaskDestinationDialog (AC1, AC2, AC3)', () => {
     renderDialog({
       task: baseTask({
         description: 'Descrição da tarefa',
-        subtasks: [{ id: 'sub-1', title: 'Subtarefa 1', status: 'pending', subtasks: [] }],
+        subtasks: [{ id: 'sub-1', title: 'Subtarefa 1', status: 'pending', subtasks: [], migrationTarget: null }],
       }),
     })
 

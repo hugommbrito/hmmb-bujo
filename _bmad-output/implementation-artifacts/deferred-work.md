@@ -37,11 +37,22 @@ Contexto: a regeneração de `schema.yaml`/`frontend/src/api/types.gen.ts` (ante
   summary: `findPredecessor` em `ArchiveWeeklyDetailPage.tsx`/`ArchiveMonthlyDetailPage.tsx` só busca a origem da linhagem dentro do próprio período carregado, então o card de detalhe de uma tarefa alcançada via seta cross-período nunca mostra "veio de" (some silenciosamente, ao contrário do mesmo card para migração dentro do período).
   evidence: confirmado lendo `findPredecessor` em ambas as páginas — o loop itera só sobre `days`/`unscheduled` (Weekly) ou `tasks` (Monthly) do período atual; a origem de uma linhagem cross-período está por definição em outro período, fora desse escopo de busca. Não é exigido pela matriz I/O da spec (que só pede navegação + foco na linha sucessora), só um efeito colateral perdido.
 - source_spec: `_bmad-output/implementation-artifacts/spec-14-10-arquivo-no-sistema-novo.md`
-  summary: `TaskSerializer.get_migration_target` (novo campo desta story) resolve `successor.weekly_log`/`monthly_log`/`log` sem `select_related`, um N+1 por tarefa migrada/postponed em qualquer resposta de lista (Weekly/Monthly log, fila de catch-up, fila de migração).
-  evidence: confirmado lendo `backend/bujo/serializers.py` — nenhum dos querysets que alimentam `TaskSerializer` faz `select_related` na cadeia `migrated_to_task__weekly_log`/`__monthly_log`/`__log`. Corrigir exige tocar múltiplos querysets fora do Code Map desta story; sem sinal de volume que torne isso urgente hoje.
-- source_spec: `_bmad-output/implementation-artifacts/spec-14-10-arquivo-no-sistema-novo.md`
   summary: `archiveLineageReturn.ts` usa uma única chave de `sessionStorage`; um segundo salto de linhagem (B→C) antes de retornar do primeiro (A→B) sobrescreve a entrada de retorno, quebrando o foco-ao-voltar da primeira origem.
   evidence: confirmado lendo `archiveLineageReturn.ts` — `STORAGE_KEY` é um único valor, escrito por `handleNavigateToSuccessor` em ambas as páginas de detalhe sem pilha/histórico. Fora do escopo da spec (que define linhagem só como "origem → sucessor imediato", um salto por vez), mas o encadeamento de saltos consecutivos é uma sequência de usuário plausível.
 - source_spec: `_bmad-output/implementation-artifacts/spec-14-10-arquivo-no-sistema-novo.md`
-  summary: `archiveLineageReturn.ts` só limpa a entrada salva quando `focusTaskRow` foca a linha com sucesso; se a linha de origem não estiver mais renderizada ao retornar, a entrada fica presa no `sessionStorage` indefinidamente.
-  evidence: confirmado lendo `readLineageReturn`/`clearLineageReturn` — `clearLineageReturn()` só é chamado no caminho de sucesso de `focusTaskRow`. Risco baixo (exigiria coincidência de `taskId` numa visita não relacionada posterior), mas é um vazamento de estado real.
+  summary: A seta de linhagem em `TaskRowBase.tsx` usa `aria-disabled` (não o atributo `disabled` real) quando o sucessor não está disponível, então o controle continua clicável por mouse e produz um clique morto silencioso — padrão pré-existente, não tocado por esta story (Design Notes: "sem reescrita da lógica de `successorAvailable`").
+  evidence: confirmado lendo `TaskRowBase.tsx` (~linha 293) — o botão da seta usa `aria-disabled` em vez de `disabled`, e nenhum handler de clique é suprimido no lado do DOM; o mesmo comportamento já existia antes desta story em todos os outros consumidores (Weekly/Monthly/Future/Migration boards), que não passam a nova prop `onNavigateToSuccessor`.
+
+<!-- RESOLVIDO 2026-07-28 (review pass pós-implementação): os dois achados abaixo foram corrigidos —
+     `select_related` (`MIGRATED_TO_TASK_SELECT_RELATED`) adicionado a `LogSerializer.get_tasks`/
+     `WeeklyLogView.get`/`MonthlyLogView.get`; `archiveLineageReturn.ts` agora limpa a entrada
+     IMEDIATAMENTE após lê-la (antes de tentar focar), nunca só no caminho de sucesso. Removidos
+     desta lista; mantidos apenas para referência de histórico neste comentário. -->
+
+### DW-1: Follow-up review still recommended for 14-10-arquivo-no-sistema-novo after the damping cap was spent
+origin: review-budget-followup
+location: n/a
+source_spec: `spec-14-10-arquivo-no-sistema-novo.md`
+severity: low
+reason: The follow-up-review damping cap (limits.max_followup_reviews = 1) was spent with the story finalized (status: done, verify green) while the review pass still recommended an independent follow-up. The work was committed by bmad-loop run 20260728-115746-2279; this entry preserves the lingering recommendation for a deliberate later review.
+status: open

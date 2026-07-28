@@ -7,15 +7,12 @@ import { seedArchiveScenario } from './seedArchiveScenario'
 // cliente compor esse cenário no passado, por isso o seed via
 // `seedArchiveScenario` (mesma técnica de `seedReviewScenario.ts`, 4.3).
 //
-// Complementa os testes unitários de `services/archive.py`
-// (`is_container_closed`/`list_closed_cycles`, subárvore completa) e de
-// `WeeklyPage`/`MonthlyPage`/`ArchivePage` (que simulam `closed`/`archive`
-// isoladamente via mock): aqui valida-se o fluxo real — Arquivo lista os
-// ciclos fechados, a navegação para cada um reaproveita `WeeklyPage`/
-// `MonthlyPage` via rota parametrizada (Dev Notes "por que não existe
-// endpoint de detalhe dedicado"), mostrando o indicador "Fechada"/"Fechado" e
-// o estado final de cada tarefa, sem nenhuma affordance de escrita (form de
-// criação, placement de recorrentes).
+// Story 14.10 reescreveu a UI (abas Semanal/Mensal + filtro de data + detalhe
+// via `ArchiveWeeklyDetailPage`/`ArchiveMonthlyDetailPage`, reaproveitando
+// `TaskRowBase`/`TaskDetailCard`) — os seletores abaixo foram atualizados para
+// a UI nova, mas a TESE permanece: Arquivo lista os ciclos fechados, mostra o
+// estado final de cada tarefa e NENHUMA affordance de escrita (sem "Alocar",
+// sem requisição de templates, `migrationCount` chega no payload).
 
 const MONTH_NAMES_PT = [
   'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
@@ -31,8 +28,12 @@ function monthLabel(monthFirst: string): string {
 
 test('Arquivo vazio para usuário novo mostra o estado vazio (AC2)', async ({ page }) => {
   await page.getByRole('button', { name: 'Arquivo' }).click()
-  await expect(page.getByLabel('Arquivo')).toBeVisible()
-  await expect(page.getByText('Nenhuma semana ou mês fechado ainda.')).toBeVisible()
+  await expect(page.getByRole('main', { name: 'Arquivo' })).toBeVisible()
+  await expect(page.getByRole('tab', { name: 'Semanal', selected: true })).toBeVisible()
+  await expect(page.getByText('Nenhuma semana finalizada ainda.')).toBeVisible()
+
+  await page.getByRole('tab', { name: 'Mensal' }).click()
+  await expect(page.getByText('Nenhum mês finalizado ainda.')).toBeVisible()
 })
 
 test('lista ciclos fechados e navega para semana/mês com estado final, sem affordance de escrita (AC1, AC2)', async ({
@@ -62,19 +63,15 @@ test('lista ciclos fechados e navega para semana/mês com estado final, sem affo
   })
 
   await page.getByRole('button', { name: 'Arquivo' }).click()
-  await expect(page.getByLabel('Arquivo')).toBeVisible()
-  await expect(page.getByText('Nenhuma semana ou mês fechado ainda.')).toHaveCount(0)
+  await expect(page.getByRole('main', { name: 'Arquivo' })).toBeVisible()
+  await expect(page.getByText('Nenhuma semana finalizada ainda.')).toHaveCount(0)
 
   const weekLink = page.getByRole('link', { name: `Semana de ${weekStart}` })
-  const monthLink = page.getByRole('link', { name: monthLabel(monthFirst) })
   await expect(weekLink).toBeVisible()
-  await expect(monthLink).toBeVisible()
 
-  // Semana fechada: indicador "Fechada", estado final das 3 tarefas
-  // (concluída/cancelada/migrada) e nenhuma affordance de escrita — a
-  // requisição de templates recorrentes (RecurringPlacementSection) nem
-  // dispara, provando que a seção some por `isArchiveView`, não porque a
-  // lista de templates está vazia.
+  // Semana fechada: indicador "Fechada"/"Somente leitura", estado final das 3
+  // tarefas (concluída/cancelada/migrada) e nenhuma affordance de escrita — a
+  // requisição de templates recorrentes nem dispara, e o form de criação some.
   const weeklyLogResponse = page.waitForResponse(
     (r) => r.url().includes('/api/bujo/logs/weekly/') && r.request().method() === 'GET' && r.ok(),
   )
@@ -83,21 +80,26 @@ test('lista ciclos fechados e navega para semana/mês com estado final, sem affo
 
   await expect(page.getByLabel(`Arquivo — Semana de ${weekStart}`)).toBeVisible()
   await expect(page.getByText('Fechada')).toBeVisible()
+  await expect(page.getByText('Somente leitura')).toBeVisible()
+  await expect(page.getByLabel('Adicionar tarefa à semana')).toHaveCount(0)
 
   const completedRow = page.getByTestId('task-row').filter({ hasText: 'Preparar apresentação' })
   await expect(completedRow).toBeVisible()
-  await expect(completedRow.getByLabel('Concluída')).toBeVisible()
+  // Readonly (High-1 do review de acessibilidade): status terminal vira
+  // conteúdo semântico `role="img"`, não um botão focável mudo.
+  await expect(completedRow.getByRole('img', { name: 'Concluída' })).toBeVisible()
+  await expect(completedRow.getByRole('button', { name: 'Concluída' })).toHaveCount(0)
 
   const cancelledRow = page.getByTestId('task-row').filter({ hasText: 'Ideia descartada' })
   await expect(cancelledRow).toBeVisible()
-  await expect(cancelledRow.getByLabel('Cancelada')).toBeVisible()
+  await expect(cancelledRow.getByRole('img', { name: 'Cancelada' })).toBeVisible()
 
   const migratedRow = page.getByTestId('task-row').filter({ hasText: 'Tarefa migrada para outro ciclo' })
   await expect(migratedRow).toBeVisible()
-  // `exact` porque a MESMA linha carrega dois rótulos com "Migrada": o controle de
-  // status (`Migrada`) e o chip de linhagem (`Migrada 2 vezes`) — sem isso o
-  // `getByLabel` casa por substring e viola o strict mode.
-  await expect(migratedRow.getByLabel('Migrada', { exact: true })).toBeVisible()
+  // A seta de linhagem continua um controle de NAVEGAÇÃO (não de mutação) mesmo
+  // em semana fechada — sem sucessor conhecido nesta seed, fica anunciada como
+  // indisponível, nunca oculta.
+  await expect(migratedRow.getByRole('button', { name: /Migrada/ })).toBeVisible()
 
   await expect(page.getByRole('button', { name: 'Alocar' })).toHaveCount(0)
   expect(templatesRequested).toBe(false)
@@ -110,17 +112,19 @@ test('lista ciclos fechados e navega para semana/mês com estado final, sem affo
   )
   expect(migratedTask.migrationCount).toBe(2)
 
-  // Volta ao Arquivo e navega para o mês fechado.
-  await page.getByRole('button', { name: 'Arquivo' }).click()
-  await expect(page.getByLabel('Arquivo')).toBeVisible()
+  // Volta ao Arquivo (aba Semanal continua selecionada) e troca para Mensal.
+  await page.getByRole('link', { name: 'Voltar ao Arquivo' }).click()
+  await expect(page.getByRole('main', { name: 'Arquivo' })).toBeVisible()
+  await page.getByRole('tab', { name: 'Mensal' }).click()
   await page.getByRole('link', { name: monthLabel(monthFirst) }).click()
 
   await expect(page.getByLabel(`Arquivo — Mês de ${monthFirst}`)).toBeVisible()
   await expect(page.getByText('Fechado')).toBeVisible()
+  await expect(page.getByText('Somente leitura')).toBeVisible()
 
   const monthCompletedRow = page.getByTestId('task-row').filter({ hasText: 'Fechar orçamento do mês' })
   await expect(monthCompletedRow).toBeVisible()
-  await expect(monthCompletedRow.getByLabel('Concluída')).toBeVisible()
+  await expect(monthCompletedRow.getByRole('img', { name: 'Concluída' })).toBeVisible()
 
   await expect(page.getByLabel('Adicionar tarefa ao mês')).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Alocar' })).toHaveCount(0)

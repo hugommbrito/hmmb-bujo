@@ -28,6 +28,7 @@ function task(overrides: Partial<Task> = {}): Task {
     eisenhower: null,
     category: null,
     subtasks: [],
+    migrationTarget: null,
     ...overrides,
   }
 }

@@ -14,6 +14,7 @@ function baseTask(overrides: Partial<Task> = {}): Task {
     eisenhower: null,
     category: null,
     subtasks: [],
+    migrationTarget: null,
     ...overrides,
   }
 }
@@ -323,6 +324,100 @@ describe('TaskRowBase — navegação de linhagem (Task 3)', () => {
 
     const arrow = screen.getByRole('button', { name: /o sucessor está em outro período/i })
     expect(arrow).toHaveAttribute('aria-disabled', 'true')
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Story 14.10 (Arquivo) — navegação cross-período via `onNavigateToSuccessor`
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('TaskRowBase — onNavigateToSuccessor (Story 14.10)', () => {
+  const MIGRATION_TARGET = { type: 'weekly' as const, weekStart: '2026-08-03' }
+
+  it('sem a prop (default de todo board): comportamento atual preservado — aria-disabled mudo mesmo com migrationTarget resolvido', () => {
+    const origem = baseTask({
+      id: 'origem',
+      status: 'migrated',
+      migratedToTask: 'em-outro-periodo',
+      migrationTarget: MIGRATION_TARGET,
+    })
+    render(<TaskRowBase task={origem} cycleStatus="active" />)
+
+    const arrow = screen.getByRole('button', { name: /o sucessor está em outro período/i })
+    expect(arrow).toHaveAttribute('aria-disabled', 'true')
+  })
+
+  it('com a prop E migrationTarget resolvido: fica acionável e invoca o callback com (successorId, originId, target)', async () => {
+    const onNavigateToSuccessor = vi.fn()
+    const origem = baseTask({
+      id: 'origem',
+      status: 'migrated',
+      migratedToTask: 'em-outro-periodo',
+      migrationTarget: MIGRATION_TARGET,
+    })
+    const user = userEvent.setup()
+    render(<TaskRowBase task={origem} cycleStatus="active" onNavigateToSuccessor={onNavigateToSuccessor} />)
+
+    const arrow = screen.getByRole('button', { name: /ir para o sucessor/i })
+    expect(arrow).toHaveAttribute('aria-disabled', 'false')
+    await user.click(arrow)
+
+    expect(onNavigateToSuccessor).toHaveBeenCalledWith('em-outro-periodo', 'origem', MIGRATION_TARGET)
+  })
+
+  it('com a prop MAS sem migrationTarget (null): continua aria-disabled, callback nunca é chamado', async () => {
+    const onNavigateToSuccessor = vi.fn()
+    const origem = baseTask({
+      id: 'origem',
+      status: 'migrated',
+      migratedToTask: 'em-outro-periodo',
+      migrationTarget: null,
+    })
+    const user = userEvent.setup()
+    render(<TaskRowBase task={origem} cycleStatus="active" onNavigateToSuccessor={onNavigateToSuccessor} />)
+
+    const arrow = screen.getByRole('button', { name: /o sucessor está em outro período/i })
+    expect(arrow).toHaveAttribute('aria-disabled', 'true')
+    await user.click(arrow)
+
+    expect(onNavigateToSuccessor).not.toHaveBeenCalled()
+  })
+
+  it('sucessor NO DOM tem prioridade: navega/destaca localmente e NÃO invoca o callback cross-período', async () => {
+    const onNavigateToSuccessor = vi.fn()
+    const origem = baseTask({ id: 'origem', status: 'migrated', migratedToTask: 'sucessor', migrationTarget: MIGRATION_TARGET })
+    const sucessor = baseTask({ id: 'sucessor', title: 'Sucessor' })
+    const user = userEvent.setup()
+    render(
+      <>
+        <TaskRowBase task={origem} cycleStatus="active" onNavigateToSuccessor={onNavigateToSuccessor} />
+        <TaskRowBase task={sucessor} cycleStatus="active" />
+      </>,
+    )
+
+    await user.click(screen.getByRole('button', { name: /ir para o sucessor/i }))
+
+    expect(onNavigateToSuccessor).not.toHaveBeenCalled()
+  })
+
+  it('subtarefa migrada/postponed repassa onNavigateToSuccessor na recursão (achado high da review)', async () => {
+    const onNavigateToSuccessor = vi.fn()
+    const subtarefaMigrada = baseTask({
+      id: 'sub-migrada',
+      title: 'Subtarefa migrada',
+      status: 'migrated',
+      migratedToTask: 'sub-em-outro-periodo',
+      migrationTarget: MIGRATION_TARGET,
+    })
+    const pai = baseTask({ id: 'pai', subtasks: [subtarefaMigrada] })
+    const user = userEvent.setup()
+    render(<TaskRowBase task={pai} cycleStatus="active" onNavigateToSuccessor={onNavigateToSuccessor} />)
+
+    const arrow = screen.getByRole('button', { name: /ir para o sucessor/i })
+    expect(arrow).toHaveAttribute('aria-disabled', 'false')
+    await user.click(arrow)
+
+    expect(onNavigateToSuccessor).toHaveBeenCalledWith('sub-em-outro-periodo', 'sub-migrada', MIGRATION_TARGET)
   })
 })
 

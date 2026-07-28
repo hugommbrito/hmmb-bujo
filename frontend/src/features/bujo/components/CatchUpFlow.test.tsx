@@ -12,7 +12,15 @@ vi.mock('../api', () => ({
 }))
 
 function makeTask(id: string, title: string): Task {
-  return { id, title, status: 'pending', eisenhower: null, category: null, subtasks: [] }
+  return {
+    id,
+    title,
+    status: 'pending',
+    eisenhower: null,
+    category: null,
+    subtasks: [],
+    migrationTarget: null,
+  }
 }
 
 const MONTHLY: Task[] = [makeTask('m1', 'Mensal')]

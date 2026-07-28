@@ -87,6 +87,8 @@ export type {
   TaskDensityEntry,
   TaskDensityResponse,
   ArchiveEntry,
+  MigrationTarget,
+  MigrationTargetType,
   WeeklyCycle,
   WeeklyCycleAction,
   WeeklyCycleReadiness,

@@ -18,8 +18,37 @@ from bujo.models import (
 )
 
 
+# Localização do sucessor de uma migração (Story 14.10, AC2): habilita o
+# Arquivo a navegar origem → sucessor MESMO quando o sucessor está fora do
+# período carregado (ex.: Weekly → Monthly, Monthly → Daily) — sem endpoint de
+# detalhe novo, só a CHAVE de período que a rota de destino já aceita.
+# `type` decide qual dos três campos (mutuamente exclusivos) vem preenchido.
+class MigrationTargetSerializer(serializers.Serializer):
+    type = serializers.ChoiceField(choices=["daily", "weekly", "monthly"])
+    week_start = serializers.DateField(required=False, allow_null=True)
+    month_first = serializers.DateField(required=False, allow_null=True)
+    log_date = serializers.DateField(required=False, allow_null=True)
+
+
+# `get_migration_target` (abaixo) percorre `migrated_to_task.weekly_log`/
+# `monthly_log`/`log` — sem isto, todo queryset que serializa uma LISTA de
+# Tasks contendo pelo menos uma `migrated`/`postponed` paga 1 query extra POR
+# TAREFA migrada (N+1: uma para buscar `migrated_to_task`, mais uma para o
+# container do sucessor). Tarefas nunca migradas (`migrated_to_task_id IS
+# NULL`, a maioria) não pagam nada — o FK nulo nunca dispara uma query. Usar
+# em todo queryset de Task RAIZ que alimenta `TaskSerializer`/`LogSerializer`
+# (Daily/Weekly/Monthly Log) — os únicos containers onde uma tarefa migrada
+# permanece visível na origem.
+MIGRATED_TO_TASK_SELECT_RELATED = (
+    "migrated_to_task__weekly_log",
+    "migrated_to_task__monthly_log",
+    "migrated_to_task__log",
+)
+
+
 class TaskSerializer(serializers.ModelSerializer):
     subtasks = serializers.SerializerMethodField()
+    migration_target = serializers.SerializerMethodField()
 
     class Meta:
         model = Task
@@ -46,16 +75,40 @@ class TaskSerializer(serializers.ModelSerializer):
             # service; nenhum write path de tarefa a aceita). Subtarefas
             # carregam `null` (nascem sem template, AD-08 item 8).
             "source_template",
+            # Story 14.10 (Arquivo): campo ADITIVO, `null` quando não há
+            # sucessor (`migrated_to_task` vazio) — ver `get_migration_target`.
+            "migration_target",
         ]
 
     def get_subtasks(self, obj):
-        return TaskSerializer(obj.subtasks.all(), many=True).data
+        subtasks = obj.subtasks.select_related(*MIGRATED_TO_TASK_SELECT_RELATED)
+        return TaskSerializer(subtasks, many=True).data
+
+    def get_migration_target(self, obj):
+        successor = obj.migrated_to_task
+        if successor is None:
+            return None
+        if successor.weekly_log_id:
+            payload = {"type": "weekly", "week_start": successor.weekly_log.week_start}
+        elif successor.monthly_log_id:
+            payload = {"type": "monthly", "month_first": successor.monthly_log.month_first}
+        elif successor.log_id:
+            payload = {"type": "daily", "log_date": successor.log.log_date}
+        else:
+            # Não deveria acontecer (`task_exactly_one_log` exige exatamente um
+            # container) — defensivo, nunca visto em teste.
+            return None
+        return MigrationTargetSerializer(payload).data
 
 
-# `get_subtasks` referencia `TaskSerializer` recursivamente — o decorador só
-# pode ser aplicado depois que a classe termina de ser definida (dentro do
-# corpo da classe o nome `TaskSerializer` ainda não existe no módulo).
+# `get_subtasks`/`get_migration_target` referenciam `TaskSerializer`
+# recursivamente ou usam a classe irmã acima — os decoradores só podem ser
+# aplicados depois que a classe termina de ser definida (dentro do corpo da
+# classe o nome `TaskSerializer` ainda não existe no módulo).
 extend_schema_field(TaskSerializer(many=True))(TaskSerializer.get_subtasks)
+extend_schema_field(MigrationTargetSerializer(allow_null=True))(
+    TaskSerializer.get_migration_target
+)
 
 
 class LogSerializer(serializers.ModelSerializer):
@@ -67,7 +120,9 @@ class LogSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(TaskSerializer(many=True))
     def get_tasks(self, obj):
-        roots = obj.tasks.filter(parent_task__isnull=True)
+        roots = obj.tasks.filter(parent_task__isnull=True).select_related(
+            *MIGRATED_TO_TASK_SELECT_RELATED
+        )
         # Filtro `?waitingOn=` (Story 12.2, AC3) só quando há `request` no
         # contexto — o endpoint o injeta; `LogSerializer(log).data` sem contexto
         # (ex.: test_serializers) não filtra nada. `.qs` preserva a ordenação

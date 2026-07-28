@@ -92,6 +92,9 @@ function optimisticTask(fields: TaskFields): Task {
     id: crypto.randomUUID(),
     status: 'pending',
     subtasks: [],
+    // Story 14.10: campo aditivo, sempre `null` no otimista (nenhuma criação
+    // otimista nasce com sucessor de migração).
+    migrationTarget: null,
     ...fields,
   }
 }

@@ -31,6 +31,7 @@ function baseTask(overrides: Partial<Task> = {}): Task {
     eisenhower: null,
     category: null,
     subtasks: [],
+    migrationTarget: null,
     ...overrides,
   }
 }
@@ -230,7 +231,7 @@ describe('TaskDetailPanel (AC1, AC2, AC3)', () => {
     renderPanel(
       baseTask({
         subtasks: [
-          { id: 'sub-1', title: 'Subtarefa 1', status: 'pending', subtasks: [] },
+          { id: 'sub-1', title: 'Subtarefa 1', status: 'pending', subtasks: [], migrationTarget: null },
         ],
       }),
     )

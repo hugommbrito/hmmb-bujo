@@ -3619,6 +3619,35 @@ components:
       required:
       - logDate
       - tasks
+    MigrationTarget:
+      type: object
+      properties:
+        type:
+          $ref: '#/components/schemas/MigrationTargetTypeEnum'
+        weekStart:
+          type: string
+          format: date
+          nullable: true
+        monthFirst:
+          type: string
+          format: date
+          nullable: true
+        logDate:
+          type: string
+          format: date
+          nullable: true
+      required:
+      - type
+    MigrationTargetTypeEnum:
+      enum:
+      - daily
+      - weekly
+      - monthly
+      type: string
+      description: |-
+        * `daily` - daily
+        * `weekly` - weekly
+        * `monthly` - monthly
     MonthlyCycle:
       type: object
       properties:
@@ -4525,8 +4554,14 @@ components:
           type: string
           format: uuid
           nullable: true
+        migrationTarget:
+          allOf:
+          - $ref: '#/components/schemas/MigrationTarget'
+          nullable: true
+          readOnly: true
       required:
       - id
+      - migrationTarget
       - subtasks
       - title
     TaskCreate:
