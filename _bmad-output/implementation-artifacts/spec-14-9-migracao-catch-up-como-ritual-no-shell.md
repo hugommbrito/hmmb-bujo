@@ -2,10 +2,11 @@
 title: 'Story 14.9: Migração/Catch-Up como ritual no shell (M10)'
 type: 'feature'
 created: '2026-07-27'
-status: 'in-review'
+status: 'done'
 review_loop_iteration: 0
 followup_review_recommended: true
 baseline_revision: '23004ea4a4c36a1d2a48f00b2c41413d714f8174'
+final_revision: 'a754c823ece5484c5e731e61ebf121b0d1536c72'
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-14-context.md'
   - '{project-root}/_bmad-output/planning-artifacts/ux-designs/ux-hmmb-bujo-2026-07-17/mockups/key-migracao.html'
