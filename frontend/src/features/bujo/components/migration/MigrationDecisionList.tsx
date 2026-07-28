@@ -91,10 +91,15 @@ export function MigrationDecisionList({
       </Box>
 
       <Box role="group" aria-label="Alternar entre pendentes e tudo" sx={{ display: 'flex', gap: 'var(--ds-space-1)', mb: 'var(--ds-space-2)' }}>
-        <Button aria-pressed={view === 'pending'} onClick={() => onViewChange('pending')} size="small">
+        {/* `color: 'var(--ds-primary)'` nestes botões-texto: fix do achado real de
+            contraste do axe (e2e em review). Sem override, o MUI aplica
+            `theme.primary` legado (o teal antigo da marca), que fica abaixo de 4.5:1 contra
+            `--ds-surface`/`--ds-canvas` — o token novo `--ds-primary` (o verde-
+            petróleo do design system novo) resolve. */}
+        <Button aria-pressed={view === 'pending'} onClick={() => onViewChange('pending')} size="small" sx={{ color: 'var(--ds-primary)' }}>
           Pendentes de decisão
         </Button>
-        <Button aria-pressed={view === 'all'} onClick={() => onViewChange('all')} size="small">
+        <Button aria-pressed={view === 'all'} onClick={() => onViewChange('all')} size="small" sx={{ color: 'var(--ds-primary)' }}>
           Tudo
         </Button>
       </Box>
@@ -102,7 +107,7 @@ export function MigrationDecisionList({
       {error && (
         <Box role="alert" sx={{ ...typography.body, color: 'var(--ds-danger)', mb: 'var(--ds-space-2)' }}>
           Não foi possível carregar esta fonte.{' '}
-          <Button onClick={onRetry} size="small">
+          <Button onClick={onRetry} size="small" sx={{ color: 'var(--ds-primary)' }}>
             Tentar novamente
           </Button>
         </Box>
@@ -120,6 +125,7 @@ export function MigrationDecisionList({
           return (
             <Box
               key={item.id}
+              data-testid="migration-decision-item"
               tabIndex={-1}
               ref={(el: HTMLElement | null) => {
                 if (el) itemRefs.current.set(item.id, el)
@@ -130,7 +136,14 @@ export function MigrationDecisionList({
                 flexWrap: 'wrap',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                gap: 'var(--ds-space-2)',
+                columnGap: 'var(--ds-space-2)',
+                // Linha e botões viram DUAS linhas empilhadas em telas estreitas
+                // (mesma mecânica de `flexWrap`). Achado real do e2e em
+                // review: com row-gap de 8px (`--ds-space-2`), o axe mede o
+                // botão "Cancelar" (linha de baixo) como alvo de toque com
+                // espaço insuficiente até o vizinho de cima (WCAG 2.5.8/
+                // target-size) — precisa de ≥24px CSS px de vizinhança.
+                rowGap: 'var(--ds-space-6)',
                 padding: 'var(--ds-space-2)',
                 borderBottom: '1px solid var(--ds-border)',
               }}
@@ -139,11 +152,21 @@ export function MigrationDecisionList({
                 <Box sx={{ ...typography.body, color: 'var(--ds-ink)' }}>{item.title}</Box>
                 <Box sx={{ ...typography.meta, color: 'var(--ds-info)' }}>{item.originLabel}</Box>
               </Box>
-              <Box sx={{ display: 'flex', gap: 'var(--ds-space-1)', flexWrap: 'wrap' }}>
+              {/* Split de gap (achado de code review): `gap` único valeria também na
+                  direção HORIZONTAL em toda largura, inflando o espaçamento entre os
+                  3 botões até em wide/desktop (onde nunca quebram linha). `columnGap`
+                  mantém o espaçamento original entre eles lado a lado; `rowGap` é o
+                  que o axe realmente exige (≥24px) quando quebram linha em telas
+                  estreitas. */}
+              <Box sx={{ display: 'flex', columnGap: 'var(--ds-space-1)', rowGap: 'var(--ds-space-6)', flexWrap: 'wrap' }}>
                 <Button size="small" aria-disabled={offline} onClick={() => actOn(item.id, index, () => onCancel(item.id))} sx={{ color: 'var(--ds-danger)' }}>
                   Cancelar
                 </Button>
-                <Button size="small" aria-disabled={offline} onClick={() => chooseDestination(item.id)}>
+                {/* Fix do achado real de contraste do axe (e2e em review): MUI aplicava
+                    `theme.primary` legado (o teal antigo da marca) em vez do token novo
+                    `--ds-primary` (o verde-petróleo do design system novo), insuficiente
+                    contra `--ds-surface`/`--ds-canvas`. */}
+                <Button size="small" aria-disabled={offline} onClick={() => chooseDestination(item.id)} sx={{ color: 'var(--ds-primary)' }}>
                   Escolher destino…
                 </Button>
                 <Button
@@ -158,7 +181,7 @@ export function MigrationDecisionList({
               {itemError && (
                 <Box role="alert" sx={{ display: 'flex', alignItems: 'center', gap: 'var(--ds-space-2)', width: '100%', ...typography.meta, color: 'var(--ds-danger)' }}>
                   <Box component="span">{itemError}</Box>
-                  <Button size="small" onClick={() => onRetryItem?.(item.id)}>
+                  <Button size="small" onClick={() => onRetryItem?.(item.id)} sx={{ color: 'var(--ds-primary)' }}>
                     Tentar novamente
                   </Button>
                 </Box>

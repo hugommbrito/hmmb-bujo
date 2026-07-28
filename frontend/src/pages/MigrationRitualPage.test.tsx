@@ -4,7 +4,7 @@ import { axe } from 'jest-axe'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mockMigrateMutate = vi.fn()
-let unifiedQueueResult: { isPending: boolean; isError: boolean; data?: unknown; refetch: () => void }
+let unifiedQueueResult: { isPending: boolean; isError: boolean; isSuccess: boolean; data?: unknown; refetch: () => void }
 
 vi.mock('../features/bujo', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../features/bujo')>()
@@ -44,8 +44,28 @@ function queueWith(sections: { sourceId: string; periodStart: string; items: Ret
   }
 }
 
+/** Molde padrão de um resultado "carregado com sucesso" de
+ * `useUnifiedMigrationQueueQuery` — `isSuccess: true` por default porque é o
+ * sinal que `MigrationRitualPage` usa (achado de code review) para disparar
+ * o `useLayoutEffect` de foco inicial na fonte com pendência; sobrescreva
+ * pelos overrides quando o teste precisar de outro estado (loading/erro). */
+function queueResult(overrides: Partial<NonNullable<typeof unifiedQueueResult>> = {}) {
+  return { isPending: false, isError: false, isSuccess: true, data: undefined, refetch: vi.fn(), ...overrides }
+}
+
 function renderPage() {
   return render(
+    <MemoryRouter initialEntries={['/migration']}>
+      <Routes>
+        <Route path="/migration" element={<MigrationRitualPage />} />
+        <Route path="/today" element={<div>Hoje</div>} />
+      </Routes>
+    </MemoryRouter>,
+  )
+}
+
+function rerenderPage(rerender: ReturnType<typeof render>['rerender']) {
+  rerender(
     <MemoryRouter initialEntries={['/migration']}>
       <Routes>
         <Route path="/migration" element={<MigrationRitualPage />} />
@@ -59,7 +79,7 @@ describe('MigrationRitualPage (Story 14.9)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     sessionStorage.clear()
-    unifiedQueueResult = { isPending: false, isError: false, data: undefined, refetch: vi.fn() }
+    unifiedQueueResult = queueResult({ data: undefined })
   })
 
   afterEach(() => {
@@ -70,14 +90,14 @@ describe('MigrationRitualPage (Story 14.9)', () => {
   })
 
   it('loading: mostra o esqueleto', () => {
-    unifiedQueueResult = { isPending: true, isError: false, refetch: vi.fn() }
+    unifiedQueueResult = queueResult({ isPending: true, isSuccess: false, data: undefined })
     renderPage()
     expect(screen.getByRole('main', { name: 'Migração' })).toBeInTheDocument()
   })
 
   it('read-error: mostra motivo + retry', () => {
     const refetch = vi.fn()
-    unifiedQueueResult = { isPending: false, isError: true, refetch }
+    unifiedQueueResult = queueResult({ isError: true, isSuccess: false, data: undefined, refetch })
     renderPage()
     expect(screen.getByRole('alert')).toHaveTextContent('Não foi possível carregar a migração.')
     fireEvent.click(screen.getByRole('button', { name: 'Tentar de novo' }))
@@ -85,23 +105,15 @@ describe('MigrationRitualPage (Story 14.9)', () => {
   })
 
   it('vazio: sem tally nesta sessão mostra "Nada para migrar"', () => {
-    unifiedQueueResult = {
-      isPending: false,
-      isError: false,
-      data: queueWith([]),
-      refetch: vi.fn(),
-    }
+    unifiedQueueResult = queueResult({ data: queueWith([]) })
     renderPage()
     expect(screen.getByText('Nada para migrar.')).toBeInTheDocument()
   })
 
   it('mostra rail de fontes, lista de decisão e rail de contexto — nunca Dialog', () => {
-    unifiedQueueResult = {
-      isPending: false,
-      isError: false,
+    unifiedQueueResult = queueResult({
       data: queueWith([{ sourceId: 'month', periodStart: '2026-06-01', items: [TASK()] }]),
-      refetch: vi.fn(),
-    }
+    })
     renderPage()
 
     expect(screen.getByRole('navigation', { name: 'Fontes da migração' })).toBeInTheDocument()
@@ -110,13 +122,55 @@ describe('MigrationRitualPage (Story 14.9)', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
+  it('foca por padrão na fonte com pendência quando "month" está vazia (achado real do e2e em review)', () => {
+    unifiedQueueResult = queueResult({
+      data: queueWith([{ sourceId: 'day', periodStart: '2026-07-27', items: [TASK({ id: 't-day' })] }]),
+    })
+    renderPage()
+
+    // Sem navegar manualmente: o item de "Dias" já aparece de cara, e o rail
+    // mostra "Dias" como fonte ativa — antes desta correção, o ritual sempre
+    // abria em "Meses" mesmo com "Meses" vazia.
+    expect(screen.getByText('Enviar documentos ao contador')).toBeInTheDocument()
+    expect(screen.getByRole('navigation', { name: 'Fontes da migração' }).querySelector('[aria-current="true"]')).toHaveTextContent('Dias')
+  })
+
+  it('foco automático não pula a fonte ativa numa refetch subsequente (achado de code review): decidir "month" não revela "week" sem navegação manual', async () => {
+    unifiedQueueResult = queueResult({
+      data: queueWith([
+        { sourceId: 'month', periodStart: '2026-06-01', items: [TASK({ id: 'm1', title: 'Tarefa do mês' })] },
+        { sourceId: 'week', periodStart: '2026-07-20', items: [TASK({ id: 'w1', title: 'Tarefa da semana' })] },
+      ]),
+    })
+    mockMigrateMutate.mockImplementation((_vars, { onSuccess }) => {
+      // Refetch em background: "month" esvaziou, "week" continua pendente.
+      // O latch do efeito de foco inicial já foi consumido no 1º load — sem
+      // o fix (guarda por `!queue.data` em vez de `queue.isSuccess`, e
+      // `useEffect` em vez de `useLayoutEffect`), o efeito não reagiria de
+      // qualquer forma a essa 2ª leitura, então este teste passaria mesmo
+      // com o bug; o que importa é que ele CONTINUE passando: o ritual
+      // nunca deve saltar de fonte por conta própria após uma decisão.
+      unifiedQueueResult = queueResult({
+        data: queueWith([{ sourceId: 'week', periodStart: '2026-07-20', items: [TASK({ id: 'w1', title: 'Tarefa da semana' })] }]),
+      })
+      onSuccess()
+    })
+    const { rerender } = renderPage()
+
+    expect(screen.getByText('Tarefa do mês')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Migrar para hoje' }))
+    rerenderPage(rerender)
+
+    // A fonte ativa permanece "month" (agora vazia) — "Tarefa da semana" só
+    // fica visível se o usuário navegar manualmente para "Semanas".
+    expect(screen.queryByText('Tarefa da semana')).not.toBeInTheDocument()
+    expect(screen.getByRole('navigation', { name: 'Fontes da migração' }).querySelector('[aria-current="true"]')).toHaveTextContent('Meses')
+  })
+
   it('"Migrar para hoje" chama a mutação com destination "today"', () => {
-    unifiedQueueResult = {
-      isPending: false,
-      isError: false,
+    unifiedQueueResult = queueResult({
       data: queueWith([{ sourceId: 'month', periodStart: '2026-06-01', items: [TASK()] }]),
-      refetch: vi.fn(),
-    }
+    })
     renderPage()
 
     fireEvent.click(screen.getByRole('button', { name: 'Migrar para hoje' }))
@@ -127,12 +181,9 @@ describe('MigrationRitualPage (Story 14.9)', () => {
   })
 
   it('"Cancelar" chama a mutação com destination "cancel"', () => {
-    unifiedQueueResult = {
-      isPending: false,
-      isError: false,
+    unifiedQueueResult = queueResult({
       data: queueWith([{ sourceId: 'month', periodStart: '2026-06-01', items: [TASK()] }]),
-      refetch: vi.fn(),
-    }
+    })
     renderPage()
 
     fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }))
@@ -143,12 +194,9 @@ describe('MigrationRitualPage (Story 14.9)', () => {
   })
 
   it('"Escolher destino…" abre o seletor compartilhado com as 3 abas', () => {
-    unifiedQueueResult = {
-      isPending: false,
-      isError: false,
+    unifiedQueueResult = queueResult({
       data: queueWith([{ sourceId: 'month', periodStart: '2026-06-01', items: [TASK()] }]),
-      refetch: vi.fn(),
-    }
+    })
     renderPage()
 
     fireEvent.click(screen.getByRole('button', { name: 'Escolher destino…' }))
@@ -161,12 +209,9 @@ describe('MigrationRitualPage (Story 14.9)', () => {
   })
 
   it('confirmar destino "Esta semana" chama a mutação com destination "week"', () => {
-    unifiedQueueResult = {
-      isPending: false,
-      isError: false,
+    unifiedQueueResult = queueResult({
       data: queueWith([{ sourceId: 'month', periodStart: '2026-06-01', items: [TASK()] }]),
-      refetch: vi.fn(),
-    }
+    })
     renderPage()
 
     fireEvent.click(screen.getByRole('button', { name: 'Escolher destino…' }))
@@ -181,12 +226,9 @@ describe('MigrationRitualPage (Story 14.9)', () => {
   })
 
   it('"Pausar" navega para /today sem perder decisões', () => {
-    unifiedQueueResult = {
-      isPending: false,
-      isError: false,
+    unifiedQueueResult = queueResult({
       data: queueWith([{ sourceId: 'month', periodStart: '2026-06-01', items: [TASK()] }]),
-      refetch: vi.fn(),
-    }
+    })
     renderPage()
 
     fireEvent.click(screen.getByRole('button', { name: 'Pausar' }))
@@ -194,12 +236,9 @@ describe('MigrationRitualPage (Story 14.9)', () => {
   })
 
   it('erro de escrita: motivo inline + retry no item, sem perder a decisão', () => {
-    unifiedQueueResult = {
-      isPending: false,
-      isError: false,
+    unifiedQueueResult = queueResult({
       data: queueWith([{ sourceId: 'month', periodStart: '2026-06-01', items: [TASK()] }]),
-      refetch: vi.fn(),
-    }
+    })
     mockMigrateMutate.mockImplementation((_vars, { onError }) => onError())
     renderPage()
 
@@ -210,12 +249,9 @@ describe('MigrationRitualPage (Story 14.9)', () => {
 
   it('offline: banner de motivo aparece e ações ficam guardadas', () => {
     const onLineSpy = vi.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(false)
-    unifiedQueueResult = {
-      isPending: false,
-      isError: false,
+    unifiedQueueResult = queueResult({
       data: queueWith([{ sourceId: 'month', periodStart: '2026-06-01', items: [TASK()] }]),
-      refetch: vi.fn(),
-    }
+    })
     renderPage()
 
     expect(screen.getByText(/Sem conexão\./)).toBeInTheDocument()
@@ -225,27 +261,17 @@ describe('MigrationRitualPage (Story 14.9)', () => {
   })
 
   it('última decisão zera a fila e mostra o resumo factual antes de voltar ao Hoje', async () => {
-    unifiedQueueResult = {
-      isPending: false,
-      isError: false,
+    unifiedQueueResult = queueResult({
       data: queueWith([{ sourceId: 'month', periodStart: '2026-06-01', items: [TASK()] }]),
-      refetch: vi.fn(),
-    }
+    })
     mockMigrateMutate.mockImplementation((_vars, { onSuccess }) => {
-      unifiedQueueResult = { isPending: false, isError: false, data: queueWith([]), refetch: vi.fn() }
+      unifiedQueueResult = queueResult({ data: queueWith([]) })
       onSuccess()
     })
     const { rerender } = renderPage()
 
     fireEvent.click(screen.getByRole('button', { name: 'Migrar para hoje' }))
-    rerender(
-      <MemoryRouter initialEntries={['/migration']}>
-        <Routes>
-          <Route path="/migration" element={<MigrationRitualPage />} />
-          <Route path="/today" element={<div>Hoje</div>} />
-        </Routes>
-      </MemoryRouter>,
-    )
+    rerenderPage(rerender)
 
     expect(await screen.findByText('Migração concluída')).toBeInTheDocument()
     expect(screen.getByText('1 tarefa decidida. Nada ficou sem lugar.')).toBeInTheDocument()
@@ -255,14 +281,11 @@ describe('MigrationRitualPage (Story 14.9)', () => {
   })
 
   it('jest-axe: sem violações com o resumo aberto (lição das 14.6/14.7: nunca medir estrutura ARIA fechada)', async () => {
-    unifiedQueueResult = {
-      isPending: false,
-      isError: false,
+    unifiedQueueResult = queueResult({
       data: queueWith([{ sourceId: 'month', periodStart: '2026-06-01', items: [TASK()] }]),
-      refetch: vi.fn(),
-    }
+    })
     mockMigrateMutate.mockImplementation((_vars, { onSuccess }) => {
-      unifiedQueueResult = { isPending: false, isError: false, data: queueWith([]), refetch: vi.fn() }
+      unifiedQueueResult = queueResult({ data: queueWith([]) })
       onSuccess()
     })
     const { container } = renderPage()
@@ -272,12 +295,9 @@ describe('MigrationRitualPage (Story 14.9)', () => {
   })
 
   it('jest-axe: sem violações com a lista e o seletor de destino abertos', async () => {
-    unifiedQueueResult = {
-      isPending: false,
-      isError: false,
+    unifiedQueueResult = queueResult({
       data: queueWith([{ sourceId: 'month', periodStart: '2026-06-01', items: [TASK()] }]),
-      refetch: vi.fn(),
-    }
+    })
     const { container } = renderPage()
     fireEvent.click(screen.getByRole('button', { name: 'Escolher destino…' }))
     expect(await axe(container)).toHaveNoViolations()

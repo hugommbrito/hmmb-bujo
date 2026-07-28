@@ -177,7 +177,13 @@ test('decidir pelo ritual roteado (Story 14.9) escoa a fila unificada e não gra
   await page.getByRole('link', { name: 'Migrar ›' }).click()
   await expect(page).toHaveURL('/migration')
   await expect(page.getByText('Revisar PR de ontem')).toBeVisible()
-  await page.getByRole('button', { name: 'Migrar para hoje' }).click()
+  // A fonte "Dias" tem 2 pendências aqui (catch-up + fila de ontem) — escopar
+  // ao item específico evita ambiguidade com o outro "Migrar para hoje".
+  await page
+    .getByTestId('migration-decision-item')
+    .filter({ hasText: 'Revisar PR de ontem' })
+    .getByRole('button', { name: 'Migrar para hoje' })
+    .click()
   await expect(page.getByText('Revisar PR de ontem')).toHaveCount(0)
 
   // Re-derivação: o item decidido saiu, o resto permaneceu, e a seção `day` continua

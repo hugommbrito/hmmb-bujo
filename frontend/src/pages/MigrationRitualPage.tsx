@@ -20,7 +20,7 @@
 //        (ou recapturado se a fila crescer além do `M` salvo), limpo quando a
 //        fila zera.
 // ─────────────────────────────────────────────────────────────────────────────
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Link as RouterLink, useNavigate } from 'react-router-dom'
 import { Box, Button, useMediaQuery } from '@mui/material'
 
@@ -64,6 +64,14 @@ export function MigrationRitualPage() {
   const navigate = useNavigate()
   const isOnline = useOnlineStatus()
   const isCompact = useMediaQuery(mediaQueries.compact)
+  // Abaixo de "desktop" (<1024px, cobre tablet 768-1023 E compact ≤767), os
+  // 2 rails em largura FIXA (`--ds-weekly-planning-source-rail`/`context-rail`,
+  // 190px+315px, mesmo molde do Weekly) somados ao conteúdo do shell espremem
+  // a coluna central a poucos px — achado real do e2e em review: 3 ações lado
+  // a lado ficam sem espaço de toque (WCAG 2.5.8/target-size). Empilhar em
+  // coluna única sob esse ponto é um ajuste LOCAL desta página (não toca os
+  // tokens compartilhados, então Weekly/Monthly não regridem).
+  const isNarrowLayout = !useMediaQuery(mediaQueries.desktop)
 
   const [activeSourceId, setActiveSourceId] = useState<MigrationSourceId>('month')
   const [view, setView] = useState<'pending' | 'all'>('pending')
@@ -99,6 +107,33 @@ export function MigrationRitualPage() {
       sessionStorage.setItem(MIGRATION_SESSION_TOTAL_KEY, String(total))
     }
   }, [queue.data])
+
+  // Foco inicial na fonte com pendência (achado real do e2e, 14.9 em review):
+  // abrir sempre em "month" deixava o rail parado numa fonte vazia sempre que
+  // só "week"/"day" tinham itens. Roda 1x no primeiro carregamento de dados —
+  // depois disso a navegação entre fontes é só do usuário (`onSelect`/
+  // `onNavigateToSource`), nunca sobrescrita por este efeito de novo.
+  //
+  //   ▶ Guarda por `queue.isSuccess` (não `!queue.data`, achado de code
+  //     review): `!queue.data` sozinho não distingue "ainda carregando" de
+  //     "refetch em background falhou mas o React Query manteve dados
+  //     antigos em cache" — nesse 2º caso o efeito consumiria o latch único
+  //     sobre dado obsoleto e nunca mais reagiria quando dados frescos
+  //     chegassem. `isSuccess` espelha a condição de render 2 linhas abaixo
+  //     (`queue.isError || !queue.data`), só que do lado positivo.
+  //   ▶ `useLayoutEffect` (não `useEffect`, mesmo achado): evita 1 frame
+  //     visível com a fonte errada ("month") quando o mount já encontra a
+  //     query cacheada (ex. voltando de outra rota) — o efeito corrige ANTES
+  //     do paint, não depois.
+  const initialSourceAppliedRef = useRef(false)
+  useLayoutEffect(() => {
+    if (initialSourceAppliedRef.current || !queue.isSuccess) return
+    initialSourceAppliedRef.current = true
+    const firstNonEmpty = MIGRATION_SOURCE_ORDER.find(
+      (sourceId) => (queue.data!.sections.find((section) => section.sourceId === sourceId)?.count ?? 0) > 0,
+    )
+    if (firstNonEmpty) setActiveSourceId(firstNonEmpty)
+  }, [queue.isSuccess, queue.data])
 
   if (queue.isPending) {
     return (
@@ -316,7 +351,9 @@ export function MigrationRitualPage() {
           flex: 1,
           minHeight: 0,
           display: 'grid',
-          gridTemplateColumns: 'var(--ds-weekly-planning-source-rail) minmax(0, 1fr) var(--ds-weekly-planning-context-rail)',
+          gridTemplateColumns: isNarrowLayout
+            ? '1fr'
+            : 'var(--ds-weekly-planning-source-rail) minmax(0, 1fr) var(--ds-weekly-planning-context-rail)',
           gap: 'var(--ds-space-4)',
           alignItems: 'start',
           mt: 'var(--ds-space-2)',
@@ -404,7 +441,12 @@ function RitualHeader({
         background: 'var(--ds-surface)',
       }}
     >
-      <Button component={RouterLink} to="/today" size="small">
+      {/* `color: 'var(--ds-primary)'`: fix do achado real de contraste do axe
+          (e2e em review). Sem override, o MUI aplica `theme.primary` legado
+          (o teal antigo da marca), abaixo de 4.5:1 contra `--ds-surface` — o
+          token novo `--ds-primary` (o verde-petróleo do design system novo)
+          resolve. */}
+      <Button component={RouterLink} to="/today" size="small" sx={{ color: 'var(--ds-primary)' }}>
         ‹ Hoje
       </Button>
       <Box>

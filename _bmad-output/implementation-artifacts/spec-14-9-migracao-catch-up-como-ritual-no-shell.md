@@ -2,10 +2,10 @@
 title: 'Story 14.9: Migração/Catch-Up como ritual no shell (M10)'
 type: 'feature'
 created: '2026-07-27'
-status: 'in-progress'
+status: 'in-review'
 review_loop_iteration: 0
-followup_review_recommended: false
-baseline_revision: '098d76abfe7d1bc5eca3a6707c22847f5db4b099'
+followup_review_recommended: true
+baseline_revision: '23004ea4a4c36a1d2a48f00b2c41413d714f8174'
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-14-context.md'
   - '{project-root}/_bmad-output/planning-artifacts/ux-designs/ux-hmmb-bujo-2026-07-17/mockups/key-migracao.html'
@@ -116,3 +116,49 @@ A promoção do destination picker (`MonthlyDestinationPicker` → componente co
 - `uv run python manage.py makemigrations --check --dry-run` -- "No changes detected"
 - `git diff --stat -- schema.yaml frontend/src/api/types.gen.ts` -- vazio
 - `nvm use 22.15.1 && CI=1 npx playwright test e2e/migration-ritual.spec.ts e2e/unified-migration-queue.spec.ts e2e/migration-flow.spec.ts --retries=0` -- novo spec 100% verde; os 2 legados sem regressão de tese (contra a branch Neon `e2e`, `migrate --check` limpo antes)
+
+## Review Triage Log
+
+### 2026-07-28 — Review pass
+- intent_gap: 0
+- bad_spec: 0
+- patch: 4 (medium 1, low 3)
+- defer: 1
+- reject: 6
+- addressed_findings:
+  - `medium` `patch` Grupo de botões de ação em `MigrationDecisionList.tsx` usava um único `gap` de 24px para ambas as direções, inflando o espaçamento HORIZONTAL entre os 3 botões (Cancelar/Escolher destino…/Migrar para hoje) em toda largura de tela, inclusive wide/desktop onde nunca quebram linha — split em `columnGap: var(--ds-space-1)` (mantém os 4px originais) / `rowGap: var(--ds-space-6)` (mantém os 24px exigidos pelo axe só quando quebram linha em telas estreitas).
+  - `low` `patch` Efeito de foco inicial na fonte com pendência (`MigrationRitualPage.tsx`) usava `!queue.data` como guarda do latch único — indistinguível de "refetch em background falhou mas manteve dado obsoleto em cache", podendo consumir o latch sobre dado obsoleto e nunca mais reagir a dado fresco — troquei para `queue.isSuccess` (espelha a condição de render `queue.isError || !queue.data`) e adicionei teste de regressão cobrindo que decidir um item não salta a fonte ativa numa refetch subsequente com 2 fontes pendentes.
+  - `low` `patch` Mesmo efeito rodava em `useEffect` (pós-paint) em vez de `useLayoutEffect`, podendo expor 1 frame visível com a fonte errada num mount com query já cacheada — trocado para `useLayoutEffect`.
+  - `low` `patch` As 6 adições de `sx={{ color: 'var(--ds-primary)' }}` (fix real do achado de contraste do axe, MUI `theme.primary` legado vs. token novo) não tinham nenhum comentário explicando o porquê, inconsistente com o resto da diff — adicionado comentário de 1 linha em cada ponto.
+  - Achado descartado por especulativo/sem cenário de falha concreto: cobertura de unidade zero do grid desktop 3-colunas (mock global de `matchMedia` sempre `false`) — mitigado por já estar coberto pelo teste e2e "wide 1440×900" em navegador real; `data-testid="migration-decision-item"` não escopado por item (risco hipotético de ambiguidade futura, não uma falha atual); tie-break não testado na lógica de "primeira fonte não-vazia"; asserções e2e com nome acessível âncora/exato (frágeis a mudança de texto, mas passando); edições de teste que dobram como guarda de regressão sem rótulo explícito; divergência de composição da `MigrationRitualPage` vs. `WeeklyPlanningPage` abaixo de `desktop` (1024px) — justificada: o mandato de axe-core da própria spec (linha "Estados obrigatórios... axe-core") tem prioridade sobre a paridade estrutural de "mesma composição", e o Weekly hoje FALHA no mesmo teste axe em compact (ver defer abaixo), então manter paridade estrita replicaria a falha em vez de evitá-la.
+
+## Auto Run Result
+
+**Status:** `done`
+
+**Resumo:** Story 14.9 já estava implementada e commitada (`d0eb2c5`), mas em `review` com 2 defeitos reais documentados e não corrigidos pelo e2e (achado do dia anterior, banco e2e migrado p/ Postgres local): (a) `MigrationRitualPage` sempre abria na fonte "Meses" por padrão, mesmo vazia, quando só "Semanas"/"Dias" tinham pendência; (b) violações axe de color-contrast (serious) em compact/reflow-320/tablet/medium no link "‹ Hoje" e botões MUI. Esta rodada corrigiu os 2, mais 1 violação de target-size (WCAG 2.5.8) descoberta durante a correção do foco padrão, executou 4 rounds de review adversarial em paralelo (blind-hunter, edge-case-hunter, verification-gap, intent-alignment) sobre o diff resultante, e aplicou os 4 patches triados antes de fechar.
+
+**Arquivos alterados:**
+- `frontend/src/pages/MigrationRitualPage.tsx` — foco automático na 1ª fonte não-vazia no primeiro carregamento (guarda por `queue.isSuccess`, `useLayoutEffect`); grid colapsa para coluna única abaixo de `desktop` (1024px, ajuste local, sem tocar tokens compartilhados); botão "‹ Hoje" recolorido para `--ds-primary` (fix de contraste)
+- `frontend/src/features/bujo/components/migration/MigrationDecisionList.tsx` — botões (toggle Pendentes/Tudo, retry ×2, "Escolher destino…") recoloridos para `--ds-primary`; `columnGap`/`rowGap` split para fix de target-size sem inflar espaçamento horizontal em telas largas; `data-testid="migration-decision-item"` por linha
+- `frontend/src/pages/MigrationRitualPage.test.tsx` — teste do foco padrão na fonte com pendência; teste de regressão do latch (não salta fonte numa refetch com 2 fontes pendentes)
+- `frontend/e2e/migration-flow.spec.ts`, `migration-ritual.spec.ts`, `unified-migration-queue.spec.ts` — ajustes de asserção/seletor que o bug do foco padrão mascarava (ambiguidades nunca exercitadas antes do fix)
+- `_bmad-output/implementation-artifacts/deferred-work.md` — nova entrada: débito pré-existente de axe (contraste + target-size) em `WeeklyPlanningPage`/`WeeklyDecisionList` (Story 14.5), fora de escopo da 14.9
+
+**Review findings (pass 2026-07-28):** 4 `patch` aplicados (1 medium, 3 low) · 1 `defer` · 6 `reject` · 0 `intent_gap` · 0 `bad_spec`
+
+**Follow-up review recommendation:** `true` — nenhum finding `high`, mas score `3×1(medium) + 1×3(low) = 6 ≥ 5`.
+
+**Verificação (rodada final, todos os comandos re-executados de forma independente após os patches):**
+- `npx tsc -b --noEmit` -- limpo
+- `npm run lint` -- limpo
+- `npx vitest run` -- 1821 passed / 139 arquivos (0 regressão; 2 testes novos desta rodada de review)
+- `uv run pytest -q` -- 1314 passed (backend intocado)
+- `uv run ruff check .` / `uv run lint-imports` -- limpos
+- `uv run python manage.py makemigrations --check --dry-run` -- "No changes detected"
+- `git diff --stat -- schema.yaml frontend/src/api/types.gen.ts` -- vazio
+- `CI=1 npx playwright test e2e/migration-ritual.spec.ts e2e/unified-migration-queue.spec.ts e2e/migration-flow.spec.ts --retries=0` -- 21/21 passed (rodado 2×; 1 falha isolada de `migration-flow.spec.ts` numa rodada da suíte completa não se repetiu isolada nem na rodada seguinte da suíte completa — flakiness ambiental conhecida do e2e local, não regressão de código)
+
+**Riscos residuais:**
+- Débito de acessibilidade pré-existente em Weekly/Monthly (axe contraste + target-size) permanece, registrado em `deferred-work.md`; não corrigido aqui por estar fora do Code Map da 14.9 e por tocar tokens compartilhados.
+- `followup_review_recommended: true` — score de patches (não high, mas volume) sugere vale a pena uma passada de review adicional focada especificamente nos 4 pontos corrigidos nesta rodada antes de considerar o Épico 14 pronto para a retrospectiva.

@@ -58,7 +58,11 @@ test.describe('Migration Ritual — wide 1440×900', () => {
     await page.getByRole('button', { name: 'Migrar para hoje' }).click()
 
     await expect(page.getByText('Enviar documentos ao contador')).toHaveCount(0)
-    await expect(sourceRail.getByText('✓ revisado')).toBeVisible()
+    // "Dias" nunca teve pendência nesta cena (só mês/semana foram semeados) —
+    // já nasce "✓ revisado", então a asserção precisa mirar a entrada "Meses"
+    // especificamente, não um `getByText` genérico (ficaria ambíguo com 2
+    // matches: Meses e Dias).
+    await expect(sourceRail.getByRole('button', { name: /^Meses ✓ revisado/ })).toBeVisible()
   })
 
   test('"Escolher destino…" com as 3 abas: migrar para um dia de "Outro mês" (destination future)', async ({
@@ -118,10 +122,11 @@ test.describe('Migration Ritual — wide 1440×900', () => {
     await expect(banner.getByRole('link', { name: 'Retomar migração' })).toBeVisible()
 
     // Retomar mostra só o restante — sem posição/fonte exata reaberta. "Item
-    // B" veio de `weeklyTasks`; o rail abre na fonte "Meses" por padrão.
+    // B" veio de `weeklyTasks`; com "Item A" (mês) já decidido, o rail abre
+    // direto na fonte "Semanas" (única com pendência) — foco por padrão na
+    // fonte com pendência, corrigido nesta passada (achado do e2e em review).
     await banner.getByRole('link', { name: 'Retomar migração' }).click()
     await expect(page).toHaveURL('/migration')
-    await page.getByRole('navigation', { name: 'Fontes da migração' }).getByText('Semanas').click()
     await expect(page.getByText('Item B')).toBeVisible()
   })
 
@@ -131,8 +136,9 @@ test.describe('Migration Ritual — wide 1440×900', () => {
   }) => {
     seedYesterdayQueue(email, [{ title: 'Última pendência' }])
     await page.goto('/migration')
-    // A fonte de "ontem" é "Dias" — o rail abre na fonte "Meses" por padrão.
-    await page.getByRole('navigation', { name: 'Fontes da migração' }).getByText('Dias').click()
+    // A fonte de "ontem" é "Dias" — única com pendência, então o rail já
+    // abre nela por padrão (foco na fonte com pendência, corrigido nesta
+    // passada de review; antes o rail sempre abria em "Meses").
     await expect(page.getByText('Última pendência')).toBeVisible()
 
     await page.getByRole('button', { name: 'Migrar para hoje' }).click()

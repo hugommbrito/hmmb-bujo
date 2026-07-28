@@ -105,14 +105,21 @@ test('Pausar preserva decisões; retomar mostra a mesma tarefa não decidida (AC
   await page.getByRole('link', { name: 'Migrar ›' }).click()
   await expect(page.getByText('Primeira tarefa')).toBeVisible()
 
-  await page.getByRole('button', { name: 'Pausar' }).click()
+  // `exact: true` porque o rail de contexto também tem "Pausar e sair" —
+  // sem `exact`, o match por nome acessível de substring vira ambíguo (achado
+  // real do e2e em review, exposto só depois de corrigir o foco padrão de
+  // fonte: antes "Primeira tarefa" nunca ficava visível a tempo de chegar
+  // aqui, então esta ambiguidade nunca era exercitada).
+  await page.getByRole('button', { name: 'Pausar', exact: true }).click()
   await expect(page).toHaveURL('/today')
 
-  // Nenhuma tarefa foi decidida — a contagem do banner continua em 2.
-  const banner = page.getByRole('region', { name: /tarefas precisam de decisão/ })
-  await expect(banner).toHaveAccessibleName(/2 tarefas precisam de decisão/)
+  // Nenhuma tarefa foi decidida — o banner volta na variante PAUSADA (Story
+  // 14.9, M ficou salvo em sessionStorage ao abrir o ritual): "N de M
+  // restantes", ambos 2 (nada foi decidido ainda).
+  const banner = page.getByRole('region', { name: /Migração pausada/ })
+  await expect(banner).toHaveAccessibleName('Migração pausada · 2 de 2 restantes')
 
-  await banner.getByRole('link', { name: 'Migrar ›' }).click()
+  await banner.getByRole('link', { name: 'Retomar migração' }).click()
   await expect(page.getByText('Primeira tarefa')).toBeVisible()
   await expect(page.getByText('Segunda tarefa')).toBeVisible()
 })
@@ -165,6 +172,10 @@ test('"Escolher destino…" → aba "Dia no mês" com data no mês corrente reso
 
   const today = new Date()
   const day = today.getDate()
+
+  // O picker abre por padrão na aba "Esta semana" (há semana corrente) — o
+  // teste precisa da aba "Dia no mês" explicitamente para expor o `gridcell`.
+  await dialog.getByRole('tab', { name: 'Dia no mês' }).click()
 
   await syncAfter(page, async () => {
     await dialog.getByRole('gridcell', { name: String(day), exact: true }).click()
