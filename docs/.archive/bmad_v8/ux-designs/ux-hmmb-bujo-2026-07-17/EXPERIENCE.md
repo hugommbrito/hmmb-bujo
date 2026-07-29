@@ -9,7 +9,7 @@ sources:
   - ../../../specs/spec-design-system-migration/migration-plan.md
   - ../../prds/prd-hmmb-bujo-2026-06-15/prd.md
   - ../../prds/prd-hmmb-bujo-2026-06-15/addendum.md
-  - ../../architecture/architecture-hmmb-bujo-2026-07-29/ARCHITECTURE-SPINE.md
+  - ../../architecture.md
   - ../../epics.md
   - ../../../implementation-artifacts/13-0-ux-spec-do-app-shell-novo.md
   - ../../../implementation-artifacts/14-0-ux-mockups-complementares-do-nucleo-bujo.md

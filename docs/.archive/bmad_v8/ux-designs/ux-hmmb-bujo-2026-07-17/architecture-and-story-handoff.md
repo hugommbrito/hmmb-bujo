@@ -59,7 +59,7 @@ Cada story carrega onda, superfície, paridade, tokens/componentes, matriz respo
 - `../../../specs/spec-design-system-migration/SPEC.md`
 - `../../../specs/spec-design-system-migration/design-system-contract.md`
 - `../../../specs/spec-design-system-migration/migration-plan.md`
-- `../../architecture/architecture-hmmb-bujo-2026-07-29/ARCHITECTURE-SPINE.md`
+- `../../architecture.md`
 - `../../epics.md`
 - `../../prds/prd-hmmb-bujo-2026-06-15/prd.md`
 - `../../prds/prd-hmmb-bujo-2026-06-15/addendum.md`

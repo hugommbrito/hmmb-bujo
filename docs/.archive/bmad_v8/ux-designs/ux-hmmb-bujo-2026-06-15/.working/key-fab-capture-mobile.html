@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=900">
+<title>BuJo Digital — FAB + Capture Sheet (Mobile)</title>
+<style>
+/*
+  Screen: FAB + Capture Sheet — Mobile
+  Spine sections: EXPERIENCE.md §2.3 Navegação mobile, §4.5 FAB, §5.4 Brain Dump, §6.2 Mobile interactions, §9 Fluxo 2 — Captura Rápida (UJ-4)
+  Component Patterns: FAB (4.5), Capture Sheet (bottom sheet), Day Header (4.4), Task Row (4.1), Bottom Nav (2.3)
+  State Patterns: 5.4 Brain Dump com itens (badge numérico); FAB visível vs. coberto por sheet
+  Key Flows: Fluxo 2 — Captura Rápida no Mobile (UJ-4, Hugo, no metrô, 11h), passos 1–4
+*/
+
+/* ── Reset ──────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ── Design Tokens ──────────────────────────────────────────────────────── */
+:root {
+  --surface-base:    #FDFAF4;
+  --surface-raised:  #F7F3EB;
+  --surface-header:  #F0EBE0;
+  --ink-primary:     #1A1612;
+  --ink-secondary:   #6B6359;
+  --ink-disabled:    #B0A899;
+  --border-hairline: #DDD8CF;
+  --cat-teal:        #2BADA0;
+  --cat-purple:      #7B5EA7;
+  --cat-pink:        #D95F78;
+  --cat-yellow:      #C89B00;
+  --cat-green:       #4A8C5C;
+  --priority-ui:     #C0392B;
+  --priority-u:      #D4660A;
+  --brand-primary:   #2BADA0;
+  --fab-bg:          #1A1612;
+
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+
+  --sp1: 4px;
+  --sp2: 8px;
+  --sp3: 12px;
+  --sp4: 16px;
+  --sp5: 20px;
+  --sp6: 24px;
+  --sp8: 32px;
+}
+
+/* ── Typography base ────────────────────────────────────────────────────── */
+body {
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 400;
+  color: var(--ink-primary);
+  background: #E8E3DC;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 32px 24px;
+  gap: 24px;
+  min-height: 100vh;
+}
+
+/* ── Section header label ───────────────────────────────────────────────── */
+.section-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8A847C;
+  margin-bottom: 8px;
+  text-align: center;
+}
+
+/* ── Phones side-by-side ────────────────────────────────────────────────── */
+.phones-row {
+  display: flex;
+  gap: 48px;
+  align-items: flex-start;
+}
+
+.phone-column {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ── Phone Frame ────────────────────────────────────────────────────────── */
+.phone-frame {
+  width: 390px;
+  height: 844px;
+  background: var(--surface-base);
+  border-radius: 44px;
+  overflow: hidden;
+  border: 10px solid #1A1612;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Status bar */
+.status-bar {
+  background: var(--surface-header);
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border-hairline);
+}
+
+.status-time {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink-primary);
+}
+
+.status-icons {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--ink-primary);
+}
+
+/* Scrollable content area */
+.phone-content {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  background: var(--surface-base);
+}
+
+/* Day header */
+.day-header {
+  background: var(--surface-header);
+  padding: var(--sp1) var(--sp3);
+  border-bottom: 1px solid var(--border-hairline);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 20px;
+  letter-spacing: -0.01em;
+  color: var(--ink-primary);
+  border-radius: var(--radius-xs);
+  margin: var(--sp3) var(--sp3) 0;
+}
+
+/* Task list (mobile) */
+.task-list {
+  padding: var(--sp1) var(--sp3) 0;
+}
+
+.task-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp2);
+  padding: 10px var(--sp3) 10px var(--sp2);
+  min-height: 44px;
+  border-left: 3px solid transparent;
+  border-top: 1px solid var(--border-hairline);
+}
+.task-row:first-child { border-top: none; }
+.task-row.cat-teal   { border-left-color: var(--cat-teal); }
+.task-row.cat-purple { border-left-color: var(--cat-purple); }
+.task-row.cat-pink   { border-left-color: var(--cat-pink); }
+
+.task-status {
+  font-size: 14px;
+  width: 16px;
+  color: var(--ink-secondary);
+  flex-shrink: 0;
+}
+
+.task-text {
+  flex: 1;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.eisen-chip {
+  border-radius: var(--radius-xs);
+  padding: 1px 5px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 14px;
+  flex-shrink: 0;
+}
+.eisen-chip.ui { background: var(--priority-ui); color: #FFF; }
+.eisen-chip.u  { background: var(--priority-u);  color: #FFF; }
+
+/* Truncation indicator */
+.task-truncated {
+  display: flex;
+  align-items: center;
+  padding: var(--sp1) var(--sp3) 0 calc(var(--sp3) + 3px + var(--sp2) + 16px + var(--sp2));
+  font-size: 12px;
+  color: var(--ink-disabled);
+  line-height: 16px;
+}
+
+/* ── Bottom Nav ─────────────────────────────────────────────────────────── */
+.bottom-nav {
+  height: 64px;
+  background: var(--surface-raised);
+  border-top: 1px solid var(--border-hairline);
+  display: flex;
+  align-items: stretch;
+  flex-shrink: 0;
+}
+
+.bottom-nav-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--ink-secondary);
+  padding-bottom: 4px;
+}
+
+.bottom-nav-item.active {
+  color: var(--brand-primary);
+  font-weight: 600;
+}
+
+.bottom-nav-icon {
+  font-size: 18px;
+  line-height: 1;
+}
+
+/* ── FAB ────────────────────────────────────────────────────────────────── */
+.fab {
+  position: absolute;
+  bottom: 80px; /* above bottom nav: 64px + 16px margin */
+  right: 20px;
+  width: 52px;
+  height: 52px;
+  background: var(--fab-bg);
+  border-radius: var(--radius-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--surface-base);
+  font-size: 24px;
+  cursor: pointer;
+  z-index: 5;
+}
+
+.fab-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 18px;
+  height: 18px;
+  background: var(--brand-primary);
+  color: white;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── Capture Sheet (bottom sheet) ───────────────────────────────────────── */
+.capture-sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 64px; /* sits above the bottom nav */
+  height: 465px; /* ~55% of 844px */
+  background: var(--surface-raised);
+  border-top: 1px solid var(--border-hairline);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  display: flex;
+  flex-direction: column;
+  z-index: 20;
+}
+
+.sheet-handle {
+  width: 36px;
+  height: 4px;
+  background: var(--border-hairline);
+  border-radius: 2px;
+  margin: 10px auto 0;
+  flex-shrink: 0;
+}
+
+.sheet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--sp3) var(--sp4) var(--sp2);
+  border-bottom: 1px solid var(--border-hairline);
+  flex-shrink: 0;
+}
+
+.sheet-title {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink-primary);
+}
+
+.sheet-dismiss {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-secondary);
+  background: var(--surface-header);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+/* Sheet body */
+.sheet-body {
+  flex: 1;
+  padding: var(--sp4) var(--sp4) 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp3);
+  overflow: hidden;
+}
+
+.field-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp1);
+}
+
+.field-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-secondary);
+  line-height: 14px;
+}
+
+.field-input {
+  background: var(--surface-base);
+  border: 1.5px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  padding: var(--sp2) var(--sp3);
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-primary);
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  gap: 2px;
+}
+
+/* Focused field gets brand-primary border */
+.field-input.focused {
+  border-color: var(--brand-primary);
+  outline: none;
+}
+
+/* Cursor blink simulation (static) */
+.cursor {
+  display: inline-block;
+  width: 1.5px;
+  height: 15px;
+  background: var(--ink-primary);
+  border-radius: 1px;
+  vertical-align: middle;
+  margin-left: 1px;
+}
+
+.field-hint {
+  font-size: 12px;
+  color: var(--ink-disabled);
+  line-height: 16px;
+}
+
+.field-input.placeholder {
+  color: var(--ink-disabled);
+}
+
+/* Select field */
+.field-select {
+  background: var(--surface-base);
+  border: 1.5px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  padding: var(--sp2) var(--sp3);
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-primary);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 40px;
+  cursor: pointer;
+}
+
+.select-value { font-weight: 400; }
+.select-arrow { color: var(--ink-secondary); font-size: 12px; }
+
+/* Sheet footer */
+.sheet-footer {
+  padding: var(--sp3) var(--sp4) var(--sp4);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp2);
+}
+
+.save-btn {
+  width: 100%;
+  background: var(--brand-primary);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: var(--sp3) var(--sp4);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  text-align: center;
+}
+
+.save-hint {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-disabled);
+  text-align: center;
+}
+
+/* Home indicator */
+.home-indicator {
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-raised);
+  flex-shrink: 0;
+}
+
+.home-bar {
+  width: 120px;
+  height: 5px;
+  background: rgba(26,22,18,0.2);
+  border-radius: 3px;
+}
+
+/* Phone 2 — content slightly dimmed behind sheet */
+.phone-content.behind-sheet {
+  position: relative;
+}
+
+.phone-content.behind-sheet::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(26, 22, 18, 0.08);
+  pointer-events: none;
+}
+
+</style>
+</head>
+<body>
+
+<div class="section-title">FAB + Capture Sheet — Mobile · BuJo Digital</div>
+
+<div class="phones-row">
+
+  <!-- Phone 1: FAB visível no Daily Log -->
+  <div class="phone-column">
+    <div class="section-title">Estado 1 — FAB visível</div>
+    <div class="phone-frame">
+
+      <!-- Status bar -->
+      <div class="status-bar">
+        <span class="status-time">11:07</span>
+        <div class="status-icons">
+          <span>▲▲▲</span>
+          <span>WiFi</span>
+          <span>⬛</span>
+        </div>
+      </div>
+
+      <!-- Scrollable main content -->
+      <div class="phone-content">
+        <div class="day-header">SEGUNDA | 16/06</div>
+
+        <div class="task-list">
+          <!-- Task 1 -->
+          <div class="task-row cat-teal">
+            <span class="task-status">⧖</span>
+            <span class="task-text">Finalizar relatório Q2</span>
+            <span class="eisen-chip ui">U+I</span>
+          </div>
+          <!-- Task 2 -->
+          <div class="task-row cat-purple">
+            <span class="task-status">○</span>
+            <span class="task-text">IVDM</span>
+          </div>
+          <!-- Task 3 -->
+          <div class="task-row cat-pink">
+            <span class="task-status">○</span>
+            <span class="task-text">Consulado PT</span>
+            <span class="eisen-chip u">U</span>
+          </div>
+        </div>
+
+        <div class="task-truncated">+ 2 tarefas</div>
+
+        <!-- FAB -->
+        <div class="fab" role="button" aria-label="Brain Dump: 2 itens pendentes">
+          ＋
+          <div class="fab-badge">2</div>
+        </div>
+
+      </div><!-- /phone-content -->
+
+      <!-- Bottom Nav -->
+      <nav class="bottom-nav" aria-label="Navegação mobile">
+        <div class="bottom-nav-item active">
+          <span class="bottom-nav-icon">◉</span>
+          <span>Hoje</span>
+        </div>
+        <div class="bottom-nav-item">
+          <span class="bottom-nav-icon">⌗</span>
+          <span>Planner</span>
+        </div>
+        <div class="bottom-nav-item">
+          <span class="bottom-nav-icon">◇</span>
+          <span>Hábitos</span>
+        </div>
+        <div class="bottom-nav-item">
+          <span class="bottom-nav-icon">◈</span>
+          <span>Saúde</span>
+        </div>
+      </nav>
+
+      <!-- Home indicator -->
+      <div class="home-indicator"><div class="home-bar"></div></div>
+
+    </div><!-- /phone-frame -->
+  </div><!-- /phone-column 1 -->
+
+
+  <!-- Phone 2: Capture Sheet aberto -->
+  <div class="phone-column">
+    <div class="section-title">Estado 2 — Capture Sheet aberto</div>
+    <div class="phone-frame">
+
+      <!-- Status bar -->
+      <div class="status-bar">
+        <span class="status-time">11:07</span>
+        <div class="status-icons">
+          <span>▲▲▲</span>
+          <span>WiFi</span>
+          <span>⬛</span>
+        </div>
+      </div>
+
+      <!-- Scrollable main content (slightly dimmed by sheet overlay) -->
+      <div class="phone-content behind-sheet">
+        <div class="day-header">SEGUNDA | 16/06</div>
+
+        <div class="task-list">
+          <div class="task-row cat-teal">
+            <span class="task-status">⧖</span>
+            <span class="task-text">Finalizar relatório Q2</span>
+            <span class="eisen-chip ui">U+I</span>
+          </div>
+          <div class="task-row cat-purple">
+            <span class="task-status">○</span>
+            <span class="task-text">IVDM</span>
+          </div>
+          <div class="task-row cat-pink">
+            <span class="task-status">○</span>
+            <span class="task-text">Consulado PT</span>
+            <span class="eisen-chip u">U</span>
+          </div>
+        </div>
+
+        <!-- Capture Sheet -->
+        <div class="capture-sheet" role="dialog" aria-label="Captura rápida">
+          <div class="sheet-handle"></div>
+
+          <!-- Sheet header -->
+          <div class="sheet-header">
+            <span class="sheet-title">Captura rápida</span>
+            <button class="sheet-dismiss">Esc</button>
+          </div>
+
+          <!-- Sheet body -->
+          <div class="sheet-body">
+
+            <!-- Field 1: Título (focused, with cursor) -->
+            <div class="field-group">
+              <span class="field-label">Título *</span>
+              <div class="field-input focused">
+                <span style="color: var(--ink-disabled);">O que você quer registrar?</span><span class="cursor"></span>
+              </div>
+            </div>
+
+            <!-- Field 2: Descrição (optional, collapsed) -->
+            <div class="field-group">
+              <span class="field-label">Descrição <span style="font-weight:400; text-transform: none; letter-spacing: 0; font-size: 11px; color: var(--ink-disabled);">opcional</span></span>
+              <div class="field-input placeholder">
+                Detalhes adicionais...
+              </div>
+            </div>
+
+            <!-- Field 3: Destino (dropdown) -->
+            <div class="field-group">
+              <span class="field-label">Destino</span>
+              <div class="field-select">
+                <span class="select-value">Brain Dump</span>
+                <span class="select-arrow">▾</span>
+              </div>
+            </div>
+
+          </div><!-- /sheet-body -->
+
+          <!-- Sheet footer -->
+          <div class="sheet-footer">
+            <button class="save-btn">Salvar</button>
+            <span class="save-hint">Salvo no Brain Dump até você processar.</span>
+          </div>
+
+        </div><!-- /capture-sheet -->
+
+      </div><!-- /phone-content -->
+
+      <!-- Bottom Nav (still visible behind sheet) -->
+      <nav class="bottom-nav" aria-label="Navegação mobile">
+        <div class="bottom-nav-item active">
+          <span class="bottom-nav-icon">◉</span>
+          <span>Hoje</span>
+        </div>
+        <div class="bottom-nav-item">
+          <span class="bottom-nav-icon">⌗</span>
+          <span>Planner</span>
+        </div>
+        <div class="bottom-nav-item">
+          <span class="bottom-nav-icon">◇</span>
+          <span>Hábitos</span>
+        </div>
+        <div class="bottom-nav-item">
+          <span class="bottom-nav-icon">◈</span>
+          <span>Saúde</span>
+        </div>
+      </nav>
+
+      <!-- Home indicator -->
+      <div class="home-indicator"><div class="home-bar"></div></div>
+
+    </div><!-- /phone-frame -->
+  </div><!-- /phone-column 2 -->
+
+</div><!-- /phones-row -->
+
+</body>
+</html>

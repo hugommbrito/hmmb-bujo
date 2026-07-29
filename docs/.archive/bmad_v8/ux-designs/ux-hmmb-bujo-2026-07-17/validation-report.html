@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UX Design Validation — hmmb-bujo / Story 14.0</title>
+<style>
+:root{--bg:#fafaf9;--surface:#fff;--border:#e7e5e4;--text:#1c1917;--muted:#78716c;--strong:#16a34a;--adequate:#65a30d;--high:#ea580c;--medium:#ca8a04;--low:#64748b}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.6 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.container{max-width:960px;margin:auto;padding:32px 24px 64px}
+header{border-bottom:1px solid var(--border);padding-bottom:16px;margin-bottom:24px}h1{font-size:22px;margin:0}.sub{color:var(--muted);font:13px ui-monospace,monospace}
+.synthesis,.section,.mechanical{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:18px 20px;margin-bottom:14px}.synthesis{border-left:3px solid var(--strong)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin:20px 0}.card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px}.name{font-size:13px;color:var(--muted)}.verdict{font-weight:700;color:var(--strong)}.verdict.adequate{color:var(--adequate)}
+h2{font-size:17px;margin:0 0 10px}.finding{border-top:1px solid var(--border);padding:10px 0}.finding:first-of-type{border:0}.badge{font-size:11px;font-weight:700;text-transform:uppercase;border-radius:4px;padding:3px 7px;margin-right:7px}.high{color:var(--high);background:#fff1eb}.medium{color:var(--medium);background:#fff9db}.low{color:var(--low);background:#f1f5f9}.resolved{color:var(--strong);font-weight:700}footer{margin-top:32px;padding-top:14px;border-top:1px solid var(--border);color:var(--muted);font:12px ui-monospace,monospace}
+</style>
+</head>
+<body><main class="container">
+<header><h1>hmmb-bujo / Story 14.0 — UX Design Validation</h1><div class="sub">DESIGN.md + EXPERIENCE.md · 2026-07-24T21:51:42-03:00</div></header>
+<div class="synthesis"><p>O par de spines está forte e pronto para handoff após correções. O Rubric Walker encontrou promoção ausente e catálogo bilateral incompleto; a lente de acessibilidade encontrou correções importantes no mock e no contrato. Todos os achados foram reconciliados antes da promoção.</p><p>O contraste load-bearing passou nas oito paletas. Testes no app real permanecem obrigação da Story 14.10.</p></div>
+<div class="grid">
+<div class="card"><div class="name">Flow coverage</div><div class="verdict">strong</div></div><div class="card"><div class="name">Token completeness</div><div class="verdict">strong</div></div><div class="card"><div class="name">Component coverage</div><div class="verdict">strong</div></div><div class="card"><div class="name">State coverage</div><div class="verdict">strong</div></div><div class="card"><div class="name">Visual references</div><div class="verdict">strong</div></div><div class="card"><div class="name">Bloat & overspecification</div><div class="verdict adequate">adequate</div></div><div class="card"><div class="name">Inheritance discipline</div><div class="verdict">strong</div></div><div class="card"><div class="name">Shape fit</div><div class="verdict">strong</div></div>
+</div>
+<section class="section"><h2>Rubric Walker</h2><div class="finding"><span class="badge high">high</span>Mock promovido inexistente — <span class="resolved">resolvido</span>: `mockups/key-archive.html` promovido e verificado.</div><div class="finding"><span class="badge medium">medium</span>`Archive History` fora do catálogo bilateral — <span class="resolved">resolvido</span> nos dois spines.</div></section>
+<section class="section"><h2>Acessibilidade</h2><div class="finding"><span class="badge high">4 high</span>Status readonly, tipografia, tabs e categoria — <span class="resolved">resolvidos</span>.</div><div class="finding"><span class="badge medium">4 medium</span>Targets, forced-colors, foco no sucessor e anúncios — <span class="resolved">resolvidos</span>.</div><div class="finding"><span class="badge low">3 low</span>Labels, seleção programática e skip link — <span class="resolved">resolvidos/encaminhados</span>.</div></section>
+<section class="mechanical"><h2>Verificações fortes</h2><ul><li>0 achados críticos.</li><li>Contraste load-bearing aprovado nas oito paletas.</li><li>Estados loading, empty, error, offline, readonly e zero collections cobertos.</li><li>320 CSS px, zoom 200%, teclado, foco e forced-colors contratados; teste final no app pela Story 14.10.</li></ul></section>
+<footer>review-rubric.md · review-accessibility-archive.md · validation-report.md</footer>
+</main></body></html>

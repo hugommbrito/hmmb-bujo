@@ -8,7 +8,7 @@ sessionStatus: 'Breakdown do MVP completo em 2026-06-22 (Épicos 1–11; entregu
 inputDocuments:
   - '_bmad-output/planning-artifacts/prds/prd-hmmb-bujo-2026-06-15/prd.md'
   - '_bmad-output/planning-artifacts/prds/prd-hmmb-bujo-2026-06-15/addendum.md'
-  - '_bmad-output/planning-artifacts/architecture/architecture-hmmb-bujo-2026-07-29/ARCHITECTURE-SPINE.md'
+  - '_bmad-output/planning-artifacts/architecture.md'
   - '_bmad-output/planning-artifacts/ux-designs/ux-hmmb-bujo-2026-07-17/EXPERIENCE.md'
   - '_bmad-output/planning-artifacts/ux-designs/ux-hmmb-bujo-2026-07-17/DESIGN.md'
   - '_bmad-output/planning-artifacts/sprint-change-proposal-2026-06-22.md'

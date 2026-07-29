@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BuJo Digital — Color Themes</title>
+<style>
+  /* =====================================================================
+     GLOBAL RESET & PAGE LAYOUT
+     ===================================================================== */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #1a1a1a;
+    color: #fff;
+    padding: 12px;
+    min-width: 1440px;
+  }
+
+  h1.page-title {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #888;
+    margin-bottom: 12px;
+  }
+
+  /* 5 columns — all visible at 1440px */
+  .theme-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 10px;
+    width: 100%;
+  }
+
+  .theme-col {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  /* Theme label header */
+  .theme-header {
+    padding: 8px 10px 6px;
+    border-radius: 4px 4px 0 0;
+  }
+  .theme-header h2 {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    margin-bottom: 2px;
+  }
+  .theme-header p {
+    font-size: 10px;
+    opacity: 0.7;
+    font-style: italic;
+  }
+
+  /* Light / Dark label */
+  .mode-label {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 3px 6px;
+    margin-bottom: 4px;
+    display: inline-block;
+    border-radius: 2px;
+  }
+
+  /* Token chips row */
+  .tokens {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    margin-bottom: 6px;
+  }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 9px;
+    font-weight: 500;
+    padding: 2px 5px 2px 3px;
+    border-radius: 3px;
+    line-height: 1;
+  }
+  .chip-swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    border: 1px solid rgba(0,0,0,0.15);
+    flex-shrink: 0;
+  }
+
+  /* UI Snippet */
+  .snippet {
+    border-radius: 4px;
+    overflow: hidden;
+    font-size: 10px;
+    line-height: 1.4;
+  }
+  .snippet-date {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 6px 8px 5px;
+    border-bottom: 1px solid;
+  }
+  .task-row {
+    display: flex;
+    align-items: flex-start;
+    padding: 4px 8px 4px 0;
+    border-left: 3px solid transparent;
+    margin-left: 8px;
+    gap: 5px;
+    border-bottom: 1px solid transparent;
+  }
+  .task-bullet {
+    font-size: 9px;
+    margin-top: 1px;
+    flex-shrink: 0;
+    width: 10px;
+    text-align: center;
+  }
+  .task-text { flex: 1; font-size: 10px; }
+  .eisen-chip {
+    font-size: 8px;
+    font-weight: 700;
+    padding: 1px 4px;
+    border-radius: 2px;
+    color: #fff;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+  .habit-row {
+    padding: 5px 8px;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    margin-top: 1px;
+  }
+  .habit-dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    margin-right: 2px;
+    vertical-align: middle;
+  }
+
+  /* Panel wrapper for light/dark */
+  .panel {
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid rgba(255,255,255,0.08);
+    padding: 8px;
+  }
+
+  /* =====================================================================
+     VARIATION 1 — PAPEL & TINTA
+     Warm white background, black ink, soft pastel markers.
+     Closest to physical notebook. Dark: warm charcoal.
+
+     LIGHT
+     --bg:           #FDFAF4   warm white
+     --surface:      #F7F3EB   warm cream surface
+     --border:       #E2D9CC   warm beige border
+     --text-primary: #1C1410   near-black ink
+     --text-secondary: #6B5C4C warm brown secondary
+     --brand:        #3D2B1F   dark ink brown
+
+     NOTEBOOK SEMANTIC (pastel)
+     --day-header:   #B8C8E8   blue/lavender pastel
+     --teal:         #A8D4D0   teal/cyan pastel
+     --purple:       #C4B8E0   purple/lavender pastel
+     --pink:         #F0B8B0   pink/salmon pastel
+     --yellow:       #F0E0A0   yellow pastel
+     --green:        #B4D8B4   green pastel
+
+     DARK
+     --bg-d:         #2A2420   warm charcoal
+     --surface-d:    #332D28   warm dark surface
+     --border-d:     #4A4038   warm dark border
+     --text-primary-d: #EDE5D8 warm off-white
+     --text-secondary-d: #A89880 muted warm
+     --brand-d:      #C8A880   warm gold
+
+     NOTEBOOK DARK (slightly desaturated for dark bg)
+     --day-header-d: #7890C0
+     --teal-d:       #6AAFAA
+     --purple-d:     #9080C0
+     --pink-d:       #D08080
+     --yellow-d:     #C8A840
+     --green-d:      #70A870
+     ===================================================================== */
+
+  .v1-light { background: #FDFAF4; color: #1C1410; }
+  .v1-light .mode-label { background: #E2D9CC; color: #6B5C4C; }
+  .v1-light .snippet { background: #FDFAF4; border: 1px solid #E2D9CC; }
+  .v1-light .snippet-date { background: #B8C8E8; color: #2A3A5C; border-color: #A8B8D8; }
+  .v1-light .task-row { border-bottom-color: #F0EAE0; }
+  .v1-light .habit-row { background: #F7F3EB; color: #6B5C4C; border-top: 1px solid #E2D9CC; }
+  .v1-light-hdr { background: #F7F3EB; color: #1C1410; }
+
+  .v1-dark { background: #2A2420; color: #EDE5D8; }
+  .v1-dark .mode-label { background: #4A4038; color: #A89880; }
+  .v1-dark .snippet { background: #2A2420; border: 1px solid #4A4038; }
+  .v1-dark .snippet-date { background: #3A5080; color: #B8CCF0; border-color: #4A6090; }
+  .v1-dark .task-row { border-bottom-color: #3A342E; }
+  .v1-dark .habit-row { background: #332D28; color: #A89880; border-top: 1px solid #4A4038; }
+  .v1-dark-hdr { background: #332D28; color: #EDE5D8; }
+
+  /* =====================================================================
+     VARIATION 2 — STUDIO TÉCNICO
+     Cool off-white, slate/navy brand, notebook colors slightly saturated.
+     Feels like a designer's workspace. Dark: deep slate.
+
+     LIGHT
+     --bg:           #F4F6F9   cool off-white
+     --surface:      #EAECF2   cool light surface
+     --border:       #CDD2DF   slate border
+     --text-primary: #0F1824   near-black slate
+     --text-secondary: #5A6880 slate secondary
+     --brand:        #1E3A5F   deep navy
+
+     NOTEBOOK SEMANTIC (slightly more saturated)
+     --day-header:   #A0B8E8   blue/lavender
+     --teal:         #80CCCC   teal/cyan
+     --purple:       #B4A0E0   purple
+     --pink:         #ECA8A8   pink/salmon
+     --yellow:       #EED888   yellow
+     --green:        #98D098   green
+
+     DARK
+     --bg-d:         #0F1824   deep slate
+     --surface-d:    #182030   dark slate surface
+     --border-d:     #283848   slate border dark
+     --text-primary-d: #DCE8F4 cool off-white
+     --text-secondary-d: #7890A8 muted slate
+     --brand-d:      #60A0E0   bright navy/sky
+
+     NOTEBOOK DARK
+     --day-header-d: #6090D0
+     --teal-d:       #50B0B0
+     --purple-d:     #9878D0
+     --pink-d:       #D07878
+     --yellow-d:     #C8B040
+     --green-d:      #60A860
+     ===================================================================== */
+
+  .v2-light { background: #F4F6F9; color: #0F1824; }
+  .v2-light .mode-label { background: #CDD2DF; color: #5A6880; }
+  .v2-light .snippet { background: #F4F6F9; border: 1px solid #CDD2DF; }
+  .v2-light .snippet-date { background: #A0B8E8; color: #1E3A5F; border-color: #88A4D8; }
+  .v2-light .task-row { border-bottom-color: #E0E4EC; }
+  .v2-light .habit-row { background: #EAECF2; color: #5A6880; border-top: 1px solid #CDD2DF; }
+  .v2-light-hdr { background: #EAECF2; color: #0F1824; }
+
+  .v2-dark { background: #0F1824; color: #DCE8F4; }
+  .v2-dark .mode-label { background: #283848; color: #7890A8; }
+  .v2-dark .snippet { background: #0F1824; border: 1px solid #283848; }
+  .v2-dark .snippet-date { background: #204870; color: #90C0F0; border-color: #306090; }
+  .v2-dark .task-row { border-bottom-color: #182030; }
+  .v2-dark .habit-row { background: #182030; color: #7890A8; border-top: 1px solid #283848; }
+  .v2-dark-hdr { background: #182030; color: #DCE8F4; }
+
+  /* =====================================================================
+     VARIATION 3 — FLORESTA DIGITAL
+     Deep forest green/teal brand, amber/gold accent, editorial feel.
+     Dark: very dark green-tinted background.
+
+     LIGHT
+     --bg:           #F2F6F4   cool green-tinted white
+     --surface:      #E6EDE9   muted sage surface
+     --border:       #C0D0C8   sage border
+     --text-primary: #0E1F18   dark forest ink
+     --text-secondary: #4A6858 forest green secondary
+     --brand:        #1A5C40   deep forest green
+
+     NOTEBOOK SEMANTIC (harmonized with forest palette)
+     --day-header:   #90B8D0   blue (adjusted)
+     --teal:         #60C0A8   teal (boosted)
+     --purple:       #9878C0   purple (muted)
+     --pink:         #D89890   pink/salmon (muted)
+     --yellow:       #D8B840   amber/gold
+     --green:        #78C888   green (boosted)
+
+     DARK
+     --bg-d:         #081810   very dark green
+     --surface-d:    #102818   dark forest surface
+     --border-d:     #1E4030   forest border dark
+     --text-primary-d: #D0E8D8 light mint
+     --text-secondary-d: #6A9878 muted forest
+     --brand-d:      #40D890   bright emerald
+
+     NOTEBOOK DARK
+     --day-header-d: #6090B0
+     --teal-d:       #38A888
+     --purple-d:     #8060A8
+     --pink-d:       #B87870
+     --yellow-d:     #C09020
+     --green-d:      #48A858
+     ===================================================================== */
+
+  .v3-light { background: #F2F6F4; color: #0E1F18; }
+  .v3-light .mode-label { background: #C0D0C8; color: #4A6858; }
+  .v3-light .snippet { background: #F2F6F4; border: 1px solid #C0D0C8; }
+  .v3-light .snippet-date { background: #90B8D0; color: #0E2A40; border-color: #78A8C0; }
+  .v3-light .task-row { border-bottom-color: #D8E8DF; }
+  .v3-light .habit-row { background: #E6EDE9; color: #4A6858; border-top: 1px solid #C0D0C8; }
+  .v3-light-hdr { background: #E6EDE9; color: #0E1F18; }
+
+  .v3-dark { background: #081810; color: #D0E8D8; }
+  .v3-dark .mode-label { background: #1E4030; color: #6A9878; }
+  .v3-dark .snippet { background: #081810; border: 1px solid #1E4030; }
+  .v3-dark .snippet-date { background: #183848; color: #80B8D8; border-color: #204858; }
+  .v3-dark .task-row { border-bottom-color: #102818; }
+  .v3-dark .habit-row { background: #102818; color: #6A9878; border-top: 1px solid #1E4030; }
+  .v3-dark-hdr { background: #102818; color: #D0E8D8; }
+
+  /* =====================================================================
+     VARIATION 4 — MONOCHROME MINIMALISTA
+     Near-grayscale with ONE accent: deep indigo.
+     Semantic colors become tints of indigo.
+     Dark: near-black with indigo highlight.
+
+     LIGHT
+     --bg:           #F8F8FA   near-white, faint indigo tint
+     --surface:      #EDEDF2   light gray-indigo surface
+     --border:       #D0D0DC   gray border
+     --text-primary: #141420   near-black
+     --text-secondary: #6060780 muted gray-indigo
+     --brand:        #2828A0   deep indigo
+
+     NOTEBOOK SEMANTIC (indigo tints)
+     --day-header:   #9898D8   medium indigo
+     --teal:         #7878B8   blue-indigo
+     --purple:       #B0A0E0   purple-indigo
+     --pink:         #C0A0C0   mauve-indigo
+     --yellow:       #B8B870   khaki (desaturated)
+     --green:        #88A888   sage (desaturated)
+
+     DARK
+     --bg-d:         #0C0C14   near-black
+     --surface-d:    #141420   very dark indigo
+     --border-d:     #202038   dark indigo border
+     --text-primary-d: #E8E8F8 near-white
+     --text-secondary-d: #6868A0 muted indigo
+     --brand-d:      #8080E0   bright indigo
+
+     NOTEBOOK DARK
+     --day-header-d: #6060C0
+     --teal-d:       #5050A0
+     --purple-d:     #9080D0
+     --pink-d:       #A080A0
+     --yellow-d:     #A0A048
+     --green-d:      #607860
+     ===================================================================== */
+
+  .v4-light { background: #F8F8FA; color: #141420; }
+  .v4-light .mode-label { background: #D0D0DC; color: #606078; }
+  .v4-light .snippet { background: #F8F8FA; border: 1px solid #D0D0DC; }
+  .v4-light .snippet-date { background: #9898D8; color: #141448; border-color: #8080C8; }
+  .v4-light .task-row { border-bottom-color: #E4E4EC; }
+  .v4-light .habit-row { background: #EDEDF2; color: #606078; border-top: 1px solid #D0D0DC; }
+  .v4-light-hdr { background: #EDEDF2; color: #141420; }
+
+  .v4-dark { background: #0C0C14; color: #E8E8F8; }
+  .v4-dark .mode-label { background: #202038; color: #6868A0; }
+  .v4-dark .snippet { background: #0C0C14; border: 1px solid #202038; }
+  .v4-dark .snippet-date { background: #282868; color: #A0A0F0; border-color: #303080; }
+  .v4-dark .task-row { border-bottom-color: #141420; }
+  .v4-dark .habit-row { background: #141420; color: #6868A0; border-top: 1px solid #202038; }
+  .v4-dark-hdr { background: #141420; color: #E8E8F8; }
+
+  /* =====================================================================
+     VARIATION 5 — QUENTE & ORGÂNICO
+     Warm cream/sand background, terracotta/ochre primary, warmed-up notebook colors.
+     Feels handmade but digital. Dark: warm dark brown.
+
+     LIGHT
+     --bg:           #FBF5EC   warm cream/sand
+     --surface:      #F5ECD8   sand surface
+     --border:       #DEC8A8   warm tan border
+     --text-primary: #2A1808   dark espresso
+     --text-secondary: #7A5840 warm brown secondary
+     --brand:        #B84820   terracotta/deep ochre
+
+     NOTEBOOK SEMANTIC (warmed up)
+     --day-header:   #B0C0E8   blue-lavender (kept cool for contrast)
+     --teal:         #80C8B8   warm teal
+     --purple:       #C0A8D8   warm lavender
+     --pink:         #F0A898   warm salmon
+     --yellow:       #E8CC70   warm amber
+     --green:        #A8CC88   warm olive green
+
+     DARK
+     --bg-d:         #1E1008   warm dark brown
+     --surface-d:    #2A1810   warm dark brown surface
+     --border-d:     #483020   dark brown border
+     --text-primary-d: #EEE0C8 warm cream
+     --text-secondary-d: #A08060 muted warm
+     --brand-d:      #E87040   bright terracotta
+
+     NOTEBOOK DARK
+     --day-header-d: #6880C0
+     --teal-d:       #50A898
+     --purple-d:     #9878B8
+     --pink-d:       #C87868
+     --yellow-d:     #C0A030
+     --green-d:      #6A9848
+     ===================================================================== */
+
+  .v5-light { background: #FBF5EC; color: #2A1808; }
+  .v5-light .mode-label { background: #DEC8A8; color: #7A5840; }
+  .v5-light .snippet { background: #FBF5EC; border: 1px solid #DEC8A8; }
+  .v5-light .snippet-date { background: #B0C0E8; color: #1A2848; border-color: #98B0D8; }
+  .v5-light .task-row { border-bottom-color: #EEE0C8; }
+  .v5-light .habit-row { background: #F5ECD8; color: #7A5840; border-top: 1px solid #DEC8A8; }
+  .v5-light-hdr { background: #F5ECD8; color: #2A1808; }
+
+  .v5-dark { background: #1E1008; color: #EEE0C8; }
+  .v5-dark .mode-label { background: #483020; color: #A08060; }
+  .v5-dark .snippet { background: #1E1008; border: 1px solid #483020; }
+  .v5-dark .snippet-date { background: #283868; color: #88A8E0; border-color: #304870; }
+  .v5-dark .task-row { border-bottom-color: #2A1810; }
+  .v5-dark .habit-row { background: #2A1810; color: #A08060; border-top: 1px solid #483020; }
+  .v5-dark-hdr { background: #2A1810; color: #EEE0C8; }
+
+</style>
+</head>
+<body>
+
+<h1 class="page-title">BuJo Digital — Color Theme Explorations · 2026-06-15</h1>
+
+<div class="theme-grid">
+
+  <!-- ============================================================
+       VARIATION 1 — PAPEL & TINTA
+       ============================================================ -->
+  <div class="theme-col">
+    <div class="theme-header v1-light-hdr">
+      <h2>Papel &amp; Tinta</h2>
+      <p>Calor do caderno físico, tinta sobre papel</p>
+    </div>
+
+    <!-- LIGHT -->
+    <div class="panel v1-light">
+      <span class="mode-label">Claro</span>
+      <div class="tokens">
+        <span class="chip" style="background:#F7F3EB;color:#1C1410;border:1px solid #E2D9CC"><span class="chip-swatch" style="background:#FDFAF4"></span>bg</span>
+        <span class="chip" style="background:#F7F3EB;color:#1C1410;border:1px solid #E2D9CC"><span class="chip-swatch" style="background:#F7F3EB"></span>surface</span>
+        <span class="chip" style="background:#F7F3EB;color:#1C1410;border:1px solid #E2D9CC"><span class="chip-swatch" style="background:#E2D9CC"></span>border</span>
+        <span class="chip" style="background:#F7F3EB;color:#1C1410;border:1px solid #E2D9CC"><span class="chip-swatch" style="background:#1C1410"></span>txt-1</span>
+        <span class="chip" style="background:#F7F3EB;color:#1C1410;border:1px solid #E2D9CC"><span class="chip-swatch" style="background:#6B5C4C"></span>txt-2</span>
+        <span class="chip" style="background:#F7F3EB;color:#1C1410;border:1px solid #E2D9CC"><span class="chip-swatch" style="background:#3D2B1F"></span>brand</span>
+        <span class="chip" style="background:#B8C8E8;color:#2A3A5C;border:1px solid #A8B8D8"><span class="chip-swatch" style="background:#B8C8E8"></span>day-hdr</span>
+        <span class="chip" style="background:#A8D4D0;color:#1A4040;border:1px solid #88C0BC"><span class="chip-swatch" style="background:#A8D4D0"></span>teal</span>
+        <span class="chip" style="background:#C4B8E0;color:#2A2050;border:1px solid #B0A0D0"><span class="chip-swatch" style="background:#C4B8E0"></span>purple</span>
+        <span class="chip" style="background:#F0B8B0;color:#602020;border:1px solid #D8A098"><span class="chip-swatch" style="background:#F0B8B0"></span>pink</span>
+        <span class="chip" style="background:#F0E0A0;color:#5A4800;border:1px solid #D8C880"><span class="chip-swatch" style="background:#F0E0A0"></span>yellow</span>
+        <span class="chip" style="background:#B4D8B4;color:#1A4020;border:1px solid #98C898"><span class="chip-swatch" style="background:#B4D8B4"></span>green</span>
+      </div>
+      <div class="snippet">
+        <div class="snippet-date v1-light">TERÇA | 10/06</div>
+        <div class="task-row v1-light" style="border-left-color:#B8C8E8">
+          <span class="task-bullet">•</span>
+          <span class="task-text">Revisar entregas recorrentes</span>
+          <span class="eisen-chip" style="background:#C03030">U+I</span>
+        </div>
+        <div class="task-row v1-light" style="border-left-color:#A8D4D0">
+          <span class="task-bullet">•</span>
+          <span class="task-text">IVDM</span>
+        </div>
+        <div class="task-row v1-light" style="border-left-color:#F0B8B0">
+          <span class="task-bullet">•</span>
+          <span class="task-text">Relat. Financeiro Bravonik</span>
+        </div>
+        <div class="task-row v1-light" style="border-left-color:#C4B8E0">
+          <span class="task-bullet">•</span>
+          <span class="task-text">Consulado PT</span>
+        </div>
+        <div class="habit-row v1-light">
+          <span class="habit-dot" style="background:#A8D4D0"></span>Email &nbsp;·&nbsp;
+          <span class="habit-dot" style="background:#B4D8B4"></span>WA &nbsp;·&nbsp;
+          <span class="habit-dot" style="background:#C4B8E0"></span>Meditar &nbsp;·&nbsp;
+          <span class="habit-dot" style="background:#F0E0A0"></span>Exercício &nbsp;·&nbsp;
+          <span class="habit-dot" style="background:#B8C8E8"></span>Água
+        </div>
+      </div>
+    </div>
+
+    <!-- DARK -->
+    <div class="panel v1-dark">
+      <span class="mode-label">Escuro</span>
+      <div class="tokens">
+        <span class="chip" style="background:#332D28;color:#EDE5D8;border:1px solid #4A4038"><span class="chip-swatch" style="background:#2A2420"></span>bg</span>
+        <span class="chip" style="background:#332D28;color:#EDE5D8;border:1px solid #4A4038"><span class="chip-swatch" style="background:#332D28"></span>surface</span>
+        <span class="chip" style="background:#332D28;color:#EDE5D8;border:1px solid #4A4038"><span class="chip-swatch" style="background:#4A4038"></span>border</span>
+        <span class="chip" style="background:#332D28;color:#EDE5D8;border:1px solid #4A4038"><span class="chip-swatch" style="background:#EDE5D8"></span>txt-1</span>
+        <span class="chip" style="background:#332D28;color:#EDE5D8;border:1px solid #4A4038"><span class="chip-swatch" style="background:#A89880"></span>txt-2</span>
+        <span class="chip" style="background:#332D28;color:#EDE5D8;border:1px solid #4A4038"><span class="chip-swatch" style="background:#C8A880"></span>brand</span>
+        <span class="chip" style="background:#3A5080;color:#B8CCF0;border:1px solid #4A6090"><span class="chip-swatch" style="background:#7890C0"></span>day-hdr</span>
+        <span class="chip" style="background:#1A4040;color:#90D0CC;border:1px solid #286060"><span class="chip-swatch" style="background:#6AAFAA"></span>teal</span>
+        <span class="chip" style="background:#302050;color:#C0A8F0;border:1px solid #4030608"><span class="chip-swatch" style="background:#9080C0"></span>purple</span>
+        <span class="chip" style="background:#502828;color:#F09090;border:1px solid #703838"><span class="chip-swatch" style="background:#D08080"></span>pink</span>
+        <span class="chip" style="background:#504020;color:#E0C060;border:1px solid #706030"><span class="chip-swatch" style="background:#C8A840"></span>yellow</span>
+        <span class="chip" style="background:#204020;color:#90D090;border:1px solid #306030"><span class="chip-swatch" style="background:#70A870"></span>green</span>
+      </div>
+      <div class="snippet">
+        <div class="snippet-date v1-dark">TERÇA | 10/06</div>
+        <div class="task-row v1-dark" style="border-left-color:#7890C0">
+          <span class="task-bullet">•</span>
+          <span class="task-text">Revisar entregas recorrentes</span>
+          <span class="eisen-chip" style="background:#C03030">U+I</span>
+        </div>
+        <div class="task-row v1-dark" style="border-left-color:#6AAFAA">
+          <span class="task-bullet">•</span>
+          <span class="task-text">IVDM</span>
+        </div>
+        <div class="task-row v1-dark" style="border-left-color:#D08080">
+          <span class="task-bullet">•</span>
+          <span class="task-text">Relat. Financeiro Bravonik</span>
+        </div>
+        <div class="task-row v1-dark" style="border-left-color:#9080C0">
+          <span class="task-bullet">•</span>
+          <span class="task-text">Consulado PT</span>
+        </div>
+        <div class="habit-row v1-dark">
+          <span class="habit-dot" style="background:#6AAFAA"></span>Email &nbsp;·&nbsp;
+          <span class="habit-dot" style="background:#70A870"></span>WA &nbsp;·&nbsp;
+          <span class="habit-dot" style="background:#9080C0"></span>Meditar &nbsp;·&nbsp;
+          <span class="habit-dot" style="background:#C8A840"></span>Exercício &nbsp;·&nbsp;
+          <span class="habit-dot" style="background:#7890C0"></span>Água
+        </div>
+      </div>
+    </div>
+  </div><!-- /v1 -->
+
+
+  <!-- ============================================================
+       VARIATION 2 — STUDIO TÉCNICO
+       ============================================================ -->
+  <div class="theme-col">
+    <div class="theme-header v2-light-hdr">
+      <h2>Studio Técnico</h2>
+      <p>Precisão e controle de designer</p>
+    </div>
+
+    <!-- LIGHT -->
+    <div class="panel v2-light">
+      <span class="mode-label">Claro</span>
+      <div class="tokens">
+        <span class="chip" style="background:#EAECF2;color:#0F1824;border:1px solid #CDD2DF"><span class="chip-swatch" style="background:#F4F6F9"></span>bg</span>
+        <span class="chip" style="background:#EAECF2;color:#0F1824;border:1px solid #CDD2DF"><span class="chip-swatch" style="background:#EAECF2"></span>surface</span>
+        <span class="chip" style="background:#EAECF2;color:#0F1824;border:1px solid #CDD2DF"><span class="chip-swatch" style="background:#CDD2DF"></span>border</span>
+        <span class="chip" style="background:#EAECF2;color:#0F1824;border:1px solid #CDD2DF"><span class="chip-swatch" style="background:#0F1824"></span>txt-1</span>
+        <span class="chip" style="background:#EAECF2;color:#0F1824;border:1px solid #CDD2DF"><span class="chip-swatch" style="background:#5A6880"></span>txt-2</span>
+        <span class="chip" style="background:#1E3A5F;color:#fff;border:1px solid #0F2040"><span class="chip-swatch" style="background:#1E3A5F"></span>brand</span>
+        <span class="chip" style="background:#A0B8E8;color:#0F2050;border:1px solid #88A4D8"><span class="chip-swatch" style="background:#A0B8E8"></span>day-hdr</span>
+        <span class="chip" style="background:#80CCCC;color:#0A3030;border:1px solid #60B4B4"><span class="chip-swatch" style="background:#80CCCC"></span>teal</span>
+        <span class="chip" style="background:#B4A0E0;color:#1A1060;border:1px solid #9888D0"><span class="chip-swatch" style="background:#B4A0E0"></span>purple</span>
+        <span class="chip" style="background:#ECA8A8;color:#601010;border:1px solid #D88888"><span class="chip-swatch" style="background:#ECA8A8"></span>pink</span>
+        <span class="chip" style="background:#EED888;color:#504000;border:1px solid #D8C060"><span class="chip-swatch" style="background:#EED888"></span>yellow</span>
+        <span class="chip" style="background:#98D098;color:#0A3010;border:1px solid #78B878"><span class="chip-swatch" style="background:#98D098"></span>green</span>
+      </div>
+      <div class="snippet">
+        <div class="snippet-date v2-light">TERÇA | 10/06</div>
+        <div class="task-row v2-light" style="border-left-color:#A0B8E8">
+          <span class="task-bullet">•</span>
+          <span class="task-text">Revisar entregas recorrentes</span>
+          <span class="eisen-chip" style="background:#C03030">U+I</span>
+        </div>
+        <div class="task-row v2-light" style="border-left-color:#80CCCC">
+          <span class="task-bullet">•</span>
+          <span class="task-text">IVDM</span>
+        </div>
+        <div class="task-row v2-light" style="border-left-color:#ECA8A8">
+          <span class="task-bullet">•</span>
+          <span class="task-text">Relat. Financeiro Bravonik</span>
+        </div>
+        <div class="task-row v2-light" style="border-left-color:#B4A0E0">
+          <span class="task-bullet">•</span>
+          <span class="task-text">Consulado PT</span>
+        </div>
+        <div class="habit-row v2-light">
+          <span class="habit-dot" style="background:#80CCCC"></span>Email &nbsp;·&nbsp;
+          <span class="habit-dot" style="background:#98D098"></span>WA &nbsp;·&nbsp;
+          <span class="habit-dot" style="background:#B4A0E0"></span>Meditar &nbsp;·&nbsp;
+          <span class="habit-dot" style="background:#EED888"></span>Exercício &nbsp;·&nbsp;
+          <span class="habit-dot" style="background:#A0B8E8"></span>Água
+        </div>
+      </div>
+    </div>
+
+    <!-- DARK -->
+    <div class="panel v2-dark">
+      <span class="mode-label">Escuro</span>
+      <div class="tokens">
+        <span class="chip" style="background:#182030;color:#DCE8F4;border:1px solid #283848"><span class="chip-swatch" style="background:#0F1824"></span>bg</span>
+        <span class="chip" style="background:#182030;color:#DCE8F4;border:1px solid #283848"><span class="chip-swatch" style="background:#182030"></span>surface</span>
+        <span class="chip" style="background:#182030;color:#DCE8F4;border:1px solid #283848"><span class="chip-swatch" style="background:#283848"></span>border</span>
+        <span class="chip" style="background:#182030;color:#DCE8F4;border:1px solid #283848"><span class="chip-swatch" style="background:#DCE8F4"></span>txt-1</span>
+        <span class="chip" style="background:#182030;color:#DCE8F4;border:1px solid #283848"><span class="chip-swatch" style="background:#7890A8"></span>txt-2</span>
+        <span class="chip" style="background:#182030;color:#DCE8F4;border:1px solid #283848"><span class="chip-swatch" style="background:#60A0E0"></span>brand</span>
+        <span class="chip" style="background:#204870;color:#90C0F0;border:1px solid #306090"><span class="chip-swatch" style="background:#6090D0"></span>day-hdr</span>
+        <span class="chip" style="background:#104848;color:#60D8D8;border:1px solid #207070"><span class="chip-swatch" style="background:#50B0B0"></span>teal</span>
+        <span class="chip" style="background:#281860;color:#C0A0F8;border:1px solid #403080"><span class="chip-swatch" style="background:#9878D0"></span>purple</span>
+        <span class="chip" style="background:#501818;color:#F09090;border:1px solid #703030"><span class="chip-swatch" style="background:#D07878"></span>pink</span>
+        <span class="chip" style="background:#504010;color:#E0C040;border:1px solid #706020"><span class="chip-swatch" style="background:#C8B040"></span>yellow</span>
+        <span class="chip" style="background:#104010;color:#80D080;border:1px solid #206020"><span class="chip-swatch" style="background:#60A860"></span>green</span>
+      </div>
+      <div class="snippet">
+        <div class="snippet-date v2-dark">TERÇA | 10/06</div>
+        <div class="task-row v2-dark" style="border-left-color:#6090D0">
+          <span class="task-bullet">•</span>
+          <span class="task-text">Revisar entregas recorrentes</span>
+          <span class="eisen-chip" style="background:#C03030">U+I</span>
+        </div>
+        <div class="task-row v2-dark" style="border-left-color:#50B0B0">
+          <span class="task-bullet">•</span>
+          <span class="task-text">IVDM</span>
+        </div>
+        <div class="task-row v2-dark" style="border-left-color:#D07878">
+          <span class="task-bullet">•</span>
+          <span class="task-text">Relat. Financeiro Bravonik</span>
+        </div>
+        <div class="task-row v2-dark" style="border-left-color:#9878D0">
+          <span class="task-bullet">•</span>
+          <span class="task-text">Consulado PT</span>
+        </div>
+        <div class="habit-row v2-dark">
+          <span class="habit-dot" style="background:#50B0B0"></span>Email &nbsp;·&nbsp;
+          <span class="habit-dot" style="background:#60A860"></span>WA &nbsp;·&nbsp;
+          <span class="habit-dot" style="background:#9878D0"></span>Meditar &nbsp;·&nbsp;
+          <span class="habit-dot" style="background:#C8B040"></span>Exercício &nbsp;·&nbsp;
+          <span class="habit-dot" style="background:#6090D0"></span>Água
+        </div>
+      </div>
+    </div>
+  </div><!-- /v2 -->
+
+
+  <!-- ============================================================
+       VARIATION 3 — FLORESTA DIGITAL
+       ============================================================ -->
+  <div class="theme-col">
+    <div class="theme-header v3-light-hdr">
+      <h2>Floresta Digital</h2>
+      <p>Editorial profundo, verde como âncora</p>
+    </div>
+
+    <!-- LIGHT -->
+    <div class="panel v3-light">
+      <span class="mode-label">Claro</span>
+      <div class="tokens">
+        <span class="chip" style="background:#E6EDE9;color:#0E1F18;border:1px solid #C0D0C8"><span class="chip-swatch" style="background:#F2F6F4"></span>bg</span>
+        <span class="chip" style="background:#E6EDE9;color:#0E1F18;border:1px solid #C0D0C8"><span class="chip-swatch" style="background:#E6EDE9"></span>surface</span>
+        <span class="chip" style="background:#E6EDE9;color:#0E1F18;border:1px solid #C0D0C8"><span class="chip-swatch" style="background:#C0D0C8"></span>border</span>
+        <span class="chip" style="background:#E6EDE9;color:#0E1F18;border:1px solid #C0D0C8"><span class="chip-swatch" style="background:#0E1F18"></span>txt-1</span>
+        <span class="chip" style="background:#E6EDE9;color:#0E1F18;border:1px solid #C0D0C8"><span class="chip-swatch" style="background:#4A6858"></span>txt-2</span>
+        <span class="chip" style="background:#1A5C40;color:#fff;border:1px solid #0E3828"><span class="chip-swatch" style="background:#1A5C40"></span>brand</span>
+        <span class="chip" style="background:#90B8D0;color:#0E2A40;border:1px solid #78A8C0"><span class="chip-swatch" style="background:#90B8D0"></span>day-hdr</span>
+        <span class="chip" style="background:#60C0A8;color:#083028;border:1px solid #40A888"><span class="chip-swatch" style="background:#60C0A8"></span>teal</span>
+        <span class="chip" style="background:#9878C0;color:#180830;border:1px solid #7860A8"><span class="chip-swatch" style="background:#9878C0"></span>purple</span>
+        <span class="chip" style="background:#D89890;color:#380810;border:1px solid #C07868"><span class="chip-swatch" style="background:#D89890"></span>pink</span>
+        <span class="chip" style="background:#D8B840;color:#483000;border:1px solid #B89820"><span class="chip-swatch" style="background:#D8B840"></span>amber</span>
+        <span class="chip" style="background:#78C888;color:#083810;border:1px solid #58A868"><span class="chip-swatch" style="background:#78C888"></span>green</span>
+      </div>
+      <div class="snippet">
+        <div class="snippet-date v3-light">TERÇA | 10/06</div>
+        <div class="task-row v3-light" style="border-left-color:#90B8D0">
+          <span class="task-bullet">•</span>
+          <span class="task-text">Revisar entregas recorrentes</span>
+          <span class="eisen-chip" style="background:#C03030">U+I</span>
+        </div>
+        <div class="task-row v3-light" style="border-left-color:#60C0A8">
+          <span class="task-bullet">•</span>
+          <span class="task-text">IVDM</span>
+        </div>
+        <div class="task-row v3-light" style="border-left-color:#D89890">
+          <span class="task-bullet">•</span>
+          <span class="task-text">Relat. Financeiro Bravonik</span>
+        </div>
+        <div class="task-row v3-light" style="border-left-color:#9878C0">
+          <span class="task-bullet">•</span>
+          <span class="task-text">Consulado PT</span>
+        </div>
+        <div class="habit-row v3-light">
+          <span class="habit-dot" style="background:#60C0A8"></span>Email &nbsp;·&nbsp;
+          <span class="habit-dot" style="background:#78C888"></span>WA &nbsp;·&nbsp;
+          <span class="habit-dot" style="background:#9878C0"></span>Meditar &nbsp;·&nbsp;
+          <span class="habit-dot" style="background:#D8B840"></span>Exercício &nbsp;·&nbsp;
+          <span class="habit-dot" style="background:#90B8D0"></span>Água
+        </div>
+      </div>
+    </div>
+
+    <!-- DARK -->
+    <div class="panel v3-dark">
+      <span class="mode-label">Escuro</span>
+      <div class="tokens">
+        <span class="chip" style="background:#102818;color:#D0E8D8;border:1px solid #1E4030"><span class="chip-swatch" style="background:#081810"></span>bg</span>
+        <span class="chip" style="background:#102818;color:#D0E8D8;border:1px solid #1E4030"><span class="chip-swatch" style="background:#102818"></span>surface</span>
+        <span class="chip" style="background:#102818;color:#D0E8D8;border:1px solid #1E4030"><span class="chip-swatch" style="background:#1E4030"></span>border</span>
+        <span class="chip" style="background:#102818;color:#D0E8D8;border:1px solid #1E4030"><span class="chip-swatch" style="background:#D0E8D8"></span>txt-1</span>
+        <span class="chip" style="background:#102818;color:#D0E8D8;border:1px solid #1E4030"><span class="chip-swatch" style="background:#6A9878"></span>txt-2</span>
+        <span class="chip" style="background:#102818;color:#40D890;border:1px solid #1E4030"><span class="chip-swatch" style="background:#40D890"></span>brand</span>
+        <span class="chip" style="background:#183848;color:#80B8D8;border:1px solid #204858"><span class="chip-swatch" style="background:#6090B0"></span>day-hdr</span>
+        <span class="chip" style="background:#083828;color:#40D0A0;border:1px solid #106040"><span class="chip-swatch" style="background:#38A888"></span>teal</span>
+        <span class="chip" style="background:#200838;color:#B888E8;border:1px solid #381860"><span class="chip-swatch" style="background:#8060A8"></span>purple</span>
+        <span class="chip" style="background:#381018;color:#E09090;border:1px solid #602028"><span class="chip-swatch" style="background:#B87870"></span>pink</span>
+        <span class="chip" style="background:#383008;color:#D0A020;border:1px solid #504810"><span class="chip-swatch" style="background:#C09020"></span>amber</span>
+        <span class="chip" style="background:#083818;color:#58C858;border:1px solid #106028"><span class="chip-swatch" style="background:#48A858"></span>green</span>
+      </div>
+      <div class="snippet">
+        <div class="snippet-date v3-dark">TERÇA | 10/06</div>
+        <div class="task-row v3-dark" style="border-left-color:#6090B0">
+          <span class="task-bullet">•</span>
+          <span class="task-text">Revisar entregas recorrentes</span>
+          <span class="eisen-chip" style="background:#C03030">U+I</span>
+        </div>
+        <div class="task-row v3-dark" style="border-left-color:#38A888">
+          <span class="task-bullet">•</span>
+          <span class="task-text">IVDM</span>
+        </div>
+        <div class="task-row v3-dark" style="border-left-color:#B87870">
+          <span class="task-bullet">•</span>
+          <span class="task-text">Relat. Financeiro Bravonik</span>
+        </div>
+        <div class="task-row v3-dark" style="border-left-color:#8060A8">
+          <span class="task-bullet">•</span>
+          <span class="task-text">Consulado PT</span>
+        </div>
+        <div class="habit-row v3-dark">
+          <span class="habit-dot" style="background:#38A888"></span>Email &nbsp;·&nbsp;
+          <span class="habit-dot" style="background:#48A858"></span>WA &nbsp;·&nbsp;
+          <span class="habit-dot" style="background:#8060A8"></span>Meditar &nbsp;·&nbsp;
+          <span class="habit-dot" style="background:#C09020"></span>Exercício &nbsp;·&nbsp;
+          <span class="habit-dot" style="background:#6090B0"></span>Água
+        </div>
+      </div>
+    </div>
+  </div><!-- /v3 -->
+
+
+  <!-- ============================================================
+       VARIATION 4 — MONOCHROME MINIMALISTA
+       ============================================================ -->
+  <div class="theme-col">
+    <div class="theme-header v4-light-hdr">
+      <h2>Monochrome Min.</h2>
+      <p>Foco máximo, índigo como único acento</p>
+    </div>
+
+    <!-- LIGHT -->
+    <div class="panel v4-light">
+      <span class="mode-label">Claro</span>
+      <div class="tokens">
+        <span class="chip" style="background:#EDEDF2;color:#141420;border:1px solid #D0D0DC"><span class="chip-swatch" style="background:#F8F8FA"></span>bg</span>
+        <span class="chip" style="background:#EDEDF2;color:#141420;border:1px solid #D0D0DC"><span class="chip-swatch" style="background:#EDEDF2"></span>surface</span>
+        <span class="chip" style="background:#EDEDF2;color:#141420;border:1px solid #D0D0DC"><span class="chip-swatch" style="background:#D0D0DC"></span>border</span>
+        <span class="chip" style="background:#EDEDF2;color:#141420;border:1px solid #D0D0DC"><span class="chip-swatch" style="background:#141420"></span>txt-1</span>
+        <span class="chip" style="background:#EDEDF2;color:#141420;border:1px solid #D0D0DC"><span class="chip-swatch" style="background:#606078"></span>txt-2</span>
+        <span class="chip" style="background:#2828A0;color:#fff;border:1px solid #181880"><span class="chip-swatch" style="background:#2828A0"></span>brand</span>
+        <span class="chip" style="background:#9898D8;color:#101050;border:1px solid #7878C0"><span class="chip-swatch" style="background:#9898D8"></span>day-hdr</span>
+        <span class="chip" style="background:#7878B8;color:#080840;border:1px solid #5858A0"><span class="chip-swatch" style="background:#7878B8"></span>blue-ind</span>
+        <span class="chip" style="background:#B0A0E0;color:#180840;border:1px solid #9888C8"><span class="chip-swatch" style="background:#B0A0E0"></span>purple</span>
+        <span class="chip" style="background:#C0A0C0;color:#300830;border:1px solid #A888A8"><span class="chip-swatch" style="background:#C0A0C0"></span>mauve</span>
+        <span class="chip" style="background:#B8B870;color:#383800;border:1px solid #A0A050"><span class="chip-swatch" style="background:#B8B870"></span>khaki</span>
+        <span class="chip" style="background:#88A888;color:#0A2010;border:1px solid #689068"><span class="chip-swatch" style="background:#88A888"></span>sage</span>
+      </div>
+      <div class="snippet">
+        <div class="snippet-date v4-light">TERÇA | 10/06</div>
+        <div class="task-row v4-light" style="border-left-color:#9898D8">
+          <span class="task-bullet">•</span>
+          <span class="task-text">Revisar entregas recorrentes</span>
+          <span class="eisen-chip" style="background:#A00000">U+I</span>
+        </div>
+        <div class="task-row v4-light" style="border-left-color:#7878B8">
+          <span class="task-bullet">•</span>
+          <span class="task-text">IVDM</span>
+        </div>
+        <div class="task-row v4-light" style="border-left-color:#C0A0C0">
+          <span class="task-bullet">•</span>
+          <span class="task-text">Relat. Financeiro Bravonik</span>
+        </div>
+        <div class="task-row v4-light" style="border-left-color:#B0A0E0">
+          <span class="task-bullet">•</span>
+          <span class="task-text">Consulado PT</span>
+        </div>
+        <div class="habit-row v4-light">
+          <span class="habit-dot" style="background:#7878B8"></span>Email &nbsp;·&nbsp;
+          <span class="habit-dot" style="background:#88A888"></span>WA &nbsp;·&nbsp;
+          <span class="habit-dot" style="background:#B0A0E0"></span>Meditar &nbsp;·&nbsp;
+          <span class="habit-dot" style="background:#B8B870"></span>Exercício &nbsp;·&nbsp;
+          <span class="habit-dot" style="background:#9898D8"></span>Água
+        </div>
+      </div>
+    </div>
+
+    <!-- DARK -->
+    <div class="panel v4-dark">
+      <span class="mode-label">Escuro</span>
+      <div class="tokens">
+        <span class="chip" style="background:#141420;color:#E8E8F8;border:1px solid #202038"><span class="chip-swatch" style="background:#0C0C14"></span>bg</span>
+        <span class="chip" style="background:#141420;color:#E8E8F8;border:1px solid #202038"><span class="chip-swatch" style="background:#141420"></span>surface</span>
+        <span class="chip" style="background:#141420;color:#E8E8F8;border:1px solid #202038"><span class="chip-swatch" style="background:#202038"></span>border</span>
+        <span class="chip" style="background:#141420;color:#E8E8F8;border:1px solid #202038"><span class="chip-swatch" style="background:#E8E8F8"></span>txt-1</span>
+        <span class="chip" style="background:#141420;color:#E8E8F8;border:1px solid #202038"><span class="chip-swatch" style="background:#6868A0"></span>txt-2</span>
+        <span class="chip" style="background:#141420;color:#8080E0;border:1px solid #202038"><span class="chip-swatch" style="background:#8080E0"></span>brand</span>
+        <span class="chip" style="background:#282868;color:#A8A8F8;border:1px solid #383880"><span class="chip-swatch" style="background:#6060C0"></span>day-hdr</span>
+        <span class="chip" style="background:#182050;color:#8888D8;border:1px solid #283070"><span class="chip-swatch" style="background:#5050A0"></span>blue-ind</span>
+        <span class="chip" style="background:#281858;color:#C8A8F8;border:1px solid #402878"><span class="chip-swatch" style="background:#9080D0"></span>purple</span>
+        <span class="chip" style="background:#281840;color:#C8A0C8;border:1px solid #382458"><span class="chip-swatch" style="background:#A080A0"></span>mauve</span>
+        <span class="chip" style="background:#282810;color:#D0D048;border:1px solid #404018"><span class="chip-swatch" style="background:#A0A048"></span>khaki</span>
+        <span class="chip" style="background:#102010;color:#90B890;border:1px solid #183018"><span class="chip-swatch" style="background:#607860"></span>sage</span>
+      </div>
+      <div class="snippet">
+        <div class="snippet-date v4-dark">TERÇA | 10/06</div>
+        <div class="task-row v4-dark" style="border-left-color:#6060C0">
+          <span class="task-bullet">•</span>
+          <span class="task-text">Revisar entregas recorrentes</span>
+          <span class="eisen-chip" style="background:#A00000">U+I</span>
+        </div>
+        <div class="task-row v4-dark" style="border-left-color:#5050A0">
+          <span class="task-bullet">•</span>
+          <span class="task-text">IVDM</span>
+        </div>
+        <div class="task-row v4-dark" style="border-left-color:#A080A0">
+          <span class="task-bullet">•</span>
+          <span class="task-text">Relat. Financeiro Bravonik</span>
+        </div>
+        <div class="task-row v4-dark" style="border-left-color:#9080D0">
+          <span class="task-bullet">•</span>
+          <span class="task-text">Consulado PT</span>
+        </div>
+        <div class="habit-row v4-dark">
+          <span class="habit-dot" style="background:#5050A0"></span>Email &nbsp;·&nbsp;
+          <span class="habit-dot" style="background:#607860"></span>WA &nbsp;·&nbsp;
+          <span class="habit-dot" style="background:#9080D0"></span>Meditar &nbsp;·&nbsp;
+          <span class="habit-dot" style="background:#A0A048"></span>Exercício &nbsp;·&nbsp;
+          <span class="habit-dot" style="background:#6060C0"></span>Água
+        </div>
+      </div>
+    </div>
+  </div><!-- /v4 -->
+
+
+  <!-- ============================================================
+       VARIATION 5 — QUENTE & ORGÂNICO
+       ============================================================ -->
+  <div class="theme-col">
+    <div class="theme-header v5-light-hdr">
+      <h2>Quente &amp; Orgânico</h2>
+      <p>Artesanal com alma digital, terracota viva</p>
+    </div>
+
+    <!-- LIGHT -->
+    <div class="panel v5-light">
+      <span class="mode-label">Claro</span>
+      <div class="tokens">
+        <span class="chip" style="background:#F5ECD8;color:#2A1808;border:1px solid #DEC8A8"><span class="chip-swatch" style="background:#FBF5EC"></span>bg</span>
+        <span class="chip" style="background:#F5ECD8;color:#2A1808;border:1px solid #DEC8A8"><span class="chip-swatch" style="background:#F5ECD8"></span>surface</span>
+        <span class="chip" style="background:#F5ECD8;color:#2A1808;border:1px solid #DEC8A8"><span class="chip-swatch" style="background:#DEC8A8"></span>border</span>
+        <span class="chip" style="background:#F5ECD8;color:#2A1808;border:1px solid #DEC8A8"><span class="chip-swatch" style="background:#2A1808"></span>txt-1</span>
+        <span class="chip" style="background:#F5ECD8;color:#2A1808;border:1px solid #DEC8A8"><span class="chip-swatch" style="background:#7A5840"></span>txt-2</span>
+        <span class="chip" style="background:#B84820;color:#fff;border:1px solid #903010"><span class="chip-swatch" style="background:#B84820"></span>brand</span>
+        <span class="chip" style="background:#B0C0E8;color:#1A2848;border:1px solid #98B0D8"><span class="chip-swatch" style="background:#B0C0E8"></span>day-hdr</span>
+        <span class="chip" style="background:#80C8B8;color:#0A3028;border:1px solid #60B0A0"><span class="chip-swatch" style="background:#80C8B8"></span>teal</span>
+        <span class="chip" style="background:#C0A8D8;color:#280848;border:1px solid #A890C0"><span class="chip-swatch" style="background:#C0A8D8"></span>purple</span>
+        <span class="chip" style="background:#F0A898;color:#580808;border:1px solid #D88878"><span class="chip-swatch" style="background:#F0A898"></span>pink</span>
+        <span class="chip" style="background:#E8CC70;color:#483000;border:1px solid #D0B040"><span class="chip-swatch" style="background:#E8CC70"></span>amber</span>
+        <span class="chip" style="background:#A8CC88;color:#183008;border:1px solid #88B460"><span class="chip-swatch" style="background:#A8CC88"></span>green</span>
+      </div>
+      <div class="snippet">
+        <div class="snippet-date v5-light">TERÇA | 10/06</div>
+        <div class="task-row v5-light" style="border-left-color:#B0C0E8">
+          <span class="task-bullet">•</span>
+          <span class="task-text">Revisar entregas recorrentes</span>
+          <span class="eisen-chip" style="background:#C03030">U+I</span>
+        </div>
+        <div class="task-row v5-light" style="border-left-color:#80C8B8">
+          <span class="task-bullet">•</span>
+          <span class="task-text">IVDM</span>
+        </div>
+        <div class="task-row v5-light" style="border-left-color:#F0A898">
+          <span class="task-bullet">•</span>
+          <span class="task-text">Relat. Financeiro Bravonik</span>
+        </div>
+        <div class="task-row v5-light" style="border-left-color:#C0A8D8">
+          <span class="task-bullet">•</span>
+          <span class="task-text">Consulado PT</span>
+        </div>
+        <div class="habit-row v5-light">
+          <span class="habit-dot" style="background:#80C8B8"></span>Email &nbsp;·&nbsp;
+          <span class="habit-dot" style="background:#A8CC88"></span>WA &nbsp;·&nbsp;
+          <span class="habit-dot" style="background:#C0A8D8"></span>Meditar &nbsp;·&nbsp;
+          <span class="habit-dot" style="background:#E8CC70"></span>Exercício &nbsp;·&nbsp;
+          <span class="habit-dot" style="background:#B0C0E8"></span>Água
+        </div>
+      </div>
+    </div>
+
+    <!-- DARK -->
+    <div class="panel v5-dark">
+      <span class="mode-label">Escuro</span>
+      <div class="tokens">
+        <span class="chip" style="background:#2A1810;color:#EEE0C8;border:1px solid #483020"><span class="chip-swatch" style="background:#1E1008"></span>bg</span>
+        <span class="chip" style="background:#2A1810;color:#EEE0C8;border:1px solid #483020"><span class="chip-swatch" style="background:#2A1810"></span>surface</span>
+        <span class="chip" style="background:#2A1810;color:#EEE0C8;border:1px solid #483020"><span class="chip-swatch" style="background:#483020"></span>border</span>
+        <span class="chip" style="background:#2A1810;color:#EEE0C8;border:1px solid #483020"><span class="chip-swatch" style="background:#EEE0C8"></span>txt-1</span>
+        <span class="chip" style="background:#2A1810;color:#EEE0C8;border:1px solid #483020"><span class="chip-swatch" style="background:#A08060"></span>txt-2</span>
+        <span class="chip" style="background:#2A1810;color:#E87040;border:1px solid #483020"><span class="chip-swatch" style="background:#E87040"></span>brand</span>
+        <span class="chip" style="background:#283868;color:#88A8E0;border:1px solid #304870"><span class="chip-swatch" style="background:#6880C0"></span>day-hdr</span>
+        <span class="chip" style="background:#0A3028;color:#60D0B8;border:1px solid #185040"><span class="chip-swatch" style="background:#50A898"></span>teal</span>
+        <span class="chip" style="background:#200840;color:#D0A8E8;border:1px solid #381860"><span class="chip-swatch" style="background:#9878B8"></span>purple</span>
+        <span class="chip" style="background:#401018;color:#E89080;border:1px solid #602030"><span class="chip-swatch" style="background:#C87868"></span>pink</span>
+        <span class="chip" style="background:#403008;color:#D0A830;border:1px solid #604810"><span class="chip-swatch" style="background:#C0A030"></span>amber</span>
+        <span class="chip" style="background:#103010;color:#80C060;border:1px solid #205020"><span class="chip-swatch" style="background:#6A9848"></span>green</span>
+      </div>
+      <div class="snippet">
+        <div class="snippet-date v5-dark">TERÇA | 10/06</div>
+        <div class="task-row v5-dark" style="border-left-color:#6880C0">
+          <span class="task-bullet">•</span>
+          <span class="task-text">Revisar entregas recorrentes</span>
+          <span class="eisen-chip" style="background:#C03030">U+I</span>
+        </div>
+        <div class="task-row v5-dark" style="border-left-color:#50A898">
+          <span class="task-bullet">•</span>
+          <span class="task-text">IVDM</span>
+        </div>
+        <div class="task-row v5-dark" style="border-left-color:#C87868">
+          <span class="task-bullet">•</span>
+          <span class="task-text">Relat. Financeiro Bravonik</span>
+        </div>
+        <div class="task-row v5-dark" style="border-left-color:#9878B8">
+          <span class="task-bullet">•</span>
+          <span class="task-text">Consulado PT</span>
+        </div>
+        <div class="habit-row v5-dark">
+          <span class="habit-dot" style="background:#50A898"></span>Email &nbsp;·&nbsp;
+          <span class="habit-dot" style="background:#6A9848"></span>WA &nbsp;·&nbsp;
+          <span class="habit-dot" style="background:#9878B8"></span>Meditar &nbsp;·&nbsp;
+          <span class="habit-dot" style="background:#C0A030"></span>Exercício &nbsp;·&nbsp;
+          <span class="habit-dot" style="background:#6880C0"></span>Água
+        </div>
+      </div>
+    </div>
+  </div><!-- /v5 -->
+
+</div><!-- /theme-grid -->
+
+</body>
+</html>

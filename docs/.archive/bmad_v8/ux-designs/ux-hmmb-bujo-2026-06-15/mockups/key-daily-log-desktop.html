@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>BuJo Digital — Daily Log (Desktop)</title>
+<style>
+/*
+  Screen: Daily Log — Desktop
+  Spine sections: EXPERIENCE.md §2.1 Superfícies, §2.2 Navegação desktop, §4.1 Task Row, §4.3 Habit Tracker Row, §4.4 Day Header, §4.6 Sidebar Nav Item, §5.1 Daily Log
+  Component Patterns: Task Row, Day Header, Sidebar Item (active), Habit Tracker Row, Status Chip, Eisenhower Chip
+  State Patterns: 5.1 Daily Log — "Dia em andamento", "Primeiro acesso do dia — migração pendente"
+  Key Flows: Fluxo 1 — Abertura do Dia (UJ-1, passos 1–2)
+*/
+
+/* ── Reset ──────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ── Design Tokens ──────────────────────────────────────────────────────── */
+:root {
+  --surface-base:    #FDFAF4;
+  --surface-raised:  #F7F3EB;
+  --surface-header:  #F0EBE0;
+  --ink-primary:     #1A1612;
+  --ink-secondary:   #6B6359;
+  --ink-disabled:    #B0A899;
+  --border-hairline: #DDD8CF;
+  --cat-teal:        #2BADA0;
+  --cat-purple:      #7B5EA7;
+  --cat-pink:        #D95F78;
+  --cat-yellow:      #C89B00;
+  --cat-green:       #4A8C5C;
+  --cat-blue:        #3D72B4;
+  --priority-ui:     #C0392B;
+  --priority-u:      #D4660A;
+  --priority-i:      #B8920A;
+  --brand-primary:   #2BADA0;
+  --fab-bg:          #1A1612;
+
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+
+  --sp1: 4px;
+  --sp2: 8px;
+  --sp3: 12px;
+  --sp4: 16px;
+  --sp5: 20px;
+  --sp6: 24px;
+  --sp8: 32px;
+  --sp10: 40px;
+  --sp12: 48px;
+  --sp16: 64px;
+}
+
+/* ── Typography base ────────────────────────────────────────────────────── */
+body {
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 400;
+  color: var(--ink-primary);
+  background: #E8E3DC;
+}
+
+/* ── Page wrapper: browser chrome + layout ──────────────────────────────── */
+.browser-chrome {
+  width: 1280px;
+  margin: 24px auto;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  border: 1px solid #C8C3BB;
+}
+
+.chrome-bar {
+  background: #EBEBEB;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  gap: 8px;
+  border-bottom: 1px solid #C8C3BB;
+}
+
+.chrome-dot {
+  width: 12px; height: 12px; border-radius: 50%;
+}
+.chrome-dot-r { background: #FF5F57; }
+.chrome-dot-y { background: #FFBD2E; }
+.chrome-dot-g { background: #28CA42; }
+
+.chrome-url {
+  flex: 1;
+  background: white;
+  border-radius: var(--radius-sm);
+  height: 22px;
+  margin: 0 40px;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  font-size: 11px;
+  color: #6B6359;
+  border: 1px solid #C8C3BB;
+}
+
+/* ── App shell ──────────────────────────────────────────────────────────── */
+.app-shell {
+  display: flex;
+  height: 820px;
+  background: var(--surface-base);
+}
+
+/* ── Sidebar ────────────────────────────────────────────────────────────── */
+.sidebar {
+  width: 240px;
+  min-width: 240px;
+  background: var(--surface-raised);
+  border-right: 1px solid var(--border-hairline);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sidebar-logo {
+  padding: var(--sp5) var(--sp4);
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--ink-primary);
+  border-bottom: 1px solid var(--border-hairline);
+  line-height: 24px;
+}
+
+.sidebar-logo span {
+  color: var(--brand-primary);
+}
+
+.sidebar-nav {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--sp2) 0;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp3);
+  padding: var(--sp2) var(--sp4);
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 400;
+  color: var(--ink-secondary);
+  cursor: pointer;
+  border-left: 3px solid transparent;
+  position: relative;
+  min-height: 36px;
+}
+
+.nav-item.active {
+  background: rgba(43, 173, 160, 0.10);
+  border-left-color: var(--brand-primary);
+  color: var(--brand-primary);
+  font-weight: 600;
+}
+
+.nav-item-icon {
+  font-size: 16px;
+  width: 20px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.nav-item-label {
+  flex: 1;
+}
+
+.nav-badge {
+  background: var(--brand-primary);
+  color: white;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 5px;
+}
+
+.nav-group-children {
+  padding-left: var(--sp4);
+}
+
+.nav-group-children .nav-item {
+  padding-left: var(--sp4);
+  font-size: 13px;
+}
+
+.nav-separator {
+  height: 1px;
+  background: var(--border-hairline);
+  margin: var(--sp2) var(--sp4);
+}
+
+.sidebar-settings {
+  border-top: 1px solid var(--border-hairline);
+  padding: var(--sp2) 0;
+}
+
+/* ── Main content area ──────────────────────────────────────────────────── */
+.main-content {
+  flex: 1;
+  overflow-y: auto;
+  background: var(--surface-base);
+}
+
+/* ── Side-by-side states layout ─────────────────────────────────────────── */
+.states-container {
+  display: flex;
+  gap: 0;
+  height: 100%;
+}
+
+.state-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border-hairline);
+  overflow: hidden;
+}
+
+.state-panel:last-child {
+  border-right: none;
+}
+
+.state-label {
+  background: var(--surface-header);
+  border-bottom: 1px solid var(--border-hairline);
+  padding: var(--sp1) var(--sp4);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-secondary);
+}
+
+.state-body {
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: var(--sp8);
+}
+
+/* ── Migration Banner ────────────────────────────────────────────────────── */
+.migration-banner {
+  margin: var(--sp3) var(--sp4) 0;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-hairline);
+  border-left: 3px solid var(--brand-primary);
+  border-radius: var(--radius-sm);
+  padding: var(--sp2) var(--sp3);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp3);
+}
+
+.migration-banner-text {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-secondary);
+  flex: 1;
+}
+
+.migration-banner-btn {
+  background: var(--brand-primary);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 3px var(--sp2);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* ── Day Header ─────────────────────────────────────────────────────────── */
+.day-header {
+  background: var(--surface-header);
+  padding: var(--sp1) var(--sp3);
+  border-bottom: 1px solid var(--border-hairline);
+  border-radius: var(--radius-xs);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 20px;
+  letter-spacing: -0.01em;
+  color: var(--ink-primary);
+  margin: var(--sp3) var(--sp4) 0;
+}
+
+/* ── Task List ──────────────────────────────────────────────────────────── */
+.task-list {
+  padding: var(--sp1) var(--sp4) 0;
+}
+
+.task-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp2);
+  padding: 6px 0 6px 0;
+  min-height: 36px;
+  border-left: 3px solid transparent;
+  border-radius: var(--radius-sm);
+  position: relative;
+  padding-left: var(--sp2);
+  padding-right: var(--sp3);
+}
+
+.task-row + .task-row {
+  border-top: 1px solid var(--border-hairline);
+}
+
+.task-row.cat-teal   { border-left-color: var(--cat-teal); }
+.task-row.cat-purple { border-left-color: var(--cat-purple); }
+.task-row.cat-pink   { border-left-color: var(--cat-pink); }
+.task-row.cat-green  { border-left-color: var(--cat-green); }
+.task-row.cat-yellow { border-left-color: var(--cat-yellow); }
+.task-row.cat-none   { border-left-color: transparent; }
+
+.task-status-icon {
+  font-size: 14px;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--ink-secondary);
+}
+
+.task-row.done .task-status-icon { color: var(--cat-green); }
+
+.task-text {
+  flex: 1;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 400;
+  color: var(--ink-primary);
+}
+
+.task-row.done .task-text {
+  color: var(--ink-disabled);
+}
+
+.task-right {
+  display: flex;
+  align-items: center;
+  gap: var(--sp2);
+  flex-shrink: 0;
+}
+
+/* ── Eisenhower Chip ─────────────────────────────────────────────────────── */
+.eisen-chip {
+  border-radius: var(--radius-xs);
+  padding: 1px 5px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 14px;
+  white-space: nowrap;
+}
+
+.eisen-chip.ui { background: var(--priority-ui); color: #FFFFFF; }
+.eisen-chip.u  { background: var(--priority-u);  color: #FFFFFF; }
+.eisen-chip.i  { background: var(--priority-i);  color: #1A1612; }
+
+/* ── Status Chip (for concluída etc) ─────────────────────────────────────── */
+.status-chip {
+  border-radius: var(--radius-xs);
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 14px;
+  white-space: nowrap;
+}
+
+.status-chip.iniciada {
+  background: rgba(200, 155, 0, 0.15);
+  border: 1px solid var(--cat-yellow);
+  color: #9A7600;
+}
+
+.status-chip.feita {
+  background: rgba(74, 140, 92, 0.15);
+  border: 1px solid var(--cat-green);
+  color: var(--cat-green);
+}
+
+/* ── Drag handle ─────────────────────────────────────────────────────────── */
+.drag-handle {
+  color: var(--ink-disabled);
+  font-size: 13px;
+  cursor: grab;
+  padding: 0 2px;
+}
+
+/* ── Habit Tracker Widget ────────────────────────────────────────────────── */
+.habit-widget {
+  margin: var(--sp4) var(--sp4) 0;
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.habit-widget-header {
+  background: var(--surface-header);
+  padding: var(--sp1) var(--sp3);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-secondary);
+  border-bottom: 1px solid var(--border-hairline);
+}
+
+.habit-widget-body {
+  padding: var(--sp2) var(--sp3);
+  display: flex;
+  gap: var(--sp4);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.habit-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp1);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-secondary);
+}
+
+.habit-checkbox {
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--border-hairline);
+  border-radius: var(--radius-xs);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: var(--surface-base);
+}
+
+.habit-checkbox.checked {
+  background: var(--cat-green);
+  border-color: var(--cat-green);
+  color: white;
+  font-size: 10px;
+}
+
+.habit-separator {
+  color: var(--border-hairline);
+  font-size: 12px;
+}
+
+</style>
+</head>
+<body>
+
+<div class="browser-chrome">
+  <!-- Chrome bar -->
+  <div class="chrome-bar">
+    <div class="chrome-dot chrome-dot-r"></div>
+    <div class="chrome-dot chrome-dot-y"></div>
+    <div class="chrome-dot chrome-dot-g"></div>
+    <div class="chrome-url">localhost:3000/hoje</div>
+  </div>
+
+  <!-- App Shell -->
+  <div class="app-shell">
+
+    <!-- Sidebar -->
+    <nav class="sidebar" aria-label="Navegação principal">
+      <div class="sidebar-logo">Bu<span>Jo</span></div>
+
+      <div class="sidebar-nav">
+
+        <!-- Hoje (active) -->
+        <div class="nav-item active">
+          <span class="nav-item-icon">◉</span>
+          <span class="nav-item-label">Hoje</span>
+        </div>
+
+        <!-- Planner group -->
+        <div class="nav-item">
+          <span class="nav-item-icon">▸</span>
+          <span class="nav-item-label">Planner</span>
+        </div>
+        <div class="nav-group-children">
+          <div class="nav-item">
+            <span class="nav-item-icon">⌗</span>
+            <span class="nav-item-label">Esta Semana</span>
+          </div>
+          <div class="nav-item">
+            <span class="nav-item-icon">⌗</span>
+            <span class="nav-item-label">Este Mês</span>
+          </div>
+          <div class="nav-item">
+            <span class="nav-item-icon">⌗</span>
+            <span class="nav-item-label">Futuro</span>
+          </div>
+        </div>
+
+        <!-- Hábitos -->
+        <div class="nav-item">
+          <span class="nav-item-icon">◇</span>
+          <span class="nav-item-label">Hábitos</span>
+        </div>
+
+        <!-- Saúde group -->
+        <div class="nav-item">
+          <span class="nav-item-icon">▸</span>
+          <span class="nav-item-label">Saúde</span>
+        </div>
+        <div class="nav-group-children">
+          <div class="nav-item">
+            <span class="nav-item-icon">◈</span>
+            <span class="nav-item-label">Métricas</span>
+          </div>
+          <div class="nav-item">
+            <span class="nav-item-icon">◈</span>
+            <span class="nav-item-label">Medicamentos</span>
+          </div>
+        </div>
+
+        <!-- Gratidão -->
+        <div class="nav-item">
+          <span class="nav-item-icon">❧</span>
+          <span class="nav-item-label">Gratidão</span>
+        </div>
+
+        <!-- Brain Dump with badge -->
+        <div class="nav-item">
+          <span class="nav-item-icon">⊙</span>
+          <span class="nav-item-label">Brain Dump</span>
+          <span class="nav-badge">2</span>
+        </div>
+
+        <!-- Arquivo -->
+        <div class="nav-item">
+          <span class="nav-item-icon">⊟</span>
+          <span class="nav-item-label">Arquivo</span>
+        </div>
+
+        <div class="nav-separator"></div>
+      </div>
+
+      <!-- Configurações -->
+      <div class="sidebar-settings">
+        <div class="nav-item">
+          <span class="nav-item-icon">⚙</span>
+          <span class="nav-item-label">Configurações</span>
+        </div>
+      </div>
+    </nav>
+
+    <!-- Main content: two state panels side by side -->
+    <main class="main-content" aria-label="Daily Log — Segunda, 16 de junho">
+      <div class="states-container">
+
+        <!-- Panel 1: Estado Normal -->
+        <div class="state-panel">
+          <div class="state-label">Estado Normal</div>
+          <div class="state-body">
+
+            <!-- Day header -->
+            <div class="day-header">SEGUNDA | 16/06</div>
+
+            <!-- Task list -->
+            <div class="task-list">
+
+              <!-- Task 1: cat-teal, U+I, Iniciada -->
+              <div class="task-row cat-teal">
+                <span class="task-status-icon">⧖</span>
+                <span class="task-text">Finalizar relatório Q2</span>
+                <div class="task-right">
+                  <span class="eisen-chip ui">U+I</span>
+                  <span class="status-chip iniciada">Iniciada</span>
+                </div>
+              </div>
+
+              <!-- Task 2: cat-purple, Pendente -->
+              <div class="task-row cat-purple">
+                <span class="task-status-icon">○</span>
+                <span class="task-text">IVDM</span>
+                <div class="task-right"></div>
+              </div>
+
+              <!-- Task 3: cat-pink, U, Pendente -->
+              <div class="task-row cat-pink">
+                <span class="task-status-icon">○</span>
+                <span class="task-text">Consulado PT</span>
+                <div class="task-right">
+                  <span class="eisen-chip u">U</span>
+                </div>
+              </div>
+
+              <!-- Task 4: cat-green, Concluída (muted) -->
+              <div class="task-row cat-green done">
+                <span class="task-status-icon">✓</span>
+                <span class="task-text">Wegovy</span>
+                <div class="task-right">
+                  <span class="status-chip feita">Feita</span>
+                </div>
+              </div>
+
+              <!-- Task 5: cat-yellow, Pendente, drag handle -->
+              <div class="task-row cat-yellow">
+                <span class="task-status-icon">○</span>
+                <span class="task-text">Peso Ano</span>
+                <div class="task-right">
+                  <span class="drag-handle">⠿</span>
+                </div>
+              </div>
+
+            </div><!-- /task-list -->
+
+            <!-- Habit tracker widget -->
+            <div class="habit-widget">
+              <div class="habit-widget-header">Hábitos de hoje</div>
+              <div class="habit-widget-body">
+                <div class="habit-item">
+                  <div class="habit-checkbox checked">✓</div>
+                  Email
+                </div>
+                <span class="habit-separator">·</span>
+                <div class="habit-item">
+                  <div class="habit-checkbox checked">✓</div>
+                  WA
+                </div>
+                <span class="habit-separator">·</span>
+                <div class="habit-item">
+                  <div class="habit-checkbox"></div>
+                  Meditar
+                </div>
+                <span class="habit-separator">·</span>
+                <div class="habit-item">
+                  <div class="habit-checkbox"></div>
+                  Exercício
+                </div>
+                <span class="habit-separator">·</span>
+                <div class="habit-item">
+                  <div class="habit-checkbox"></div>
+                  Água
+                </div>
+              </div>
+            </div>
+
+          </div><!-- /state-body -->
+        </div><!-- /Panel 1 -->
+
+        <!-- Panel 2: Com banner de migração -->
+        <div class="state-panel">
+          <div class="state-label">Com banner de migração</div>
+          <div class="state-body">
+
+            <!-- Day header -->
+            <div class="day-header">SEGUNDA | 16/06</div>
+
+            <!-- Migration banner -->
+            <div class="migration-banner">
+              <span class="migration-banner-text">4 tarefas pendentes de ontem. Iniciar migração?</span>
+              <button class="migration-banner-btn">Iniciar</button>
+            </div>
+
+            <!-- Task list (same as Estado Normal) -->
+            <div class="task-list">
+
+              <div class="task-row cat-teal">
+                <span class="task-status-icon">⧖</span>
+                <span class="task-text">Finalizar relatório Q2</span>
+                <div class="task-right">
+                  <span class="eisen-chip ui">U+I</span>
+                  <span class="status-chip iniciada">Iniciada</span>
+                </div>
+              </div>
+
+              <div class="task-row cat-purple">
+                <span class="task-status-icon">○</span>
+                <span class="task-text">IVDM</span>
+                <div class="task-right"></div>
+              </div>
+
+              <div class="task-row cat-pink">
+                <span class="task-status-icon">○</span>
+                <span class="task-text">Consulado PT</span>
+                <div class="task-right">
+                  <span class="eisen-chip u">U</span>
+                </div>
+              </div>
+
+              <div class="task-row cat-green done">
+                <span class="task-status-icon">✓</span>
+                <span class="task-text">Wegovy</span>
+                <div class="task-right">
+                  <span class="status-chip feita">Feita</span>
+                </div>
+              </div>
+
+              <div class="task-row cat-yellow">
+                <span class="task-status-icon">○</span>
+                <span class="task-text">Peso Ano</span>
+                <div class="task-right">
+                  <span class="drag-handle">⠿</span>
+                </div>
+              </div>
+
+            </div><!-- /task-list -->
+
+            <!-- Habit tracker widget -->
+            <div class="habit-widget">
+              <div class="habit-widget-header">Hábitos de hoje</div>
+              <div class="habit-widget-body">
+                <div class="habit-item">
+                  <div class="habit-checkbox checked">✓</div>
+                  Email
+                </div>
+                <span class="habit-separator">·</span>
+                <div class="habit-item">
+                  <div class="habit-checkbox checked">✓</div>
+                  WA
+                </div>
+                <span class="habit-separator">·</span>
+                <div class="habit-item">
+                  <div class="habit-checkbox"></div>
+                  Meditar
+                </div>
+                <span class="habit-separator">·</span>
+                <div class="habit-item">
+                  <div class="habit-checkbox"></div>
+                  Exercício
+                </div>
+                <span class="habit-separator">·</span>
+                <div class="habit-item">
+                  <div class="habit-checkbox"></div>
+                  Água
+                </div>
+              </div>
+            </div>
+
+          </div><!-- /state-body -->
+        </div><!-- /Panel 2 -->
+
+      </div><!-- /states-container -->
+    </main>
+
+  </div><!-- /app-shell -->
+</div><!-- /browser-chrome -->
+
+</body>
+</html>
