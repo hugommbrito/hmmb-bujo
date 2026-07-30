@@ -192,7 +192,7 @@ development_status:
   15-0-ux-mockup-da-captura-e-do-brain-dump: done  # gate UX bmad-ux aprovado e promovido em 2026-07-29 a partir de handoff trazido por Hugo; Q1 mudou o domínio (edição do item entra no escopo, endpoint novo M11 é pré-requisito de arquitetura); libera 15.1–15.3
   15-1-brain-dump-no-sistema-novo-inbox-e-processamento: done
   15-2-capture-sheet-e-captura-persistente-no-sistema-novo: done
-  15-3-passe-de-paridade-estados-e-acessibilidade-da-captura: backlog
+  15-3-passe-de-paridade-estados-e-acessibilidade-da-captura: done
   epic-15-retrospective: optional
 
   # Epic 16: Onda 5 — Módulos: Migração + Refinos + Journalling
