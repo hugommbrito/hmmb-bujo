@@ -188,8 +188,8 @@ development_status:
   epic-14-retrospective: done  # retro interativa com Hugo em 2026-07-28; ver _bmad-output/implementation-artifacts/epic-14-retro-2026-07-28.md
 
   # Epic 15: Onda 4 — Captura no Sistema Novo
-  epic-15: backlog
-  15-0-ux-mockup-da-captura-e-do-brain-dump: backlog  # ⛔ gate UX human-in-the-loop (rito bmad-ux — NUNCA dev-story/automator); bloqueia 15.1–15.3
+  epic-15: in-progress  # 1ª story (15.0) done em 2026-07-29
+  15-0-ux-mockup-da-captura-e-do-brain-dump: done  # gate UX bmad-ux aprovado e promovido em 2026-07-29 a partir de handoff trazido por Hugo; Q1 mudou o domínio (edição do item entra no escopo, endpoint novo M11 é pré-requisito de arquitetura); libera 15.1–15.3
   15-1-brain-dump-no-sistema-novo-inbox-e-processamento: backlog
   15-2-capture-sheet-e-captura-persistente-no-sistema-novo: backlog
   15-3-passe-de-paridade-estados-e-acessibilidade-da-captura: backlog
