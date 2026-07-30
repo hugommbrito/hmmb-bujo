@@ -124,7 +124,7 @@ test.describe('badge no FAB mobile', () => {
   test('capturar um item mostra o badge no FAB; o badge persiste ao navegar para outra página (AC1)', async ({
     page,
   }) => {
-    const fab = page.getByRole('button', { name: 'Captura rápida' })
+    const fab = page.getByRole('button', { name: 'Abrir captura rápida' })
     const fabBadge = fab.locator('.MuiBadge-badge')
 
     await expect(fab).toBeVisible()
@@ -152,7 +152,7 @@ test.describe('badge no FAB mobile', () => {
   test('tocar o FAB abre o Capture Sheet; salvar cria um BrainDumpItem em qualquer destino e atualiza o badge (AC1)', async ({
     page,
   }) => {
-    const fab = page.getByRole('button', { name: 'Captura rápida' })
+    const fab = page.getByRole('button', { name: 'Abrir captura rápida' })
     await fab.click()
 
     // Título já em foco ao abrir (teclado aberto no dispositivo real).
@@ -160,12 +160,18 @@ test.describe('badge no FAB mobile', () => {
     await expect(titulo).toBeFocused()
 
     await titulo.fill('Ideia capturada no FAB')
-    await page.getByRole('combobox', { name: 'Destino' }).click()
-    await page.getByRole('option', { name: 'Esta Semana' }).click()
-    await page.getByRole('button', { name: 'Salvar' }).click()
+    // Destino nativo (M11 — mesmo padrão de `BrainDumpItemSheet.tsx`, Story
+    // 15.2): `.selectOption`, não clique+opção (essa era a API da MUI
+    // `<Select>` antiga).
+    await page.getByRole('combobox', { name: 'Destino' }).selectOption('week')
+    await page.getByRole('button', { name: 'Salvar no Brain Dump' }).click()
 
     // Sheet fecha e o badge sobe para "1".
     await expect(page.getByRole('dialog', { name: 'Captura rápida' })).toHaveCount(0)
+    // Foco volta ao acionador (AC: "o foco volta ao acionador na rota onde
+    // Hugo estava") — restauração padrão do Modal do MUI, nunca antes provada
+    // em e2e.
+    await expect(fab).toBeFocused()
     await expect(fab.getByText('1')).toBeVisible()
 
     // Prova de que qualquer destino ainda cria um BrainDumpItem (nunca uma Task
@@ -178,7 +184,7 @@ test.describe('badge no FAB mobile', () => {
   test('salvar via Enter no Título captura no destino default (Brain Dump) e atualiza o badge (AC1)', async ({
     page,
   }) => {
-    const fab = page.getByRole('button', { name: 'Captura rápida' })
+    const fab = page.getByRole('button', { name: 'Abrir captura rápida' })
     await fab.click()
 
     const titulo = page.getByRole('textbox', { name: 'Título' })
@@ -198,7 +204,7 @@ test.describe('badge no FAB mobile', () => {
   })
 
   test('Esc sem título fecha o Capture Sheet sem criar nada (AC2)', async ({ page }) => {
-    const fab = page.getByRole('button', { name: 'Captura rápida' })
+    const fab = page.getByRole('button', { name: 'Abrir captura rápida' })
     const fabBadge = fab.locator('.MuiBadge-badge')
 
     await fab.click()
@@ -214,7 +220,7 @@ test.describe('badge no FAB mobile', () => {
   test('Esc com título mostra o diálogo "Descartar item?"; descartar fecha sem criar nada (AC2)', async ({
     page,
   }) => {
-    const fab = page.getByRole('button', { name: 'Captura rápida' })
+    const fab = page.getByRole('button', { name: 'Abrir captura rápida' })
     const fabBadge = fab.locator('.MuiBadge-badge')
 
     await fab.click()
@@ -230,7 +236,7 @@ test.describe('badge no FAB mobile', () => {
   })
 
   test('offline desabilita o FAB; voltar a ficar online reabilita (AC3)', async ({ page }) => {
-    const fab = page.getByRole('button', { name: 'Captura rápida' })
+    const fab = page.getByRole('button', { name: 'Abrir captura rápida' })
     await expect(fab).toBeEnabled()
 
     await page.context().setOffline(true)
@@ -239,6 +245,45 @@ test.describe('badge no FAB mobile', () => {
     await page.context().setOffline(false)
     await expect(fab).toBeEnabled()
   })
+})
+
+test('âncora "Abrir captura rápida" da sidebar abre o Capture Sheet como Dialog com Cancelar; salvar cria o item e atualiza o badge (Story 15.2, viewport desktop padrão do projeto)', async ({
+  page,
+}) => {
+  // Variante de ponteiro (wide/medium/tablet): até esta story, só a variante
+  // compact (Drawer, FAB) tinha cobertura e2e — este teste fecha o gap do
+  // Dialog aberto pela âncora da sidebar.
+  const anchor = page.getByRole('button', { name: 'Abrir captura rápida' })
+  await anchor.click()
+
+  const dialog = page.getByRole('dialog', { name: 'Captura rápida' })
+  await expect(dialog).toBeVisible()
+
+  const titulo = page.getByRole('textbox', { name: 'Título' })
+  await expect(titulo).toBeFocused()
+  await expect(page.getByRole('button', { name: 'Cancelar' })).toBeVisible()
+
+  // "Cancelar" com título preenchido passa pela MESMA guarda de descarte do
+  // X/Esc/backdrop — não é um atalho que pula a confirmação.
+  await titulo.fill('Rascunho no ponteiro')
+  await page.getByRole('button', { name: 'Cancelar' }).click()
+  await expect(page.getByText('Descartar item?')).toBeVisible()
+  await page.getByRole('button', { name: 'Continuar editando' }).click()
+  await expect(page.getByText('Descartar item?')).toHaveCount(0)
+  await expect(titulo).toHaveValue('Rascunho no ponteiro')
+
+  await page.getByRole('combobox', { name: 'Destino' }).selectOption('week')
+  await page.getByRole('button', { name: 'Salvar no Brain Dump' }).click()
+
+  await expect(dialog).toHaveCount(0)
+  // Foco volta ao acionador (mesma AC do FAB, agora provada também na
+  // variante de ponteiro/âncora da sidebar).
+  await expect(anchor).toBeFocused()
+  await expect(anchor.getByText('1')).toBeVisible()
+
+  await page.goto('/brain-dump')
+  await expect(page.getByRole('main', { name: 'Brain Dump', exact: true })).toBeVisible()
+  await expect(page.getByText('Rascunho no ponteiro')).toBeVisible()
 })
 
 test('dois usuários em navegadores distintos têm badges isolados; a captura de um nunca aparece para o outro (AC3)', async ({

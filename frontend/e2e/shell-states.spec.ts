@@ -159,7 +159,7 @@ test.describe('Estados do chrome — compact 390×720', () => {
     })
     await page.reload()
 
-    const fab = page.getByRole('button', { name: 'Captura rápida', exact: true })
+    const fab = page.getByRole('button', { name: 'Abrir captura rápida', exact: true })
     await expect(fab).toBeVisible()
     await expect(fab.locator('.MuiBadge-badge')).toHaveClass(/MuiBadge-invisible/)
     await expect(fab).not.toHaveAttribute('aria-disabled', /.*/)
@@ -189,7 +189,7 @@ test.describe('Estados do chrome — compact 390×720', () => {
     const nav = bottomNav(page)
     await expect(nav.getByRole('button')).toHaveCount(4)
     await expect(nav.getByRole('button', { name: 'Menu' })).toHaveAttribute('aria-current', 'page')
-    await expect(page.getByRole('button', { name: 'Captura rápida', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Abrir captura rápida', exact: true })).toBeVisible()
 
     // No sheet, o destino PAI da rota de histórico é o ativo (AC1).
     await nav.getByRole('button', { name: 'Menu' }).click()

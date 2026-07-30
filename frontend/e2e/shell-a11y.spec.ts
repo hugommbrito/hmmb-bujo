@@ -84,7 +84,7 @@ async function waitForRailSettled(page: Page): Promise<void> {
 /** Abre o Capture Sheet real e espera ele assentar (título em foco). */
 async function openCaptureSheet(page: Page, trigger: 'fab' | 'anchor'): Promise<void> {
   if (trigger === 'fab') {
-    await page.getByRole('button', { name: 'Captura rápida', exact: true }).click()
+    await page.getByRole('button', { name: 'Abrir captura rápida', exact: true }).click()
   } else {
     await mainNav(page).getByRole('button', { name: 'Abrir captura rápida', exact: true }).click()
   }
@@ -253,7 +253,7 @@ test.describe('Matriz axe — compact 390×720', () => {
   test('compact 390 · /today · topbar + bottom nav + FAB', async ({ page }) => {
     await expect(page.getByRole('banner')).toContainText('Hoje')
     await expect(bottomNav(page)).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Captura rápida', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Abrir captura rápida', exact: true })).toBeVisible()
 
     // A 13.1 media só 320: 390 é a largura real de um telefone moderno e a
     // composição da barra (4 colunas com label) muda com ela.
@@ -286,9 +286,9 @@ test.describe('Matriz axe — compact 390×720', () => {
   })
 
   test('compact 390 · /today · offline (FAB aria-disabled)', async ({ page, context }) => {
-    await expect(page.getByRole('button', { name: 'Captura rápida', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Abrir captura rápida', exact: true })).toBeVisible()
     await context.setOffline(true)
-    await expect(page.getByRole('button', { name: 'Captura rápida (sem conexão)' })).toHaveAttribute(
+    await expect(page.getByRole('button', { name: 'Abrir captura rápida (sem conexão)' })).toHaveAttribute(
       'aria-disabled',
       'true',
     )
