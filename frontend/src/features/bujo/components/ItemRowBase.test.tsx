@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { axe } from 'jest-axe'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { ItemRowBase } from './ItemRowBase'
 
@@ -49,6 +49,38 @@ describe('ItemRowBase — anatomia canônica (Story 14.8, AC2)', () => {
     // por "Editar" seriam ambíguos por leitor de tela e por locator.
     expect(screen.getAllByRole('button')).toHaveLength(1)
     expect(screen.getByRole('button', { name: 'Editar' })).toBeInTheDocument()
+  })
+})
+
+describe('ItemRowBase — onActivate (Épico 15, ponto de extensão)', () => {
+  it('sem onActivate, o título continua sem ser um controle (default preservado)', () => {
+    render(<ItemRowBase title="Sem onActivate" subline="Semanal" />)
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
+  })
+
+  it('com onActivate, o bloco de título vira um botão real', () => {
+    const onActivate = vi.fn()
+    render(<ItemRowBase title="Renovar seguro do carro" subline="23 jul." onActivate={onActivate} />)
+
+    const control = screen.getByRole('button', { name: /Renovar seguro do carro/ })
+    control.click()
+
+    expect(onActivate).toHaveBeenCalledTimes(1)
+  })
+
+  it('onActivate + trailingSlot convivem sem colidir (dois controles distintos)', () => {
+    const onActivate = vi.fn()
+    render(
+      <ItemRowBase
+        title="Item do Brain Dump"
+        subline="23 jul."
+        onActivate={onActivate}
+        trailingSlot={<button type="button">Mover</button>}
+      />,
+    )
+
+    expect(screen.getAllByRole('button')).toHaveLength(2)
+    expect(screen.getByRole('button', { name: 'Mover' })).toBeInTheDocument()
   })
 })
 

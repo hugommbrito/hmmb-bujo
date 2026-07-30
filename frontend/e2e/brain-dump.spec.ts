@@ -8,6 +8,20 @@ import { test, expect, signUpAndLandOnToday } from './fixtures'
 // `braindump/services.py`/`views.py` e dos componentes React (que simulam a
 // API via mock): aqui valida-se o fluxo real, incluindo a Task aparecendo no
 // Daily Log de hoje após o processamento.
+//
+// Story 15.1 (M11): `/brain-dump` passa a montar `BrainDumpInboxPage` (sistema
+// novo) — a linha não tem mais `data-testid="brain-dump-item-row"` (ItemRowBase
+// usa `role="listitem"` dentro de um `<ul>`) e "Mover" abre o
+// `BrainDumpDestinationPicker` (radiogroup de 4 destinos nomeados), não mais o
+// `ProcessItemDialog` legado com abas. Os testes abaixo foram ajustados para o
+// novo DOM — mesmo padrão de ajuste que `recurring-templates.spec.ts` recebeu
+// na Story 14.8 quando `planner/recurring` trocou de página. Cobertura
+// dedicada da Inbox nova fica em `brain-dump-inbox.spec.ts`.
+
+/** Uma linha do Brain Dump pelo título — `role="listitem"` (ItemRowBase). */
+function itemRow(page: import('@playwright/test').Page, title: string) {
+  return page.getByRole('listitem').filter({ hasText: title })
+}
 
 test('Brain Dump vazio para usuário novo mostra o estado vazio (AC1)', async ({ page }) => {
   await page.getByRole('button', { name: 'Brain Dump' }).click()
@@ -45,25 +59,25 @@ test('captura, processa para Hoje e descarta um item, sem afetar o comportamento
   await expect(page.getByText('Ideia com dica de Hoje')).toBeVisible()
 
   // Processar "Ideia solta sem destino" para Hoje — item some da lista e a
-  // Task aparece no Daily Log de hoje.
-  const itemRow = page
-    .getByTestId('brain-dump-item-row')
-    .filter({ hasText: 'Ideia solta sem destino' })
-  await itemRow.getByRole('button', { name: 'Mover' }).click()
-  await expect(page.getByText('Mover item do Brain Dump')).toBeVisible()
-  await page.getByRole('button', { name: 'Mover' }).last().click()
-  await expect(page.getByText('Mover item do Brain Dump')).toHaveCount(0)
+  // Task aparece no Daily Log de hoje. Seletor de destino novo (M11):
+  // radiogroup de 4 destinos nomeados, sem dica pré-selecionada (item sem
+  // targetLog) — escolhe "Hoje" e confirma pelo nome do ato.
+  await itemRow(page, 'Ideia solta sem destino').getByRole('button', { name: 'Mover Ideia solta sem destino' }).click()
+  await expect(page.getByRole('dialog', { name: 'Para onde mover este item?' })).toBeVisible()
+  await page.getByRole('radio', { name: 'Hoje' }).click()
+  await page.getByRole('button', { name: 'Mover para hoje' }).click()
+  await expect(page.getByRole('dialog', { name: 'Para onde mover este item?' })).toHaveCount(0)
   await expect(page.getByText('Ideia solta sem destino')).toHaveCount(0)
 
-  await page.getByRole('button', { name: 'Hoje' }).click()
+  await page.getByRole('button', { name: 'Hoje', exact: true }).click()
   await expect(page.getByLabel('Hoje')).toBeVisible()
   await expect(page.getByText('Ideia solta sem destino')).toBeVisible()
 
-  // Descartar "Ideia com dica de Hoje" — some sem criar nada.
+  // Descartar "Ideia com dica de Hoje" — some sem criar nada, sem dialog.
   await page.getByRole('button', { name: 'Brain Dump' }).click()
   await expect(page.getByRole('main', { name: 'Brain Dump', exact: true })).toBeVisible()
   await expect(page.getByText('Ideia com dica de Hoje')).toBeVisible()
-  await page.getByRole('button', { name: 'Descartar' }).click()
+  await page.getByRole('button', { name: 'Descartar Ideia com dica de Hoje' }).click()
   await expect(page.getByText('Ideia com dica de Hoje')).toHaveCount(0)
   await expect(page.getByText('Brain Dump vazio.')).toBeVisible()
 
@@ -93,8 +107,7 @@ test('capturar um item mostra o badge "1" na sidebar; descartar o item faz o bad
   await expect(brainDumpNavButton.getByText('1')).toBeVisible()
   await expect(badgeCounter).not.toHaveClass(/MuiBadge-invisible/)
 
-  const itemRow = page.getByTestId('brain-dump-item-row').filter({ hasText: 'Item para o badge' })
-  await itemRow.getByRole('button', { name: 'Descartar' }).click()
+  await itemRow(page, 'Item para o badge').getByRole('button', { name: 'Descartar Item para o badge' }).click()
   await expect(page.getByText('Item para o badge')).toHaveCount(0)
 
   await expect(badgeCounter).toHaveClass(/MuiBadge-invisible/)
@@ -131,7 +144,7 @@ test.describe('badge no FAB mobile', () => {
 
     // Contagem é server state global (TanStack Query) — continua "1" ao sair
     // da página do Brain Dump, sem precisar de store de cliente.
-    await page.getByRole('button', { name: 'Hoje' }).click()
+    await page.getByRole('button', { name: 'Hoje', exact: true }).click()
     await expect(page).toHaveURL('/today')
     await expect(fab.getByText('1')).toBeVisible()
   })
@@ -272,7 +285,7 @@ test('abre o Brain Dump via atalho global `B` (AC3); dentro de um campo editáve
 
   // Dentro de um campo editável (outra página), `b` é só um caractere digitado
   // — não sequestra o atalho (mesmo cuidado do atalho `N` em DailyPage.tsx).
-  await page.getByRole('button', { name: 'Hoje' }).click()
+  await page.getByRole('button', { name: 'Hoje', exact: true }).click()
   await expect(page).toHaveURL('/today')
   const newTaskField = page.getByRole('textbox', { name: 'Nova tarefa' })
   await newTaskField.fill('b')

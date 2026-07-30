@@ -57,3 +57,21 @@ source_spec: `spec-14-10-arquivo-no-sistema-novo.md`
 severity: low
 reason: The follow-up-review damping cap (limits.max_followup_reviews = 1) was spent with the story finalized (status: done, verify green) while the review pass still recommended an independent follow-up. The work was committed by bmad-loop run 20260728-115746-2279; this entry preserves the lingering recommendation for a deliberate later review.
 status: open
+
+## Deferred from: review of story-15-1-brain-dump-no-sistema-novo-inbox-e-processamento (2026-07-30)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-15-1-brain-dump-no-sistema-novo-inbox-e-processamento.md`
+  summary: The global Enter keyboard shortcut in the Brain Dump/migration destination pickers can confirm a stale, previously-armed destination/day instead of the one the user just focused, because the focused radio-button's native click (which updates state) fires as the Enter keydown's default action AFTER the window-level shortcut handler already read the old state.
+  evidence: confirmed reading `useKeyboardShortcuts` (`frontend/src/shared/hooks/useKeyboardShortcuts.ts:27-36` — only excludes INPUT/TEXTAREA/contentEditable from the shortcut guard, not BUTTON) alongside `confirm()`/`useKeyboardShortcuts({ Enter: confirm, ... })` in `BrainDumpDestinationPicker.tsx:188-208`. The identical anatomy (global Enter shortcut + `role="radio"` on a `<button>` element) already exists, unmodified, in the production `DestinationPicker.tsx` (M10, consumed by `MigrationRitualPage.tsx`) — this story's new picker deliberately reuses that anatomy per its own header comment, so the hazard is inherited, not newly introduced logic.
+  location: >-
+    frontend/src/features/braindump/components/BrainDumpDestinationPicker.tsx:205-208;
+    frontend/src/features/bujo/components/DestinationPicker.tsx
+  severity: medium
+
+### DW-2: Follow-up review still recommended for 15-1-brain-dump-no-sistema-novo-inbox-e-processamento after the review budget was exhausted
+origin: review-budget-followup
+location: n/a
+source_spec: `spec-15-1-brain-dump-no-sistema-novo-inbox-e-processamento.md`
+severity: low
+reason: Review budget (3 cycles) was exhausted with the story finalized (status: done, verify green) while the review pass kept recommending an independent follow-up. The work was committed by bmad-loop run 20260729-230649-5530; this entry preserves the lingering follow-up recommendation for a deliberate later review.
+status: open

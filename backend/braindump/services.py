@@ -33,6 +33,21 @@ def create_brain_dump_item(*, user, title, description=None, target_log=None) ->
 
 
 @transaction.atomic
+def update_brain_dump_item(*, user, item_id, **fields) -> BrainDumpItem:
+    """PATCH parcial (M11) — mesmo formato de `create_brain_dump_item`/
+    `discard_brain_dump_item` acima: `BrainDumpItem.objects.get` (tenant-scoped,
+    fail-closed) + `setattr` + `.save(update_fields=list(fields))`. SEM
+    `updated_at`: `BrainDumpItem` não tem esse campo (diferente de
+    `Task._apply_fields`) e nenhum requisito de produto pede timestamp de
+    edição visível (ver spec Block If antes de acrescentar migração nova)."""
+    item = BrainDumpItem.objects.get(id=item_id)  # objects = auto-escopado por tenant
+    for field, value in fields.items():
+        setattr(item, field, value)
+    item.save(update_fields=list(fields))
+    return item
+
+
+@transaction.atomic
 def process_brain_dump_item(
     *, user, item_id, destination, month_first=None, scheduled_date=None
 ):

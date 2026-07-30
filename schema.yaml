@@ -107,6 +107,31 @@ paths:
                 $ref: '#/components/schemas/BrainDumpItem'
           description: ''
   /api/brain-dump/items/{id}/:
+    patch:
+      operationId: brain_dump_items_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - brain-dump
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedBrainDumpItemUpdate'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BrainDumpItem'
+          description: ''
     delete:
       operationId: brain_dump_items_destroy
       parameters:
@@ -3880,6 +3905,32 @@ components:
     NullEnum:
       enum:
       - null
+    PatchedBrainDumpItemUpdate:
+      type: object
+      description: |-
+        Corpo do `PATCH /api/brain-dump/items/{id}/` (M11) — mesmo molde de
+        `bujo/serializers.py::TaskUpdateSerializer`: os três campos são opcionais
+        porque cada um declara `required=False` (sem `default=`), o que já basta
+        para o DRF pular um campo ausente do corpo (`SkipField`) e não incluí-lo
+        em `validated_data`. `partial=True` na view NÃO é a causa da
+        opcionalidade aqui — com todos os campos `required=False`, o
+        comportamento de ausência é idêntico com ou sem `partial=True`; um campo
+        NOVO que nascesse sem `required=False` continuaria obrigatório mesmo
+        passando `partial=True`. Sem `validate()` — nenhum dos três campos
+        depende do estado atual do item (diferente de `TaskUpdateSerializer`, que
+        valida `scheduled_date` contra o Monthly Log na VIEW, não aqui).
+      properties:
+        title:
+          type: string
+          maxLength: 500
+        description:
+          type: string
+          nullable: true
+        targetLog:
+          nullable: true
+          oneOf:
+          - $ref: '#/components/schemas/TargetLogEnum'
+          - $ref: '#/components/schemas/NullEnum'
     PatchedDoctorUpdate:
       type: object
       properties:

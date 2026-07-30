@@ -12,6 +12,7 @@ from braindump.serializers import (
     BrainDumpItemCreateSerializer,
     BrainDumpItemProcessSerializer,
     BrainDumpItemSerializer,
+    BrainDumpItemUpdateSerializer,
 )
 from braindump.tests.factories import BrainDumpItemFactory
 from core.tenant import tenant_context
@@ -103,3 +104,57 @@ def test_brain_dump_item_process_serializer_future_aceita_scheduled_date_no_mes_
 
 def test_brain_dump_count_serializer_expoe_count():
     assert BrainDumpCountSerializer({"count": 3}).data == {"count": 3}
+
+
+# --- BrainDumpItemUpdateSerializer (M11, Story 15.1) ---------------------------
+
+
+def test_brain_dump_item_update_serializer_partial_aceita_so_title():
+    serializer = BrainDumpItemUpdateSerializer(data={"title": "Novo título"}, partial=True)
+
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data == {"title": "Novo título"}
+
+
+def test_brain_dump_item_update_serializer_aceita_os_3_campos():
+    serializer = BrainDumpItemUpdateSerializer(
+        data={"title": "Título", "description": "Descrição", "target_log": "month"},
+        partial=True,
+    )
+
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data == {
+        "title": "Título",
+        "description": "Descrição",
+        "target_log": "month",
+    }
+
+
+def test_brain_dump_item_update_serializer_partial_aceita_corpo_vazio():
+    serializer = BrainDumpItemUpdateSerializer(data={}, partial=True)
+
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data == {}
+
+
+def test_brain_dump_item_update_serializer_rejeita_title_vazio():
+    serializer = BrainDumpItemUpdateSerializer(data={"title": ""}, partial=True)
+
+    assert not serializer.is_valid()
+    assert "title" in serializer.errors
+
+
+def test_brain_dump_item_update_serializer_rejeita_target_log_fora_do_enum():
+    serializer = BrainDumpItemUpdateSerializer(
+        data={"target_log": "bogus"}, partial=True
+    )
+
+    assert not serializer.is_valid()
+    assert "target_log" in serializer.errors
+
+
+def test_brain_dump_item_update_serializer_aceita_target_log_null():
+    serializer = BrainDumpItemUpdateSerializer(data={"target_log": None}, partial=True)
+
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data == {"target_log": None}

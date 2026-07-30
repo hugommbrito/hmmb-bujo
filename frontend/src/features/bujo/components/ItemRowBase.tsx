@@ -84,6 +84,15 @@ export interface ItemRowBaseProps {
    * levou achado MÉDIO por artefato sem consumidor).
    */
   trailingSlot?: ReactNode
+  /**
+   * Ponto de extensão reservado ao Épico 15 (ver cabeçalho do arquivo): torna
+   * o bloco de título/subline/descrição um controle real, acionado por
+   * clique/Enter/Espaço. Ausente (default) preserva o consumidor atual
+   * (Recorrentes, 14.8): título não é controle, comandos só no `trailingSlot`.
+   * Consumidor de produção: `BrainDumpInboxItemRow` (Épico 15) — abre o sheet
+   * de edição do item.
+   */
+  onActivate?: () => void
 }
 
 export function ItemRowBase({
@@ -95,6 +104,7 @@ export function ItemRowBase({
   statusChipLabel = 'inativo',
   deemphasized = false,
   trailingSlot,
+  onActivate,
 }: ItemRowBaseProps) {
   const eisenhowerLabel =
     eisenhower && eisenhower !== 'none' ? EISENHOWER_CHIP_LABEL[eisenhower] : null
@@ -118,7 +128,43 @@ export function ItemRowBase({
         '&:hover': { backgroundColor: 'var(--ds-surface-subtle)' },
       }}
     >
-      <Box sx={{ flex: 1, minWidth: 0 }}>
+      <Box
+        component={onActivate ? 'button' : 'div'}
+        type={onActivate ? 'button' : undefined}
+        onClick={onActivate}
+        // Nome acessível travado no TÍTULO só (achado de review): sem
+        // `aria-label` explícito, o nome do botão concatenaria título + chips
+        // + subline + descrição inteira — cresce sem limite com a descrição e
+        // torna dois itens de mesmo título indistinguíveis por leitor de tela
+        // quando só a descrição difere. `aria-label` VENCE a computação por
+        // conteúdo (accname algorithm) — subline/descrição continuam visíveis
+        // e legíveis normalmente por leitura direta, só saem do NOME do botão.
+        aria-label={onActivate ? title : undefined}
+        sx={{
+          flex: 1,
+          minWidth: 0,
+          ...(onActivate && {
+            textAlign: 'left',
+            background: 'none',
+            border: 'none',
+            padding: 0,
+            font: 'inherit',
+            color: 'inherit',
+            cursor: 'pointer',
+            borderRadius: 'var(--ds-radius-sm)',
+            // Achado de review: sem isto, o botão só media a altura do
+            // próprio conteúdo e o pai o centraliza (`alignItems: 'center'`),
+            // deixando uma faixa de padding acima/abaixo (dentro do hover da
+            // linha) sem responder a toque — quebra a promessa de "linha
+            // inteira é o alvo de 48px" no compact.
+            alignSelf: 'stretch',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center',
+            '&:focus-visible': { outline: '2px solid var(--ds-focus)', outlineOffset: '2px' },
+          }),
+        }}
+      >
         {/* Título + chips na MESMA linha (mockup frame A, `.t1`). */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 'var(--ds-space-1)', minWidth: 0 }}>
           <Box
