@@ -35,6 +35,7 @@ frontend/playwright/.cache/
 *.swp
 .idea/
 .vscode/
+.obsidian/
 
 # Build / logs
 *.log

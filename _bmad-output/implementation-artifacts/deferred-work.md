@@ -30,6 +30,7 @@ Contexto: a regeneração de `schema.yaml`/`frontend/src/api/types.gen.ts` (ante
 - source_spec: `_bmad-output/implementation-artifacts/spec-14-9-migracao-catch-up-como-ritual-no-shell.md`
   summary: `WeeklyPlanningPage`/`WeeklyDecisionList` (Story 14.5) têm as mesmas violações axe de color-contrast e target-size (WCAG 2.5.8) em compact/tablet/reflow-320 que a 14.9 corrigiu localmente na página de Migração, sem tocar tokens compartilhados.
   evidence: confirmado rodando o teste axe da própria `weekly-planning-ritual.spec.ts` em compact contra o `dev` HEAD atual — falha com as violações idênticas, independente de qualquer mudança desta sessão. Pré-existente desde a 14.5, fora do Code Map da 14.9 (corrigir ali tocaria `--ds-weekly-planning-source-rail`/`context-rail`, tokens consumidos por Weekly/Monthly/Future).
+  target_epic: Épico 17 ou 18 (atribuído na retrospectiva do Épico 14, 2026-07-28) — tokens compartilhados (`--ds-weekly-planning-source-rail`/`context-rail`) tocam Weekly/Monthly/Future; corrigir junto do trabalho de remoção de legados/hardening desses épicos, para não virar dívida sem dono.
 
 ## Deferred from: review of story-14-10-arquivo-no-sistema-novo (2026-07-28)
 
