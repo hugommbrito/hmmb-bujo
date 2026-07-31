@@ -9,6 +9,9 @@ on:
 # tsc + ESLint + vite build (frontend). It is intentionally structured so later
 # stories can extend it — import-linter + tenant guardrail (1.2) and the
 # types.gen.ts generation/diff (1.4) — without restructuring.
+# DW-5: also runs `check --deploy` and `makemigrations --check --dry-run`
+# against config.settings.prod, so prod-only errors and migration drift don't
+# slip through a suite that otherwise only loads config.settings.dev.
 
 jobs:
   backend:
@@ -23,7 +26,12 @@ jobs:
     # NO sslmode (the service does not speak SSL — settings must not hardcode SSL).
     env:
       DJANGO_SETTINGS_MODULE: config.settings.dev
-      SECRET_KEY: ci-dummy-secret-not-for-production
+      # >=50 chars, >=5 unique, not "django-insecure-"-prefixed: keeps
+      # security.W009 (SECRET_KEY quality) from firing on the prod deploy-check
+      # step below, so that step's --fail-level WARNING gate only trips on the
+      # hardening it's actually meant to guard. Still just a CI-only
+      # placeholder, never used anywhere real.
+      SECRET_KEY: ci-dummy-secret-not-for-production-0123456789abcdefgh
       ALLOWED_HOSTS: localhost,127.0.0.1
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/hmmb_ci
 
@@ -64,6 +72,24 @@ jobs:
 
       - name: Pytest
         run: uv run pytest
+
+      # DW-4/DW-5: valida o caminho de produção, que a suíte acima nunca carrega
+      # (roda sob config.settings.dev). Este step FALHA de verdade se o
+      # hardening de segurança regredir: `--tag security` escopa para os checks
+      # de segurança do Django (ignora avisos não relacionados, ex.
+      # drf_spectacular) e `--fail-level WARNING` promove W004/W008 (que por
+      # padrão são só warnings, exit 0) a falha real do step. Isso só funciona
+      # sem ruído porque o SECRET_KEY dummy do CI (acima) já é forte o
+      # suficiente para não disparar security.W009 por conta própria.
+      - name: Checar settings de produção (deploy checks)
+        run: uv run python manage.py check --deploy --tag security --fail-level WARNING --settings=config.settings.prod
+
+      # --noinput: sem isso, um drift ambíguo (ex. rename de campo que o
+      # autodetector não resolve sozinho) dispara um prompt interativo: sem
+      # stdin anexado no runner, isso vira um EOFError confuso em vez da
+      # falha limpa que este step existe para dar.
+      - name: Checar migrations pendentes (settings de produção)
+        run: uv run python manage.py makemigrations --check --dry-run --noinput --settings=config.settings.prod
 
       - name: Set up Node (para geração de types.gen.ts)
         uses: actions/setup-node@v5

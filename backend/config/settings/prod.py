@@ -37,6 +37,15 @@ SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
 
+# Force HTTPS for every request, except Railway's own healthcheck: it hits the
+# container over the internal network without X-Forwarded-Proto, so a redirect
+# there would make Railway think the release is unhealthy and block rollout.
+SECURE_SSL_REDIRECT = True
+SECURE_REDIRECT_EXEMPT = [r"^api/health/$"]
+SECURE_HSTS_SECONDS = 31536000
+SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+SECURE_HSTS_PRELOAD = True
+
 # Route Django logs to stdout so Railway surfaces them as "info" entries.
 LOGGING = {
     "version": 1,

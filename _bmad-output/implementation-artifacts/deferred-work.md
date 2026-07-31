@@ -4,13 +4,15 @@
 origin: migrated from legacy ledger ("Deferred from: code review of 1-1-scaffold-do-monorepo-e-pipeline-de-ci-base (2026-06-24)"), 2026-07-31
 location: backend/config/settings/prod.py
 reason: prod.py define cookies Secure e SECURE_PROXY_SSL_HEADER, mas falta SECURE_SSL_REDIRECT, SECURE_HSTS_SECONDS/INCLUDE_SUBDOMAINS/PRELOAD; deferido porque o alvo de deploy e o hardening de produção estavam explicitamente fora do escopo da story 1.1 (Gap I-1, pré-produção) — revisitar antes do primeiro deploy.
-status: open
+status: done 2026-07-31
+resolution: resolved by sweep bundle dw-prod-settings-and-ci-hardening
 
 ### DW-5: CI não exercita o caminho de produção
 origin: migrated from legacy ledger ("Deferred from: code review of 1-1-scaffold-do-monorepo-e-pipeline-de-ci-base (2026-06-24)"), 2026-07-31
 location: .github/workflows/ci.yml
 reason: CI roda apenas config.settings.dev; prod.py nunca é importado/validado e não há smoke de migrate/makemigrations --check; inócuo enquanto não havia models de domínio, mas deixa drift de migração e erros exclusivos de prod passarem despercebidos — revisitar quando houver models (Stories 1.2+) ou ao definir deploy.
-status: open
+status: done 2026-07-31
+resolution: resolved by sweep bundle dw-prod-settings-and-ci-hardening
 
 ### DW-6: Escrita cross-tenant não validada contra o contexto ativo
 origin: migrated from legacy ledger ("Deferred from: code review of 1-2-modulo-core-com-isolamento-multi-tenant-fail-closed-e-guardrails (2026-06-24)"), 2026-07-31
@@ -127,4 +129,25 @@ location: n/a
 source_spec: `spec-15-3-passe-de-paridade-estados-e-acessibilidade-da-captura.md`
 severity: low
 reason: The follow-up-review damping cap (limits.max_followup_reviews = 1) was spent with the story finalized (status: done, verify green) while the review pass still recommended an independent follow-up. The work was committed by bmad-loop run 20260729-230649-5530; this entry preserves the lingering recommendation for a deliberate later review.
+status: open
+
+### DW-21: SECURE_PROXY_SSL_HEADER + RAILWAY_PRIVATE_DOMAIN em ALLOWED_HOSTS pode permitir spoof de X-Forwarded-Proto pela rede privada do Railway
+origin: review (fresh review pass) of spec-dw-4-dw-5-prod-settings-e-ci-hardening, 2026-07-31
+location: backend/config/settings/prod.py (SECURE_PROXY_SSL_HEADER, ALLOWED_HOSTS)
+severity: medium
+reason: o redirect/HSTS de DW-4 dependem inteiramente de SECURE_PROXY_SSL_HEADER (pré-existente, não tocado por essa story) para decidir se uma requisição é "segura"; RAILWAY_PRIVATE_DOMAIN já está em ALLOWED_HOSTS, então qualquer origem capaz de alcançar o container pela rede privada do Railway poderia forjar X-Forwarded-Proto: https e derrubar o hardening inteiro (sem redirect, sem header HSTS); não foi verificado se a rede privada do Railway é de fato alcançável por algo além dos próprios serviços do mesmo projeto — investigar a topologia real antes de tratar como confirmado.
+status: open
+
+### DW-22: CorsMiddleware responde preflight OPTIONS antes de SecurityMiddleware, então esse tráfego não passa pelo redirect HTTPS/HSTS de DW-4
+origin: review (fresh review pass) of spec-dw-4-dw-5-prod-settings-e-ci-hardening, 2026-07-31
+location: backend/config/settings/base.py (MIDDLEWARE)
+severity: low
+reason: CorsMiddleware roda antes de SecurityMiddleware em MIDDLEWARE e responde preflight OPTIONS diretamente (confirmado reproduzindo localmente: OPTIONS com Access-Control-Request-Method sobre HTTP puro em /api/accounts/ retorna 200 com headers de CORS, sem Location e sem Strict-Transport-Security); ordem de middleware pré-existente, não alterada pela story DW-4/DW-5 — preflight não carrega dado sensível, mas o comentário "força HTTPS para toda requisição" em prod.py não é literalmente exato para esse tráfego.
+status: open
+
+### DW-23: check --deploy --tag security no CI exclui checks de deploy não tagueados security
+origin: review (fresh review pass, 3a) of spec-dw-4-dw-5-prod-settings-e-ci-hardening, 2026-07-31
+location: .github/workflows/ci.yml (step "Checar settings de produção (deploy checks)")
+severity: medium
+reason: o step novo de DW-5 roda check --deploy --tag security, que cobre só checks de deploy tagueados security no Django; checks de deploy de outras tags (ex. async_checks.py registra E001 como Tags.async_support, deploy=True; caches.py registra W002 como Tags.caches, deploy=True — nenhum dos dois na tag security) não são exercitados por esse step, então um erro exclusivo de prod fora da tag security passaria despercebido pelo mesmo mecanismo que a DW-5 existe para fechar; sem impacto hoje (este repo não define CACHES customizado nem DJANGO_ALLOW_ASYNC_UNSAFE), mas o trade-off foi deliberado (na pass anterior, para viabilizar --fail-level WARNING sem ruído do SECRET_KEY dummy do CI) e vale revisitar se o projeto crescer nessas direções — decisão sobre quais tags de deploy adicionar não é mecânica.
 status: open
