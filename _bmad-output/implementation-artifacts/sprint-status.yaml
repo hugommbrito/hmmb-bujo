@@ -188,12 +188,12 @@ development_status:
   epic-14-retrospective: done  # retro interativa com Hugo em 2026-07-28; ver _bmad-output/implementation-artifacts/epic-14-retro-2026-07-28.md
 
   # Epic 15: Onda 4 — Captura no Sistema Novo
-  epic-15: in-progress  # 1ª story (15.0) done em 2026-07-29
+  epic-15: done  # ATUALIZADO 2026-07-31: 4/4 stories (15.0-15.3) done; retro interativa rodada
   15-0-ux-mockup-da-captura-e-do-brain-dump: done  # gate UX bmad-ux aprovado e promovido em 2026-07-29 a partir de handoff trazido por Hugo; Q1 mudou o domínio (edição do item entra no escopo, endpoint novo M11 é pré-requisito de arquitetura); libera 15.1–15.3
   15-1-brain-dump-no-sistema-novo-inbox-e-processamento: done
   15-2-capture-sheet-e-captura-persistente-no-sistema-novo: done
   15-3-passe-de-paridade-estados-e-acessibilidade-da-captura: done
-  epic-15-retrospective: optional
+  epic-15-retrospective: done  # retro interativa com Hugo em 2026-07-31; ver _bmad-output/implementation-artifacts/epic-15-retro-2026-07-31.md; achado significativo: descontinuar verificação formal de acessibilidade (WCAG/axe-core matrix) — bmad-correct-course recomendado antes do Épico 16
 
   # Epic 16: Onda 5 — Módulos: Migração + Refinos + Journalling
   # Lotes de automação: 16.0 → [16.1–16.2] · 16.3 → [16.4–16.9] · 16.10 → [16.11–16.14]
@@ -223,7 +223,7 @@ development_status:
   17-3-dashboard-panorama-home-pos-login: backlog
   17-4-daily-log-no-sistema-novo: backlog
   17-5-ui-da-flag-aguardando-terceiro: backlog
-  17-6-passe-de-paridade-e-acessibilidade-da-onda-2b: backlog
+  17-6-passe-de-paridade-e-performance-da-onda-2b: backlog  # RENOMEADA 2026-07-31 (bmad-correct-course): descontinuada verificação formal de a11y, ver sprint-change-proposal-2026-07-31.md
   epic-17-retrospective: optional
 
   # Epic 18: Onda 6 — Consolidação e Remoção do Legado
@@ -319,3 +319,11 @@ action_items:
     action: "Atribuir dono/epic-alvo a divida de a11y (contraste + target-size) do Weekly em deferred-work.md"
     owner: "Amelia"
     status: done
+  - epic: 15
+    action: "Rodar bmad-correct-course para descontinuar stories dedicadas de fechamento de a11y (nao criar 17.6/equivalentes) e a clausula 'axe-core + estados obrigatorios' das ACs futuras (16-21); manter comportamento acessivel ja embutido nos componentes; reavaliar UX-DR20/Story 2.4 no PRD"
+    owner: "Hugo"
+    status: done  # sprint-change-proposal-2026-07-31.md aplicado: UX-DR20/UX-DR30(item 6) emendados, Story 17.6 revisada (nao removida - mantem paridade/performance), 6 clausulas soltas limpas; PRD/arquitetura/DESIGN.md/migration-plan.md nao precisavam de mudanca (investigado e confirmado)
+  - epic: 15
+    action: "Rodar bmad-loop-sweep (depois do correct-course) para triar DW-1/DW-2/DW-3 e os itens deferred (DIV-BD-18/19/20) da 15.3 contra a politica nova de a11y"
+    owner: "Hugo"
+    status: open
