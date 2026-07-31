@@ -28,7 +28,8 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of 1-2-modulo-core-com-isolamento-multi-tenant-fail-closed-e-guardrails (2026-06-24)"), 2026-07-31
 location: backend/core/exceptions.py
 reason: o mapa do §6.4 lista 404 para recurso de outro tenant, mas isso só emerge com get_object_or_404/views de recurso, inexistentes até o Épico 3+ — cobrir com a primeira view de recurso.
-status: open
+status: done 2026-07-31
+resolution: already resolved: bujo/views.py TaskDetailView.patch (lines 139-142) uses the tenant-scoped TenantManager (`Task.objects.get(id=pk)`) wrapped in try/except Task.DoesNotExist -> NotFound(), which is functionally identical to the ledger's described get_object_or_404 404-mapping for a cross-tenant resource; the same pattern is heavily tested (test_..._de_outro_tenant_retorna_404 style tests exist in bujo/medications/braindump/health/habits test suites).
 
 ### DW-9: tenant_context/middleware aceitam user.id None ou falsy
 origin: migrated from legacy ledger ("Deferred from: code review of 1-2-modulo-core-com-isolamento-multi-tenant-fail-closed-e-guardrails (2026-06-24)"), 2026-07-31
@@ -40,7 +41,8 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of 1-2-modulo-core-com-isolamento-multi-tenant-fail-closed-e-guardrails (2026-06-24)"), 2026-07-31
 location: backend/core/middleware.py:343-345
 reason: login no admin autentica um auth.User de PK inteiro; o middleware setaria current_user_id para um int incompatível com o user_id UUID; sem superuser/models de domínio até o momento do defer — reavaliar quando houver acesso ao admin ou models reais.
-status: open
+status: done 2026-07-31
+resolution: already resolved: backend/config/settings/base.py:21 sets AUTH_USER_MODEL = 'accounts.User' (custom UUID-PK model, no separate django.contrib.auth.User exists); backend/accounts/admin.py registers this same User model for Django admin; TenantMiddleware never reads request.user at all -- current_user_id is only ever set by TenantAwareJWTAuthentication.authenticate() in core/authentication.py, which fires for JWT/DRF requests, not Django admin's session login -- so the described int-PK-vs-UUID mismatch scenario cannot occur under the current architecture.
 
 ### DW-11: Signup documentado com status/response errados
 origin: migrated from legacy ledger ("Deferred from: code review of fix-deploy-ci-e-cors (2026-07-03)"), 2026-07-31
