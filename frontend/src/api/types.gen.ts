@@ -1459,6 +1459,22 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AccountsLoginFailedResponse: {
+            detail: string;
+        };
+        AccountsTokenErrorCode: {
+            code: string[];
+        };
+        AccountsTokenInvalidResponse: {
+            detail: string;
+            fields?: components["schemas"]["AccountsTokenErrorCode"];
+        };
+        AccountsValidationErrorResponse: {
+            detail: string;
+            fields?: {
+                [key: string]: string[];
+            };
+        };
         /**
          * @description POST de registro de avulso/PRN (AC7). ``time_block_id``/``dose`` opcionais:
          *     ``dose`` omitida herda da agenda vigente (se houver bloco), senão o serviço exige
@@ -2538,6 +2554,16 @@ export interface components {
             date: string;
             isHoliday: boolean;
         };
+        Signup: {
+            /** Format: email */
+            email: string;
+            password: string;
+            /** @default America/Sao_Paulo */
+            timezone: string;
+        };
+        SignupSuccessResponse: {
+            detail: string;
+        };
         /**
          * @description * `scheduled` - Scheduled
          *     * `ad_hoc` - Ad Hoc
@@ -2853,14 +2879,27 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Signup"];
+            };
+        };
         responses: {
-            /** @description No response body */
-            200: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["SignupSuccessResponse"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountsValidationErrorResponse"];
+                };
             };
         };
     };
@@ -2885,6 +2924,22 @@ export interface operations {
                     "application/json": components["schemas"]["TokenObtainPair"];
                 };
             };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountsValidationErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountsLoginFailedResponse"];
+                };
+            };
         };
     };
     accounts_token_refresh_create: {
@@ -2906,6 +2961,22 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TokenRefresh"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountsValidationErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountsTokenInvalidResponse"];
                 };
             };
         };

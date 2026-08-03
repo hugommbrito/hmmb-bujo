@@ -53,13 +53,15 @@ resolution: already resolved: backend/config/settings/base.py:21 sets AUTH_USER_
 origin: migrated from legacy ledger ("Deferred from: code review of fix-deploy-ci-e-cors (2026-07-03)"), 2026-07-31
 location: backend/accounts/views.py:9-15
 reason: a regeneração de schema.yaml/types.gen.ts expôs que a view signup (@api_view sem @extend_schema) documenta 200 com corpo vazio quando na realidade retorna 201 com {"detail": "Conta criada com sucesso."} (coberto por backend/accounts/tests/test_views.py:19, test_signup_valido_retorna_201) e falta o requestBody de SignupSerializer; corrigir anotando a view com @extend_schema(request=SignupSerializer, responses={201: ...}).
-status: open
+status: done 2026-08-03
+resolution: resolved by sweep bundle dw-accounts-schema-accuracy-drift-guard
 
 ### DW-12: Nenhuma resposta de erro documentada no schema
 origin: migrated from legacy ledger ("Deferred from: code review of fix-deploy-ci-e-cors (2026-07-03)"), 2026-07-31
 location: schema.yaml
 reason: nenhuma das 3 operações (signup, token, token/refresh) lista 400/401, embora test_views.py exercite esses casos — adicionar quando as views ganharem anotações @extend_schema completas.
-status: open
+status: done 2026-08-03
+resolution: resolved by sweep bundle dw-accounts-schema-accuracy-drift-guard
 
 ### DW-13: COMPONENT_SPLIT_REQUEST=False conflacia request/response de TokenObtainPair/TokenRefresh
 origin: migrated from legacy ledger ("Deferred from: code review of fix-deploy-ci-e-cors (2026-07-03)"), 2026-07-31
@@ -71,13 +73,15 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of fix-deploy-ci-e-cors (2026-07-03)"), 2026-07-31
 location: .github/workflows/ci.yml
 reason: o step de CI hoje só garante que types.gen.ts bate com o schema.yaml gerado, não que o schema.yaml reflita o comportamento real das views (faltam anotações @extend_schema) — considerar um teste de contrato leve por endpoint quando o número de endpoints crescer.
-status: open
+status: done 2026-08-03
+resolution: resolved by sweep bundle dw-accounts-schema-accuracy-drift-guard
 
 ### DW-15: security do signup mistura JWT opcional com endpoint público
 origin: migrated from legacy ledger ("Deferred from: code review of fix-deploy-ci-e-cors (2026-07-03)"), 2026-07-31
 location: schema.yaml; backend/accounts/views.py
 reason: tecnicamente correto dado DEFAULT_AUTHENTICATION_CLASSES global + permission_classes=[AllowAny], mas confuso no contrato gerado — considerar authentication_classes=[] na view de signup para um schema mais limpo.
-status: open
+status: done 2026-08-03
+resolution: resolved by sweep bundle dw-accounts-schema-accuracy-drift-guard
 
 ### DW-16: WeeklyPlanningPage/WeeklyDecisionList têm as mesmas violações axe de color-contrast e target-size que a 14.9 corrigiu localmente na página de Migração
 origin: migrated from legacy ledger ("Deferred from: review of story-14-9-migracao-catch-up-como-ritual-no-shell (2026-07-28)"), 2026-07-31
@@ -153,4 +157,26 @@ origin: review (fresh review pass, 3a) of spec-dw-4-dw-5-prod-settings-e-ci-hard
 location: .github/workflows/ci.yml (step "Checar settings de produção (deploy checks)")
 severity: medium
 reason: o step novo de DW-5 roda check --deploy --tag security, que cobre só checks de deploy tagueados security no Django; checks de deploy de outras tags (ex. async_checks.py registra E001 como Tags.async_support, deploy=True; caches.py registra W002 como Tags.caches, deploy=True — nenhum dos dois na tag security) não são exercitados por esse step, então um erro exclusivo de prod fora da tag security passaria despercebido pelo mesmo mecanismo que a DW-5 existe para fechar; sem impacto hoje (este repo não define CACHES customizado nem DJANGO_ALLOW_ASYNC_UNSAFE), mas o trade-off foi deliberado (na pass anterior, para viabilizar --fail-level WARNING sem ruído do SECRET_KEY dummy do CI) e vale revisitar se o projeto crescer nessas direções — decisão sobre quais tags de deploy adicionar não é mecânica.
+status: open
+
+### DW-24: health liveness check 401a com um Authorization header inválido presente
+origin: review (fresh review pass) of spec-dw-11-dw-12-dw-14-dw-15-accounts-schema-accuracy-drift-guard, 2026-08-03
+location: backend/core/views.py (health)
+severity: medium
+reason: DW-15 corrigiu exatamente essa classe de bug em accounts/views.py::signup (@api_view sem authentication_classes próprio herda DEFAULT_AUTHENTICATION_CLASSES global, então um Authorization header malformado é rejeitado por um autenticador global antes mesmo da view rodar) mas o mesmo padrão (@api_view + permission_classes=[AllowAny] sem authentication_classes=[]) continua em core/views.py::health, fora do escopo desta bundle (o ledger nomeia só accounts/signup/token/token-refresh). Confirmado empiricamente (achado pela verification-gap review desta pass, 2026-08-03): GET /api/health/ com um header Authorization inválido retorna 401 em vez de 200, apesar do docstring da view dizer "no auth" — nenhum dos 2 testes existentes (core/tests/test_health.py::test_health_returns_ok, accounts/tests/test_views.py::test_health_sem_auth_retorna_200) envia um Authorization header, então o regressão fica invisível a ambos. Um probe de monitoramento/reverse proxy que encaminhe um bearer token velho/corrompido para o liveness check receberia um falso "unhealthy".
+status: open
+
+### DW-25: TokenRefreshSerializer.validate() pode 500ar em vez de 401ar se o usuário do token foi apagado do banco
+origin: review (fresh review pass) of spec-dw-11-dw-12-dw-14-dw-15-accounts-schema-accuracy-drift-guard, 2026-08-03
+location: rest_framework_simplejwt/serializers.py:111-124 (TokenRefreshSerializer.validate); backend/core/exceptions.py (custom_exception_handler)
+severity: medium
+reason: achado pelo edge-case-hunter (2026-08-03) e confirmado lendo o código-fonte instalado do simplejwt: TokenRefreshSerializer.validate() chama get_user_model().objects.get(**{USER_ID_FIELD: user_id}) sem try/except em torno do .get() — se o usuário referenciado por um refresh token estruturalmente válido foi apagado do banco (diferente de apenas desativado, caso já coberto por test_token_refresh_usuario_desativado_retorna_401_sem_fields), a exceção User.DoesNotExist não é reconhecida por custom_exception_handler (não é APIException nem DomainError) e cai no fallback return None, virando o 500 padrão do Django em vez de um 401 documentado. Pré-existente, não introduzido pelo diff desta bundle (que só anota schema em torno das views de token, sem tocar TokenRefreshSerializer). Nenhum fluxo do app hoje apaga usuários de fato (só desativa via is_active=False) — o caminho só é alcançável por intervenção direta no banco/admin, por isso severity medium, não high.
+status: open
+
+### DW-26: Follow-up review still recommended for dw-accounts-schema-accuracy-drift-guard after the damping cap was spent
+origin: review-budget-followup
+location: n/a
+source_spec: `spec-dw-11-dw-12-dw-14-dw-15-accounts-schema-accuracy-drift-guard.md`
+severity: low
+reason: The follow-up-review damping cap (limits.max_followup_reviews = 1) was spent with the story finalized (status: done, verify green) while the review pass still recommended an independent follow-up. The work was committed by bmad-loop run 20260731-134802-a244; this entry preserves the lingering recommendation for a deliberate later review.
 status: open

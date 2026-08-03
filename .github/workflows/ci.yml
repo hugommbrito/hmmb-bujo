@@ -96,8 +96,20 @@ jobs:
         with:
           node-version: 22
 
-      - name: Gerar schema OpenAPI
-        run: uv run python manage.py spectacular --file ../schema.yaml
+      # DW-14: o step "Verificar types.gen.ts" abaixo só compara types.gen.ts
+      # contra o schema.yaml REGERADO nesta run — nunca contra o schema.yaml
+      # versionado no repositório. Uma view sem @extend_schema completo
+      # (contrato desatualizado em relação ao comportamento real) podia
+      # divergir do schema.yaml commitado sem que nada aqui acusasse. Este
+      # diff fecha esse gap com o mesmo padrão do check de types.gen.ts logo
+      # abaixo.
+      - name: Gerar schema OpenAPI e checar drift schema-vs-view
+        shell: bash
+        run: |
+          cp ../schema.yaml /tmp/schema.committed.yaml
+          uv run python manage.py spectacular --file ../schema.yaml
+          diff /tmp/schema.committed.yaml ../schema.yaml \
+            || (echo "❌ schema.yaml divergiu do schema gerado a partir das views (@extend_schema) — rode 'uv run python manage.py spectacular --file ../schema.yaml' em backend/ e commite" && exit 1)
 
       - name: Verificar types.gen.ts está atualizado
         shell: bash
