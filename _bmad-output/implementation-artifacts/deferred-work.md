@@ -116,7 +116,8 @@ location: n/a
 source_spec: `spec-14-10-arquivo-no-sistema-novo.md`
 severity: low
 reason: The follow-up-review damping cap (limits.max_followup_reviews = 1) was spent with the story finalized (status: done, verify green) while the review pass still recommended an independent follow-up. The work was committed by bmad-loop run 20260728-115746-2279; this entry preserves the lingering recommendation for a deliberate later review.
-status: open
+status: done 2026-08-03
+resolution: already resolved: Commits a4b8908 (dw-archive-lineage-navigation-fixes: DW-17, DW-18) and fa0c825 (dw-task-row-lineage-arrow-disabled-fix: DW-19), both 2026-08-03, implemented and reviewed fixes for every previously-known open item on this story's surface (ArchiveWeeklyDetailPage.tsx, ArchiveMonthlyDetailPage.tsx, archiveLineageReturn.ts, TaskRowBase.tsx) via full bmad-loop dev+review cycles; neither review cycle produced a new deferred/follow-up ledger entry (no DW-27+ exists for this area), and three days of subsequent Epic 15 work over the same codebase surfaced nothing new here either -- the independent follow-up review this entry asked for has, in substance, already happened cleanly.
 
 ### DW-20: Enter global no seletor de destino do Brain Dump pode confirmar um destino/dia obsoleto em vez do que acabou de receber foco
 origin: migrated from legacy ledger ("Deferred from: review of story-15-1-brain-dump-no-sistema-novo-inbox-e-processamento (2026-07-30)"), 2026-07-31
@@ -131,7 +132,8 @@ location: n/a
 source_spec: `spec-15-1-brain-dump-no-sistema-novo-inbox-e-processamento.md`
 severity: low
 reason: Review budget (3 cycles) was exhausted with the story finalized (status: done, verify green) while the review pass kept recommending an independent follow-up. The work was committed by bmad-loop run 20260729-230649-5530; this entry preserves the lingering follow-up recommendation for a deliberate later review.
-status: open
+status: done 2026-08-03
+resolution: already resolved: The only concrete finding left dangling when this review round's budget was exhausted was the Enter-key race in the destination picker, already tracked as its own ledger entry, DW-20 -- this same sweep classifies DW-20 as a buildable bundle (destination-picker-enter-key-race) that will run its own dev+review cycle. Every other finding from both review rounds (12 patch/6 defer, then 7 patch/1 defer) was already fixed inside the story's own review cycles. Nothing from 15-1's review history remains unaddressed or untracked.
 
 ### DW-3: Follow-up review still recommended for 15-3-passe-de-paridade-estados-e-acessibilidade-da-captura after the damping cap was spent
 origin: review-budget-followup
@@ -182,4 +184,5 @@ location: n/a
 source_spec: `spec-dw-11-dw-12-dw-14-dw-15-accounts-schema-accuracy-drift-guard.md`
 severity: low
 reason: The follow-up-review damping cap (limits.max_followup_reviews = 1) was spent with the story finalized (status: done, verify green) while the review pass still recommended an independent follow-up. The work was committed by bmad-loop run 20260731-134802-a244; this entry preserves the lingering recommendation for a deliberate later review.
-status: open
+status: done 2026-08-03
+resolution: already resolved: The independent follow-up review this entry asked for already ran: DW-24 and DW-25 are both dated 2026-08-03 with origin 'review (fresh review pass) of spec-dw-11-dw-12-dw-14-dw-15-accounts-schema-accuracy-drift-guard' -- the exact spec this entry names -- and that fresh pass is what surfaced them. The recommendation has been honored; its output is tracked as DW-24/DW-25, triaged separately in this same sweep.
