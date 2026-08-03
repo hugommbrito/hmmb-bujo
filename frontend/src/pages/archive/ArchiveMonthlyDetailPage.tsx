@@ -17,9 +17,10 @@ import {
   useCreateMonthlyTaskMutation,
   useTransitionTaskMutation,
   useMonthlyLogQuery,
+  useWeeklyLogQuery,
   invalidateRitualQueries,
 } from '../../features/bujo'
-import type { CycleStatus, MigrationTarget, Task, TaskStatus } from '../../features/bujo'
+import type { CycleStatus, MigrationTarget, MonthlyLog, Task, TaskStatus, WeeklyLog } from '../../features/bujo'
 import { PlannerSkeleton } from '../../features/bujo/components/PlannerSkeleton'
 import { findTaskById } from '../../features/bujo/taskTree'
 import { typography } from '../../shared/design/tokens'
@@ -33,10 +34,16 @@ import {
   readLineageReturn,
   writeLineageReturn,
 } from './archiveLineageReturn'
+import { findPredecessorInMonthlyLog, findPredecessorInWeeklyLog, type PredecessorLocation } from './archivePredecessor'
 
 interface ArchiveDetailLocationState {
   archiveReturnQuery?: string
   focusTaskId?: string
+  // DW-17: a página de ORIGEM (esta mesma página, ou `ArchiveWeeklyDetailPage`)
+  // grava sua própria identidade de período antes de navegar — permite que o
+  // DESTINO carregue esse período sob demanda quando o predecessor não está
+  // no período que já tem carregado (predecessor cross-período).
+  originPeriod?: MigrationTarget
 }
 
 function formatMonthTitle(monthFirst: string): string {
@@ -60,29 +67,29 @@ function groupTasksByScheduledDate(tasks: Task[]) {
   return { withDate, withoutDate }
 }
 
-// Recorre em `subtasks` (Story 14.10, review): sem isso, uma SUBTAREFA
-// migrada/adiada cujo sucessor é aberto no mesmo mês nunca mostra "Veio de" —
-// mesma classe de bug já corrigida para `onNavigateToSuccessor` em
-// `TaskRowBase.tsx`, mas do lado da busca de predecessor.
-function findPredecessorTask(tasks: Task[], taskId: string): Task | undefined {
-  for (const task of tasks) {
-    if (task.migratedToTask === taskId) return task
-    const found = findPredecessorTask(task.subtasks ?? [], taskId)
-    if (found) return found
-  }
-  return undefined
-}
-
-function findPredecessor(tasks: Task[], taskId: string): { period: string; date: string } | null {
-  const predecessor = findPredecessorTask(tasks, taskId)
-  if (!predecessor) return null
-  if (predecessor.scheduledDate) {
-    return {
-      period: capitalize(formatDayLabel(predecessor.scheduledDate, 'weekday')),
-      date: formatDayLabel(predecessor.scheduledDate, 'day-month'),
-    }
-  }
-  return { period: 'Sem dia definido', date: '' }
+// Busca o predecessor no período CARREGADO primeiro; se não encontrar (DW-17:
+// o predecessor mora em outro período, alcançado via seta de linhagem
+// cross-período), tenta o período de ORIGEM — semanal (cross-tipo) ou mensal
+// de outro mês (mesma página, período diferente). `originWeeklyLog`/
+// `originMonthlyLog` só chegam preenchidos quando a query de origem
+// correspondente está habilitada E já resolveu (ver call site).
+//
+// Ordem de parâmetros (`originWeeklyLog` antes de `originMonthlyLog`) é a
+// MESMA em `ArchiveWeeklyDetailPage.tsx` — as duas páginas são espelho
+// exato, e esta função é o único lugar onde a ordem poderia divergir sem
+// nenhum erro de tipo acusar (achado de review, puramente cosmético — sem
+// mudança de comportamento).
+function findPredecessor(
+  tasks: Task[],
+  taskId: string,
+  originWeeklyLog: WeeklyLog | undefined,
+  originMonthlyLog: MonthlyLog | undefined,
+): PredecessorLocation | null {
+  return (
+    findPredecessorInMonthlyLog(tasks, taskId) ??
+    (originWeeklyLog ? findPredecessorInWeeklyLog(originWeeklyLog.days, originWeeklyLog.unscheduled, taskId) : null) ??
+    (originMonthlyLog ? findPredecessorInMonthlyLog(originMonthlyLog.tasks, taskId) : null)
+  )
 }
 
 export function ArchiveMonthlyDetailPage() {
@@ -93,8 +100,22 @@ export function ArchiveMonthlyDetailPage() {
   const isOnline = useOnlineStatus()
   const locationState = (location.state as ArchiveDetailLocationState | null) ?? null
   const archiveReturnQuery = locationState?.archiveReturnQuery ?? ''
+  const originPeriod = locationState?.originPeriod
 
   const monthlyLog = useMonthlyLogQuery(monthFirst)
+  // DW-17: período de ORIGEM de uma linhagem cross-período, carregado SOB
+  // DEMANDA — `enabled` só liga quando `originPeriod` existe E seu `type`
+  // bate com o hook chamado; nunca dispara a busca "semana atual"/"mês
+  // atual" (sentinela) como efeito colateral de um parâmetro ausente
+  // (`weekStart`/`monthFirst` ficam `undefined` quando desabilitado).
+  const originIsWeekly = originPeriod?.type === 'weekly' && Boolean(originPeriod?.weekStart)
+  const originIsMonthly = originPeriod?.type === 'monthly' && Boolean(originPeriod?.monthFirst)
+  const originWeeklyLog = useWeeklyLogQuery(originIsWeekly ? originPeriod?.weekStart ?? undefined : undefined, {
+    enabled: originIsWeekly,
+  })
+  const originMonthlyLog = useMonthlyLogQuery(originIsMonthly ? originPeriod?.monthFirst ?? undefined : undefined, {
+    enabled: originIsMonthly,
+  })
   const createMonthlyTask = useCreateMonthlyTaskMutation()
   const transitionTask = useTransitionTaskMutation()
 
@@ -150,7 +171,19 @@ export function ArchiveMonthlyDetailPage() {
     }
     setNavigationError(null)
     writeLineageReturn(originTaskId)
-    navigate(path, { state: { focusTaskId: successorTaskId, archiveReturnQuery } })
+    // DW-17: esta página (a ORIGEM da navegação) já sabe sua própria
+    // identidade de período (`loadedMonthFirst`, via closure — a função só
+    // EXECUTA em resposta a um clique, depois que o corpo do componente já
+    // rodou até a linha que destructura `monthlyLog.data`) — o destino usa
+    // isso para carregar este período sob demanda se precisar mostrar "Veio
+    // de" para uma tarefa que migrou PARA lá.
+    navigate(path, {
+      state: {
+        focusTaskId: successorTaskId,
+        archiveReturnQuery,
+        originPeriod: { type: 'monthly', monthFirst: loadedMonthFirst } satisfies MigrationTarget,
+      },
+    })
   }
 
   if (monthlyLog.isPending) {
@@ -346,7 +379,16 @@ export function ArchiveMonthlyDetailPage() {
           isSubtask={isOpenTaskSubtask}
           readonly={isReadonly}
           onClose={() => setOpenTaskId(null)}
-          predecessor={openTaskId ? findPredecessor(tasks, openTaskId) : null}
+          predecessor={
+            openTaskId
+              ? findPredecessor(
+                  tasks,
+                  openTaskId,
+                  originIsWeekly ? originWeeklyLog.data : undefined,
+                  originIsMonthly ? originMonthlyLog.data : undefined,
+                )
+              : null
+          }
         />
       )}
     </Box>

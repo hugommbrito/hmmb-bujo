@@ -25,9 +25,10 @@ import {
   useCreateWeeklyTaskMutation,
   useTransitionTaskMutation,
   useWeeklyLogQuery,
+  useMonthlyLogQuery,
   invalidateRitualQueries,
 } from '../../features/bujo'
-import type { CycleStatus, MigrationTarget, Task, TaskStatus, WeeklyDay } from '../../features/bujo'
+import type { CycleStatus, MigrationTarget, MonthlyLog, Task, TaskStatus, WeeklyDay, WeeklyLog } from '../../features/bujo'
 import { PlannerSkeleton } from '../../features/bujo/components/PlannerSkeleton'
 import { findTaskById } from '../../features/bujo/taskTree'
 import { typography } from '../../shared/design/tokens'
@@ -41,10 +42,16 @@ import {
   readLineageReturn,
   writeLineageReturn,
 } from './archiveLineageReturn'
+import { findPredecessorInMonthlyLog, findPredecessorInWeeklyLog, type PredecessorLocation } from './archivePredecessor'
 
 interface ArchiveDetailLocationState {
   archiveReturnQuery?: string
   focusTaskId?: string
+  // DW-17: a página de ORIGEM (esta mesma página, ou `ArchiveMonthlyDetailPage`)
+  // grava sua própria identidade de período antes de navegar — permite que o
+  // DESTINO carregue esse período sob demanda quando o predecessor não está
+  // no período que já tem carregado (predecessor cross-período).
+  originPeriod?: MigrationTarget
 }
 
 function formatWeekRange(weekStart: string): string {
@@ -57,33 +64,30 @@ function formatWeekRange(weekStart: string): string {
   return `${startLabel} – ${endLabel}`
 }
 
-// Recorre em `subtasks` (Story 14.10, review): sem isso, uma SUBTAREFA
-// migrada/adiada cujo sucessor é aberto na mesma semana nunca mostra "Veio
-// de" — mesma classe de bug já corrigida para `onNavigateToSuccessor` em
-// `TaskRowBase.tsx`, mas do lado da busca de predecessor.
-function hasPredecessorTask(tasks: Task[], taskId: string): boolean {
-  return tasks.some(
-    (task) => task.migratedToTask === taskId || hasPredecessorTask(task.subtasks ?? [], taskId),
-  )
-}
-
+// Busca o predecessor no período CARREGADO primeiro; se não encontrar (DW-17:
+// o predecessor mora em outro período, alcançado via seta de linhagem
+// cross-período), tenta o período de ORIGEM — semanal de outra semana (mesma
+// página, período diferente) ou mensal (cross-tipo). `originWeeklyLog`/
+// `originMonthlyLog` só chegam preenchidos quando a query de origem
+// correspondente está habilitada E já resolveu (ver call site).
+//
+// Ordem de parâmetros (`originWeeklyLog` antes de `originMonthlyLog`) é a
+// MESMA em `ArchiveMonthlyDetailPage.tsx` — as duas páginas são espelho
+// exato, e esta função é o único lugar onde a ordem poderia divergir sem
+// nenhum erro de tipo acusar (achado de review, puramente cosmético — sem
+// mudança de comportamento).
 function findPredecessor(
   days: WeeklyDay[],
   unscheduled: Task[],
   taskId: string,
-): { period: string; date: string } | null {
-  for (const day of days) {
-    if (hasPredecessorTask(day.tasks, taskId)) {
-      return {
-        period: capitalize(formatDayLabel(day.date, 'weekday')),
-        date: formatDayLabel(day.date, 'day-month'),
-      }
-    }
-  }
-  if (hasPredecessorTask(unscheduled, taskId)) {
-    return { period: 'Sem dia definido', date: '' }
-  }
-  return null
+  originWeeklyLog: WeeklyLog | undefined,
+  originMonthlyLog: MonthlyLog | undefined,
+): PredecessorLocation | null {
+  return (
+    findPredecessorInWeeklyLog(days, unscheduled, taskId) ??
+    (originWeeklyLog ? findPredecessorInWeeklyLog(originWeeklyLog.days, originWeeklyLog.unscheduled, taskId) : null) ??
+    (originMonthlyLog ? findPredecessorInMonthlyLog(originMonthlyLog.tasks, taskId) : null)
+  )
 }
 
 export function ArchiveWeeklyDetailPage() {
@@ -94,8 +98,22 @@ export function ArchiveWeeklyDetailPage() {
   const isOnline = useOnlineStatus()
   const locationState = (location.state as ArchiveDetailLocationState | null) ?? null
   const archiveReturnQuery = locationState?.archiveReturnQuery ?? ''
+  const originPeriod = locationState?.originPeriod
 
   const weeklyLog = useWeeklyLogQuery(weekStart)
+  // DW-17: período de ORIGEM de uma linhagem cross-período, carregado SOB
+  // DEMANDA — `enabled` só liga quando `originPeriod` existe E seu `type`
+  // bate com o hook chamado; nunca dispara a busca "semana atual"/"mês
+  // atual" (sentinela) como efeito colateral de um parâmetro ausente
+  // (`weekStart`/`monthFirst` ficam `undefined` quando desabilitado).
+  const originIsMonthly = originPeriod?.type === 'monthly' && Boolean(originPeriod?.monthFirst)
+  const originIsWeekly = originPeriod?.type === 'weekly' && Boolean(originPeriod?.weekStart)
+  const originMonthlyLog = useMonthlyLogQuery(originIsMonthly ? originPeriod?.monthFirst ?? undefined : undefined, {
+    enabled: originIsMonthly,
+  })
+  const originWeeklyLog = useWeeklyLogQuery(originIsWeekly ? originPeriod?.weekStart ?? undefined : undefined, {
+    enabled: originIsWeekly,
+  })
   const createWeeklyTask = useCreateWeeklyTaskMutation()
   const transitionTask = useTransitionTaskMutation()
 
@@ -152,7 +170,19 @@ export function ArchiveWeeklyDetailPage() {
     }
     setNavigationError(null)
     writeLineageReturn(originTaskId)
-    navigate(path, { state: { focusTaskId: successorTaskId, archiveReturnQuery } })
+    // DW-17: esta página (a ORIGEM da navegação) já sabe sua própria
+    // identidade de período (`loadedWeekStart`, via closure — a função só
+    // EXECUTA em resposta a um clique, depois que o corpo do componente já
+    // rodou até a linha que destructura `weeklyLog.data`) — o destino usa
+    // isso para carregar este período sob demanda se precisar mostrar "Veio
+    // de" para uma tarefa que migrou PARA lá.
+    navigate(path, {
+      state: {
+        focusTaskId: successorTaskId,
+        archiveReturnQuery,
+        originPeriod: { type: 'weekly', weekStart: loadedWeekStart } satisfies MigrationTarget,
+      },
+    })
   }
 
   if (weeklyLog.isPending) {
@@ -340,7 +370,17 @@ export function ArchiveWeeklyDetailPage() {
           isSubtask={isOpenTaskSubtask}
           readonly={isReadonly}
           onClose={() => setOpenTaskId(null)}
-          predecessor={openTaskId ? findPredecessor(days, unscheduled, openTaskId) : null}
+          predecessor={
+            openTaskId
+              ? findPredecessor(
+                  days,
+                  unscheduled,
+                  openTaskId,
+                  originIsWeekly ? originWeeklyLog.data : undefined,
+                  originIsMonthly ? originMonthlyLog.data : undefined,
+                )
+              : null
+          }
         />
       )}
     </Box>

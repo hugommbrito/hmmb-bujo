@@ -535,6 +535,15 @@ describe('useWeeklyLogQuery (AC3)', () => {
       params: { week_start: '2026-07-13' },
     })
   })
+
+  it('enabled: false NÃO consulta (DW-17 — período de ORIGEM de uma linhagem cross-período só carrega sob demanda)', async () => {
+    const { wrapper } = makeWrapper()
+
+    renderHook(() => useWeeklyLogQuery('2026-07-13', { enabled: false }), { wrapper })
+
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(mockGet).not.toHaveBeenCalled()
+  })
 })
 
 describe('useMonthlyLogQuery (AC2)', () => {

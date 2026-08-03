@@ -6,14 +6,45 @@ import { ThemeProvider } from '@mui/material'
 import { axe } from 'jest-axe'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-let monthlyLogResult: { isPending: boolean; isError: boolean; data?: unknown; refetch: () => void }
+type QueryMockResult = { isPending: boolean; isError: boolean; data?: unknown; refetch: () => void }
+
+let monthlyLogResult: QueryMockResult
+// Dispatch por parâmetro (DW-17): a página agora chama `useMonthlyLogQuery`
+// DUAS vezes (o período da URL +, condicionalmente, o período de ORIGEM de
+// uma linhagem cross-período mensal) e `useWeeklyLogQuery` uma vez (origem
+// semanal, cross-tipo). Os mapas abaixo simulam dados DISTINTOS para o
+// período de origem, chaveados pelo `monthFirst`/`weekStart` exato que o
+// componente passa — a chamada "própria" da página (sem entrada no mapa) cai
+// no `monthlyLogResult` de sempre.
+let originMonthlyLogByMonthFirst: Record<string, QueryMockResult> = {}
+let originWeeklyLogByWeekStart: Record<string, QueryMockResult> = {}
+const disabledQueryResult: QueryMockResult = { isPending: false, isError: false, data: undefined, refetch: vi.fn() }
+
+const useMonthlyLogQueryMock = vi.fn((monthFirst?: string, options?: { enabled?: boolean }): QueryMockResult => {
+  // Honra `enabled: false` (mesmo quando um teste registrou uma entrada de
+  // origem para este `monthFirst` por engano) — mantém o mock fiel ao
+  // contrato real do hook, não só ao dispatch por parâmetro.
+  if (options?.enabled === false) return disabledQueryResult
+  return (monthFirst !== undefined && originMonthlyLogByMonthFirst[monthFirst]) || monthlyLogResult
+})
+const useWeeklyLogQueryMock = vi.fn((weekStart?: string, options?: { enabled?: boolean }): QueryMockResult => {
+  if (options?.enabled === false) return disabledQueryResult
+  return (weekStart !== undefined && originWeeklyLogByWeekStart[weekStart]) || disabledQueryResult
+})
 const mockNavigate = vi.fn()
 
 vi.mock('../../features/bujo', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../features/bujo')>()
   return {
     ...actual,
-    useMonthlyLogQuery: () => monthlyLogResult,
+    // Forward via rest-args (NÃO `(monthFirst, options) => mock(monthFirst, options)`):
+    // preserva a ARIDADE exata da chamada real — a chamada "própria" da
+    // página (`useMonthlyLogQuery(monthFirst)`, 1 argumento) precisa continuar
+    // registrando `call.length === 1` em `.mock.calls`, senão o teste de
+    // "enabled: false" (que distingue a chamada de origem pelo `call.length`)
+    // não consegue diferenciar as duas chamadas.
+    useMonthlyLogQuery: (...args: [string?, { enabled?: boolean }?]) => useMonthlyLogQueryMock(...args),
+    useWeeklyLogQuery: (...args: [string?, { enabled?: boolean }?]) => useWeeklyLogQueryMock(...args),
   }
 })
 
@@ -81,6 +112,8 @@ beforeEach(() => {
   sessionStorage.clear()
   Element.prototype.scrollIntoView = vi.fn()
   monthlyLogResult = queryResult({ data: undefined })
+  originMonthlyLogByMonthFirst = {}
+  originWeeklyLogByWeekStart = {}
 })
 
 afterEach(() => {
@@ -209,6 +242,83 @@ describe('ArchiveMonthlyDetailPage (Story 14.10)', () => {
     expect(screen.getByText(/Veio de/)).toBeInTheDocument()
   })
 
+  it('predecessor cross-período: origem é uma SEMANA diferente (Weekly→Monthly, DW-17), "Veio de" usa o dado do período de origem carregado via location.state.originPeriod', async () => {
+    const origemNaSemana = task({
+      id: 'origem-na-semana',
+      title: 'Origem na semana',
+      status: 'migrated',
+      migratedToTask: 'sucessor',
+    })
+    originWeeklyLogByWeekStart['2026-07-13'] = queryResult({
+      data: {
+        weekStart: '2026-07-13',
+        days: [
+          { date: '2026-07-13', tasks: [origemNaSemana] },
+          { date: '2026-07-14', tasks: [] },
+          { date: '2026-07-15', tasks: [] },
+          { date: '2026-07-16', tasks: [] },
+          { date: '2026-07-17', tasks: [] },
+          { date: '2026-07-18', tasks: [] },
+          { date: '2026-07-19', tasks: [] },
+        ],
+        unscheduled: [],
+        closed: false,
+        status: null,
+      },
+    })
+    monthlyLogResult = queryResult({
+      data: monthlyLog({ tasks: [task({ id: 'sucessor', title: 'Sucessor', scheduledDate: '2026-06-10' })] }),
+    })
+    const user = userEvent.setup()
+    renderPage('/archive/monthly/2026-06-01', { originPeriod: { type: 'weekly', weekStart: '2026-07-13' } })
+
+    await user.click(screen.getByRole('button', { name: /Ver detalhes de Sucessor/i }))
+    expect(screen.getByText(/Veio de/)).toBeInTheDocument()
+  })
+
+  it('predecessor na MESMA página mas MÊS diferente (DW-17): origem mensal de outro mês é carregada via location.state.originPeriod', async () => {
+    const origemOutroMes = task({
+      id: 'origem-outro-mes',
+      title: 'Origem em outro mês',
+      status: 'migrated',
+      migratedToTask: 'sucessor',
+      scheduledDate: '2026-05-15',
+    })
+    originMonthlyLogByMonthFirst['2026-05-01'] = queryResult({
+      data: monthlyLog({ monthFirst: '2026-05-01', tasks: [origemOutroMes] }),
+    })
+    monthlyLogResult = queryResult({
+      data: monthlyLog({ tasks: [task({ id: 'sucessor', title: 'Sucessor', scheduledDate: '2026-06-10' })] }),
+    })
+    const user = userEvent.setup()
+    renderPage('/archive/monthly/2026-06-01', { originPeriod: { type: 'monthly', monthFirst: '2026-05-01' } })
+
+    await user.click(screen.getByRole('button', { name: /Ver detalhes de Sucessor/i }))
+    expect(screen.getByText(/Veio de/)).toBeInTheDocument()
+  })
+
+  it('chegada direta (sem seta de linhagem, sem originPeriod): nenhuma query de origem fica habilitada, "Veio de" permanece ausente (comportamento de hoje preservado)', async () => {
+    monthlyLogResult = queryResult({
+      data: monthlyLog({ tasks: [task({ id: 'sucessor', title: 'Sucessor direto', scheduledDate: '2026-06-10' })] }),
+    })
+    const user = userEvent.setup()
+    renderPage()
+
+    await user.click(screen.getByRole('button', { name: /Ver detalhes de Sucessor direto/i }))
+    expect(screen.queryByText(/Veio de/)).not.toBeInTheDocument()
+
+    // As duas queries de origem SEMPRE são chamadas (hooks incondicionais),
+    // mas com `weekStart`/`monthFirst` undefined e `enabled: false` — nunca
+    // disparam a busca "semana atual"/"mês atual" (sentinela) como efeito
+    // colateral de `originPeriod` ausente.
+    const originMonthlyCall = useMonthlyLogQueryMock.mock.calls.find((call) => call.length > 1)
+    const originWeeklyCall = useWeeklyLogQueryMock.mock.calls.find((call) => call.length > 1)
+    expect(originMonthlyCall?.[0]).toBeUndefined()
+    expect(originMonthlyCall?.[1]).toEqual({ enabled: false })
+    expect(originWeeklyCall?.[0]).toBeUndefined()
+    expect(originWeeklyCall?.[1]).toEqual({ enabled: false })
+  })
+
   it('linhagem cross-período: sucessor fora do DOM navega para a rota do destino e grava retorno', async () => {
     const origem = task({
       id: 'origem',
@@ -225,9 +335,20 @@ describe('ArchiveMonthlyDetailPage (Story 14.10)', () => {
 
     expect(mockNavigate).toHaveBeenCalledWith(
       '/daily/2026-08-05',
-      expect.objectContaining({ state: expect.objectContaining({ focusTaskId: 'sucessor' }) }),
+      expect.objectContaining({
+        state: expect.objectContaining({
+          focusTaskId: 'sucessor',
+          // DW-17: a página de ORIGEM viaja sua própria identidade de
+          // período — o destino usa isso para achar o predecessor quando ele
+          // não estiver no período que o destino já carregou. (O destino
+          // real aqui é `/daily/...`, fora do Arquivo — `DailyPage.tsx` nunca
+          // lê `originPeriod`, mas a origem grava do mesmo jeito.)
+          originPeriod: { type: 'monthly', monthFirst: '2026-06-01' },
+        }),
+      }),
     )
-    expect(sessionStorage.getItem('bujo:archive-lineage-return-task-id')).toBe('origem')
+    // DW-18: o valor agora é uma pilha (array JSON), não a string crua.
+    expect(sessionStorage.getItem('bujo:archive-lineage-return-task-id')).toBe(JSON.stringify(['origem']))
   })
 
   it('linhagem cross-período com migrationTarget sem chave utilizável: mostra erro visível, não navega, não grava retorno (achado da review)', async () => {
@@ -252,7 +373,8 @@ describe('ArchiveMonthlyDetailPage (Story 14.10)', () => {
   })
 
   it('retorno cuja linha de origem não existe mais: a entrada de sessionStorage é limpa mesmo assim (não vaza)', async () => {
-    sessionStorage.setItem('bujo:archive-lineage-return-task-id', 'tarefa-que-sumiu')
+    // DW-18: entrada gravada no formato de pilha (array JSON).
+    sessionStorage.setItem('bujo:archive-lineage-return-task-id', JSON.stringify(['tarefa-que-sumiu']))
     monthlyLogResult = queryResult({ data: monthlyLog({ tasks: [task({ title: 'Outra tarefa' })] }) })
     renderPage()
 

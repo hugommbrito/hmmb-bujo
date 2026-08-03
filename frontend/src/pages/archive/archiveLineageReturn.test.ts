@@ -43,20 +43,46 @@ describe('write/read/clearLineageReturn', () => {
     expect(readLineageReturn()).toBe('task-1')
   })
 
-  it('uma segunda escrita sobrescreve a primeira (limitação conhecida — um salto por vez)', () => {
+  it('dois saltos consecutivos (A→B→C) EMPILHAM: nenhuma entrada é perdida (DW-18)', () => {
     writeLineageReturn('task-1')
     writeLineageReturn('task-2')
+    // O topo é a entrada MAIS RECENTE — `read` só espia, não remove.
     expect(readLineageReturn()).toBe('task-2')
+    expect(readLineageReturn()).toBe('task-2')
+    // Consumir (read+clear) o topo revela a entrada anterior — a primeira
+    // escrita sobrevive ao segundo salto, ao contrário da versão de chave
+    // única (comportamento antigo, agora corrigido).
+    clearLineageReturn()
+    expect(readLineageReturn()).toBe('task-1')
   })
 
-  it('clear remove a entrada', () => {
+  it('clear remove só o TOPO da pilha, entradas mais antigas permanecem', () => {
     writeLineageReturn('task-1')
+    writeLineageReturn('task-2')
+    writeLineageReturn('task-3')
+    clearLineageReturn()
+    expect(readLineageReturn()).toBe('task-2')
+    clearLineageReturn()
+    expect(readLineageReturn()).toBe('task-1')
     clearLineageReturn()
     expect(readLineageReturn()).toBeNull()
   })
 
   it('sem entrada prévia devolve null', () => {
     expect(readLineageReturn()).toBeNull()
+  })
+
+  it('pilha vazia: clear é um no-op seguro (não lança, não "cria" entrada)', () => {
+    expect(() => clearLineageReturn()).not.toThrow()
+    expect(readLineageReturn()).toBeNull()
+  })
+
+  it('JSON inválido em sessionStorage (valor legado ou corrompido) é tratado como pilha vazia', () => {
+    sessionStorage.setItem('bujo:archive-lineage-return-task-id', 'task-legado-string-crua')
+    expect(readLineageReturn()).toBeNull()
+    // Escrever após um valor corrompido funciona normalmente (não propaga o lixo).
+    writeLineageReturn('task-novo')
+    expect(readLineageReturn()).toBe('task-novo')
   })
 })
 

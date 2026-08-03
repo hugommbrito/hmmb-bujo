@@ -10,10 +10,13 @@
 //   ▶ Foco de RETORNO (sucessor → volta pra origem) precisa sobreviver a
 //     QUALQUER forma de voltar (link explícito ou botão nativo do navegador),
 //     que NÃO passa pelo nosso código — por isso vive em `sessionStorage`.
-//   ▶ Uma ÚNICA chave (não uma pilha): dois saltos consecutivos antes de
-//     voltar do primeiro sobrescrevem a entrada do primeiro — limitação
-//     conhecida e aceita (registrada em `deferred-work.md`); o escopo desta
-//     story é origem → sucessor IMEDIATO, um salto de cada vez.
+//   ▶ Pilha LIFO, MESMA chave (DW-18): `sessionStorage` guarda um array JSON
+//     sob `STORAGE_KEY` — dois saltos consecutivos (A→B→C) antes de voltar do
+//     primeiro (A→B) EMPILHAM em vez de se sobrescreverem (limitação conhecida
+//     da versão de chave única, registrada em `deferred-work.md`). `write`
+//     empilha, `read` espia o TOPO (sem remover), `clear` remove só o TOPO —
+//     ler+limpar juntos (achado da review da Story 14.10) continua o
+//     invariante, agora por ENTRADA, não pela chave inteira.
 //   ▶ Melhor esforço: se a linha não existir mais quando o usuário voltar
 //     (período mudou, tarefa não está mais visível), `focusTaskRow` só
 //     devolve `false` — nada quebra, só o foco extra não acontece.
@@ -34,19 +37,57 @@ export function pathForMigrationTarget(target: MigrationTarget): string | null {
 
 const STORAGE_KEY = 'bujo:archive-lineage-return-task-id'
 
+/** Lê a pilha bruta do `sessionStorage`. JSON inválido ou algo que não seja
+ * um array de strings (ex.: valor legado da versão de chave única, antes da
+ * DW-18) é tratado como pilha vazia — nunca lança. */
+function readStack(): string[] {
+  const raw = sessionStorage.getItem(STORAGE_KEY)
+  if (!raw) return []
+  try {
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((entry): entry is string => typeof entry === 'string')
+  } catch {
+    return []
+  }
+}
+
+/** Grava a pilha; uma pilha vazia REMOVE a chave (nunca deixa `'[]'` parado
+ * em `sessionStorage`, mesmo invariante de "sem entrada = chave ausente" da
+ * versão anterior). */
+function writeStack(stack: string[]): void {
+  if (stack.length === 0) {
+    sessionStorage.removeItem(STORAGE_KEY)
+    return
+  }
+  sessionStorage.setItem(STORAGE_KEY, JSON.stringify(stack))
+}
+
 /** Registra qual linha deve receber foco+destaque na PRÓXIMA vez que ela
  * existir no DOM — chamado pela página de ORIGEM antes de navegar para o
- * período de destino (guarda a si mesma, para quando o usuário voltar). */
+ * período de destino (guarda a si mesma, para quando o usuário voltar).
+ * EMPILHA (DW-18): um segundo salto de linhagem antes do primeiro retornar
+ * não sobrescreve a entrada anterior — ambas sobrevivem em `sessionStorage`. */
 export function writeLineageReturn(taskId: string): void {
-  sessionStorage.setItem(STORAGE_KEY, taskId)
+  const stack = readStack()
+  stack.push(taskId)
+  writeStack(stack)
 }
 
+/** Espia (sem remover) o TOPO da pilha — a entrada MAIS RECENTE. `null`
+ * quando a pilha está vazia. */
 export function readLineageReturn(): string | null {
-  return sessionStorage.getItem(STORAGE_KEY)
+  const stack = readStack()
+  return stack.length > 0 ? stack[stack.length - 1] : null
 }
 
+/** Remove só o TOPO da pilha. Entradas mais antigas (saltos anteriores ainda
+ * não consumidos) permanecem intactas. Chamar em pilha vazia é um no-op
+ * seguro (nunca lança). */
 export function clearLineageReturn(): void {
-  sessionStorage.removeItem(STORAGE_KEY)
+  const stack = readStack()
+  stack.pop()
+  writeStack(stack)
 }
 
 /**

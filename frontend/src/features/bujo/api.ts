@@ -215,10 +215,17 @@ async function fetchWeeklyLog(weekStart?: string): Promise<WeeklyLog> {
   return response.data
 }
 
-export function useWeeklyLogQuery(weekStart?: string) {
+// `enabled` (DW-17): mesmo molde de `useMonthlyLogQuery` abaixo — usado por
+// `ArchiveWeeklyDetailPage.tsx`/`ArchiveMonthlyDetailPage.tsx` para carregar o
+// período de ORIGEM de uma linhagem cross-período SOB DEMANDA (só quando
+// `originPeriod` existe e o tipo bate com o hook chamado). Default `true`
+// preserva todo call site existente (`MigrationRitualPage`, `WeeklyBoardPage`,
+// `WeeklyPlanningPage`) sem alteração.
+export function useWeeklyLogQuery(weekStart?: string, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: keys.bujo.weeklyLog(weekStart),
     queryFn: () => fetchWeeklyLog(weekStart),
+    enabled: options?.enabled ?? true,
   })
 }
 

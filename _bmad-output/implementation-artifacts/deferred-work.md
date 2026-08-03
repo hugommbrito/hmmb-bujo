@@ -93,13 +93,15 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: review of story-14-10-arquivo-no-sistema-novo (2026-07-28)"), 2026-07-31
 location: ArchiveWeeklyDetailPage.tsx; ArchiveMonthlyDetailPage.tsx (findPredecessor)
 reason: o card de detalhe de uma tarefa alcançada via seta cross-período nunca mostra "veio de" (some silenciosamente, ao contrário do mesmo card para migração dentro do período); confirmado lendo findPredecessor em ambas as páginas — o loop itera só sobre days/unscheduled (Weekly) ou tasks (Monthly) do período atual; não é exigido pela matriz I/O da spec 14-10 (que só pede navegação + foco na linha sucessora), só um efeito colateral perdido.
-status: open
+status: done 2026-08-03
+resolution: resolved by sweep bundle dw-archive-lineage-navigation-fixes
 
 ### DW-18: archiveLineageReturn.ts usa uma única chave de sessionStorage, quebrando o foco-ao-voltar em saltos de linhagem encadeados
 origin: migrated from legacy ledger ("Deferred from: review of story-14-10-arquivo-no-sistema-novo (2026-07-28)"), 2026-07-31
 location: archiveLineageReturn.ts
 reason: um segundo salto de linhagem (B→C) antes de retornar do primeiro (A→B) sobrescreve a entrada de retorno, quebrando o foco-ao-voltar da primeira origem; confirmado lendo archiveLineageReturn.ts — STORAGE_KEY é um único valor, escrito por handleNavigateToSuccessor em ambas as páginas de detalhe sem pilha/histórico; fora do escopo da spec 14-10 (linhagem definida só como "origem → sucessor imediato", um salto por vez), mas o encadeamento de saltos consecutivos é uma sequência de usuário plausível.
-status: open
+status: done 2026-08-03
+resolution: resolved by sweep bundle dw-archive-lineage-navigation-fixes
 
 ### DW-19: A seta de linhagem em TaskRowBase.tsx usa aria-disabled em vez de disabled real quando o sucessor não está disponível
 origin: migrated from legacy ledger ("Deferred from: review of story-14-10-arquivo-no-sistema-novo (2026-07-28)"), 2026-07-31
