@@ -238,7 +238,16 @@ export function TaskRowBase({
   const successorReachable = successorAvailable || canNavigateCrossPeriod
 
   function handleLineageClick() {
-    if (!task.migratedToTask) return
+    // DW-19: as duas metades da guarda são intencionais e cobrem casos
+    // diferentes — `!task.migratedToTask` (nunca houve alvo de linhagem) já
+    // existia; `!successorReachable` (há alvo, mas está indisponível) é o
+    // reforço novo, usando a MESMA variável que já governa o `aria-disabled`
+    // e o `cursor` do botão da seta abaixo. Sem essa segunda metade, o botão
+    // continua um `<button>` real clicável por mouse/touch mesmo quando a UI
+    // anuncia "indisponível", e o "nada acontece" de antes era só um acidente
+    // das branches internas (`querySelector` não encontra nó + callback
+    // ausente), não uma invariante expressa em código.
+    if (!task.migratedToTask || !successorReachable) return
     const successorEl = document.querySelector<HTMLElement>(
       `[data-task-id="${task.migratedToTask}"]`,
     )

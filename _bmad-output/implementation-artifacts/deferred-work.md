@@ -107,7 +107,8 @@ resolution: resolved by sweep bundle dw-archive-lineage-navigation-fixes
 origin: migrated from legacy ledger ("Deferred from: review of story-14-10-arquivo-no-sistema-novo (2026-07-28)"), 2026-07-31
 location: TaskRowBase.tsx (~linha 293)
 reason: o controle continua clicável por mouse e produz um clique morto silencioso — padrão pré-existente, não tocado pela story 14-10 (Design Notes: "sem reescrita da lógica de successorAvailable"); confirmado lendo TaskRowBase.tsx — o botão da seta usa aria-disabled em vez de disabled e nenhum handler de clique é suprimido no DOM; o mesmo comportamento já existia antes desta story em todos os outros consumidores (Weekly/Monthly/Future/Migration boards), que não passam a nova prop onNavigateToSuccessor.
-status: open
+status: done 2026-08-03
+resolution: resolved by sweep bundle dw-task-row-lineage-arrow-disabled-fix
 
 ### DW-1: Follow-up review still recommended for 14-10-arquivo-no-sistema-novo after the damping cap was spent
 origin: review-budget-followup
