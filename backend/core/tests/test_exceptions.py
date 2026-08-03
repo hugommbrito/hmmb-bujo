@@ -12,6 +12,7 @@ from core.exceptions import (
     ImmutableSnapshot,
     InvalidTransition,
     TenantScopeViolation,
+    _normalise_body,
     custom_exception_handler,
 )
 
@@ -60,3 +61,59 @@ def test_unknown_exception_falls_through_to_django():
     # A plain, non-domain exception is not ours to translate — return None so
     # Django produces its standard 500.
     assert custom_exception_handler(RuntimeError("boom"), {}) is None
+
+
+# --- DW-7: _normalise_body hardening --------------------------------------------
+def test_normalise_body_flattens_nested_serializer_error():
+    # A nested serializer error must never surface as a stringified dict.
+    body = _normalise_body({"campo": {"sub": ["msg"]}})
+
+    assert body["fields"] == {"campo": ["msg"]}
+
+
+def test_normalise_body_handles_non_list_non_field_errors():
+    # A non-list non_field_errors must never be indexed by character.
+    body = _normalise_body({"non_field_errors": "msg"})
+
+    assert body["detail"] == "msg"
+    assert "fields" not in body
+
+
+def test_normalise_body_handles_none_data():
+    # data=None must never become the literal string "None".
+    assert _normalise_body(None) == {"detail": "Unexpected error"}
+
+
+def test_normalise_body_preserves_detail_with_extra_keys():
+    # A real detail alongside extra keys must never be demoted into fields.
+    body = _normalise_body({"detail": "real", "code": "x"})
+
+    assert body["detail"] == "real"
+    assert body["fields"] == {"code": ["x"]}
+
+
+def test_normalise_body_keeps_non_field_errors_as_a_field_when_detail_wins():
+    # Review finding (Patch 2a): non_field_errors co-occurring with an explicit
+    # detail must surface as a normal field key, never be silently dropped.
+    body = _normalise_body({"detail": "real", "non_field_errors": ["extra"]})
+
+    assert body["detail"] == "real"
+    assert body["fields"] == {"non_field_errors": ["extra"]}
+
+
+def test_normalise_body_flattens_a_list_detail_value():
+    # Review finding (Patch 2b): a "detail" key whose value is itself a list
+    # must be flattened, never stringified into a raw Python repr.
+    body = _normalise_body({"detail": ["a", "b"]})
+
+    assert body["detail"] == "a"
+    assert "fields" not in body
+
+
+def test_normalise_body_flattens_a_dict_detail_value():
+    # _as_list() also recurses into dicts, not just lists -- pin that a nested
+    # serializer error under a literal "detail" key is flattened the same way.
+    body = _normalise_body({"detail": {"sub": ["msg"]}})
+
+    assert body["detail"] == "msg"
+    assert "fields" not in body

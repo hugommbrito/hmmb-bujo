@@ -18,13 +18,15 @@ resolution: resolved by sweep bundle dw-prod-settings-and-ci-hardening
 origin: migrated from legacy ledger ("Deferred from: code review of 1-2-modulo-core-com-isolamento-multi-tenant-fail-closed-e-guardrails (2026-06-24)"), 2026-07-31
 location: backend/core/models.py:394-402
 reason: save() só preenche user_id quando é None, então um user_id explícito arbitrário é persistido sem checar current_user_id, e bulk_create não chama save() (contorna auto-fill + fail-closed); sem serializers/views/bulk_create até a Story 1.4, e preservar user_id explícito é by-design (caminho admin) — endereçar validação user_id == current_user_id + guarda de bulk_create quando surgir a primeira camada de escrita de domínio.
-status: open
+status: done 2026-08-03
+resolution: resolved by sweep bundle dw-core-tenant-guardrail-hardening
 
 ### DW-7: Robustez do custom_exception_handler para corpos de erro não-triviais
 origin: migrated from legacy ledger ("Deferred from: code review of 1-2-modulo-core-com-isolamento-multi-tenant-fail-closed-e-guardrails (2026-06-24)"), 2026-07-31
 location: backend/core/exceptions.py:278-315
 reason: _as_list stringifica erros de serializer aninhado como "{'sub': [...]}"; non_field_errors como string é indexado por caractere; data=None vira {"detail": "None"}; dict com detail + chaves extras rebaixa o detail real a "campo" — sem serializers/views que exercitem esses caminhos até a Story 1.4, endereçar quando a primeira view/serializer surgir.
-status: open
+status: done 2026-08-03
+resolution: resolved by sweep bundle dw-core-tenant-guardrail-hardening
 
 ### DW-8: Mapeamento 404 "recurso de outro usuário" não implementado nem testado
 origin: migrated from legacy ledger ("Deferred from: code review of 1-2-modulo-core-com-isolamento-multi-tenant-fail-closed-e-guardrails (2026-06-24)"), 2026-07-31
@@ -37,7 +39,8 @@ resolution: already resolved: bujo/views.py TaskDetailView.patch (lines 139-142)
 origin: migrated from legacy ledger ("Deferred from: code review of 1-2-modulo-core-com-isolamento-multi-tenant-fail-closed-e-guardrails (2026-06-24)"), 2026-07-31
 location: backend/core/tenant.py:446,461; backend/core/middleware.py:345
 reason: set(None)/set(0)/set("") torna o contexto indistinguível de "sem tenant" (500 + log crítico enganoso) ou aceita id espúrio; guards são estritamente is None; sem User real até a Story 2.1.
-status: open
+status: done 2026-08-03
+resolution: resolved by sweep bundle dw-core-tenant-guardrail-hardening
 
 ### DW-10: TenantMiddleware pode "acordar" via sessão do Django admin com PK incompatível
 origin: migrated from legacy ledger ("Deferred from: code review of 1-2-modulo-core-com-isolamento-multi-tenant-fail-closed-e-guardrails (2026-06-24)"), 2026-07-31
