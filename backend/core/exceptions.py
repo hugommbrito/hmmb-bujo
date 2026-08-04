@@ -181,10 +181,17 @@ def custom_exception_handler(exc, context):
     # The branch is global, so a ``User.DoesNotExist`` leaking from some *other*
     # bug also becomes a 401 — the warning log is what keeps that visible.
     if isinstance(exc, ObjectDoesNotExist) and isinstance(exc, get_user_model().DoesNotExist):
-        logger.warning("User.DoesNotExist escapou para o handler central", exc_info=exc)
+        logger.warning("User.DoesNotExist escaped to the central handler", exc_info=exc)
         auth_header = _authenticate_header(context)
         return Response(
-            {"detail": _NO_ACTIVE_ACCOUNT},
+            # ``str()`` resolves the lazy msgid against the locale active *now*,
+            # i.e. during the request — same value, but a real ``str`` in
+            # ``response.data``. Every other body in this module is a plain string
+            # (the two branches above) or went through ``_normalise_body``, whose
+            # ``_stringify`` guarantees it; a lazy proxy here would make this the
+            # one branch where ``response.data["detail"]`` is not what the contract
+            # in ``accounts/views.py`` says it is.
+            {"detail": str(_NO_ACTIVE_ACCOUNT)},
             status=status.HTTP_401_UNAUTHORIZED,
             # Body *and* challenge must match the deactivated-user 401, or the
             # presence/absence of this header alone discloses which case it was.
@@ -220,7 +227,7 @@ def _authenticate_header(context):
         return get_header(request)
     except Exception:
         # Deriving a header must never mask the exception we were translating.
-        logger.warning("Falha ao derivar WWW-Authenticate no handler central", exc_info=True)
+        logger.warning("Failed to derive WWW-Authenticate in the central handler", exc_info=True)
         return None
 
 

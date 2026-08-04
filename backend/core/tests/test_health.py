@@ -1,11 +1,14 @@
 """Tests for the liveness health-check (``GET /api/health/``).
 
-Beyond the original smoke check (the app boots and serves the route), these pin the
-DW-24 contract: the view declares ``@authentication_classes([])``, so no
-authenticator runs and *any* ``Authorization`` header — malformed or perfectly
+The original smoke check stays: it guarantees pytest collects at least one test
+(avoids exit code 5) and proves the app boots and serves ``GET /api/health/``.
+
+The rest pin the DW-24 contract: the view declares ``@authentication_classes([])``,
+so no authenticator runs and *any* ``Authorization`` header — malformed or perfectly
 valid — is ignored instead of being allowed to turn a liveness probe into a 401.
-Proving the valid-token half means minting a real JWT, so this module now touches
-the DB (via the root ``conftest`` autouse fixture) rather than being auth-free.
+Proving the valid-token half means minting a real JWT, so this module now *writes* a
+user row; DB access itself was never the difference (the root ``conftest`` grants it
+to every test via an autouse fixture).
 """
 
 from rest_framework import status

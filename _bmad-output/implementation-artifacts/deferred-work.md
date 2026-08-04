@@ -169,14 +169,16 @@ origin: review (fresh review pass) of spec-dw-11-dw-12-dw-14-dw-15-accounts-sche
 location: backend/core/views.py (health)
 severity: medium
 reason: DW-15 corrigiu exatamente essa classe de bug em accounts/views.py::signup (@api_view sem authentication_classes próprio herda DEFAULT_AUTHENTICATION_CLASSES global, então um Authorization header malformado é rejeitado por um autenticador global antes mesmo da view rodar) mas o mesmo padrão (@api_view + permission_classes=[AllowAny] sem authentication_classes=[]) continua em core/views.py::health, fora do escopo desta bundle (o ledger nomeia só accounts/signup/token/token-refresh). Confirmado empiricamente (achado pela verification-gap review desta pass, 2026-08-03): GET /api/health/ com um header Authorization inválido retorna 401 em vez de 200, apesar do docstring da view dizer "no auth" — nenhum dos 2 testes existentes (core/tests/test_health.py::test_health_returns_ok, accounts/tests/test_views.py::test_health_sem_auth_retorna_200) envia um Authorization header, então o regressão fica invisível a ambos. Um probe de monitoramento/reverse proxy que encaminhe um bearer token velho/corrompido para o liveness check receberia um falso "unhealthy".
-status: open
+status: done 2026-08-03
+resolution: resolved by sweep bundle dw-core-auth-error-handling-fixes
 
 ### DW-25: TokenRefreshSerializer.validate() pode 500ar em vez de 401ar se o usuário do token foi apagado do banco
 origin: review (fresh review pass) of spec-dw-11-dw-12-dw-14-dw-15-accounts-schema-accuracy-drift-guard, 2026-08-03
 location: rest_framework_simplejwt/serializers.py:111-124 (TokenRefreshSerializer.validate); backend/core/exceptions.py (custom_exception_handler)
 severity: medium
 reason: achado pelo edge-case-hunter (2026-08-03) e confirmado lendo o código-fonte instalado do simplejwt: TokenRefreshSerializer.validate() chama get_user_model().objects.get(**{USER_ID_FIELD: user_id}) sem try/except em torno do .get() — se o usuário referenciado por um refresh token estruturalmente válido foi apagado do banco (diferente de apenas desativado, caso já coberto por test_token_refresh_usuario_desativado_retorna_401_sem_fields), a exceção User.DoesNotExist não é reconhecida por custom_exception_handler (não é APIException nem DomainError) e cai no fallback return None, virando o 500 padrão do Django em vez de um 401 documentado. Pré-existente, não introduzido pelo diff desta bundle (que só anota schema em torno das views de token, sem tocar TokenRefreshSerializer). Nenhum fluxo do app hoje apaga usuários de fato (só desativa via is_active=False) — o caminho só é alcançável por intervenção direta no banco/admin, por isso severity medium, não high.
-status: open
+status: done 2026-08-03
+resolution: resolved by sweep bundle dw-core-auth-error-handling-fixes
 
 ### DW-26: Follow-up review still recommended for dw-accounts-schema-accuracy-drift-guard after the damping cap was spent
 origin: review-budget-followup
@@ -186,3 +188,17 @@ severity: low
 reason: The follow-up-review damping cap (limits.max_followup_reviews = 1) was spent with the story finalized (status: done, verify green) while the review pass still recommended an independent follow-up. The work was committed by bmad-loop run 20260731-134802-a244; this entry preserves the lingering recommendation for a deliberate later review.
 status: done 2026-08-03
 resolution: already resolved: The independent follow-up review this entry asked for already ran: DW-24 and DW-25 are both dated 2026-08-03 with origin 'review (fresh review pass) of spec-dw-11-dw-12-dw-14-dw-15-accounts-schema-accuracy-drift-guard' -- the exact spec this entry names -- and that fresh pass is what surfaced them. The recommendation has been honored; its output is tracked as DW-24/DW-25, triaged separately in this same sweep.
+
+### DW-27: JWTAuthentication.get_user distingue usuário apagado de desativado em TODA rota autenticada, anulando a indistinguibilidade que a DW-25 construiu no refresh
+origin: review (fresh review pass) of spec-dw-24-dw-25-core-auth-error-handling-fixes, 2026-08-03
+location: rest_framework_simplejwt/authentication.py:120-139 (JWTAuthentication.get_user); superfície do projeto: backend/core/authentication.py (TenantAwareJWTAuthentication)
+severity: medium
+reason: achado pelo blind-hunter (2026-08-03) e confirmado por mim lendo o simplejwt instalado — JWTAuthentication.get_user levanta AuthenticationFailed(_("User not found"), code="user_not_found") quando a linha do usuário foi apagada e AuthenticationFailed(_("User is inactive"), code="user_inactive") quando ela existe mas está inativa: mensagem distinta E código distinto, em toda request autenticada por TenantAwareJWTAuthentication (que herda esse get_user). A DW-25 gastou trabalho real para tornar os dois 401 de POST /api/accounts/token/refresh/ indistinguíveis em status, corpo e header WWW-Authenticate (convenção do spine: nunca expor existência/inexistência de linha), mas quem tem um access token ainda válido — isto é, qualquer um que acabou de obter o refresh token que replayaria — distingue os dois casos trivialmente em qualquer outro endpoint. Pré-existente e fora do escopo da DW-25 (cujo intent nomeia só o handler central e a rota de refresh): fechar isso exige decidir a política no autenticador, não no exception handler, e provavelmente sobrescrever get_user em TenantAwareJWTAuthentication para colapsar os dois ramos num só AuthenticationFailed. Decisão de produto embutida: se a propriedade de indistinguibilidade importa, ela vale projeto-inteiro e este é o furo principal; se não importa, então _authenticate_header e metade do teste de paridade da DW-25 são complexidade não-ganha. Nenhum teste hoje asseve nada sobre a distinção nessa superfície.
+status: open
+
+### DW-28: os três ramos de resposta construída à mão em custom_exception_handler não chamam set_rollback(), que o handler default do DRF sempre chama
+origin: review (fresh review pass) of spec-dw-24-dw-25-core-auth-error-handling-fixes, 2026-08-03
+location: backend/core/exceptions.py (ramos TenantScopeViolation, DomainError e User.DoesNotExist do custom_exception_handler)
+severity: medium
+reason: achado pelo blind-hunter (2026-08-03) e confirmado por mim no DRF instalado — rest_framework/views.py:99 chama set_rollback() imediatamente antes de devolver a resposta, exatamente para que uma exceção dentro de um bloco ATOMIC_REQUESTS não deixe escrita parcial commitada. Os três ramos que constroem Response à mão em custom_exception_handler devolvem sem essa chamada, então herdam o footgun. LATENTE, não vivo: ATOMIC_REQUESTS não está setado em lugar nenhum de backend/config/ (grep vazio), logo hoje não há transação por request para rolar de volta. Pré-existente em 2 dos 3 ramos (TenantScopeViolation e DomainError antecedem a DW-25); a DW-25 só adicionou a terceira instância do mesmo padrão, e corrigir só o ramo novo deixaria a inconsistência pior do que está. Vale uma correção única nos três de uma vez, junto com um teste que prove o rollback — e vale ANTES de qualquer decisão de ligar ATOMIC_REQUESTS, porque é exatamente aí que o latente vira perda de dados silenciosa.
+status: open

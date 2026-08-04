@@ -22,6 +22,11 @@ def _login_e_refresh(client, mutate):
         {"email": user.email, "password": "senha-segura-123"},
         format="json",
     )
+    # Sem isto, uma regressão qualquer no login (throttling, mudança de serializer,
+    # a senha do UserFactory saindo de sincronia) viraria `KeyError: 'refresh'` nos
+    # três testes que dependem deste helper, apontando para cá em vez de para a rota
+    # que realmente quebrou.
+    assert login.status_code == 200, login.content
     refresh_token = login.json()["refresh"]
 
     mutate(user)
@@ -345,9 +350,15 @@ def test_token_refresh_401_de_desativado_e_de_apagado_sao_indistinguiveis(client
     # simplejwt é gettext_lazy com catálogo pt_BR — um literal hardcoded ficaria em
     # inglês sob qualquer locale ativo.
     #
-    # Roda sob pt-br de propósito: em en-us um literal inglês passaria por acidente.
-    # Este teste é também o guarda contra um rewording futuro do simplejwt, que é o
-    # que torna aceitável o msgid congelado em core/exceptions.py.
+    # Sobre o eixo de locale, sendo preciso (revisto em 2026-08-03): hoje ele não é
+    # alcançável em produção — não há LocaleMiddleware no MIDDLEWARE e
+    # LANGUAGE_CODE="en-us", então toda request real renderiza os dois corpos em
+    # inglês, e só o `translation.override` daqui ativa pt-br. O valor VIVO desta
+    # metade é outro, e é o que torna aceitável o msgid congelado em
+    # core/exceptions.py: ela detecta um rewording futuro do simplejwt (o msgid
+    # deixaria de casar com o catálogo e as duas strings colapsariam). O eixo passa a
+    # ser um canal lateral de verdade no dia em que o app ganhar negociação de
+    # idioma — e então este teste já está no lugar.
     with translation.override("pt-br"):
         pt_desativado = _login_e_refresh(client, _desativar)
         pt_apagado = _login_e_refresh(client, _apagar)

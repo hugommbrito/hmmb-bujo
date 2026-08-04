@@ -80,8 +80,13 @@ def test_user_does_not_exist_maps_to_401_without_fields(caplog):
     # WWW-Authenticate header and a non-English locale) is owned by
     # test_token_refresh_401_de_desativado_e_de_apagado_sao_indistinguiveis.
     assert response.data["detail"] == _NO_ACTIVE_ACCOUNT
-    # context={} carries no view/request, so there is no challenge to derive here;
-    # the header path is exercised on the real route by the parity test.
+    # ...but already resolved to a real str: this is the only branch that could have
+    # left a lazy proxy in response.data, and "{"detail": str}" is the documented
+    # contract, not just the rendered wire format (found by review 2026-08-03).
+    assert isinstance(response.data["detail"], str)
+    # context={} carries no view/request, so there is no challenge to derive here.
+    # This is the DEGENERATE path — APIView.get_exception_handler_context() always
+    # supplies view+request, so the two tests below cover the production shape.
     assert "WWW-Authenticate" not in response.headers
     # The whole safety argument for this branch is "the warning keeps a
     # User.DoesNotExist from some *other* bug visible", so pin the real logger and
@@ -103,6 +108,72 @@ def test_other_models_does_not_exist_still_falls_through_to_django():
     from core.tests.models import TenantTestModel
 
     assert custom_exception_handler(TenantTestModel.DoesNotExist(), {}) is None
+
+
+class _StubView:
+    """Minimal stand-in for the ``view`` DRF puts in the handler context."""
+
+    def __init__(self, header=None, raises=False):
+        self._header = header
+        self._raises = raises
+
+    def get_authenticate_header(self, request):
+        if self._raises:
+            raise RuntimeError("authenticate_header boom")
+        return self._header
+
+
+def test_user_does_not_exist_carries_the_views_challenge():
+    # The production shape: APIView.get_exception_handler_context() always supplies
+    # view+request, so this — not the context={} case above — is what real requests
+    # take. Without the challenge the deleted-row 401 would be the only 401 on
+    # /token/refresh/ lacking the header, a one-header side channel disclosing
+    # exactly what the matching body hides.
+    context = {"view": _StubView(header='Bearer realm="api"'), "request": object()}
+
+    response = custom_exception_handler(get_user_model().DoesNotExist(), context)
+
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    assert response.headers["WWW-Authenticate"] == 'Bearer realm="api"'
+
+
+def test_challenge_derivation_failure_still_returns_the_401(caplog):
+    # The try/except in _authenticate_header exists so that deriving a header can
+    # never mask the exception we were translating — i.e. never turn the DW-25 401
+    # back into the 500 it was written to remove. Nothing exercised that path
+    # before (found by review 2026-08-03: replacing the except body with a raise
+    # left the whole suite green), so it could have been narrowed or deleted during
+    # any broad-except cleanup without a single test objecting.
+    context = {"view": _StubView(raises=True), "request": object()}
+
+    response = custom_exception_handler(get_user_model().DoesNotExist(), context)
+
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    assert response.data["detail"] == _NO_ACTIVE_ACCOUNT
+    # A challenge that could not be derived is simply absent — the branch never
+    # invents one, and never downgrades to 403 the way DRF would.
+    assert "WWW-Authenticate" not in response.headers
+    messages = [
+        record.getMessage()
+        for record in caplog.records
+        if record.levelname == "WARNING" and record.name == "core.exceptions"
+    ]
+    assert any("WWW-Authenticate" in message for message in messages)
+
+
+def test_get_user_model_is_not_resolved_on_the_fallback_path(monkeypatch):
+    # The two isinstance() calls are ordered on purpose: the cheap
+    # ObjectDoesNotExist test gates the app-registry lookup, so an unrelated
+    # exception never pays for it — and, more importantly, a lookup that raised
+    # (misconfigured AUTH_USER_MODEL) could never mask the exception being handled.
+    # Found by review 2026-08-03: swapping the operands left the suite green, so the
+    # ordering was enforced by a comment alone despite being a spec-level invariant.
+    def boom():
+        raise AssertionError("get_user_model() must not run on the fallback path")
+
+    monkeypatch.setattr("core.exceptions.get_user_model", boom)
+
+    assert custom_exception_handler(RuntimeError("boom"), {}) is None
 
 
 # --- DW-7: _normalise_body hardening --------------------------------------------
