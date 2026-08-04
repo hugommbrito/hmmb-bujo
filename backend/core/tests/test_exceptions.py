@@ -4,10 +4,12 @@ Covers the status mapping and the uniform ``{detail, fields}`` body, including
 the opaque 500 for ``TenantScopeViolation`` (must never leak the real reason).
 """
 
+from django.contrib.auth import get_user_model
 from rest_framework import status
 from rest_framework.exceptions import NotAuthenticated, ValidationError
 
 from core.exceptions import (
+    _NO_ACTIVE_ACCOUNT,
     DomainError,
     ImmutableSnapshot,
     InvalidTransition,
@@ -60,6 +62,160 @@ def test_missing_auth_maps_to_401():
 def test_unknown_exception_falls_through_to_django():
     # A plain, non-domain exception is not ours to translate — return None so
     # Django produces its standard 500.
+    assert custom_exception_handler(RuntimeError("boom"), {}) is None
+
+
+# --- DW-25: User.DoesNotExist → 401 ---------------------------------------------
+def test_user_does_not_exist_maps_to_401_without_fields(caplog):
+    # simplejwt's TokenRefreshSerializer looks the token's user up without a
+    # try/except, so a *deleted* user made the refresh route 500. The handler now
+    # translates it to the documented 401 (AccountsTokenInvalidResponse, variant
+    # without "fields").
+    response = custom_exception_handler(get_user_model().DoesNotExist(), {})
+
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    assert "fields" not in response.data
+    # The message is the shared lazy msgid, not a second frozen literal — the
+    # end-to-end parity against the deactivated-user 401 (including the
+    # WWW-Authenticate header and a non-English locale) is owned by
+    # test_token_refresh_401_de_desativado_e_de_apagado_sao_indistinguiveis.
+    assert response.data["detail"] == _NO_ACTIVE_ACCOUNT
+    # ...but already resolved to a real str: this is the only branch that could have
+    # left a lazy proxy in response.data, and "{"detail": str}" is the documented
+    # contract, not just the rendered wire format (found by review 2026-08-03).
+    assert isinstance(response.data["detail"], str)
+    # context={} carries no view/request, so there is no challenge to derive here.
+    # This is the DEGENERATE path — APIView.get_exception_handler_context() always
+    # supplies view+request, so the two tests below cover the production shape.
+    assert "WWW-Authenticate" not in response.headers
+    # The whole safety argument for this branch is "the warning keeps a
+    # User.DoesNotExist from some *other* bug visible", so pin the real logger and
+    # a message that identifies the case — not merely that some WARNING happened.
+    warnings = [
+        record
+        for record in caplog.records
+        if record.levelname == "WARNING" and record.name == "core.exceptions"
+    ]
+    assert len(warnings) == 1
+    assert "User.DoesNotExist" in warnings[0].getMessage()
+    # exc_info must ride along, or the log cannot point at the origin.
+    assert warnings[0].exc_info is not None
+
+
+def test_other_models_does_not_exist_still_falls_through_to_django():
+    # The branch is deliberately narrow: only User.DoesNotExist. A missing row of
+    # any other model is still an unexpected server error, never a 401.
+    from core.tests.models import TenantTestModel
+
+    assert custom_exception_handler(TenantTestModel.DoesNotExist(), {}) is None
+
+
+def test_related_object_does_not_exist_still_falls_through_to_django():
+    # "Only User.DoesNotExist" is narrower than isinstance() alone can express:
+    # Django builds a FK/O2O descriptor's RelatedObjectDoesNotExist as a subclass of
+    # BOTH the target model's DoesNotExist and AttributeError, so dereferencing an
+    # unset FK to User (``obj.user`` with no user_id) passes
+    # ``isinstance(exc, User.DoesNotExist)`` while being a plain programming error,
+    # not a missing row. Before the AttributeError exclusion it came back as the
+    # login-shaped 401 *with* an auth challenge, so a null-deref bug read to the
+    # client as "your session ended" — and to the frontend interceptor as a reason to
+    # refresh and replay (found by review 2026-08-04).
+    #
+    # LogEntry is Django's own admin model, used here precisely because it is a real
+    # descriptor-generated exception with a real FK to AUTH_USER_MODEL and costs
+    # ``core`` no coupling to any domain app.
+    from django.contrib.admin.models import LogEntry
+
+    exc = LogEntry.user.RelatedObjectDoesNotExist("no user set")
+    # Non-vacuity: if a future Django stopped shaping it this way, the assertion
+    # below would pass for the wrong reason and the exclusion would look unnecessary.
+    assert isinstance(exc, get_user_model().DoesNotExist)
+    assert isinstance(exc, AttributeError)
+
+    assert custom_exception_handler(exc, {}) is None
+
+
+def test_frozen_msgid_still_matches_the_one_simplejwt_raises():
+    # The whole neutrality design rests on _NO_ACTIVE_ACCOUNT being the *same msgid*
+    # simplejwt raises for a deactivated user — not a copy that happened to read the
+    # same the day it was written. If upstream rewords theirs, ours stops resolving
+    # through their catalogue and the two 401 bodies drift apart.
+    #
+    # Until now the only thing that would have noticed was the pt-br round-trip in
+    # test_token_refresh_401_de_desativado_e_de_apagado_sao_indistinguiveis, which
+    # detects the drift only indirectly and only while simplejwt keeps shipping a
+    # pt_BR catalogue for that msgid (found by review 2026-08-04). This pins it
+    # directly, against the constant the serializer actually raises, and fails with a
+    # message that names the real cause.
+    from rest_framework_simplejwt.serializers import TokenRefreshSerializer
+
+    upstream = TokenRefreshSerializer.default_error_messages["no_active_account"]
+    assert _NO_ACTIVE_ACCOUNT == upstream
+
+
+class _StubView:
+    """Minimal stand-in for the ``view`` DRF puts in the handler context."""
+
+    def __init__(self, header=None, raises=False):
+        self._header = header
+        self._raises = raises
+
+    def get_authenticate_header(self, request):
+        if self._raises:
+            raise RuntimeError("authenticate_header boom")
+        return self._header
+
+
+def test_user_does_not_exist_carries_the_views_challenge():
+    # The production shape: APIView.get_exception_handler_context() always supplies
+    # view+request, so this — not the context={} case above — is what real requests
+    # take. Without the challenge the deleted-row 401 would be the only 401 on
+    # /token/refresh/ lacking the header, a one-header side channel disclosing
+    # exactly what the matching body hides.
+    context = {"view": _StubView(header='Bearer realm="api"'), "request": object()}
+
+    response = custom_exception_handler(get_user_model().DoesNotExist(), context)
+
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    assert response.headers["WWW-Authenticate"] == 'Bearer realm="api"'
+
+
+def test_challenge_derivation_failure_still_returns_the_401(caplog):
+    # The try/except in _authenticate_header exists so that deriving a header can
+    # never mask the exception we were translating — i.e. never turn the DW-25 401
+    # back into the 500 it was written to remove. Nothing exercised that path
+    # before (found by review 2026-08-03: replacing the except body with a raise
+    # left the whole suite green), so it could have been narrowed or deleted during
+    # any broad-except cleanup without a single test objecting.
+    context = {"view": _StubView(raises=True), "request": object()}
+
+    response = custom_exception_handler(get_user_model().DoesNotExist(), context)
+
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    assert response.data["detail"] == _NO_ACTIVE_ACCOUNT
+    # A challenge that could not be derived is simply absent — the branch never
+    # invents one, and never downgrades to 403 the way DRF would.
+    assert "WWW-Authenticate" not in response.headers
+    messages = [
+        record.getMessage()
+        for record in caplog.records
+        if record.levelname == "WARNING" and record.name == "core.exceptions"
+    ]
+    assert any("WWW-Authenticate" in message for message in messages)
+
+
+def test_get_user_model_is_not_resolved_on_the_fallback_path(monkeypatch):
+    # The two isinstance() calls are ordered on purpose: the cheap
+    # ObjectDoesNotExist test gates the app-registry lookup, so an unrelated
+    # exception never pays for it — and, more importantly, a lookup that raised
+    # (misconfigured AUTH_USER_MODEL) could never mask the exception being handled.
+    # Found by review 2026-08-03: swapping the operands left the suite green, so the
+    # ordering was enforced by a comment alone despite being a spec-level invariant.
+    def boom():
+        raise AssertionError("get_user_model() must not run on the fallback path")
+
+    monkeypatch.setattr("core.exceptions.get_user_model", boom)
+
     assert custom_exception_handler(RuntimeError("boom"), {}) is None
 
 

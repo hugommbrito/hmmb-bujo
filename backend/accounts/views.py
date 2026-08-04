@@ -42,15 +42,27 @@ _LOGIN_FAILED_RESPONSE = inline_serializer(
     fields={"detail": serializers.CharField()},
 )
 
-# Token inválido/expirado/blacklisted em /token/refresh/: esse ramo levanta o
-# InvalidToken do simplejwt (DetailDictMixin, sempre inclui "code" ao lado de
-# "detail"). Mas TokenRefreshSerializer.validate() tem um segundo ramo de 401 --
-# token estruturalmente válido cujo usuário (USER_AUTHENTICATION_RULE) não está
-# mais ativo -- que levanta o AuthenticationFailed NATIVO do DRF (sem
-# DetailDictMixin), produzindo {"detail": str} sem "fields" nenhum, igual ao
-# 401 de login. Por isso `fields` aqui é opcional (não obrigatório): confirmado
-# empiricamente logando um usuário, desativando-o e então tentando refresh com o
-# token ainda válido (test_token_refresh_usuario_desativado_retorna_401_sem_fields).
+# /token/refresh/ tem TRÊS ramos de 401 distintos, e é por isso que `fields` aqui
+# é opcional (não obrigatório) -- só o primeiro deles carrega a chave:
+#
+# 1. Token inválido/expirado/blacklisted -> InvalidToken do simplejwt
+#    (DetailDictMixin, sempre inclui "code" ao lado de "detail")
+#    -> test_token_refresh_rotacao_blacklist.
+# 2. Token estruturalmente válido cujo usuário não está mais ativo
+#    (USER_AUTHENTICATION_RULE) -> AuthenticationFailed NATIVO do DRF (sem
+#    DetailDictMixin), produzindo {"detail": str} sem "fields" nenhum, igual ao 401
+#    de login -> test_token_refresh_usuario_desativado_retorna_401_sem_fields.
+#    (Achado por review adversarial 2026-08-03: a primeira pass documentou "fields"
+#    como obrigatório por acreditar que só o ramo 1 existia.)
+# 3. Token estruturalmente válido cuja LINHA do usuário foi apagada (DW-25):
+#    TokenRefreshSerializer.validate() faz o lookup do usuário sem try/except e
+#    ANTES do ramo 2, então User.DoesNotExist sobe cru -- não é APIException nem
+#    DomainError, e antes da DW-25 virava o 500 do Django. Hoje o
+#    custom_exception_handler central (core/exceptions.py) o traduz, reusando o
+#    mesmo msgid do ramo 2 e o mesmo header WWW-Authenticate, de propósito: os dois
+#    corpos são indistinguíveis, para não revelar se a conta foi desligada ou
+#    apagada -> test_token_refresh_usuario_apagado_retorna_401_sem_fields e
+#    test_token_refresh_401_de_desativado_e_de_apagado_sao_indistinguiveis.
 _TOKEN_INVALID_RESPONSE = inline_serializer(
     name="AccountsTokenInvalidResponse",
     fields={

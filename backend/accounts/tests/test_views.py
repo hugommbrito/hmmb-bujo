@@ -1,4 +1,5 @@
 import pytest
+from django.utils import translation
 from rest_framework.test import APIClient
 
 from accounts.tests.factories import UserFactory
@@ -7,6 +8,43 @@ from accounts.tests.factories import UserFactory
 @pytest.fixture
 def client():
     return APIClient()
+
+
+def _login_e_refresh(client, mutate):
+    """Loga um usuário novo, aplica ``mutate`` nele e devolve a resposta do refresh.
+
+    Cada chamada cria o seu próprio usuário porque as duas mutações usadas aqui
+    (desativar / apagar) são destrutivas e não podem compartilhar sujeito.
+    """
+    user = UserFactory()
+    login = client.post(
+        "/api/accounts/token/",
+        {"email": user.email, "password": "senha-segura-123"},
+        format="json",
+    )
+    # Sem isto, uma regressão qualquer no login (throttling, mudança de serializer,
+    # a senha do UserFactory saindo de sincronia) viraria `KeyError: 'refresh'` nos
+    # três testes que dependem deste helper, apontando para cá em vez de para a rota
+    # que realmente quebrou.
+    assert login.status_code == 200, login.content
+    refresh_token = login.json()["refresh"]
+
+    mutate(user)
+
+    return client.post(
+        "/api/accounts/token/refresh/",
+        {"refresh": refresh_token},
+        format="json",
+    )
+
+
+def _desativar(user):
+    user.is_active = False
+    user.save()
+
+
+def _apagar(user):
+    user.delete()
 
 
 def test_signup_valido_retorna_201(client):
@@ -283,3 +321,62 @@ def test_token_refresh_usuario_desativado_retorna_401_sem_fields(client):
     )
     assert response.status_code == 401
     assert "fields" not in response.json()
+
+
+def test_token_refresh_usuario_apagado_retorna_401_sem_fields(client):
+    # DW-25: irmão do teste acima, mas com a linha do usuário APAGADA, não apenas
+    # desativada. TokenRefreshSerializer.validate() busca o usuário do token com
+    # um `.objects.get()` sem try/except, e o ramo USER_AUTHENTICATION_RULE (o 401
+    # de desativado) vem DEPOIS dele — então User.DoesNotExist subia antes: não é
+    # APIException nem DomainError, escapava do custom_exception_handler e o
+    # cliente recebia o 500 cru do Django em vez do 401 documentado. O handler
+    # central agora traduz para 401. A equivalência com o caso desativado (corpo,
+    # header e locale) é do teste de paridade abaixo, que é o dono dessa garantia —
+    # aqui não se congela nenhuma mensagem, só a forma documentada em
+    # AccountsTokenInvalidResponse (variante sem "fields").
+    response = _login_e_refresh(client, _apagar)
+
+    assert response.status_code == 401
+    assert "fields" not in response.json()
+
+
+def test_token_refresh_401_de_desativado_e_de_apagado_sao_indistinguiveis(client):
+    # Achado por review (2026-08-03): a garantia de neutralidade da DW-25 não é "as
+    # duas mensagens parecem iguais em inglês", é "as duas RESPOSTAS são
+    # indistinguíveis" — e dois canais laterais escaparam justamente porque nada
+    # asseverava isso: (1) o WWW-Authenticate, que o DRF anexa via `exc.auth_header`
+    # e que um Response construído à mão no handler não ganhava, deixando o 401 de
+    # apagado como o único sem challenge; (2) a tradução, já que a mensagem do
+    # simplejwt é gettext_lazy com catálogo pt_BR — um literal hardcoded ficaria em
+    # inglês sob qualquer locale ativo.
+    #
+    # Sobre o eixo de locale, sendo preciso (revisto em 2026-08-03): hoje ele não é
+    # alcançável em produção — não há LocaleMiddleware no MIDDLEWARE e
+    # LANGUAGE_CODE="en-us", então toda request real renderiza os dois corpos em
+    # inglês, e só o `translation.override` daqui ativa pt-br. O valor VIVO desta
+    # metade é outro, e é o que torna aceitável o msgid congelado em
+    # core/exceptions.py: ela detecta um rewording futuro do simplejwt (o msgid
+    # deixaria de casar com o catálogo e as duas strings colapsariam). O eixo passa a
+    # ser um canal lateral de verdade no dia em que o app ganhar negociação de
+    # idioma — e então este teste já está no lugar.
+    with translation.override("pt-br"):
+        pt_desativado = _login_e_refresh(client, _desativar)
+        pt_apagado = _login_e_refresh(client, _apagar)
+    with translation.override("en-us"):
+        en_apagado = _login_e_refresh(client, _apagar)
+
+    assert pt_desativado.status_code == 401
+    assert pt_apagado.status_code == pt_desativado.status_code
+    assert pt_apagado.json() == pt_desativado.json()
+
+    challenge_apagado = pt_apagado.headers.get("WWW-Authenticate")
+    challenge_desativado = pt_desativado.headers.get("WWW-Authenticate")
+    assert challenge_apagado == challenge_desativado
+    # Não-vacuidade: "ambos ausentes" satisfaria a igualdade acima, e um 401 sem
+    # challenge viola a RFC 7235.
+    assert challenge_desativado
+
+    # Não-vacuidade da paridade de locale: se a mensagem não traduzisse de verdade,
+    # as duas seriam a mesma string inglesa e o canal lateral de locale voltaria a
+    # ficar invisível. Compara com a MESMA fonte (a rota real), não com um literal.
+    assert pt_apagado.json()["detail"] != en_apagado.json()["detail"]
