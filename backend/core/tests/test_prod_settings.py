@@ -17,6 +17,11 @@ only holds if something asserts it:
 * **DW-22** — the CORS-preflight carve-out from those HTTPS/HSTS settings, which
   is an emergent property of ``MIDDLEWARE`` ordering plus a ``corsheaders``
   signal registry rather than of any single setting.
+* **DW-31** — the three ``SIMPLE_JWT`` knobs the 401 indistinguishability rests
+  on, resolved against the *prod* module. ``core/tests/test_authentication.py``
+  pins them too, but against whichever settings module pytest loaded, so a
+  prod-only ``SIMPLE_JWT`` override would slip past it — the same env-divergence
+  blind spot as the DW-4 bullet above.
 """
 
 import importlib
@@ -597,13 +602,11 @@ def test_cors_preflight_bypasses_ssl_redirect_and_hsts_under_prod_hardening():
         "through, the carve-out is wider than prod.py's comment claims"
     )
     assert plain_options.headers["Location"] == "https://testserver/api/accounts/", (
-        "plain OPTIONS redirected somewhere unexpected: "
-        f"{plain_options.headers['Location']!r}"
+        f"plain OPTIONS redirected somewhere unexpected: {plain_options.headers['Location']!r}"
     )
 
     assert allowed_preflight.status_code == 200, (
-        f"allow-listed preflight should be answered 200, got "
-        f"{allowed_preflight.status_code}"
+        f"allow-listed preflight should be answered 200, got {allowed_preflight.status_code}"
     )
     assert allowed_preflight.headers.get("Access-Control-Allow-Origin") == allowed_origin, (
         "the allow-listed branch is not actually being exercised -- expected "
@@ -644,4 +647,66 @@ def test_cors_preflight_bypasses_ssl_redirect_and_hsts_under_prod_hardening():
         "an artifact of how each was measured -- the allow-listed Origin came back "
         "with no Access-Control-Allow-* headers either, which means CORS is not "
         "answering here at all and the foreign-origin comparison above is vacuous"
+    )
+
+
+def test_prod_mantem_os_settings_de_jwt_de_que_a_indistinguibilidade_depende():
+    """DW-31: os knobs de ``SIMPLE_JWT`` resolvidos pelo settings module de PRODUÇÃO.
+
+    O colapso de "usuário apagado" e "usuário inativo" num 401 único
+    (``core/authentication.py``) só significa algo enquanto três settings do
+    simplejwt seguem nos defaults. ``core/tests/test_authentication.py`` pinça os
+    três — mas contra ``simplejwt_settings.api_settings``, isto é, contra o settings
+    module que o pytest carregou: ``config.settings.test`` local,
+    ``config.settings.dev`` na CI. Nunca ``prod``.
+
+    Hoje ``SIMPLE_JWT`` é declarado só em ``config/settings/base.py`` e todo
+    ambiente o herda, então aqueles pins de fato valem. O buraco é divergência
+    futura: um override só em ``prod.py`` — "invalidar tokens quando a senha muda"
+    é um tweak plausível de hardening — passaria por eles verde. Este arquivo existe
+    exatamente para essa classe de ponto cego (ver o docstring do módulo), e é aqui
+    que o eixo de ambiente fica coberto.
+
+    O que cada um custa se sair do default, em produção:
+
+    * ``CHECK_USER_IS_ACTIVE=False`` — o ramo ``user_inactive`` deixa de ser
+      levantado e um usuário desativado volta a receber **200** em toda rota
+      autenticada. Não é canal lateral: é bypass de desativação.
+    * ``CHECK_REVOKE_TOKEN=True`` — ``password_changed`` passa a ser alcançável, e
+      só depois de o lookup achar a linha e ``is_active`` passar, logo divulgando
+      existência de linha, sem entrar em ``_INDISTINGUISHABLE_CODES``.
+    * ``USER_AUTHENTICATION_RULE`` fora do default — o refresh devolve 200 para
+      desativado e 401 para apagado, reabrindo o eixo da DW-25 nessa superfície.
+
+    Resolve pelos ``DEFAULTS`` do upstream, e não por literais: ``base.py`` não seta
+    nenhum dos três, então a leitura tem de reproduzir o mesmo fallback que o
+    simplejwt faria — e no dia em que o upstream mudar um default, isto fala.
+    """
+    from rest_framework_simplejwt.settings import DEFAULTS as SIMPLEJWT_DEFAULTS
+
+    prod_settings = importlib.import_module("config.settings.prod")
+    prod_simple_jwt = prod_settings.SIMPLE_JWT
+
+    def resolvido(nome):
+        return prod_simple_jwt.get(nome, SIMPLEJWT_DEFAULTS[nome])
+
+    assert resolvido("CHECK_USER_IS_ACTIVE") is True, (
+        "config.settings.prod resolve CHECK_USER_IS_ACTIVE fora do default True: em "
+        "produção o ramo `user_inactive` do simplejwt deixa de ser levantado e um "
+        "usuário desativado volta a receber 200 em toda rota autenticada. Ver o "
+        "Never do intent da DW-31 e core/tests/test_authentication.py."
+    )
+    assert resolvido("CHECK_REVOKE_TOKEN") is False, (
+        "config.settings.prod resolve CHECK_REVOKE_TOKEN fora do default False: em "
+        "produção `password_changed` passa a ser alcançável e divulga existência de "
+        "linha sem colapsar. Antes de ligar, decidir se ele entra em "
+        "_INDISTINGUISHABLE_CODES (core/authentication.py)."
+    )
+    assert (
+        resolvido("USER_AUTHENTICATION_RULE") == SIMPLEJWT_DEFAULTS["USER_AUTHENTICATION_RULE"]
+    ), (
+        "config.settings.prod resolve USER_AUTHENTICATION_RULE fora do default: é ele, "
+        "e não CHECK_USER_IS_ACTIVE, que faz POST /api/accounts/token/refresh/ recusar "
+        "um usuário desativado. Uma regra que aceite inativos devolve 200 no refresh do "
+        "desativado e 401 no do apagado, reabrindo o eixo da DW-25 nessa superfície."
     )
