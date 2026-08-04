@@ -110,6 +110,49 @@ def test_other_models_does_not_exist_still_falls_through_to_django():
     assert custom_exception_handler(TenantTestModel.DoesNotExist(), {}) is None
 
 
+def test_related_object_does_not_exist_still_falls_through_to_django():
+    # "Only User.DoesNotExist" is narrower than isinstance() alone can express:
+    # Django builds a FK/O2O descriptor's RelatedObjectDoesNotExist as a subclass of
+    # BOTH the target model's DoesNotExist and AttributeError, so dereferencing an
+    # unset FK to User (``obj.user`` with no user_id) passes
+    # ``isinstance(exc, User.DoesNotExist)`` while being a plain programming error,
+    # not a missing row. Before the AttributeError exclusion it came back as the
+    # login-shaped 401 *with* an auth challenge, so a null-deref bug read to the
+    # client as "your session ended" — and to the frontend interceptor as a reason to
+    # refresh and replay (found by review 2026-08-04).
+    #
+    # LogEntry is Django's own admin model, used here precisely because it is a real
+    # descriptor-generated exception with a real FK to AUTH_USER_MODEL and costs
+    # ``core`` no coupling to any domain app.
+    from django.contrib.admin.models import LogEntry
+
+    exc = LogEntry.user.RelatedObjectDoesNotExist("no user set")
+    # Non-vacuity: if a future Django stopped shaping it this way, the assertion
+    # below would pass for the wrong reason and the exclusion would look unnecessary.
+    assert isinstance(exc, get_user_model().DoesNotExist)
+    assert isinstance(exc, AttributeError)
+
+    assert custom_exception_handler(exc, {}) is None
+
+
+def test_frozen_msgid_still_matches_the_one_simplejwt_raises():
+    # The whole neutrality design rests on _NO_ACTIVE_ACCOUNT being the *same msgid*
+    # simplejwt raises for a deactivated user — not a copy that happened to read the
+    # same the day it was written. If upstream rewords theirs, ours stops resolving
+    # through their catalogue and the two 401 bodies drift apart.
+    #
+    # Until now the only thing that would have noticed was the pt-br round-trip in
+    # test_token_refresh_401_de_desativado_e_de_apagado_sao_indistinguiveis, which
+    # detects the drift only indirectly and only while simplejwt keeps shipping a
+    # pt_BR catalogue for that msgid (found by review 2026-08-04). This pins it
+    # directly, against the constant the serializer actually raises, and fails with a
+    # message that names the real cause.
+    from rest_framework_simplejwt.serializers import TokenRefreshSerializer
+
+    upstream = TokenRefreshSerializer.default_error_messages["no_active_account"]
+    assert _NO_ACTIVE_ACCOUNT == upstream
+
+
 class _StubView:
     """Minimal stand-in for the ``view`` DRF puts in the handler context."""
 

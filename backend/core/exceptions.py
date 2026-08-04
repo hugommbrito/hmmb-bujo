@@ -175,12 +175,22 @@ def custom_exception_handler(exc, context):
     # imported very early (see ``core/authentication.py``), so a module-level model
     # reference risks ``AppRegistryNotReady``. The cheap ``ObjectDoesNotExist`` test
     # is first so that lookup never runs on the fallback path of every unrelated
-    # exception. Narrow to ``User`` on purpose: any other model's missing row is
-    # still an unexpected server error.
+    # exception. Narrow to a genuinely missing ``User`` *row* on purpose: any other
+    # model's missing row is still an unexpected server error — and so is a null
+    # FK/O2O dereference. Django builds ``RelatedObjectDoesNotExist`` as a subclass of
+    # both the target model's ``DoesNotExist`` *and* ``AttributeError``, so ``obj.user``
+    # on an unset FK to ``User`` is an ``isinstance`` of ``User.DoesNotExist`` and would
+    # otherwise land here, dressing a programming error up as a login prompt (found by
+    # review 2026-08-04). Excluding ``AttributeError`` is the whole discriminator, and
+    # it is safe because ``ObjectDoesNotExist`` itself is not one.
     #
     # The branch is global, so a ``User.DoesNotExist`` leaking from some *other*
     # bug also becomes a 401 — the warning log is what keeps that visible.
-    if isinstance(exc, ObjectDoesNotExist) and isinstance(exc, get_user_model().DoesNotExist):
+    if (
+        isinstance(exc, ObjectDoesNotExist)
+        and not isinstance(exc, AttributeError)
+        and isinstance(exc, get_user_model().DoesNotExist)
+    ):
         logger.warning("User.DoesNotExist escaped to the central handler", exc_info=exc)
         auth_header = _authenticate_header(context)
         return Response(
