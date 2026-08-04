@@ -267,6 +267,7 @@ dev = [
     { name = "import-linter" },
     { name = "pytest" },
     { name = "pytest-django" },
+    { name = "pyyaml" },
     { name = "ruff" },
 ]
 
@@ -291,6 +292,7 @@ dev = [
     { name = "import-linter", specifier = ">=2.0" },
     { name = "pytest", specifier = ">=8.3" },
     { name = "pytest-django", specifier = ">=4.9" },
+    { name = "pyyaml", specifier = ">=6.0" },
     { name = "ruff", specifier = ">=0.6" },
 ]
 

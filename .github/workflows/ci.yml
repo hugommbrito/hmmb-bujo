@@ -12,6 +12,10 @@ on:
 # DW-5: also runs `check --deploy` and `makemigrations --check --dry-run`
 # against config.settings.prod, so prod-only errors and migration drift don't
 # slip through a suite that otherwise only loads config.settings.dev.
+# DW-23: that deploy check is split across TWO steps at different
+# `--fail-level`s — "Checar settings de produção (deploy checks)" and
+# "... (deploy checks sem filtro de tag)". The comment block above those two
+# steps explains why one step cannot cover both halves.
 
 jobs:
   backend:
@@ -27,10 +31,12 @@ jobs:
     env:
       DJANGO_SETTINGS_MODULE: config.settings.dev
       # >=50 chars, >=5 unique, not "django-insecure-"-prefixed: keeps
-      # security.W009 (SECRET_KEY quality) from firing on the prod deploy-check
-      # step below, so that step's --fail-level WARNING gate only trips on the
-      # hardening it's actually meant to guard. Still just a CI-only
-      # placeholder, never used anywhere real.
+      # security.W009 (SECRET_KEY quality) from firing on the FIRST of the two
+      # prod deploy-check steps below (the `--tag security --fail-level WARNING`
+      # one), so that step's gate only trips on the hardening it's actually meant
+      # to guard. The second step runs at --fail-level ERROR, where W009 could
+      # not fail it anyway. Still just a CI-only placeholder, never used anywhere
+      # real.
       SECRET_KEY: ci-dummy-secret-not-for-production-0123456789abcdefgh
       ALLOWED_HOSTS: localhost,127.0.0.1
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/hmmb_ci
@@ -73,16 +79,78 @@ jobs:
       - name: Pytest
         run: uv run pytest
 
-      # DW-4/DW-5: valida o caminho de produção, que a suíte acima nunca carrega
-      # (roda sob config.settings.dev). Este step FALHA de verdade se o
-      # hardening de segurança regredir: `--tag security` escopa para os checks
-      # de segurança do Django (ignora avisos não relacionados, ex.
-      # drf_spectacular) e `--fail-level WARNING` promove W004/W008 (que por
-      # padrão são só warnings, exit 0) a falha real do step. Isso só funciona
-      # sem ruído porque o SECRET_KEY dummy do CI (acima) já é forte o
-      # suficiente para não disparar security.W009 por conta própria.
+      # DW-4/DW-5/DW-23: os DOIS steps abaixo validam o caminho de produção, que
+      # a suíte acima nunca carrega (roda sob config.settings.dev). São dois
+      # porque os deploy checks de config.settings.prod não cabem num único
+      # nível de falha. Contagens MEDIDAS em 2026-08-04 — um upgrade de Django
+      # ou drf-spectacular que retagueie um check pode desatualizá-las:
+      #
+      # 1) `--tag security --fail-level WARNING` filtra pela tag: executa os 20
+      #    checks tagueados `security` (18 deles deploy checks; os outros 2 são
+      #    check_settings e check_csrf_failure_view), ignorando avisos não
+      #    relacionados (ex. drf_spectacular). O `--fail-level WARNING` promove
+      #    W004/W008 (que por padrão são só warnings, exit 0) a falha real — é
+      #    este gate que FALHA de verdade se o hardening de segurança de prod.py
+      #    regredir. Só funciona sem ruído porque o SECRET_KEY dummy do CI
+      #    (acima) já é forte o suficiente para não disparar security.W009 por
+      #    conta própria.
+      # 2) sem `--tag`, NÃO filtra nada: executa os 50 checks registrados (21
+      #    deles deploy checks). Ou seja, o blast radius é o registro inteiro —
+      #    se este step ficar vermelho, a causa pode ser qualquer um dos 50, e
+      #    não necessariamente um dos 3 nomes abaixo. O que ele ACRESCENTA em
+      #    relação ao (1) são os 3 deploy checks fora da tag `security`:
+      #    caches.check_cache_location_not_exposed (caches.W002),
+      #    async_checks.check_async_unsafe (async.E001) e
+      #    drf_spectacular.checks.schema_check (sem tag alguma).
+      #
+      # Executado != capaz de derrubar o build. No env DESTE job, dos 3 só UM
+      # pode falhar o (2) hoje — e esse um é redundante —, então o valor do step
+      # é sobretudo prospectivo, não retroativo:
+      #   - caches.W002 é warning-only E inalcançável: o check só emite para um
+      #     cache FileBasedCache cujo LOCATION cruza MEDIA_ROOT/STATIC_ROOT/
+      #     STATICFILES_DIRS, e o repo não configura CACHES (fica no LocMemCache
+      #     default), então retorna [] antes de qualquer mensagem. É um dos dois
+      #     exemplos citados no próprio registro de DW-23.
+      #   - async.E001 só dispara se DJANGO_ALLOW_ASYNC_UNSAFE estiver no
+      #     ambiente, e o `env:` deste job nunca define essa variável.
+      #   - drf_spectacular.E001 (schema explodindo na geração) É um `Error` de
+      #     verdade e DERRUBA este step — só que de forma redundante: o step
+      #     `spectacular --file` mais abaixo falharia pelo mesmo motivo. Como o
+      #     (2) roda ANTES dele, o fail-fast do Actions faz o build vermelho
+      #     aparecer aqui, e o step de schema nem chega a rodar. Cuidado ao ler
+      #     "warning-only" no resto do bloco: W001 e W002 de fato não derrubam
+      #     nada a `--fail-level ERROR`, mas W002 é o canal de ERRO do gerador
+      #     emitido como `Warning` — ou seja, este step tolera erro real de
+      #     geração de schema por construção (ver DW-38).
+      # O que o (2) fecha é a porta: um deploy check de nível ERROR fora da tag
+      # `security` — vindo de um upgrade de Django/drf-spectacular, de um app
+      # novo ou de um CACHES configurado depois — passa a derrubar o CI sem
+      # ninguém precisar lembrar de alargar o `--tag`. Esse resíduo é o trade-off
+      # aceito de `ERROR`: rodar o (2) a `--fail-level WARNING` pinta o CI de
+      # vermelho pelos 3 drf_spectacular.W001 pré-existentes (contrato de schema
+      # incompleto), fora do escopo destes gates, e acrescentar `--tag security`
+      # ao (2) reabre o gap de DW-23. Existe uma terceira via NÃO adotada aqui,
+      # registrada em DW-37: `--tag` é repetível (`action="append"`), então
+      # `--tag security --tag caches --tag async_support --fail-level WARNING` no
+      # (1) faria caches.W002 e async.E001 virarem gate de verdade (medido em
+      # 2026-08-04: EXIT=0 no estado atual) — cobrindo 20 dos 21 deploy checks a
+      # WARNING. Não entrou porque a decisão de DW-23 pediu o (1) intacto, e
+      # mesmo assim o (2) continuaria necessário para o schema_check, que não tem
+      # tag alguma. core/tests/test_prod_settings.py guarda os dois steps contra
+      # regressão — contra perder flags (em qualquer grafia: `-t` é o short form
+      # de `--tag` e aceita o valor colado, `-tsecurity`), contra perder
+      # `--settings=config.settings.prod`, contra serem desabilitados por
+      # `if:`/`continue-on-error` (no step OU no job), contra terem o exit code
+      # engolido no shell (`|| true`, `| tee`, `; exit 0`, `set +e` em qualquer
+      # linha do bloco), contra serem comentados dentro de um `run: |`, contra
+      # serem fundidos num step só e contra migrarem para outro job. Cada uma
+      # dessas formas está lá porque foi MEDIDA passando o teste antes de ser
+      # fechada — não vale a pena acrescentar uma sem provar que ela passa.
       - name: Checar settings de produção (deploy checks)
         run: uv run python manage.py check --deploy --tag security --fail-level WARNING --settings=config.settings.prod
+
+      - name: Checar settings de produção (deploy checks sem filtro de tag)
+        run: uv run python manage.py check --deploy --fail-level ERROR --settings=config.settings.prod
 
       # --noinput: sem isso, um drift ambíguo (ex. rename de campo que o
       # autodetector não resolve sozinho) dispara um prompt interativo: sem

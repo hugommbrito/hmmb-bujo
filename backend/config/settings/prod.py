@@ -37,9 +37,21 @@ SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
 
-# Force HTTPS for every request, except Railway's own healthcheck: it hits the
+# Force HTTPS, with two carve-outs. (1) Railway's own healthcheck: it hits the
 # container over the internal network without X-Forwarded-Proto, so a redirect
 # there would make Railway think the release is unhealthy and block rollout.
+# (2) CORS preflight, on any path: CorsMiddleware sits ahead of
+# SecurityMiddleware in MIDDLEWARE (see base.py) and answers preflight OPTIONS
+# itself, short-circuiting the whole chain below it — so preflight skips not
+# just the redirect and HSTS but every middleware further down. The bypass is
+# not filtered by Origin: is_enabled() consults CORS_URLS_REGEX (unset here, so
+# it defaults to `^.*$`) OR'd with corsheaders' check_request_enabled signal —
+# never CORS_ALLOWED_ORIGINS. That signal is inert only because this repo
+# registers no receiver for it; connecting one would widen the bypass. Plain
+# OPTIONS (no Access-Control-Request-Method) is still redirected. This is
+# documented rather than closed because preflight carries no credentials and no
+# body, so the cleartext exposure has no victim — reordering MIDDLEWARE to fix
+# it would break CORS for a non-issue. Guarded by core/tests/test_prod_settings.py.
 SECURE_SSL_REDIRECT = True
 SECURE_REDIRECT_EXEMPT = [r"^api/health/$"]
 SECURE_HSTS_SECONDS = 31536000
