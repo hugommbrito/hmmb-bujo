@@ -110,7 +110,13 @@ export function BrainDumpDestinationPicker({
   disabled = false,
   onClose,
 }: BrainDumpDestinationPickerProps) {
-  const [destination, setDestination] = useState<BrainDumpTargetLog | null>(item.targetLog)
+  // `|| null`: `item.targetLog` no schema gerado é `TargetLogEnum | BlankEnum |
+  // NullEnum | null` — o DRF serializa o campo opcional como STRING VAZIA
+  // (`BlankEnum`), não só como `null`. `''` não é um destino selecionável, e
+  // deixá-lo entrar no estado marcaria um radio inexistente; a guarda de
+  // veracidade colapsa vazio/nulo no mesmo "nada pré-selecionado" (mesmo
+  // tratamento de `brainDumpMetaLineOf` em `BrainDumpInboxItemRow`).
+  const [destination, setDestination] = useState<BrainDumpTargetLog | null>(item.targetLog || null)
   // `undefined` = nenhum dia armado ainda (confirmar indisponível); `null` =
   // "Sem dia definido" (ato explícito); string = dia escolhido.
   const [scheduledDate, setScheduledDate] = useState<string | null | undefined>(undefined)
