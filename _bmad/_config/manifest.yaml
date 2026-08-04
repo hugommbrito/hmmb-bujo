@@ -1,49 +1,49 @@
 installation:
-  version: 6.10.1-next.32
-  installDate: 2026-07-29T19:03:07.911Z
-  lastUpdated: 2026-07-29T19:03:07.911Z
+  version: 6.10.1-next.49
+  installDate: 2026-08-04T09:59:02.498Z
+  lastUpdated: 2026-08-04T09:59:02.498Z
 modules:
   - name: core
-    version: 6.10.1-next.32
-    installDate: 2026-07-29T19:03:07.712Z
-    lastUpdated: 2026-07-29T19:03:07.907Z
+    version: 6.10.1-next.49
+    installDate: 2026-08-04T09:59:02.179Z
+    lastUpdated: 2026-08-04T09:59:02.491Z
     source: built-in
     npmPackage: null
     repoUrl: null
   - name: bmm
-    version: 6.10.1-next.32
-    installDate: 2026-07-29T19:03:07.679Z
-    lastUpdated: 2026-07-29T19:03:07.908Z
+    version: 6.10.1-next.49
+    installDate: 2026-08-04T09:59:02.306Z
+    lastUpdated: 2026-08-04T09:59:02.492Z
     source: built-in
     npmPackage: null
     repoUrl: null
-  - name: bmad-loop
-    version: main
-    installDate: 2026-07-29T19:03:07.718Z
-    lastUpdated: 2026-07-29T19:03:07.909Z
-    source: external
-    npmPackage: null
-    repoUrl: https://github.com/bmad-code-org/bmad-loop
-    channel: next
-    sha: 5c86f98c7b13ce55947a2bd59d5c8d7861c57d9c
   - name: bmb
     version: main
-    installDate: 2026-07-29T19:03:07.753Z
-    lastUpdated: 2026-07-29T19:03:07.910Z
+    installDate: 2026-08-04T09:59:02.387Z
+    lastUpdated: 2026-08-04T09:59:02.493Z
     source: external
     npmPackage: bmad-builder
     repoUrl: https://github.com/bmad-code-org/bmad-builder
     channel: next
     sha: e6935f2776c34ffd9b18f4ef1e334584ef10a50f
-  - name: wds
+  - name: cis
     version: main
-    installDate: 2026-07-29T19:03:07.874Z
-    lastUpdated: 2026-07-29T19:03:07.911Z
+    installDate: 2026-08-04T09:59:02.417Z
+    lastUpdated: 2026-08-04T09:59:02.495Z
     source: external
-    npmPackage: bmad-wds
-    repoUrl: https://github.com/bmad-code-org/bmad-method-wds-expansion
+    npmPackage: bmad-creative-intelligence-suite
+    repoUrl: https://github.com/bmad-code-org/bmad-module-creative-intelligence-suite
     channel: next
-    sha: cc16f09fcfab26d35635af1491f36a38a8431c8d
+    sha: 07a8dd03d196a762f21c241d985293fe5b0f90e7
+  - name: bmad-loop
+    version: main
+    installDate: 2026-08-04T09:59:02.431Z
+    lastUpdated: 2026-08-04T09:59:02.498Z
+    source: external
+    npmPackage: null
+    repoUrl: https://github.com/bmad-code-org/bmad-loop
+    channel: next
+    sha: dfeead201e45dbe52f0a41d33a86742450cef5ff
 ides:
   - claude-code
   - codex
