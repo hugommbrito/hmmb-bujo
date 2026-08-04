@@ -85,6 +85,12 @@ const EMPTY_PENDING_DAILIES = {
   groups: [],
 }
 
+const EMPTY_DENSITY = {
+  days: [],
+  undated: { total: 0, byStatus: { pending: 0, started: 0, completed: 0, cancelled: 0, migrated: 0, postponed: 0 } },
+  total: 0,
+}
+
 function mockRoutes({
   readiness = READINESS_WITH_TARGET,
   monthlyInWeek = EMPTY_TASK_SOURCE,
@@ -92,6 +98,7 @@ function mockRoutes({
   previousWeekly = EMPTY_BLOCKING_SOURCE,
   pendingDailies = EMPTY_PENDING_DAILIES,
   previousWeeklyStatus = 200,
+  weeklyDensity = EMPTY_DENSITY,
 }: {
   readiness?: unknown
   monthlyInWeek?: unknown
@@ -99,6 +106,7 @@ function mockRoutes({
   previousWeekly?: unknown
   pendingDailies?: unknown
   previousWeeklyStatus?: number
+  weeklyDensity?: unknown
 } = {}) {
   mockGet.mockImplementation((url: string) => {
     if (url === '/api/bujo/logs/weekly/cycle/') return Promise.resolve({ data: readiness })
@@ -126,6 +134,9 @@ function mockRoutes({
     }
     if (url === '/api/bujo/rituals/weekly/sources/pending-dailies/') return Promise.resolve({ data: pendingDailies })
     if (url === '/api/bujo/logs/monthly/') return Promise.resolve({ data: { monthFirst: '2026-07-01', tasks: [], closed: false, status: null, planningCompletedAt: null } })
+    // Densidade real por dia: alimenta TANTO o rail de contexto QUANTO os
+    // contadores dos dias no seletor de destino (mesma chave, dedup do Query).
+    if (url === '/api/bujo/rituals/weekly/density/') return Promise.resolve({ data: weeklyDensity })
     return Promise.reject(new Error(`unhandled GET ${url}`))
   })
 }
@@ -251,11 +262,23 @@ describe('WeeklyPlanningPage — seletor de destino (AC5, Task 9)', () => {
     renderPage()
     await screen.findByText('Rever contrato')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Escolher destino…' }))
-    expect(await screen.findByRole('dialog', { name: 'Escolher destino' })).toBeInTheDocument()
+    // Capturado ANTES de abrir: com o modal aberto a subárvore da página fica
+    // `aria-hidden`, e uma consulta por role não a encontraria mais.
+    const main = screen.getByRole('main', { name: 'Planejar a semana' })
 
-    fireEvent.keyDown(window, { key: '3' }) // quarta
-    fireEvent.keyDown(window, { key: 'Enter' })
+    fireEvent.click(screen.getByRole('button', { name: 'Escolher destino…' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Escolher destino' })
+
+    // O DEFEITO corrigido: antes, no desktop, não havia `Dialog` nenhum e o
+    // seletor entrava no fluxo do DOM depois da grade de 3 colunas do ritual —
+    // abria abaixo da dobra. A prova é estrutural: ele é PORTALIZADO para fora
+    // do `main`, dentro da raiz de modal (overlay + posição fixa) do MUI.
+    expect(main).not.toContainElement(dialog)
+    expect(dialog.closest('.MuiDialog-root')).not.toBeNull()
+
+    // A semana-alvo é 2026-07-27 (segunda) ⇒ quarta = 29/07.
+    fireEvent.click(within(dialog).getByRole('radio', { name: '3 Quarta, 29 jul.' }))
+    fireEvent.keyDown(within(dialog).getByRole('radiogroup', { name: /^Dias de/ }), { key: 'Enter' })
 
     await waitFor(() =>
       expect(mockPost).toHaveBeenCalledWith('/api/bujo/tasks/t-1/migrate/', {
@@ -263,7 +286,224 @@ describe('WeeklyPlanningPage — seletor de destino (AC5, Task 9)', () => {
         scheduledDate: '2026-07-29',
       }),
     )
+    expect(mockPost).toHaveBeenCalledTimes(1)
     expect(screen.queryByRole('dialog', { name: 'Escolher destino' })).not.toBeInTheDocument()
+  })
+
+  // Story 14.5 AC5 — os dígitos existem e chegam ao usuário PELA PÁGINA do
+  // ritual, não só pelo componente isolado (achado de review: o teste do
+  // componente antigo guarda um arquivo sem importador de produção).
+  it('atalhos 1–7 escolhem o dia e Enter confirma, pela página do ritual (AC5)', async () => {
+    mockRoutes({
+      monthlyInWeek: {
+        ...EMPTY_TASK_SOURCE,
+        items: [
+          {
+            task: { id: 't-1', title: 'Rever contrato', status: 'pending', eisenhower: null, category: null, subtasks: [], scheduledDate: '2026-07-29' },
+            decision: null,
+          },
+        ],
+      },
+    })
+    mockPost.mockResolvedValueOnce({ data: { id: 't-1', title: 'Rever contrato', status: 'migrated', eisenhower: null, category: null, subtasks: [] } })
+    renderPage()
+    await screen.findByText('Rever contrato')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Escolher destino…' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Escolher destino' })
+
+    // Lembrete VISÍVEL dos atalhos (também restaurado).
+    expect(
+      within(dialog).getByText('Atalhos: 1–7 escolhem o dia · 0 deixa sem data · Enter confirma.'),
+    ).toBeInTheDocument()
+
+    const group = within(dialog).getByRole('radiogroup', { name: /^Dias de/ })
+    fireEvent.keyDown(group, { key: '3' }) // quarta da semana-alvo = 29/07
+    expect(within(dialog).getByRole('button', { name: 'Migrar para quarta, 29 jul.' })).toBeInTheDocument()
+
+    fireEvent.keyDown(group, { key: 'Enter' })
+
+    await waitFor(() =>
+      expect(mockPost).toHaveBeenCalledWith('/api/bujo/tasks/t-1/migrate/', {
+        destination: 'week',
+        scheduledDate: '2026-07-29',
+      }),
+    )
+    expect(mockPost).toHaveBeenCalledTimes(1)
+  })
+
+  // Story 14.5 AC6 — "selecionar um dia escolhe destino para a decisão corrente".
+  // Com o seletor aberto o rail fica `aria-hidden` atrás do backdrop, então o
+  // caminho do rail arma o dia ANTES: o seletor abre com ele já armado, a um
+  // clique da confirmação nomeada — em vez de virar código morto.
+  it('clicar num dia do rail de densidade arma o destino da decisão corrente (AC6)', async () => {
+    mockRoutes({
+      monthlyInWeek: {
+        ...EMPTY_TASK_SOURCE,
+        items: [
+          {
+            task: { id: 't-1', title: 'Rever contrato', status: 'pending', eisenhower: null, category: null, subtasks: [], scheduledDate: '2026-07-29' },
+            decision: null,
+          },
+        ],
+      },
+      weeklyDensity: {
+        ...EMPTY_DENSITY,
+        total: 1,
+        days: [
+          { date: '2026-07-28', total: 1, byStatus: { pending: 1, started: 0, completed: 0, cancelled: 0, migrated: 0, postponed: 0 } },
+        ],
+      },
+    })
+    mockPost.mockResolvedValueOnce({ data: { id: 't-1', title: 'Rever contrato', status: 'migrated', eisenhower: null, category: null, subtasks: [] } })
+    renderPage()
+    await screen.findByText('Rever contrato')
+
+    const densityRail = await screen.findByRole('group', { name: 'Densidade por dia' })
+    fireEvent.click(within(densityRail).getByRole('button', { name: 'Terça: 1 registros' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Escolher destino…' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Escolher destino' })
+
+    // Já ARMADO no dia escolhido no rail — a confirmação nomeada está pronta.
+    expect(within(dialog).getByRole('radio', { name: /^2 Terça, 28 jul\./ })).toHaveAttribute('aria-checked', 'true')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Migrar para terça, 28 jul.' }))
+
+    await waitFor(() =>
+      expect(mockPost).toHaveBeenCalledWith('/api/bujo/tasks/t-1/migrate/', {
+        destination: 'week',
+        scheduledDate: '2026-07-28',
+      }),
+    )
+  })
+
+  // Achado de review: sem gate de escrita EM CURSO, dois cliques rápidos em
+  // confirmar viram dois POST de migração da MESMA tarefa — alcançável só com o
+  // mouse, sem nenhum atalho de teclado envolvido.
+  it('durante a escrita em curso o seletor fica bloqueado — nada de duplicar a migração', async () => {
+    mockRoutes({
+      monthlyInWeek: {
+        ...EMPTY_TASK_SOURCE,
+        items: [
+          {
+            task: { id: 't-1', title: 'Rever contrato', status: 'pending', eisenhower: null, category: null, subtasks: [], scheduledDate: '2026-07-29' },
+            decision: null,
+          },
+        ],
+      },
+    })
+    // Nunca resolve: mantém a mutação PENDENTE durante todo o teste.
+    mockPost.mockImplementation(() => new Promise(() => {}))
+    renderPage()
+    await screen.findByText('Rever contrato')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Escolher destino…' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Escolher destino' })
+    fireEvent.click(within(dialog).getByRole('radio', { name: '3 Quarta, 29 jul.' }))
+
+    const confirmButton = within(dialog).getByRole('button', { name: 'Migrar para quarta, 29 jul.' })
+    fireEvent.click(confirmButton)
+
+    await waitFor(() =>
+      expect(within(dialog).getByRole('button', { name: 'Migrar para quarta, 29 jul.' })).toBeDisabled(),
+    )
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Migrar para quarta, 29 jul.' }))
+    fireEvent.keyDown(within(dialog).getByRole('radiogroup', { name: /^Dias de/ }), { key: 'Enter' })
+
+    expect(mockPost).toHaveBeenCalledTimes(1)
+  })
+
+  it('o ato de confirmação é NOMEADO pelo dia escolhido, nunca um "Confirmar" genérico', async () => {
+    mockRoutes({
+      monthlyInWeek: {
+        ...EMPTY_TASK_SOURCE,
+        items: [
+          {
+            task: { id: 't-1', title: 'Rever contrato', status: 'pending', eisenhower: null, category: null, subtasks: [], scheduledDate: '2026-07-29' },
+            decision: null,
+          },
+        ],
+      },
+    })
+    mockPost.mockResolvedValueOnce({ data: { id: 't-1', title: 'Rever contrato', status: 'migrated', eisenhower: null, category: null, subtasks: [] } })
+    renderPage()
+    await screen.findByText('Rever contrato')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Escolher destino…' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Escolher destino' })
+
+    expect(within(dialog).queryByRole('button', { name: 'Confirmar' })).not.toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole('radio', { name: '2 Terça, 28 jul.' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Migrar para terça, 28 jul.' }))
+
+    await waitFor(() =>
+      expect(mockPost).toHaveBeenCalledWith('/api/bujo/tasks/t-1/migrate/', {
+        destination: 'week',
+        scheduledDate: '2026-07-28',
+      }),
+    )
+  })
+
+  // REGRA DE DOMÍNIO (lacuna B7 da Story 14.5), preservada na troca de seletor:
+  // `migrate` com `destination: 'week'` sem `scheduledDate` cai na semana
+  // CORRENTE no servidor, não na semana-alvo — nunca mandar em silêncio para a
+  // semana errada. A semana corrente mockada (2026-07-20) ≠ alvo (2026-07-27).
+  it('semana-alvo ≠ corrente: "Sem dia definido" fica indisponível COM MOTIVO e não migra', async () => {
+    mockRoutes({
+      monthlyInWeek: {
+        ...EMPTY_TASK_SOURCE,
+        items: [
+          {
+            task: { id: 't-1', title: 'Rever contrato', status: 'pending', eisenhower: null, category: null, subtasks: [], scheduledDate: '2026-07-29' },
+            decision: null,
+          },
+        ],
+      },
+    })
+    renderPage()
+    await screen.findByText('Rever contrato')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Escolher destino…' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Escolher destino' })
+
+    const undated = within(dialog).getByRole('button', {
+      name: '0 Sem dia definido — indisponível: a semana-alvo não é a semana corrente',
+    })
+    expect(undated).toHaveAttribute('aria-disabled', 'true')
+
+    fireEvent.click(undated)
+    expect(within(dialog).queryByRole('button', { name: /^Migrar/ })).not.toBeInTheDocument()
+    expect(mockPost).not.toHaveBeenCalled()
+  })
+
+  it('a densidade real por dia aparece no nome acessível de cada dia ofertado', async () => {
+    mockRoutes({
+      monthlyInWeek: {
+        ...EMPTY_TASK_SOURCE,
+        items: [
+          {
+            task: { id: 't-1', title: 'Rever contrato', status: 'pending', eisenhower: null, category: null, subtasks: [], scheduledDate: '2026-07-29' },
+            decision: null,
+          },
+        ],
+      },
+      weeklyDensity: {
+        ...EMPTY_DENSITY,
+        total: 2,
+        days: [
+          { date: '2026-07-27', total: 2, byStatus: { pending: 2, started: 0, completed: 0, cancelled: 0, migrated: 0, postponed: 0 } },
+          { date: '2026-07-28', total: 1, byStatus: { pending: 1, started: 0, completed: 0, cancelled: 0, migrated: 0, postponed: 0 } },
+        ],
+      },
+    })
+    renderPage()
+    await screen.findByText('Rever contrato')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Escolher destino…' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Escolher destino' })
+
+    expect(await within(dialog).findByRole('radio', { name: '1 Segunda, 27 jul., 2 registros' })).toBeInTheDocument()
+    expect(within(dialog).getByRole('radio', { name: '2 Terça, 28 jul., 1 registro' })).toBeInTheDocument()
   })
 })
 
@@ -326,14 +566,16 @@ describe('WeeklyPlanningPage — falha na confirmação de destino preserva o se
     await screen.findByText('Rever contrato')
 
     fireEvent.click(screen.getByRole('button', { name: 'Escolher destino…' }))
-    await screen.findByRole('dialog', { name: 'Escolher destino' })
+    const dialog = await screen.findByRole('dialog', { name: 'Escolher destino' })
 
-    fireEvent.keyDown(window, { key: '3' })
-    fireEvent.keyDown(window, { key: 'Enter' })
+    fireEvent.click(within(dialog).getByRole('radio', { name: '3 Quarta, 29 jul.' }))
+    fireEvent.keyDown(within(dialog).getByRole('radiogroup', { name: /^Dias de/ }), { key: 'Enter' })
 
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Não foi possível migrar a tarefa'))
-    // O seletor continua aberto — falha preserva item/foco (AC5).
+    // O seletor continua aberto E ARMADO — falha preserva item/foco (AC5), então
+    // "tentar novamente" é reconfirmar o mesmo ato já nomeado.
     expect(screen.getByRole('dialog', { name: 'Escolher destino' })).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: 'Migrar para quarta, 29 jul.' })).toBeInTheDocument()
   })
 })
 

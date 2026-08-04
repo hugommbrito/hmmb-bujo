@@ -82,6 +82,7 @@ function mockRoutes({
   previousMonthly = EMPTY_BLOCKING_SOURCE,
   previousMonthlyStatus = 200,
   currentMonthFirst = '2026-07-01',
+  monthlyDensity = EMPTY_DENSITY,
 }: {
   readiness?: unknown
   recurring?: unknown
@@ -89,6 +90,7 @@ function mockRoutes({
   previousMonthly?: unknown
   previousMonthlyStatus?: number
   currentMonthFirst?: string
+  monthlyDensity?: unknown
 } = {}) {
   mockGet.mockImplementation((url: string) => {
     if (url === '/api/bujo/logs/monthly/cycle/') return Promise.resolve({ data: readiness })
@@ -102,7 +104,11 @@ function mockRoutes({
         ? Promise.resolve({ data: previousMonthly })
         : Promise.reject(new Error('falha ao consultar previous-monthly'))
     }
-    if (url === '/api/bujo/rituals/monthly/density/') return Promise.resolve({ data: EMPTY_DENSITY })
+    // UMA fonte de densidade para o mês-alvo: alimenta o minicalendário do rail
+    // de contexto E o calendário do seletor de destino. Nenhum `/task-density/`
+    // aqui — o seletor não consulta nada por conta própria, senão os dois
+    // calendários da mesma tela poderiam divergir (achado de review).
+    if (url === '/api/bujo/rituals/monthly/density/') return Promise.resolve({ data: monthlyDensity })
     return Promise.reject(new Error(`unhandled GET ${url}`))
   })
 }
@@ -199,8 +205,8 @@ describe('MonthlyPlanningPage — destino "month" vs "future" (Dev Notes: TaskMi
     await screen.findByText('Revisar')
 
     fireEvent.click(screen.getByRole('button', { name: 'Escolher destino…' }))
-    fireEvent.click(await screen.findByRole('gridcell', { name: '18' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Confirmar' }))
+    fireEvent.click(await screen.findByRole('button', { name: '18 de agosto, sem tarefas' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Migrar para 18 de agosto' }))
 
     await waitFor(() =>
       expect(mockPost).toHaveBeenCalledWith(
@@ -225,8 +231,8 @@ describe('MonthlyPlanningPage — destino "month" vs "future" (Dev Notes: TaskMi
     await screen.findByText('Atrasada')
 
     fireEvent.click(screen.getByRole('button', { name: 'Escolher destino…' }))
-    fireEvent.click(await screen.findByRole('gridcell', { name: '5' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Confirmar' }))
+    fireEvent.click(await screen.findByRole('button', { name: '5 de agosto, sem tarefas' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Migrar para 5 de agosto' }))
 
     await waitFor(() =>
       expect(mockPost).toHaveBeenCalledWith(
@@ -259,8 +265,8 @@ describe('MonthlyPlanningPage — destino "month" vs "future" (Dev Notes: TaskMi
     await screen.findByText('Atrasadíssima')
 
     fireEvent.click(screen.getByRole('button', { name: 'Escolher destino…' }))
-    fireEvent.click(await screen.findByRole('gridcell', { name: '5' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Confirmar' }))
+    fireEvent.click(await screen.findByRole('button', { name: '5 de agosto, sem tarefas' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Migrar para 5 de agosto' }))
 
     // Escopado ao dialog: a fonte bloqueante (Monthly anterior) TAMBÉM usa
     // `role="alert"` para seu aviso persistente — sem escopo, colide (mesma
@@ -354,12 +360,259 @@ describe('MonthlyPlanningPage — falha na confirmação de destino preserva o s
     await screen.findByText('Item do Future Log')
 
     fireEvent.click(screen.getByRole('button', { name: 'Escolher destino…' }))
-    fireEvent.click(await screen.findByRole('gridcell', { name: '18' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Confirmar' }))
+    fireEvent.click(await screen.findByRole('button', { name: '18 de agosto, sem tarefas' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Migrar para 18 de agosto' }))
 
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Não foi possível migrar a tarefa'))
-    // O seletor continua aberto — falha preserva item/foco (AC5).
+    // O seletor continua aberto E ARMADO — falha preserva item/foco (AC5), então
+    // "tentar novamente" é reconfirmar o mesmo ato já nomeado.
     expect(screen.getByRole('dialog', { name: 'Escolher destino' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Migrar para 18 de agosto' })).toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Defeito corrigido: os dois pickers antigos faziam `if (!compact) return
+// content`, então no desktop o seletor entrava no fluxo normal do DOM DEPOIS da
+// grade de 3 colunas do ritual — abria abaixo da dobra, e clicar em "Alocar"/
+// "Escolher destino…" parecia não fazer nada. A prova estrutural aqui é que o
+// seletor NÃO é descendente do `main` do ritual: ele é portalizado.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('MonthlyPlanningPage — o seletor de destino abre SOBREPOSTO, fora do fluxo do ritual', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+    mockMatchMediaDefault()
+  })
+
+  it('"Alocar" (recorrentes) abre o seletor portalizado, fora do main, com o ato NOMEADO', async () => {
+    mockRoutes({
+      recurring: {
+        ...EMPTY_RECURRING_SOURCE,
+        items: [
+          {
+            template: {
+              id: 'tpl-1',
+              title: 'Recorrente mensal',
+              recurrenceGroup: 'monthly',
+              recurrenceText: 'todo mês',
+              active: true,
+              eisenhower: null,
+              category: null,
+              description: null,
+            },
+            decision: null,
+          },
+        ],
+      },
+    })
+    renderPage()
+    await screen.findByRole('navigation', { name: 'Fontes do planejamento mensal' })
+    await screen.findByText('Recorrente mensal')
+
+    // Capturado ANTES de abrir: com o modal aberto o MUI marca a subárvore da
+    // página com `aria-hidden`, então uma consulta por role deixaria de
+    // encontrá-lo — o que por si só já prova que existe camada modal de verdade.
+    const main = screen.getByRole('main', { name: 'Planejar Agosto de 2026' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Alocar' }))
+
+    const dialog = await screen.findByRole('dialog', { name: 'Escolher destino' })
+    expect(main).not.toContainElement(dialog)
+    expect(dialog.closest('.MuiDialog-root')).not.toBeNull()
+
+    // O verbo do ato é "Alocar" (template → `place/`), não "Migrar".
+    fireEvent.click(await screen.findByRole('button', { name: '10 de agosto, sem tarefas' }))
+    expect(within(dialog).getByRole('button', { name: 'Alocar em 10 de agosto' })).toBeInTheDocument()
+  })
+
+  // Story 14.6 AC5 — a entrada direta do número do dia e as setas existem e
+  // chegam ao usuário PELA PÁGINA do ritual, sincronizadas com o calendário.
+  it('a entrada direta do número do dia e as setas funcionam pela página do ritual (AC5)', async () => {
+    mockRoutes({
+      futureLog: {
+        ...EMPTY_TASK_SOURCE,
+        items: [
+          {
+            task: { id: 't-1', title: 'Item do Future Log', status: 'pending', eisenhower: null, category: null, subtasks: [], scheduledDate: null },
+            decision: null,
+          },
+        ],
+      },
+    })
+    mockPost.mockResolvedValueOnce({ data: { id: 't-1' } })
+    renderPage()
+    await screen.findByRole('navigation', { name: 'Fontes do planejamento mensal' })
+    fireEvent.click(screen.getByRole('button', { name: /Future Log/ }))
+    await screen.findByText('Item do Future Log')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Escolher destino…' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Escolher destino' })
+
+    // Lembrete VISÍVEL dos atalhos do mensal (também restaurado).
+    expect(
+      within(dialog).getByText('Setas navegam dia a dia · digite o número do dia · Enter confirma.'),
+    ).toBeInTheDocument()
+
+    fireEvent.change(within(dialog).getByLabelText('Número do dia'), { target: { value: '12' } })
+    // Sincronizado com o calendário de densidade reusado (`MonthDensityCalendar`
+    // marca o dia escolhido com `aria-pressed`; o `aria-current` do grid antigo
+    // não existe mais e a spec proíbe alterar o componente compartilhado).
+    expect(within(dialog).getByRole('button', { name: '12 de agosto, sem tarefas' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Próximo dia' }))
+    expect(within(dialog).getByLabelText('Número do dia')).toHaveValue(13)
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Migrar para 13 de agosto' }))
+    await waitFor(() =>
+      expect(mockPost).toHaveBeenCalledWith(
+        '/api/bujo/tasks/t-1/migrate/',
+        expect.objectContaining({ scheduledDate: '2026-08-13' }),
+      ),
+    )
+    expect(mockPost).toHaveBeenCalledTimes(1)
+  })
+
+  // Story 14.6 AC6 — "selecionar um dia escolhe destino para a decisão corrente".
+  it('clicar num dia do minicalendário de densidade arma o destino da decisão corrente (AC6)', async () => {
+    mockRoutes({
+      futureLog: {
+        ...EMPTY_TASK_SOURCE,
+        items: [
+          {
+            task: { id: 't-1', title: 'Item do Future Log', status: 'pending', eisenhower: null, category: null, subtasks: [], scheduledDate: null },
+            decision: null,
+          },
+        ],
+      },
+    })
+    mockPost.mockResolvedValueOnce({ data: { id: 't-1' } })
+    renderPage()
+    await screen.findByRole('navigation', { name: 'Fontes do planejamento mensal' })
+    fireEvent.click(screen.getByRole('button', { name: /Future Log/ }))
+    await screen.findByText('Item do Future Log')
+
+    const densityGrid = await screen.findByRole('grid', { name: 'Minicalendário de densidade' })
+    fireEvent.click(within(densityGrid).getByRole('gridcell', { name: '14 de agosto: vazio' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Escolher destino…' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Escolher destino' })
+
+    // Já ARMADO no dia escolhido no rail — a confirmação nomeada está pronta.
+    expect(within(dialog).getByLabelText('Número do dia')).toHaveValue(14)
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Migrar para 14 de agosto' }))
+
+    await waitFor(() =>
+      expect(mockPost).toHaveBeenCalledWith(
+        '/api/bujo/tasks/t-1/migrate/',
+        expect.objectContaining({ scheduledDate: '2026-08-14' }),
+      ),
+    )
+  })
+
+  // Achado de review: o seletor e o rail liam densidade de endpoints DIFERENTES,
+  // então os dois calendários da mesma tela podiam mostrar contagens divergentes.
+  it('o calendário do seletor usa a MESMA densidade do rail, sem requisição extra', async () => {
+    mockRoutes({
+      futureLog: {
+        ...EMPTY_TASK_SOURCE,
+        items: [
+          {
+            task: { id: 't-1', title: 'Item do Future Log', status: 'pending', eisenhower: null, category: null, subtasks: [], scheduledDate: null },
+            decision: null,
+          },
+        ],
+      },
+      monthlyDensity: {
+        ...EMPTY_DENSITY,
+        total: 3,
+        days: [
+          { date: '2026-08-18', total: 3, byStatus: { pending: 3, started: 0, completed: 0, cancelled: 0, migrated: 0, postponed: 0 } },
+        ],
+      },
+    })
+    renderPage()
+    await screen.findByRole('navigation', { name: 'Fontes do planejamento mensal' })
+    fireEvent.click(screen.getByRole('button', { name: /Future Log/ }))
+    await screen.findByText('Item do Future Log')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Escolher destino…' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Escolher destino' })
+
+    // A contagem do rail (3 registros no dia 18) aparece no calendário do seletor.
+    expect(within(dialog).getByRole('button', { name: '18 de agosto, 3 tarefas' })).toBeInTheDocument()
+    // E nenhuma requisição ao endpoint de densidade genérico foi feita.
+    expect(mockGet.mock.calls.some(([url]) => url === '/api/bujo/task-density/')).toBe(false)
+  })
+
+  // Achado de review: sem gate de escrita EM CURSO, dois cliques rápidos em
+  // confirmar viram dois POST — duas instâncias do mesmo recorrente no "Alocar".
+  it('durante a escrita em curso o seletor fica bloqueado — nada de alocar em duplicidade', async () => {
+    mockRoutes({
+      recurring: {
+        ...EMPTY_RECURRING_SOURCE,
+        items: [
+          {
+            template: {
+              id: 'tpl-1',
+              title: 'Recorrente mensal',
+              recurrenceGroup: 'monthly',
+              recurrenceText: 'todo mês',
+              active: true,
+              eisenhower: null,
+              category: null,
+              description: null,
+            },
+            decision: null,
+          },
+        ],
+      },
+    })
+    // Nunca resolve: mantém a mutação PENDENTE durante todo o teste.
+    mockPost.mockImplementation(() => new Promise(() => {}))
+    renderPage()
+    await screen.findByRole('navigation', { name: 'Fontes do planejamento mensal' })
+    await screen.findByText('Recorrente mensal')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Alocar' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Escolher destino' })
+    fireEvent.click(within(dialog).getByRole('button', { name: '10 de agosto, sem tarefas' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Alocar em 10 de agosto' }))
+
+    await waitFor(() =>
+      expect(within(dialog).getByRole('button', { name: 'Alocar em 10 de agosto' })).toBeDisabled(),
+    )
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Alocar em 10 de agosto' }))
+    fireEvent.keyDown(within(dialog).getByLabelText('Número do dia'), { key: 'Enter' })
+
+    expect(mockPost).toHaveBeenCalledTimes(1)
+  })
+
+  it('"Escolher destino…" (task) também abre portalizado, fora do main', async () => {
+    mockRoutes({
+      futureLog: {
+        ...EMPTY_TASK_SOURCE,
+        items: [
+          {
+            task: { id: 't-1', title: 'Item do Future Log', status: 'pending', eisenhower: null, category: null, subtasks: [], scheduledDate: null },
+            decision: null,
+          },
+        ],
+      },
+    })
+    renderPage()
+    await screen.findByRole('navigation', { name: 'Fontes do planejamento mensal' })
+    fireEvent.click(screen.getByRole('button', { name: /Future Log/ }))
+    await screen.findByText('Item do Future Log')
+
+    const main = screen.getByRole('main', { name: 'Planejar Agosto de 2026' })
+    fireEvent.click(screen.getByRole('button', { name: 'Escolher destino…' }))
+
+    const dialog = await screen.findByRole('dialog', { name: 'Escolher destino' })
+    expect(main).not.toContainElement(dialog)
+    expect(dialog.closest('.MuiDialog-root')).not.toBeNull()
   })
 })
 

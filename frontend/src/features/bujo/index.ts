@@ -52,6 +52,17 @@ export { MigrationRitualBanner } from './components/migration/MigrationRitualBan
 export { RecurringTemplateManager } from './components/RecurringTemplateManager'
 export { RecurringPlacementSection } from './components/RecurringPlacementSection'
 export { MonthDensityCalendar } from './components/MonthDensityCalendar'
+// Seletor de destino agnóstico de domínio — `Dialog` portalizado no não-compact,
+// `Drawer` no compact. Compartilhado entre os rituais (Weekly/Monthly Planning)
+// e, na sequência, o "Mover tarefa" dos boards (DW-27).
+export { DestinationDialog } from './components/DestinationDialog'
+export type {
+  DestinationDialogProps,
+  DestinationOffer,
+  DestinationDayOffer,
+  DestinationConfirmMeta,
+  DestinationSelection,
+} from './components/DestinationDialog'
 export { TaskRowBase } from './components/TaskRowBase'
 export { TaskDetailCard } from './components/TaskDetailCard'
 // Story 14.8 (M09): componentes de RAIZ do sistema novo — a Item Row (irmã da

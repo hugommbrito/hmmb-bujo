@@ -25,13 +25,17 @@ import {
   useRitualTaskTransitionMutation,
   useWeeklyCycleActionMutation,
   useWeeklyCycleReadinessQuery,
+  useWeeklyDensityQuery,
   useWeeklyLogQuery,
   useWeeklyRecurringSourceQuery,
 } from '../../features/bujo'
 import { PlannerSkeleton } from '../../features/bujo/components/PlannerSkeleton'
 import { WeeklySourceRail, type WeeklySourceRailEntry } from '../../features/bujo/components/weekly/WeeklySourceRail'
 import { WeeklyDecisionList } from '../../features/bujo/components/weekly/WeeklyDecisionList'
-import { WeeklyDestinationPicker } from '../../features/bujo/components/weekly/WeeklyDestinationPicker'
+import {
+  DestinationDialog,
+  type DestinationSelection,
+} from '../../features/bujo/components/DestinationDialog'
 import { WeeklyContextRail, type WeeklyProgressSourceInput } from '../../features/bujo/components/weekly/WeeklyContextRail'
 import {
   normalizeSource,
@@ -41,6 +45,7 @@ import {
   type NormalizedRitualItem,
   type WeeklyRitualSourceId,
 } from '../../features/bujo/components/weekly/weeklyRitualSources'
+import { addDaysIso, formatDayLabel } from '../../shared/date'
 import { mediaQueries, typography } from '../../shared/design/tokens'
 import { useOnlineStatus } from '../../shared/hooks/useOnlineStatus'
 
@@ -63,6 +68,11 @@ export function WeeklyPlanningPage() {
   const [itemErrors, setItemErrors] = useState<Record<string, string>>({})
   const retryActionsRef = useRef<Record<string, () => void>>({})
   const [destinationError, setDestinationError] = useState<string | null>(null)
+  // Story 14.5 AC6 — dia escolhido no rail de densidade. O rail fica `aria-hidden`
+  // atrás do backdrop enquanto o seletor está aberto, então o clique acontece
+  // ANTES: guardamos o dia e o seletor abre com ele JÁ ARMADO, a um clique da
+  // confirmação nomeada. É o que mantém o caminho do rail vivo e alcançável.
+  const [dayFromDensityRail, setDayFromDensityRail] = useState<string | null | undefined>(undefined)
   const isCompact = useMediaQuery(mediaQueries.compact)
   const isOnline = useOnlineStatus()
 
@@ -83,6 +93,11 @@ export function WeeklyPlanningPage() {
   const recurring = useWeeklyRecurringSourceQuery(weekStart ?? '', { enabled: hasTarget })
   const previousWeekly = usePreviousWeeklySourceQuery(weekStart ?? '', { enabled: hasTarget })
   const pendingDailies = usePendingDailiesSourceQuery(weekStart ?? '', { enabled: hasTarget })
+  // Densidade real por dia da semana-ALVO — a MESMA chave que o rail de
+  // contexto já consulta (dedup automático do TanStack Query, zero rede extra).
+  // O seletor de destino recebe o mapa pronto: quem conhece "densidade semanal"
+  // é esta página, não o componente agnóstico.
+  const weeklyDensity = useWeeklyDensityQuery(weekStart ?? '', { enabled: hasTarget })
   // "Qualquer mês navegável" (M06) — navegação entre meses fica para uma
   // extensão futura; por ora, o mês do alvo do planejamento.
   const monthlyExpandedTarget = `${(weekStart ?? '').slice(0, 7)}-01`
@@ -303,6 +318,7 @@ export function WeeklyPlanningPage() {
   function handleCloseDestinationPicker() {
     setDestinationPickerItemId(null)
     setDestinationError(null)
+    setDayFromDensityRail(undefined)
   }
 
   function handleConfirmDestination(scheduledDate: string | null) {
@@ -318,7 +334,7 @@ export function WeeklyPlanningPage() {
           // Só fecha o seletor no SUCESSO — falha preserva item/foco: o
           // seletor continua aberto, com o motivo visível, para "Tentar
           // novamente" ser literalmente repetir a mesma confirmação.
-          setDestinationPickerItemId(null)
+          handleCloseDestinationPicker()
         },
         onError: () => setDestinationError('Não foi possível migrar a tarefa. Tente novamente.'),
       },
@@ -368,13 +384,28 @@ export function WeeklyPlanningPage() {
     setView('pending')
   }
 
-  // "Selecionar um dia escolhe destino para a decisão CORRENTE" (AC6): só faz
-  // sentido quando o seletor de destino já está aberto para um item — a
-  // densidade então funciona como um segundo caminho para o MESMO destino.
+  // "Selecionar um dia escolhe destino para a decisão CORRENTE" (AC6): a
+  // densidade é um segundo caminho para o MESMO destino. Com o seletor ABERTO o
+  // rail está `aria-hidden` atrás do backdrop, então este clique só chega com o
+  // seletor FECHADO: ele arma o dia, que o seletor adota (`armedDate`) na próxima
+  // abertura — a um clique da confirmação nomeada, em vez de virar código morto.
   function handleSelectDayFromDensity(scheduledDate: string | null) {
-    if (!destinationPickerItemId) return
-    handleConfirmDestination(scheduledDate)
+    if (destinationPickerItemId) {
+      handleConfirmDestination(scheduledDate)
+      return
+    }
+    setDayFromDensityRail(scheduledDate)
   }
+
+  // Rótulo NOMEADO do ato, nunca um "Confirmar" genérico.
+  function confirmLabelForDestination({ scheduledDate }: DestinationSelection): string {
+    if (!scheduledDate) return 'Migrar sem dia definido'
+    return `Migrar para ${formatDayLabel(scheduledDate, 'weekday').toLowerCase()}, ${formatDayLabel(scheduledDate, 'day-month')}`
+  }
+
+  const weeklyDensityByDate = new Map(
+    (weeklyDensity.data?.days ?? []).map((day) => [day.date, day.total]),
+  )
 
   const progressSources: WeeklyProgressSourceInput[] = PROGRESS_SOURCE_IDS.map((sourceId) => ({
     sourceId,
@@ -463,12 +494,29 @@ export function WeeklyPlanningPage() {
         />
       </Box>
 
+      {/* A semana-alvo vem de `readiness`, fixa. "Sem dia definido" fica
+          INDISPONÍVEL com motivo quando o alvo não é a semana corrente: migrar
+          `destination: 'week'` sem `scheduledDate` cairia na semana CORRENTE no
+          servidor, nunca na alvo (lacuna B7 da Story 14.5 — regra de domínio
+          preservada na íntegra). `disabled` cobre offline E mutação em curso:
+          sem a segunda metade, dois cliques rápidos em confirmar viram dois POST
+          de migração da MESMA tarefa. */}
       {destinationPickerItemId && (
-        <WeeklyDestinationPicker
-          weekStart={weekStart}
-          isCurrentWeek={isCurrentWeek}
+        <DestinationDialog
+          title="Escolher destino"
+          description={`Semana de ${formatDayLabel(weekStart, 'day-month')} a ${formatDayLabel(addDaysIso(weekStart, 6), 'day-month')}`}
+          offer={{
+            id: 'target-week',
+            day: { kind: 'week', weekStart, densityByDate: weeklyDensityByDate },
+            undated: isCurrentWeek
+              ? {}
+              : { unavailableReason: 'a semana-alvo não é a semana corrente' },
+          }}
+          armedDate={dayFromDensityRail}
           compact={isCompact}
+          disabled={!isOnline || migrateTask.isPending}
           error={destinationError}
+          confirmLabelFor={confirmLabelForDestination}
           onConfirm={handleConfirmDestination}
           onClose={handleCloseDestinationPicker}
         />

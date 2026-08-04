@@ -96,6 +96,35 @@ export function computed(locator: Locator, property: string): Promise<string> {
 }
 
 /**
+ * O elemento está INTEIRAMENTE dentro da viewport — a prova GEOMÉTRICA de
+ * "aparece sobreposto e imediatamente visível, sem rolagem".
+ *
+ * `toBeVisible()` NÃO cobre isso: um elemento no fluxo normal do DOM, abaixo da
+ * dobra, é "visível" para o Playwright. Foi exatamente esse o defeito dos
+ * seletores de destino dos rituais (`if (!compact) return content` — sem
+ * `Dialog` no desktop, o conteúdo entrava no fluxo depois da grade de 3 colunas
+ * e nascia fora da tela). Chamar ANTES de qualquer `.click()` no próprio
+ * elemento: o Playwright rola o alvo para a viewport antes de clicar, o que
+ * mascararia a regressão.
+ *
+ * As coordenadas de `boundingBox()` JÁ são relativas à viewport, então não há
+ * nada a afirmar sobre `window.scrollY` aqui: afirmar isso acoplaria o helper à
+ * posição do GATILHO na página (o Playwright rola para clicar em
+ * "Alocar"/"Escolher destino…"), reprovando por um motivo que não é o do
+ * diálogo.
+ */
+export async function expectVisibleWithoutScrolling(page: Page, locator: Locator): Promise<void> {
+  const viewport = page.viewportSize()
+  expect(viewport).not.toBeNull()
+  const box = await locator.boundingBox()
+  expect(box).not.toBeNull()
+  expect(box!.y).toBeGreaterThanOrEqual(0)
+  expect(box!.x).toBeGreaterThanOrEqual(0)
+  expect(box!.y + box!.height).toBeLessThanOrEqual(viewport!.height + 1)
+  expect(box!.x + box!.width).toBeLessThanOrEqual(viewport!.width + 1)
+}
+
+/**
  * Espera o slide de entrada/saída do sheet de navegação ASSENTAR. O `toBeFocused`
  * do foco inicial passa cedo (o `ref` foca na montagem, antes do `onEntered`),
  * então qualquer medida de geometria — ou qualquer `analyze()` do axe — tirada
