@@ -23,7 +23,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.utils.translation import gettext_lazy as _
 from rest_framework import status
 from rest_framework.response import Response
-from rest_framework.views import exception_handler
+from rest_framework.views import exception_handler, set_rollback
 
 logger = logging.getLogger(__name__)
 
@@ -140,6 +140,13 @@ def custom_exception_handler(exc, context):
       raises it uncaught (see the branch comment below).
     - Anything else with no DRF response falls through to ``None`` so Django's
       own 500 handling applies (unexpected server error).
+    - The three branches that build a ``Response`` by hand mark the request's
+      transaction for rollback via ``set_rollback()`` (DW-32), in DRF's own order:
+      body and headers first, then the mark, then the ``Response``. The recognised
+      branch above does not call it — it inherits the call from the default handler,
+      and note that ``_normalise_body`` then rewrites the body *after* that mark.
+      Under ``ATOMIC_REQUESTS`` an error response must never let the writes that
+      preceded the exception commit.
     """
     response = exception_handler(exc, context)
 
@@ -152,14 +159,25 @@ def custom_exception_handler(exc, context):
         # Infra bug, not an access denial. Do NOT domesticate and do NOT leak the
         # real reason into the body — only the critical log carries the detail.
         logger.critical("TenantScopeViolation: tenant context missing", exc_info=exc)
+        # DRF parity (DW-32): its default handler marks the transaction for rollback
+        # before every ``Response`` it builds, so answering with an error never leaves
+        # half a mutation committable. Added before anyone enables ``ATOMIC_REQUESTS``,
+        # precisely so it is not something to remember on that day.
+        set_rollback()
         return Response(
             {"detail": "Internal server error"},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
     if isinstance(exc, DomainError):
+        # Body first, *then* the mark — the order DRF uses (build ``data``/``headers``,
+        # ``set_rollback()``, ``Response``). Not cosmetic: ``str(exc)`` runs a subclass's
+        # arbitrary ``__str__``, and after the mark any query on this connection raises
+        # ``TransactionManagementError``, turning this documented 409 into a raw 500.
+        detail = str(exc)
+        set_rollback()  # Same DRF parity as the branch above (DW-32).
         return Response(
-            {"detail": str(exc)},
+            {"detail": detail},
             status=status.HTTP_409_CONFLICT,
         )
 
@@ -193,15 +211,23 @@ def custom_exception_handler(exc, context):
     ):
         logger.warning("User.DoesNotExist escaped to the central handler", exc_info=exc)
         auth_header = _authenticate_header(context)
+        # ``str()`` resolves the lazy msgid against the locale active *now*, i.e.
+        # during the request — same value, but a real ``str`` in ``response.data``.
+        # Every other body in this module is a plain string (the two branches above)
+        # or went through ``_normalise_body``, whose ``_stringify`` guarantees it; a
+        # lazy proxy here would make this the one branch where
+        # ``response.data["detail"]`` is not what the contract in ``accounts/views.py``
+        # says it is.
+        detail = str(_NO_ACTIVE_ACCOUNT)
+        # Same DRF parity as the two branches above (DW-32). The *position* is
+        # load-bearing, not stylistic: once ``needs_rollback`` is set, any query on
+        # that connection raises ``TransactionManagementError``, so this must stay
+        # AFTER the log, AFTER ``_authenticate_header()`` (which calls into arbitrary
+        # view code) and AFTER the body is built. Do not hoist the three calls into
+        # one shared spot.
+        set_rollback()
         return Response(
-            # ``str()`` resolves the lazy msgid against the locale active *now*,
-            # i.e. during the request — same value, but a real ``str`` in
-            # ``response.data``. Every other body in this module is a plain string
-            # (the two branches above) or went through ``_normalise_body``, whose
-            # ``_stringify`` guarantees it; a lazy proxy here would make this the
-            # one branch where ``response.data["detail"]`` is not what the contract
-            # in ``accounts/views.py`` says it is.
-            {"detail": str(_NO_ACTIVE_ACCOUNT)},
+            {"detail": detail},
             status=status.HTTP_401_UNAUTHORIZED,
             # Body *and* challenge must match the deactivated-user 401, or the
             # presence/absence of this header alone discloses which case it was.
