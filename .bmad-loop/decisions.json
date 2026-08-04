@@ -1,0 +1,11 @@
+{
+  "DW-23": {
+    "answered_at": "2026-08-04",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Manter intacto o step existente de .github/workflows/ci.yml:84-85 (`check --deploy --tag security --fail-level WARNING`) e acrescentar logo em seguida um segundo step que roda `check --deploy --fail-level ERROR --settings=config.settings.prod`, sem `--tag`. Isso passa a exercitar os 21 deploy checks \u2014 incluindo os que nao tem tag alguma, como o schema_check do drf_spectacular \u2014 sem reintroduzir o ruido de WARNING do SECRET_KEY dummy que motivou o escopo original, porque o nivel de falha e ERROR. Atualizar o comentario de ci.yml:76-83 para explicar a divisao de trabalho entre os dois steps (security a WARNING, todo o resto a ERROR) e registrar por que a combinacao existe, para a proxima pessoa nao colapsar os dois.",
+    "key": "1",
+    "label": "Adicionar um segundo step sem filtro de tag, em --fail-level ERROR",
+    "resolution": ""
+  }
+}
