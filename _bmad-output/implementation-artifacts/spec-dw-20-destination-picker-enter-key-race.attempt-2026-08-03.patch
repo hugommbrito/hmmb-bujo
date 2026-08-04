@@ -1,0 +1,650 @@
+diff --git a/frontend/e2e/brain-dump-inbox.spec.ts b/frontend/e2e/brain-dump-inbox.spec.ts
+index 5588b0c..df86b6e 100644
+--- a/frontend/e2e/brain-dump-inbox.spec.ts
++++ b/frontend/e2e/brain-dump-inbox.spec.ts
+@@ -6,6 +6,19 @@ import { test, expect } from './fixtures'
+ // real no seletor de destino (Esta Semana com dia escolhido). Mesmo padrão de
+ // `recurring-library.spec.ts` (Story 14.8): um spec novo por superfície
+ // migrada, ao lado do spec legado ajustado.
++//
++// DW-20 acrescenta aqui a prova em BROWSER REAL da ordem
++// `keydown` → clique nativo → `Enter` adiado (jsdom não executa a ação default
++// de tecla; nos testes de unidade ela é simulada pelo `user-event`).
++
++/** ISO do dia `offset` da semana corrente (0 = segunda), no fuso do browser —
++ * mesma técnica Monday-based de `shared/date.mondayIsoOf`. */
++function weekdayIsoOfCurrentWeek(offset: number): string {
++  const now = new Date()
++  const mondayIndex = (now.getDay() + 6) % 7
++  const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() - mondayIndex + offset)
++  return `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`
++}
+ 
+ test('editar título/descrição/destino do item via o sheet — a linha atualiza in-place, sem otimismo (I/O Matrix)', async ({
+   page,
+@@ -64,6 +77,46 @@ test('mover para Esta Semana com um dia escolhido cria a Task com scheduled_date
+   await expect(page.getByText('Brain Dump vazio.')).toBeVisible()
+ })
+ 
++test('DW-20: Enter confirma o dia que acabou de receber FOCO, nunca o dia armado antes', async ({
++  page,
++}) => {
++  await page.getByRole('button', { name: 'Brain Dump' }).click()
++  await expect(page.getByRole('main', { name: 'Brain Dump', exact: true })).toBeVisible()
++
++  await page.getByRole('textbox', { name: 'Título' }).fill('Corrida do Enter')
++  await page.getByRole('button', { name: 'Capturar' }).click()
++  await expect(page.getByText('Corrida do Enter')).toBeVisible()
++
++  await page.getByRole('button', { name: 'Mover Corrida do Enter' }).click()
++  const picker = page.getByRole('dialog', { name: 'Para onde mover este item?' })
++  await expect(picker).toBeVisible()
++
++  await page.getByRole('radio', { name: 'Esta Semana' }).click()
++  const weekDays = picker.getByRole('radiogroup', { name: /^Dias de/ })
++  const days = weekDays.getByRole('radio')
++
++  // Arma a segunda (1º dia) …
++  await days.first().click()
++  await expect(picker.getByRole('button', { name: /^Mover para/ })).toBeVisible()
++
++  // … e move o foco para a quarta (3º dia) SEM clicar — é a situação do DW-20:
++  // o estado ainda tem a segunda armada quando o `Enter` é pressionado.
++  await days.nth(2).focus()
++
++  const processResponse = page.waitForResponse(
++    (r) => r.url().includes('/process/') && r.request().method() === 'POST',
++  )
++  await page.keyboard.press('Enter')
++
++  const response = await processResponse
++  expect(response.status()).toBe(200)
++  // O dia FOCADO (quarta), não o armado antes (segunda).
++  expect(response.request().postDataJSON().scheduledDate).toBe(weekdayIsoOfCurrentWeek(2))
++
++  await expect(picker).toHaveCount(0)
++  await expect(page.getByText('Brain Dump vazio.')).toBeVisible()
++})
++
+ test('fechar o sheet de edição sem alteração fecha direto; com alteração pede confirmação (dirty-check)', async ({
+   page,
+ }) => {
+diff --git a/frontend/src/features/braindump/components/BrainDumpDestinationPicker.test.tsx b/frontend/src/features/braindump/components/BrainDumpDestinationPicker.test.tsx
+index aa936f0..208466a 100644
+--- a/frontend/src/features/braindump/components/BrainDumpDestinationPicker.test.tsx
++++ b/frontend/src/features/braindump/components/BrainDumpDestinationPicker.test.tsx
+@@ -1,8 +1,9 @@
+ import { describe, it, expect, vi, beforeEach } from 'vitest'
+-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
++import { act, render, screen, fireEvent, waitFor } from '@testing-library/react'
++import userEvent from '@testing-library/user-event'
+ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+ import { axe } from 'jest-axe'
+-import type { ReactNode } from 'react'
++import { useState, type ReactNode } from 'react'
+ 
+ import { BrainDumpDestinationPicker } from './BrainDumpDestinationPicker'
+ import type { BrainDumpItem } from '../types'
+@@ -267,3 +268,91 @@ describe('BrainDumpDestinationPicker (Story 15.1 — M11)', () => {
+     expect(mockPost).not.toHaveBeenCalled()
+   })
+ })
++
++// `userEvent` (não `fireEvent`) porque só ele reproduz a sequência do browser
++// que expõe a corrida: keydown → keypress → clique nativo no <button> focado.
++describe('BrainDumpDestinationPicker — Enter nunca confirma destino/dia obsoleto (DW-20)', () => {
++  beforeEach(() => {
++    vi.resetAllMocks()
++    mockReads()
++  })
++
++  /** Deixa passar o macrotask do handler adiado do `useKeyboardShortcuts`. */
++  async function flushDeferredShortcut() {
++    await act(async () => {
++      await new Promise((resolve) => setTimeout(resolve, 0))
++    })
++  }
++
++  it('com um dia já armado, Enter no dia que acabou de receber foco move para o dia FOCADO', async () => {
++    const user = userEvent.setup()
++    mockPost.mockResolvedValueOnce({ data: { id: 'task-1', title: 'Item', status: 'pending', subtasks: [] } })
++    renderPicker()
++
++    // today mockado = 2026-07-29 (quarta) → semana de 27/jul a 02/ago.
++    await screen.findByRole('radio', { name: 'Segunda, 27 de julho' })
++    await user.click(screen.getByRole('radio', { name: 'Segunda, 27 de julho' }))
++    expect(screen.getByRole('button', { name: 'Mover para segunda, 27 de julho' })).toBeInTheDocument()
++
++    // Tab levaria o foco a outro dia do radiogroup sem clicar nele — é a
++    // situação do DW-20: o dia armado (27) ainda é o do estado.
++    screen.getByRole('radio', { name: 'Sexta, 31 de julho' }).focus()
++    await user.keyboard('{Enter}')
++
++    await waitFor(() =>
++      expect(mockPost).toHaveBeenCalledWith('/api/brain-dump/items/item-1/process/', {
++        destination: 'week',
++        scheduledDate: '2026-07-31',
++      }),
++    )
++    expect(mockPost).toHaveBeenCalledTimes(1)
++  })
++
++  it('com o foco no radio "Este Mês", o Enter limpa o dia armado e NÃO confirma nada', async () => {
++    const user = userEvent.setup()
++    renderPicker()
++
++    await screen.findByRole('radio', { name: 'Segunda, 27 de julho' })
++    await user.click(screen.getByRole('radio', { name: 'Segunda, 27 de julho' }))
++    expect(screen.getByRole('button', { name: 'Mover para segunda, 27 de julho' })).toBeInTheDocument()
++
++    screen.getByRole('radio', { name: 'Este Mês' }).focus()
++    await user.keyboard('{Enter}')
++
++    // O clique nativo troca o destino e zera o dia ⇒ nada é confirmável.
++    await waitFor(() =>
++      expect(screen.getByRole('radio', { name: 'Este Mês' })).toHaveAttribute('aria-checked', 'true'),
++    )
++    await flushDeferredShortcut()
++    expect(screen.queryByRole('button', { name: /^Mover/ })).not.toBeInTheDocument()
++    expect(mockPost).not.toHaveBeenCalled()
++  })
++
++  it('com o foco no "×", o Enter fecha e desmonta ⇒ o atalho adiado é cancelado, sem POST', async () => {
++    const user = userEvent.setup()
++    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
++    // Harness que DESMONTA no fechar (é o que o consumidor real faz) — com um
++    // `onClose` só espião o picker seguiria montado e o handler adiado ainda
++    // rodaria, então o desmonte é parte do comportamento sob teste.
++    function Harness() {
++      const [open, setOpen] = useState(true)
++      return (
++        <QueryClientProvider client={qc}>
++          {open && <BrainDumpDestinationPicker item={ITEM} onClose={() => setOpen(false)} />}
++        </QueryClientProvider>
++      )
++    }
++    render(<Harness />)
++
++    await screen.findByRole('radio', { name: 'Segunda, 27 de julho' })
++    await user.click(screen.getByRole('radio', { name: 'Segunda, 27 de julho' }))
++    expect(screen.getByRole('button', { name: 'Mover para segunda, 27 de julho' })).toBeInTheDocument()
++
++    screen.getByRole('button', { name: 'Fechar' }).focus()
++    await user.keyboard('{Enter}')
++
++    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
++    await flushDeferredShortcut()
++    expect(mockPost).not.toHaveBeenCalled()
++  })
++})
+diff --git a/frontend/src/features/bujo/components/DestinationPicker.test.tsx b/frontend/src/features/bujo/components/DestinationPicker.test.tsx
+index b3a9700..fa76fec 100644
+--- a/frontend/src/features/bujo/components/DestinationPicker.test.tsx
++++ b/frontend/src/features/bujo/components/DestinationPicker.test.tsx
+@@ -1,4 +1,5 @@
+-import { fireEvent, render, screen } from '@testing-library/react'
++import { fireEvent, render, screen, waitFor } from '@testing-library/react'
++import userEvent from '@testing-library/user-event'
+ import { axe } from 'jest-axe'
+ import { describe, expect, it, vi } from 'vitest'
+ 
+@@ -155,3 +156,43 @@ describe('DestinationPicker — 3 abas juntas (composição da Migração)', ()
+     expect(await axe(container)).toHaveNoViolations()
+   })
+ })
++
++// `userEvent` (não `fireEvent`) porque só ele reproduz a sequência do browser
++// que expõe a corrida: keydown → keypress → clique nativo no <button> focado.
++describe('DestinationPicker — Enter nunca confirma dia obsoleto (DW-20)', () => {
++  const WEEK = { weekStart: '2026-07-20' } // segunda
++
++  it('com um dia já armado, Enter no dia que acabou de receber foco confirma o dia FOCADO', async () => {
++    const user = userEvent.setup()
++    const onConfirm = vi.fn()
++    render(<DestinationPicker week={WEEK} onConfirm={onConfirm} onClose={vi.fn()} />)
++
++    await user.click(screen.getByRole('radio', { name: /Segunda/ }))
++    // Tab levaria o foco a outro dia do radiogroup sem clicar nele — é a
++    // situação do DW-20: segunda (20/jul) ainda é o dia armado no estado.
++    screen.getByRole('radio', { name: /Quinta/ }).focus()
++
++    await user.keyboard('{Enter}')
++
++    await waitFor(() =>
++      expect(onConfirm).toHaveBeenCalledWith('2026-07-23', { kind: 'week', monthFirst: '2026-07-01' }),
++    )
++    expect(onConfirm).toHaveBeenCalledTimes(1)
++  })
++
++  it('par anti-regressão: o dígito move o foco junto e o Enter confirma o dia do DÍGITO', async () => {
++    const user = userEvent.setup()
++    const onConfirm = vi.fn()
++    render(<DestinationPicker week={WEEK} onConfirm={onConfirm} onClose={vi.fn()} />)
++
++    screen.getByRole('radio', { name: /Segunda/ }).focus()
++    await user.keyboard('3')
++    expect(screen.getByRole('radio', { name: /Quarta/ })).toHaveFocus()
++
++    await user.keyboard('{Enter}')
++
++    await waitFor(() =>
++      expect(onConfirm).toHaveBeenCalledWith('2026-07-22', { kind: 'week', monthFirst: '2026-07-01' }),
++    )
++  })
++})
+diff --git a/frontend/src/features/bujo/components/DestinationPicker.tsx b/frontend/src/features/bujo/components/DestinationPicker.tsx
+index dfe0556..985f757 100644
+--- a/frontend/src/features/bujo/components/DestinationPicker.tsx
++++ b/frontend/src/features/bujo/components/DestinationPicker.tsx
+@@ -31,7 +31,7 @@
+ //     MENOS parâmetros continua atribuível a este tipo (JS/TS padrão) — não é
+ //     breaking change para um eventual consumidor que só leia `scheduledDate`.
+ // ─────────────────────────────────────────────────────────────────────────────
+-import { useState } from 'react'
++import { useRef, useState } from 'react'
+ import { Box, Drawer } from '@mui/material'
+ 
+ import { addDaysIso, formatDayLabel, isoOf, lastDayOfMonth } from '../../../shared/date'
+@@ -97,6 +97,9 @@ export function DestinationPicker({
+   const hasOtherMonthTab = Boolean(month?.selectableMonths?.length)
+   const [tab, setTab] = useState<Tab>(week ? 'week' : 'day')
+   const [armed, setArmed] = useState<Armed>(null)
++  // Os 7 radios de dia da semana — o atalho de dígito precisa mover o foco
++  // junto com a seleção (DW-20, ver `selectWeekday`).
++  const weekdayRefs = useRef<Array<HTMLElement | null>>([])
+ 
+   const weekDays = week ? Array.from({ length: 7 }, (_, i) => addDaysIso(week.weekStart, i)) : []
+ 
+@@ -110,6 +113,13 @@ export function DestinationPicker({
+   function selectWeekday(index: number) {
+     if (index < 0 || index > 6) return
+     setArmed({ kind: 'week', index })
++    // DW-20: desde a correção da corrida do `Enter` em `useKeyboardShortcuts`,
++    // o `Enter` num alvo focado confirma o que o clique nativo daquele alvo
++    // acabou de armar — então a seleção por dígito (`1`–`7`) tem de mover o
++    // foco para o dia armado, senão o clique pendente sobrescreveria a escolha
++    // do dígito. Foco e seleção em sincronia é também o que o padrão ARIA de
++    // radiogroup espera.
++    weekdayRefs.current[index]?.focus()
+   }
+ 
+   function selectDay(day: number) {
+@@ -213,6 +223,9 @@ export function DestinationPicker({
+           {weekDays.map((date, index) => (
+             <Box
+               key={date}
++              ref={(node: HTMLElement | null) => {
++                weekdayRefs.current[index] = node
++              }}
+               component="button"
+               type="button"
+               role="radio"
+diff --git a/frontend/src/features/bujo/components/weekly/WeeklyDestinationPicker.test.tsx b/frontend/src/features/bujo/components/weekly/WeeklyDestinationPicker.test.tsx
+index ce304c6..14e9edd 100644
+--- a/frontend/src/features/bujo/components/weekly/WeeklyDestinationPicker.test.tsx
++++ b/frontend/src/features/bujo/components/weekly/WeeklyDestinationPicker.test.tsx
+@@ -1,5 +1,6 @@
+ import { useState } from 'react'
+ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
++import userEvent from '@testing-library/user-event'
+ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+ import { axe } from 'jest-axe'
+ import { beforeEach, describe, expect, it, vi } from 'vitest'
+@@ -152,6 +153,26 @@ describe('WeeklyDestinationPicker — foco (Task 9)', () => {
+     await waitFor(() => expect(screen.getAllByRole('radio')[0]).toHaveFocus())
+   })
+ 
++  // `userEvent` com o foco REAL na opção 1 (auto-foco da montagem): sem a
++  // sincronia foco↔seleção, o `Enter` adiado do hook confirmaria a opção 1
++  // focada em vez do alvo que o dígito armou (DW-20).
++  it('DW-20: a tecla 3 move o foco para o alvo armado e o Enter confirma quarta', async () => {
++    const user = userEvent.setup()
++    const onConfirm = vi.fn()
++    render(
++      <WeeklyDestinationPicker weekStart="2026-07-20" isCurrentWeek onConfirm={onConfirm} onClose={vi.fn()} />,
++      { wrapper },
++    )
++    await waitFor(() => expect(screen.getAllByRole('radio')[0]).toHaveFocus())
++
++    await user.keyboard('3')
++    expect(screen.getAllByRole('radio')[2]).toHaveFocus()
++
++    await user.keyboard('{Enter}')
++    await waitFor(() => expect(onConfirm).toHaveBeenCalledWith('2026-07-22'))
++    expect(onConfirm).toHaveBeenCalledTimes(1)
++  })
++
+   it('no modo compact (sheet), fechar devolve o foco ao acionador', async () => {
+     function Harness() {
+       const [open, setOpen] = useState(false)
+diff --git a/frontend/src/features/bujo/components/weekly/WeeklyDestinationPicker.tsx b/frontend/src/features/bujo/components/weekly/WeeklyDestinationPicker.tsx
+index 0206e14..fba93ae 100644
+--- a/frontend/src/features/bujo/components/weekly/WeeklyDestinationPicker.tsx
++++ b/frontend/src/features/bujo/components/weekly/WeeklyDestinationPicker.tsx
+@@ -5,6 +5,14 @@
+ // indisponível com motivo quando a semana-alvo não é a corrente (lacuna B7:
+ // `migrate` com `destination: 'week'` sem `scheduledDate` cairia na semana
+ // CORRENTE, não na semana-alvo — nunca mandar em silêncio para a semana errada).
++//
++// DW-20 — foco e seleção em SINCRONIA: desde a correção da corrida do `Enter`
++// em `useKeyboardShortcuts`, o `Enter` num alvo focado confirma o que o clique
++// nativo daquele alvo acabou de armar. Como este seletor auto-foca a opção 1 na
++// montagem enquanto os dígitos `1`–`7`/`0` armavam OUTRO alvo sem mover o foco,
++// o `Enter` seguinte confirmaria a opção 1. Então a seleção por dígito move o
++// foco para o alvo armado — que é também o que o padrão ARIA de radiogroup
++// espera.
+ // ─────────────────────────────────────────────────────────────────────────────
+ import { useEffect, useRef, useState } from 'react'
+ import { Box, Drawer } from '@mui/material'
+@@ -41,18 +49,22 @@ export function WeeklyDestinationPicker({
+ }: WeeklyDestinationPickerProps) {
+   const density = useWeeklyDensityQuery(weekStart)
+   const [armedIndex, setArmedIndex] = useState<number | null>(null)
+-  const firstOptionRef = useRef<HTMLElement | null>(null)
++  // Os 8 alvos (`1`–`7` + `0`) — índice 0 é também o auto-foco da montagem.
++  const targetRefs = useRef<Array<HTMLElement | null>>([])
+ 
+   const days = Array.from({ length: 7 }, (_, i) => addDaysIso(weekStart, i))
+   const UNDATED_INDEX = 7
+ 
+   useEffect(() => {
+-    firstOptionRef.current?.focus()
++    targetRefs.current[0]?.focus()
+   }, [])
+ 
+   function selectTarget(index: number) {
+     if (index === UNDATED_INDEX && !isCurrentWeek) return
+     setArmedIndex(index)
++    // DW-20: o `Enter` adiado confirma o alvo FOCADO — sem isto, o dígito
++    // armaria um alvo e o `Enter` confirmaria o que estivesse com foco.
++    targetRefs.current[index]?.focus()
+   }
+ 
+   function confirm() {
+@@ -96,7 +108,9 @@ export function WeeklyDestinationPicker({
+           return (
+             <Box
+               key={date}
+-              ref={index === 0 ? firstOptionRef : undefined}
++              ref={(node: HTMLElement | null) => {
++                targetRefs.current[index] = node
++              }}
+               component="button"
+               type="button"
+               role="radio"
+@@ -128,6 +142,9 @@ export function WeeklyDestinationPicker({
+           )
+         })}
+         <Box
++          ref={(node: HTMLElement | null) => {
++            targetRefs.current[UNDATED_INDEX] = node
++          }}
+           component="button"
+           type="button"
+           role="radio"
+diff --git a/frontend/src/shared/hooks/useKeyboardShortcuts.test.ts b/frontend/src/shared/hooks/useKeyboardShortcuts.test.ts
+index 1ff7399..2ec85cf 100644
+--- a/frontend/src/shared/hooks/useKeyboardShortcuts.test.ts
++++ b/frontend/src/shared/hooks/useKeyboardShortcuts.test.ts
+@@ -1,5 +1,5 @@
+ import { renderHook } from '@testing-library/react'
+-import { describe, expect, it, vi } from 'vitest'
++import { afterEach, describe, expect, it, vi } from 'vitest'
+ 
+ import { useKeyboardShortcuts } from './useKeyboardShortcuts'
+ 
+@@ -7,10 +7,24 @@ function dispatchKeyDown(
+   key: string,
+   options: { ctrlKey?: boolean; metaKey?: boolean; altKey?: boolean; target?: EventTarget } = {},
+ ) {
+-  const event = new KeyboardEvent('keydown', { key, bubbles: true, ...options })
++  // `cancelable: true` como o keydown real do browser — sem isso
++  // `preventDefault()` seria inócuo e `defaultPrevented` nunca ficaria true.
++  const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...options })
+   ;(options.target ?? window).dispatchEvent(event)
+ }
+ 
++/** Deixa passar o macrotask em que o handler adiado (setTimeout 0) roda. Os
++ * timers do hook são agendados ANTES deste, então já rodaram quando resolve. */
++function flushDeferred(): Promise<void> {
++  return new Promise((resolve) => setTimeout(resolve, 0))
++}
++
++function appendElement<K extends keyof HTMLElementTagNameMap>(tag: K): HTMLElementTagNameMap[K] {
++  const element = document.createElement(tag)
++  document.body.appendChild(element)
++  return element
++}
++
+ describe('useKeyboardShortcuts — guard compartilhado (Story 14.5, Task 9)', () => {
+   it('chama o handler da tecla pressionada', () => {
+     const onOne = vi.fn()
+@@ -70,3 +84,121 @@ describe('useKeyboardShortcuts — guard compartilhado (Story 14.5, Task 9)', ()
+     expect(onOne).not.toHaveBeenCalled()
+   })
+ })
++
++describe('useKeyboardShortcuts — corrida do Enter com o clique nativo (DW-20)', () => {
++  afterEach(() => {
++    document.body.innerHTML = ''
++  })
++
++  it('Enter num <button> focado roda DEPOIS do clique nativo da própria tecla', async () => {
++    const order: string[] = []
++    const onEnter = vi.fn(() => order.push('atalho'))
++    const button = appendElement('button')
++    button.addEventListener('click', () => order.push('clique'))
++
++    renderHook(() => useKeyboardShortcuts({ Enter: onEnter }))
++
++    // Ordem real do browser: keydown → listeners → ação default → click.
++    dispatchKeyDown('Enter', { target: button })
++    expect(onEnter).not.toHaveBeenCalled() // adiado, não síncrono
++    button.dispatchEvent(new MouseEvent('click', { bubbles: true }))
++
++    await flushDeferred()
++    expect(onEnter).toHaveBeenCalledTimes(1)
++    expect(order).toEqual(['clique', 'atalho'])
++  })
++
++  it('o handler adiado é o do render MAIS RECENTE (a closure do keydown é a obsoleta)', async () => {
++    const obsoleto = vi.fn()
++    const atual = vi.fn()
++    const button = appendElement('button')
++
++    const { rerender } = renderHook(
++      ({ handler }: { handler: () => void }) => useKeyboardShortcuts({ Enter: handler }),
++      { initialProps: { handler: obsoleto } },
++    )
++
++    dispatchKeyDown('Enter', { target: button })
++    // O clique nativo arma o estado e provoca este re-render, que troca o handler.
++    rerender({ handler: atual })
++
++    await flushDeferred()
++    expect(obsoleto).not.toHaveBeenCalled()
++    expect(atual).toHaveBeenCalledTimes(1)
++  })
++
++  it('caso irmão: Enter com alvo NÃO-ativável (div) roda de forma síncrona', () => {
++    const onEnter = vi.fn()
++    renderHook(() => useKeyboardShortcuts({ Enter: onEnter }))
++    dispatchKeyDown('Enter', { target: appendElement('div') })
++    expect(onEnter).toHaveBeenCalledTimes(1)
++  })
++
++  it('caso irmão: Enter na window (sem alvo focado) roda de forma síncrona', () => {
++    const onEnter = vi.fn()
++    renderHook(() => useKeyboardShortcuts({ Enter: onEnter }))
++    dispatchKeyDown('Enter')
++    expect(onEnter).toHaveBeenCalledTimes(1)
++  })
++
++  it('tecla NÃO-ativadora (3) com alvo <button> roda de forma síncrona', () => {
++    const onThree = vi.fn()
++    renderHook(() => useKeyboardShortcuts({ '3': onThree }))
++    dispatchKeyDown('3', { target: appendElement('button') })
++    expect(onThree).toHaveBeenCalledTimes(1)
++  })
++
++  it('SUMMARY e A[href] também adiam; A sem href não (par não-vacuoso)', async () => {
++    const onEnter = vi.fn()
++    renderHook(() => useKeyboardShortcuts({ Enter: onEnter }))
++
++    const anchorSemHref = appendElement('a')
++    dispatchKeyDown('Enter', { target: anchorSemHref })
++    expect(onEnter).toHaveBeenCalledTimes(1) // síncrono: não ativa no Enter
++
++    const summary = appendElement('summary')
++    const anchorComHref = appendElement('a')
++    anchorComHref.href = '#destino'
++    dispatchKeyDown('Enter', { target: summary })
++    dispatchKeyDown('Enter', { target: anchorComHref })
++    expect(onEnter).toHaveBeenCalledTimes(1) // ambos adiados
++
++    await flushDeferred()
++    expect(onEnter).toHaveBeenCalledTimes(3)
++  })
++
++  it('com o default JÁ prevenido não há clique nativo a esperar ⇒ roda síncrono', () => {
++    const onEnter = vi.fn()
++    renderHook(() => useKeyboardShortcuts({ Enter: onEnter }))
++    const preventer = (event: Event) => event.preventDefault()
++    window.addEventListener('keydown', preventer, true)
++
++    dispatchKeyDown('Enter', { target: appendElement('button') })
++
++    expect(onEnter).toHaveBeenCalledTimes(1)
++    window.removeEventListener('keydown', preventer, true)
++  })
++
++  it('o handler adiado é CANCELADO no desmonte (Enter que fecha não confirma nada)', async () => {
++    const onEnter = vi.fn()
++    const button = appendElement('button')
++    const { unmount } = renderHook(() => useKeyboardShortcuts({ Enter: onEnter }))
++
++    dispatchKeyDown('Enter', { target: button })
++    unmount()
++
++    await flushDeferred()
++    expect(onEnter).not.toHaveBeenCalled()
++  })
++
++  it('guard de campo editável e de modificador continuam valendo para o Enter', async () => {
++    const onEnter = vi.fn()
++    renderHook(() => useKeyboardShortcuts({ Enter: onEnter }))
++
++    dispatchKeyDown('Enter', { target: appendElement('input') })
++    dispatchKeyDown('Enter', { target: appendElement('button'), ctrlKey: true })
++
++    await flushDeferred()
++    expect(onEnter).not.toHaveBeenCalled()
++  })
++})
+diff --git a/frontend/src/shared/hooks/useKeyboardShortcuts.ts b/frontend/src/shared/hooks/useKeyboardShortcuts.ts
+index 0a2cf6c..fed5adb 100644
+--- a/frontend/src/shared/hooks/useKeyboardShortcuts.ts
++++ b/frontend/src/shared/hooks/useKeyboardShortcuts.ts
+@@ -6,8 +6,27 @@
+ // quando um modificador (ctrl/meta/alt) está pressionado — o molde COMPLETO é
+ // o de `ShellLayout.tsx`, que já fecha a assimetria do guard incompleto de
+ // `AppLayout.tsx` (lá só `B` era guardado contra modificador, não `[`).
++//
++// DW-20 — corrida do `Enter` com o clique nativo do alvo focado:
++//   A ordem real do browser é `keydown` → listeners (este atalho) → ação
++//   default da tecla → `click` → `onClick` arma o estado → React comita
++//   (evento discreto ⇒ flush síncrono). Rodando no `keydown`, o handler lia o
++//   estado ANTES do clique que a própria tecla dispara — então um `Enter` num
++//   destino/dia que acabou de receber foco confirmava o alvo ARMADO ANTES, não
++//   o focado (DW-20, reportado no `BrainDumpDestinationPicker`).
++//   Correção: quando a tecla ATIVA nativamente o alvo focado (só `Enter`, em
++//   BUTTON/SUMMARY/A[href]), o handler é adiado para o macrotask seguinte
++//   (`setTimeout(…, 0)` — um microtask rodaria ANTES do `click`) e relido de um
++//   espelho sempre atual (`handlersRef`), já que a closure capturada no
++//   `keydown` é justamente a obsoleta.
++//   `Space` fica FORA de propósito: seu clique nativo sai no `keyup`, então um
++//   adiamento disparado no `keydown` não garantiria a ordem (e nenhum
++//   consumidor registra `Space` hoje).
++//   Consequência para quem registra `Enter`: no caminho adiado o evento já foi
++//   despachado, logo `preventDefault()`/`stopPropagation()` dentro do handler
++//   não têm efeito — nenhum dos consumidores atuais usa o `event`.
+ // ─────────────────────────────────────────────────────────────────────────────
+-import { useEffect } from 'react'
++import { useEffect, useRef } from 'react'
+ 
+ export type KeyboardShortcutHandlers = Record<string, (event: KeyboardEvent) => void>
+ 
+@@ -15,15 +34,38 @@ export interface UseKeyboardShortcutsOptions {
+   enabled?: boolean
+ }
+ 
++/** O `Enter` dispara um `click` nativo neste alvo? (`INPUT[type=submit|button]`
++ * não precisa de tratamento: o guard de campo editável barra qualquer INPUT
++ * antes de chegar aqui.) */
++function activatesOnEnter(target: HTMLElement): boolean {
++  if (target.tagName === 'BUTTON' || target.tagName === 'SUMMARY') return true
++  return target.tagName === 'A' && target.hasAttribute('href')
++}
++
+ export function useKeyboardShortcuts(
+   handlers: KeyboardShortcutHandlers,
+   options?: UseKeyboardShortcutsOptions,
+ ) {
+   const enabled = options?.enabled ?? true
+ 
++  // Espelho do render mais recente: é o que o handler adiado lê para ver o
++  // estado JÁ atualizado pelo clique nativo. Também é o que permite deps
++  // `[enabled]` no efeito — com `handlers` nas deps o listener era
++  // re-registrado a cada render, e o cleanup do re-render provocado pelo
++  // próprio clique cancelaria o handler adiado antes de ele rodar.
++  const handlersRef = useRef(handlers)
++  handlersRef.current = handlers
++
++  const pendingRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set())
++
+   useEffect(() => {
+     if (!enabled) return undefined
+ 
++    // O Set é criado uma vez e NUNCA substituído, então capturar a referência
++    // aqui é idêntico a reler `pendingRef.current` no cleanup — e é o que o
++    // `react-hooks/exhaustive-deps` pede.
++    const pending = pendingRef.current
++
+     function handleKeyDown(event: KeyboardEvent) {
+       const target = event.target as HTMLElement
+       const isEditable =
+@@ -31,11 +73,30 @@ export function useKeyboardShortcuts(
+       if (isEditable) return
+       if (event.ctrlKey || event.metaKey || event.altKey) return
+ 
+-      const handler = handlers[event.key]
+-      if (handler) handler(event)
++      const key = event.key
++      const handler = handlersRef.current[key]
++      if (!handler) return
++
++      if (key === 'Enter' && !event.defaultPrevented && activatesOnEnter(target)) {
++        const id = setTimeout(() => {
++          pending.delete(id)
++          // Relido do espelho — a closure do `keydown` é a PRÉ-clique.
++          handlersRef.current[key]?.(event)
++        }, 0)
++        pending.add(id)
++        return
++      }
++
++      handler(event)
+     }
+ 
+     window.addEventListener('keydown', handleKeyDown)
+-    return () => window.removeEventListener('keydown', handleKeyDown)
+-  }, [enabled, handlers])
++    return () => {
++      window.removeEventListener('keydown', handleKeyDown)
++      // Só no desmonte/`enabled: false`: um `Enter` que fecha e desmonta o
++      // consumidor (ex.: foco no "×") não pode confirmar nada depois.
++      for (const id of pending) clearTimeout(id)
++      pending.clear()
++    }
++  }, [enabled])
+ }
