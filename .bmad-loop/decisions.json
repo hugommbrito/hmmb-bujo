@@ -7,5 +7,14 @@
     "key": "1",
     "label": "Adicionar um segundo step sem filtro de tag, em --fail-level ERROR",
     "resolution": ""
+  },
+  "DW-31": {
+    "answered_at": "2026-08-04",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Sobrescrever `get_user` em backend/core/authentication.py::TenantAwareJWTAuthentication para colapsar os dois ramos do simplejwt (`user_not_found` em authentication.py:133-136 e `user_inactive` em :138-139) num unico `AuthenticationFailed` indistinguivel em mensagem, codigo, status, corpo e header WWW-Authenticate, reusando a mensagem congelada `_NO_ACTIVE_ACCOUNT` de core/exceptions.py:39 e o helper `_authenticate_header` de :215-241 para nao criar uma segunda convencao. Adicionar testes de paridade sobre uma rota autenticada qualquer (nao a de refresh), no molde de accounts/tests/test_views.py:343-382: usuario apagado e usuario com is_active=False devem produzir respostas identicas. Nenhum teste atual asseve a distincao, entao a mudanca nao deve quebrar suite existente \u2014 mas conferir backend/core/tests/test_authentication.py:29,41,51 e rodar a suite completa do backend, porque isso altera o corpo de 401 em TODA rota autenticada. Nao mexer em DEFAULT_AUTHENTICATION_CLASSES nem no comportamento de sucesso do tenant context (o `authenticate()` de :38-44 continua como esta).",
+    "key": "1",
+    "label": "Colapsar os dois ramos no autenticador, projeto-inteiro",
+    "resolution": ""
   }
 }
