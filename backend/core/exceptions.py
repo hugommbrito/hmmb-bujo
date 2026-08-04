@@ -18,11 +18,25 @@ root of the acyclic chain ``exceptions <- tenant <- models``.
 
 import logging
 
+from django.contrib.auth import get_user_model
+from django.core.exceptions import ObjectDoesNotExist
+from django.utils.translation import gettext_lazy as _
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import exception_handler
 
 logger = logging.getLogger(__name__)
+
+# The msgid simplejwt uses for its own ``no_active_account`` error (DW-25). Frozen
+# here as a literal rather than read off ``TokenRefreshSerializer``: a runtime
+# third-party import inside the exception handler would turn a translator into a
+# failure amplifier. Freezing the msgid is safe *because* it is lazy and resolves
+# through simplejwt's merged catalogue (the app is in ``INSTALLED_APPS``), so both
+# 401 branches translate identically under any active locale — and because
+# ``test_token_refresh_401_de_desativado_e_de_apagado_sao_indistinguiveis``
+# compares them under a non-English locale, so a future rewording upstream breaks
+# a test instead of silently splitting the two messages apart.
+_NO_ACTIVE_ACCOUNT = _("No active account found for the given token.")
 
 
 # --- Domain exception taxonomy -------------------------------------------------
@@ -120,6 +134,10 @@ def custom_exception_handler(exc, context):
     - For ``DomainError`` (plain ``Exception``) DRF returns ``None``; we map them
       ourselves. ``TenantScopeViolation`` → opaque 500 + ``logger.critical``;
       every other ``DomainError`` → 409.
+    - ``User.DoesNotExist`` (DW-25) → 401 + ``logger.warning``, carrying the same
+      body *and* ``WWW-Authenticate`` challenge as DRF's own 401: the only
+      non-domain exception we domesticate, because simplejwt's token refresh
+      raises it uncaught (see the branch comment below).
     - Anything else with no DRF response falls through to ``None`` so Django's
       own 500 handling applies (unexpected server error).
     """
@@ -145,8 +163,65 @@ def custom_exception_handler(exc, context):
             status=status.HTTP_409_CONFLICT,
         )
 
+    # DW-25: simplejwt's ``TokenRefreshSerializer.validate()`` looks the token's
+    # user up with a bare ``.objects.get()`` — no try/except — and that lookup runs
+    # *before* the ``USER_AUTHENTICATION_RULE`` check that 401s a deactivated user.
+    # So a *deleted* row raises ``User.DoesNotExist``, which is neither an
+    # ``APIException`` nor a ``DomainError``: DRF returned ``None`` and the client
+    # got Django's raw 500 instead of the documented 401. Translating it here keeps
+    # the third-party serializer untouched.
+    #
+    # ``get_user_model()`` is resolved at runtime because ``core.exceptions`` is
+    # imported very early (see ``core/authentication.py``), so a module-level model
+    # reference risks ``AppRegistryNotReady``. The cheap ``ObjectDoesNotExist`` test
+    # is first so that lookup never runs on the fallback path of every unrelated
+    # exception. Narrow to ``User`` on purpose: any other model's missing row is
+    # still an unexpected server error.
+    #
+    # The branch is global, so a ``User.DoesNotExist`` leaking from some *other*
+    # bug also becomes a 401 — the warning log is what keeps that visible.
+    if isinstance(exc, ObjectDoesNotExist) and isinstance(exc, get_user_model().DoesNotExist):
+        logger.warning("User.DoesNotExist escapou para o handler central", exc_info=exc)
+        auth_header = _authenticate_header(context)
+        return Response(
+            {"detail": _NO_ACTIVE_ACCOUNT},
+            status=status.HTTP_401_UNAUTHORIZED,
+            # Body *and* challenge must match the deactivated-user 401, or the
+            # presence/absence of this header alone discloses which case it was.
+            headers={"WWW-Authenticate": auth_header} if auth_header else None,
+        )
+
     # Unknown/unexpected: let Django produce its standard 500.
     return None
+
+
+def _authenticate_header(context):
+    """The ``WWW-Authenticate`` challenge DRF would attach to a 401, or ``None``.
+
+    Hand-built 401s bypass the path that normally sets this header:
+    ``APIView.handle_exception`` asks the view for the challenge and stashes it on
+    the exception, and DRF's default handler copies it onto the response. A 401
+    without a challenge violates RFC 7235 — and, worse for DW-25, it would make the
+    deleted-row 401 the *only* one on ``/token/refresh/`` lacking the header, a
+    one-header side channel disclosing exactly what the matching body hides.
+
+    Returns ``None`` when the context carries no view/request (the handler's unit
+    tests call it with ``{}``) or the view is not an ``APIView``. Deliberately does
+    NOT reproduce DRF's "no challenge → downgrade to 403" rule: the DW-25 branch is
+    always a 401.
+    """
+    view = context.get("view") if isinstance(context, dict) else None
+    request = context.get("request") if isinstance(context, dict) else None
+    get_header = getattr(view, "get_authenticate_header", None)
+    if get_header is None or request is None:
+        return None
+
+    try:
+        return get_header(request)
+    except Exception:
+        # Deriving a header must never mask the exception we were translating.
+        logger.warning("Falha ao derivar WWW-Authenticate no handler central", exc_info=True)
+        return None
 
 
 def _normalise_body(data):

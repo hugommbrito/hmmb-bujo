@@ -4,10 +4,12 @@ Covers the status mapping and the uniform ``{detail, fields}`` body, including
 the opaque 500 for ``TenantScopeViolation`` (must never leak the real reason).
 """
 
+from django.contrib.auth import get_user_model
 from rest_framework import status
 from rest_framework.exceptions import NotAuthenticated, ValidationError
 
 from core.exceptions import (
+    _NO_ACTIVE_ACCOUNT,
     DomainError,
     ImmutableSnapshot,
     InvalidTransition,
@@ -61,6 +63,46 @@ def test_unknown_exception_falls_through_to_django():
     # A plain, non-domain exception is not ours to translate — return None so
     # Django produces its standard 500.
     assert custom_exception_handler(RuntimeError("boom"), {}) is None
+
+
+# --- DW-25: User.DoesNotExist → 401 ---------------------------------------------
+def test_user_does_not_exist_maps_to_401_without_fields(caplog):
+    # simplejwt's TokenRefreshSerializer looks the token's user up without a
+    # try/except, so a *deleted* user made the refresh route 500. The handler now
+    # translates it to the documented 401 (AccountsTokenInvalidResponse, variant
+    # without "fields").
+    response = custom_exception_handler(get_user_model().DoesNotExist(), {})
+
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    assert "fields" not in response.data
+    # The message is the shared lazy msgid, not a second frozen literal — the
+    # end-to-end parity against the deactivated-user 401 (including the
+    # WWW-Authenticate header and a non-English locale) is owned by
+    # test_token_refresh_401_de_desativado_e_de_apagado_sao_indistinguiveis.
+    assert response.data["detail"] == _NO_ACTIVE_ACCOUNT
+    # context={} carries no view/request, so there is no challenge to derive here;
+    # the header path is exercised on the real route by the parity test.
+    assert "WWW-Authenticate" not in response.headers
+    # The whole safety argument for this branch is "the warning keeps a
+    # User.DoesNotExist from some *other* bug visible", so pin the real logger and
+    # a message that identifies the case — not merely that some WARNING happened.
+    warnings = [
+        record
+        for record in caplog.records
+        if record.levelname == "WARNING" and record.name == "core.exceptions"
+    ]
+    assert len(warnings) == 1
+    assert "User.DoesNotExist" in warnings[0].getMessage()
+    # exc_info must ride along, or the log cannot point at the origin.
+    assert warnings[0].exc_info is not None
+
+
+def test_other_models_does_not_exist_still_falls_through_to_django():
+    # The branch is deliberately narrow: only User.DoesNotExist. A missing row of
+    # any other model is still an unexpected server error, never a 401.
+    from core.tests.models import TenantTestModel
+
+    assert custom_exception_handler(TenantTestModel.DoesNotExist(), {}) is None
 
 
 # --- DW-7: _normalise_body hardening --------------------------------------------
