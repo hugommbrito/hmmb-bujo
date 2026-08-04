@@ -20,7 +20,7 @@ import { RecurringLibraryPage } from '../pages/planner/RecurringLibraryPage'
 import { ArchivePage } from '../pages/archive/ArchivePage'
 import { ArchiveWeeklyDetailPage } from '../pages/archive/ArchiveWeeklyDetailPage'
 import { ArchiveMonthlyDetailPage } from '../pages/archive/ArchiveMonthlyDetailPage'
-import { BrainDumpPage } from '../pages/braindump/BrainDumpPage'
+import { BrainDumpInboxPage } from '../pages/braindump/BrainDumpInboxPage'
 import { SettingsPage } from '../pages/settings/SettingsPage'
 import { HabitsSettingsPage } from '../pages/settings/HabitsSettingsPage'
 import { HealthMetricsSettingsPage } from '../pages/settings/HealthMetricsSettingsPage'
@@ -172,7 +172,16 @@ export const routeDefinitions: RouteObject[] = [
       // derivadas do registro — ver `collectionRoutes` acima. Ordem/paths/títulos
       // idênticos aos hardcoded que substituíram.
       ...collectionRoutes,
-      { path: 'brain-dump', element: <BrainDumpPage />, handle: { title: 'Brain Dump' } },
+      {
+        // Story 15.1 (M11): `planner/brain-dump` passa a montar o Inbox do
+        // sistema novo. `BrainDumpPage` legada (e `BrainDumpItemRow.tsx`/
+        // `ProcessItemDialog.tsx`) permanecem no repositório, apenas
+        // DESMONTADAS da rota — a remoção do legado é o Épico 18 (mesmo
+        // padrão de `FutureBoardPage`/`RecurringLibraryPage`).
+        path: 'brain-dump',
+        element: <BrainDumpInboxPage />,
+        handle: { title: 'Brain Dump' },
+      },
       { path: 'archive', element: <ArchivePage />, handle: { title: 'Arquivo' } },
       {
         // Story 14.10: `WeeklyPage`/`MonthlyPage` legadas foram excluídas —

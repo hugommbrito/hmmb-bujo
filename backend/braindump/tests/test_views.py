@@ -224,3 +224,113 @@ def test_get_count_isolamento_itens_de_outro_tenant_nao_afetam_a_contagem(
 
     assert response.status_code == 200
     assert response.data == {"count": 1}
+
+
+# --- PATCH /api/brain-dump/items/{id}/ (M11, Story 15.1) -----------------------
+
+
+@pytest.mark.django_db
+def test_patch_item_so_com_title_retorna_200_e_preserva_os_demais_campos(auth_client, user):
+    with tenant_context(user):
+        item = BrainDumpItemFactory(
+            user=user, title="Original", description="Descrição original", target_log="week"
+        )
+
+    response = auth_client.patch(
+        f"/api/brain-dump/items/{item.id}/", {"title": "Renomeado"}, format="json"
+    )
+
+    assert response.status_code == 200
+    assert response.data["title"] == "Renomeado"
+    assert response.data["description"] == "Descrição original"
+    assert response.data["target_log"] == "week"
+
+
+@pytest.mark.django_db
+def test_patch_item_corpo_vazio_retorna_200_e_nao_altera_nada(auth_client, user):
+    with tenant_context(user):
+        item = BrainDumpItemFactory(
+            user=user, title="Original", description="Descrição original", target_log="week"
+        )
+
+    response = auth_client.patch(f"/api/brain-dump/items/{item.id}/", {}, format="json")
+
+    assert response.status_code == 200
+    assert response.data["title"] == "Original"
+    assert response.data["description"] == "Descrição original"
+    assert response.data["target_log"] == "week"
+
+
+@pytest.mark.django_db
+def test_patch_item_com_os_3_campos_retorna_200_com_todos_atualizados(auth_client, user):
+    with tenant_context(user):
+        item = BrainDumpItemFactory(user=user, title="Original")
+
+    response = auth_client.patch(
+        f"/api/brain-dump/items/{item.id}/",
+        {"title": "Novo título", "description": "Nova descrição", "targetLog": "future"},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert response.data["title"] == "Novo título"
+    assert response.data["description"] == "Nova descrição"
+    assert response.data["target_log"] == "future"
+
+
+@pytest.mark.django_db
+def test_patch_item_target_log_fora_do_enum_retorna_400(auth_client, user):
+    with tenant_context(user):
+        item = BrainDumpItemFactory(user=user)
+
+    response = auth_client.patch(
+        f"/api/brain-dump/items/{item.id}/", {"targetLog": "bogus"}, format="json"
+    )
+
+    assert response.status_code == 400
+
+
+@pytest.mark.django_db
+def test_patch_item_title_vazio_retorna_400(auth_client, user):
+    with tenant_context(user):
+        item = BrainDumpItemFactory(user=user, title="Original")
+
+    response = auth_client.patch(f"/api/brain-dump/items/{item.id}/", {"title": ""}, format="json")
+
+    assert response.status_code == 400
+
+
+@pytest.mark.django_db
+def test_patch_item_target_log_null_limpa_a_dica(auth_client, user):
+    with tenant_context(user):
+        item = BrainDumpItemFactory(user=user, target_log="today")
+
+    response = auth_client.patch(
+        f"/api/brain-dump/items/{item.id}/", {"targetLog": None}, format="json"
+    )
+
+    assert response.status_code == 200
+    assert response.data["target_log"] is None
+
+
+@pytest.mark.django_db
+def test_patch_item_inexistente_retorna_404(auth_client):
+    response = auth_client.patch(
+        "/api/brain-dump/items/00000000-0000-0000-0000-000000000000/",
+        {"title": "Novo"},
+        format="json",
+    )
+
+    assert response.status_code == 404
+
+
+@pytest.mark.django_db
+def test_patch_item_de_outro_tenant_retorna_404(auth_client, user, other_user):
+    with tenant_context(other_user):
+        item = BrainDumpItemFactory(user=other_user)
+
+    response = auth_client.patch(
+        f"/api/brain-dump/items/{item.id}/", {"title": "Invasão"}, format="json"
+    )
+
+    assert response.status_code == 404

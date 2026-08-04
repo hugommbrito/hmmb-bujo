@@ -195,7 +195,7 @@ test.describe('Shell bottom nav — compact 390×720', () => {
   // AC5 · FAB-01/FAB-05 — FAB circular fora da bottom nav, acima dela, abrindo
   // o BrainDumpCaptureSheet REAL (instância única do shell).
   test('FAB de captura acima da barra abre o Capture Sheet real', async ({ page }) => {
-    const fab = page.getByRole('button', { name: 'Captura rápida' })
+    const fab = page.getByRole('button', { name: 'Abrir captura rápida' })
     await expect(fab).toBeVisible()
 
     // Fora e ACIMA da bottom nav (paridade FAB-01 com tokens).
@@ -283,7 +283,7 @@ test.describe('Shell bottom nav — compact 390×720', () => {
     // Inerte: a barra e o FAB continuam no DOM, mas saem da accessibility tree.
     await expect(page.getByRole('navigation', { name: 'Atalhos de navegação' })).toHaveCount(0)
     await expect(page.locator('nav[aria-label="Atalhos de navegação"]')).toHaveCount(1)
-    await expect(page.getByRole('button', { name: 'Captura rápida' })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Abrir captura rápida' })).toHaveCount(0)
 
     // Contido: percorrer a lista inteira com Tab nunca leva o foco para fora do
     // Modal do sheet (o ciclo volta ao primeiro item).
@@ -394,7 +394,7 @@ test.describe('Shell bottom nav — compact 390×720', () => {
     expect(seedBrainDumpItems(email, 12)).toBe(12)
     await page.reload()
 
-    const fab = page.getByRole('button', { name: 'Captura rápida', exact: true })
+    const fab = page.getByRole('button', { name: 'Abrir captura rápida', exact: true })
     const fabBadge = fab.locator('.MuiBadge-badge')
     await expect(fabBadge).toHaveText('9+')
     await expect(fab.locator('.MuiBadge-root')).toHaveAttribute(
@@ -441,7 +441,7 @@ test.describe('Shell bottom nav — compact 390×720', () => {
     )
     await page.reload()
 
-    const fab = page.getByRole('button', { name: 'Captura rápida', exact: true })
+    const fab = page.getByRole('button', { name: 'Abrir captura rápida', exact: true })
     await expect(fab).toBeVisible()
     await expect(fab).not.toHaveAttribute('aria-disabled', /.*/)
     // Badge some (MUI congela o último `displayValue` na transição de saída — o
@@ -461,11 +461,11 @@ test.describe('Shell bottom nav — compact 390×720', () => {
     page,
     context,
   }) => {
-    await expect(page.getByRole('button', { name: 'Captura rápida', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Abrir captura rápida', exact: true })).toBeVisible()
 
     await context.setOffline(true)
 
-    const offlineFab = page.getByRole('button', { name: 'Captura rápida (sem conexão)' })
+    const offlineFab = page.getByRole('button', { name: 'Abrir captura rápida (sem conexão)' })
     await expect(offlineFab).toBeVisible()
     await expect(offlineFab).toHaveAttribute('aria-disabled', 'true')
     // Divergência contratada vs FAB-03 legado: identidade e foco preservados.
@@ -502,7 +502,7 @@ test.describe('Shell bottom nav — compact 390×720', () => {
 
     // Reconectar devolve a captura (evento `online`).
     await context.setOffline(false)
-    const onlineFab = page.getByRole('button', { name: 'Captura rápida', exact: true })
+    const onlineFab = page.getByRole('button', { name: 'Abrir captura rápida', exact: true })
     await expect(onlineFab).toBeVisible()
     await onlineFab.click()
     await expect(captureSheet(page)).toBeVisible()
@@ -533,7 +533,7 @@ test.describe('Shell bottom nav — reflow 320×720 (WCAG 1.4.10)', () => {
     for (const label of ['Hoje', 'Esta Semana', 'Este Mês', 'Menu']) {
       await expect(nav.getByRole('button', { name: label })).toBeVisible()
     }
-    await expect(page.getByRole('button', { name: 'Captura rápida' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Abrir captura rápida' })).toBeVisible()
 
     const hasHorizontalScroll = await page.evaluate(
       () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
@@ -586,8 +586,11 @@ test.describe('Captura persistente ancorada — wide 1440×900', () => {
     // Nominal na sidebar expandida (rótulo visível, não só nome acessível).
     await expect(anchor).toBeVisible()
     await expect(anchor).toHaveText(/Abrir captura rápida/)
-    // No desktop o FAB do compact não existe.
-    await expect(page.getByRole('button', { name: 'Captura rápida', exact: true })).toHaveCount(0)
+    // FAB e âncora compartilham o MESMO nome acessível desde a Story 15.2 —
+    // no desktop só a âncora existe (o FAB do compact nem renderiza fora
+    // dele), então a prova de "sem FAB duplicado" é exatamente 1 elemento
+    // com esse nome (a âncora), não 0.
+    await expect(page.getByRole('button', { name: 'Abrir captura rápida', exact: true })).toHaveCount(1)
     await expect(bottomNav(page)).toHaveCount(0)
 
     // Borda de `{components.interactive-control}` e alvo ≥ token, MEDIDOS.
@@ -710,8 +713,10 @@ test.describe('Captura persistente ancorada — tablet 800×720', () => {
     await expect(anchor).toBeVisible()
     await expect(anchor).not.toHaveText(/Abrir captura rápida/)
 
-    // Chrome do compact ausente nesta faixa.
-    await expect(page.getByRole('button', { name: 'Captura rápida', exact: true })).toHaveCount(0)
+    // Chrome do compact ausente nesta faixa — FAB e âncora compartilham o
+    // MESMO nome acessível (Story 15.2), então "sem FAB duplicado" é 1
+    // elemento com esse nome (a âncora icon-only), não 0.
+    await expect(page.getByRole('button', { name: 'Abrir captura rápida', exact: true })).toHaveCount(1)
     await expect(bottomNav(page)).toHaveCount(0)
 
     await anchor.click()

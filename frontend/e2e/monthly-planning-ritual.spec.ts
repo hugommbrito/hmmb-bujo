@@ -1,7 +1,7 @@
 import { test, expect } from './fixtures'
 import { expectNoAxeViolations } from './axeHelper'
 import { countRitualContainers } from './countRitualContainers'
-import { mainNav } from './shellHelpers'
+import { expectVisibleWithoutScrolling, mainNav, waitForDialogSettled } from './shellHelpers'
 import { seedMonthlyPlanningScenario } from './seedMonthlyPlanningScenario'
 
 // Cobre o ritual de planejamento mensal do sistema novo (Story 14.6, AC5/AC9)
@@ -74,9 +74,19 @@ test.describe('Monthly Planning Ritual — wide 1440×900', () => {
     await page.getByRole('button', { name: 'Alocar' }).click()
     const picker = page.getByRole('dialog', { name: 'Escolher destino' })
     await expect(picker).toBeVisible()
-    await picker.getByRole('gridcell', { name: '10', exact: true }).click()
-    await expect(picker.getByText(/Migrar para 10 de/)).toBeVisible()
-    await picker.getByRole('button', { name: 'Confirmar' }).click()
+
+    // O DEFEITO relatado: antes da correção não havia `Dialog` no desktop e o
+    // seletor nascia abaixo da dobra — clicar em "Alocar" parecia não fazer
+    // nada. Medido ANTES de qualquer clique (o `.click()` do Playwright rola o
+    // alvo para a viewport e mascararia a regressão).
+    await waitForDialogSettled(page)
+    await expectVisibleWithoutScrolling(page, picker)
+
+    // Calendário de densidade: o nome acessível do dia é "10 de <mês>, <N tarefas|sem tarefas>".
+    await picker.getByRole('button', { name: /^10 de \S+, / }).click()
+    // O ato é NOMEADO pelo verbo do fluxo — "Alocar" (template → `place/`),
+    // nunca um "Confirmar" genérico nem o "Migrar" do fluxo de tasks.
+    await picker.getByRole('button', { name: /^Alocar em 10 de / }).click()
     expect((await placeResponse).status()).toBe(201)
 
     await expect(picker).toHaveCount(0)
@@ -170,9 +180,23 @@ test.describe('Monthly Planning Ritual — wide 1440×900', () => {
     await page.getByRole('button', { name: 'Escolher destino…' }).click()
     const picker = page.getByRole('dialog', { name: 'Escolher destino' })
     await expect(picker).toBeVisible()
+    await waitForDialogSettled(page)
+    await expectVisibleWithoutScrolling(page, picker)
 
+    // Story 14.6 AC5, restaurada: entrada DIRETA do número do dia, sincronizada
+    // com o calendário de densidade (que marca o dia escolhido com
+    // `aria-pressed` — `MonthDensityCalendar` é um `<table>` real, não o
+    // `role="grid"` do seletor antigo). O foco já nasce nesta entrada.
+    await expect(picker.getByLabel('Número do dia')).toBeFocused()
+    await expect(picker.getByText(/^Setas navegam dia a dia/)).toBeVisible()
     await picker.getByLabel('Número do dia').fill('12')
-    await expect(picker.getByRole('gridcell', { name: '12', exact: true })).toHaveAttribute('aria-current', 'true')
+    await expect(picker.getByRole('button', { name: /^12 de \S+, / })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    // Dia armado ⇒ o próprio botão de confirmação leva o nome do ato. Aqui o
+    // fluxo é de task (`migrate/`), então o verbo é "Migrar", não "Alocar".
+    await expect(picker.getByRole('button', { name: /^Migrar para 12 de / })).toBeVisible()
     const migrateResponse = page.waitForResponse(
       (r) => r.url().includes('/migrate/') && r.request().method() === 'POST',
     )

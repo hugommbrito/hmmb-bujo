@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>M08 — Future Log canônico</title>
+<style>
+/* Governado por DESIGN.md: Brand & Style; Colors; Typography; Layout & Spacing;
+   Components/App Shell; Page/Period Header; Task/Item Row; Panel e Section Header;
+   Status/Priority/Origin Chips; Date/Range Controls; Dialog, Sheet e Ritual; Feedback.
+   Governado por EXPERIENCE.md: Foundation; Information Architecture; Voice and Tone;
+   Component Patterns; State Patterns; Interaction Primitives; Accessibility Floor;
+   Responsive & Platform; Key Flows.
+   Delta M08: .decision-log.md, entrada "Abertura do M08 Future Log". Reconciliação vs.
+   FuturePage.tsx implementado. Os spines vencem em qualquer conflito. */
+:root{--canvas:#f5f2ea;--surface:#fbfaf6;--raised:#fff;--subtle:#eeebe2;--strong:#e3dfd5;--ink:#25231f;--muted:#666159;--disabled:#969087;--line:#d6d1c7;--line2:#aaa399;--primary:#315f5a;--primary-hover:#274d49;--primary-soft:#ddeae7;--on-primary:#fff;--info:#3d6488;--info-soft:#e2ebf3;--success:#4b6f52;--success-soft:#e2ebe1;--warn:#8a6826;--warn-soft:#f2e8ce;--danger:#9a493f;--danger-soft:#f3e1de;--teal:#2bada0;--purple:#7b5ea7;--pink:#d95f78;--yellow:#c89b00;--green:#4a8c5c;--blue:#3d72b4;--ui:#c0392b;--u:#d4660a;--i:#b8920a}
+*{box-sizing:border-box}html{background:#e7e3da}
+body{margin:0;color:var(--ink);font:14px/1.42 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+button,input{font:inherit;color:inherit}button{cursor:default}
+button:focus-visible,input:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--info);outline-offset:2px}
+.board{max-width:1500px;margin:auto;padding:28px}
+.intro{max-width:1100px;margin-bottom:28px}
+.eyebrow{font-size:11px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--primary)}
+h1{margin:5px 0;font-size:30px;letter-spacing:-.03em}
+.intro p,.caption span{margin:0;color:var(--muted)}
+.spec{margin:0 0 40px}
+.caption{display:flex;justify-content:space-between;align-items:end;gap:16px;margin-bottom:10px}
+.caption h2{font-size:20px;margin:0}
+.browser{border:1px solid var(--line2);border-radius:11px;overflow:hidden;background:var(--surface);box-shadow:0 14px 36px rgba(37,35,31,.08)}
+.browserbar{height:25px;background:#ddd9d0;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:5px;padding:0 10px}
+.dot{width:7px;height:7px;border-radius:50%;background:#aaa49a}
+.app{height:720px;display:grid;grid-template-columns:64px minmax(0,1fr);background:var(--canvas)}
+.rail{border-right:1px solid var(--line);background:var(--surface);padding:10px 5px;display:flex;flex-direction:column;align-items:center;gap:6px}
+.brand{width:38px;height:38px;border:2px solid var(--ink);border-radius:7px;display:grid;place-items:center;font-weight:850;margin-bottom:8px}
+.nav{width:49px;min-height:44px;border:0;border-radius:6px;background:transparent;color:var(--muted);font-size:8px;display:grid;place-items:center}
+.nav b{font-size:16px;font-weight:500}
+.nav.active{background:#fff;outline:1px solid var(--line2);color:var(--ink);font-weight:750}
+.grow{flex:1}
+.workspace{min-width:0;overflow:hidden;padding:12px 16px 16px;display:flex;flex-direction:column}
+.period{background:#fff;border:1.5px solid var(--ink);border-radius:8px;padding:11px 13px;display:flex;align-items:center;gap:10px;min-height:60px}
+.period h3{font-size:20px;line-height:1.15;margin:0}
+.period .meta{font-size:10px;color:var(--muted);margin-top:2px}
+.spacer{flex:1}
+.capture{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--line2);border-radius:6px;padding:6px 8px;min-width:300px}
+.capture input{flex:1;border:0;background:transparent;font-size:12px;outline:none}
+.capture input::placeholder{color:var(--disabled)}
+.capture .primary{height:30px;border:1px solid var(--primary);background:var(--primary);color:#fff;border-radius:5px;font-size:11px;font-weight:800;padding:0 12px}
+
+/* HYBRID layout */
+.future-layout{min-height:0;flex:1;display:grid;grid-template-columns:230px minmax(0,1fr);gap:14px;margin-top:12px}
+.trail{background:#fff;border:1px solid var(--line2);border-radius:7px;overflow:hidden;display:flex;flex-direction:column}
+.trail .zone{font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:9px 11px 5px;background:var(--surface);border-bottom:1px solid var(--line)}
+.mrow{display:flex;align-items:center;justify-content:space-between;padding:9px 11px;border-bottom:1px solid var(--line);border-left:3px solid transparent;background:#fff;width:100%;text-align:left}
+.mrow:last-child{border-bottom:0}
+.mrow .m{font-size:13px}
+.mrow .c{font-size:10px;color:var(--muted);background:var(--subtle);border-radius:99px;padding:1px 8px;min-width:22px;text-align:center}
+.mrow.on{background:var(--primary-soft);border-left-color:var(--primary)}
+.mrow.on .m{color:var(--primary);font-weight:750}
+.mrow.on .c{background:#fff;color:var(--primary)}
+.mrow.zero .m,.mrow.zero .c{color:var(--disabled)}
+.goto{margin:8px;min-height:40px;border:1px dashed var(--line2);background:var(--surface);border-radius:6px;color:var(--primary);font-size:11px;font-weight:750;display:flex;align-items:center;justify-content:center;gap:6px}
+
+.focus{min-width:0;min-height:0;display:flex;flex-direction:column}
+.fhead{display:flex;align-items:baseline;gap:10px;border-bottom:1px solid var(--line);padding-bottom:8px;margin-bottom:6px}
+.fhead h4{font-size:17px;margin:0}
+.fhead .fc{font-size:11px;color:var(--muted)}
+.flist{min-height:0;overflow:auto;padding-right:4px}
+.task{display:grid;grid-template-columns:20px 46px minmax(0,1fr) auto;gap:8px;align-items:center;min-height:44px;border-bottom:1px solid var(--line);border-left:3px solid var(--line);padding:5px 4px 5px 8px;background:#fff}
+.task.teal{border-left-color:var(--teal)}.task.purple{border-left-color:var(--purple)}.task.pink{border-left-color:var(--pink)}.task.yellow{border-left-color:var(--yellow)}.task.green{border-left-color:var(--green)}.task.blue{border-left-color:var(--blue)}
+.st{width:17px;height:17px;border:1.6px solid var(--muted);border-radius:50%}
+.daytag{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;text-align:right}
+.daytag.mono{color:var(--disabled)}
+.task .ttl{min-width:0}
+.task .ttl strong{display:block;font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.task .ttl small{display:block;font-size:9px;color:var(--muted)}
+.trailing{display:flex;align-items:center;gap:5px}
+.prio{font-size:9px;font-weight:850;color:#fff;border-radius:3px;padding:2px 4px}
+.prio.ui{background:var(--ui)}.prio.u{background:var(--u)}.prio.i{background:var(--i);color:var(--ink)}
+.setday{border:1px dashed var(--line2);background:transparent;border-radius:4px;color:var(--muted);font-size:10px;padding:3px 8px}
+.setday:hover{border-color:var(--primary);color:var(--primary)}
+.iconbtn{width:28px;height:28px;border:1px solid var(--line);background:#fff;border-radius:4px;color:var(--muted);font-size:12px}
+.arrow{border:0;background:transparent;color:var(--info);font-size:14px}
+
+/* annual pendentes */
+.annual{margin-top:14px;background:var(--warn-soft);border:1px solid #e3d3a8;border-radius:6px;padding:10px 12px}
+.annual .at{font-size:11px;font-weight:800;color:var(--warn);letter-spacing:.03em;margin:0 0 8px;display:flex;align-items:center;gap:6px}
+.aritem{display:flex;align-items:center;justify-content:space-between;padding:5px 0}
+.aritem .an{font-size:13px}
+.place{background:#fff;border:1px solid var(--line2);border-radius:4px;color:var(--ink);font-size:10px;font-weight:750;padding:4px 10px}
+
+/* generic overlay-in-frame */
+.frame-rel{position:relative}
+.scrim{position:absolute;inset:0;background:rgba(37,35,31,.48)}
+.popover{position:absolute;background:#fff;border:1px solid var(--line2);border-radius:9px;box-shadow:0 12px 30px rgba(37,35,31,.16);overflow:hidden}
+.pop-head{padding:11px 13px;border-bottom:1px solid var(--line)}
+.pop-head h4{margin:0;font-size:14px}
+.pop-head p{margin:3px 0 0;font-size:10px;color:var(--muted)}
+.yr{font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:9px 13px 4px;background:var(--surface)}
+.distrow{display:flex;align-items:center;justify-content:space-between;padding:9px 13px;border-bottom:1px solid var(--line);width:100%;text-align:left;background:#fff}
+.distrow:hover{background:var(--surface-subtle,#eeebe2)}
+.distrow .m{font-size:13px}
+.distrow .c{font-size:10px;color:var(--muted);background:var(--subtle);border-radius:99px;padding:1px 9px}
+.pop-empty{padding:26px 16px;text-align:center;color:var(--muted);font-size:11px}
+
+/* destination selector (datear/mover) */
+.destsel{width:340px}
+.tabbar{display:flex;border-bottom:1px solid var(--line)}
+.tabbar button{flex:1;height:34px;border:0;background:#fff;border-bottom:2px solid transparent;font-size:11px;color:var(--muted)}
+.tabbar .on{border-bottom-color:var(--primary);color:var(--primary);font-weight:800}
+.daygrid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;padding:11px 13px}
+.daygrid .wd{text-align:center;font-size:8px;font-weight:800;color:var(--muted)}
+.daygrid button{min-width:0;height:30px;border:1px solid var(--line);background:#fff;border-radius:4px;font-size:10px;font-variant-numeric:tabular-nums}
+.daygrid .out{color:var(--disabled);background:var(--surface)}
+.daygrid .sel{border:2px solid var(--primary);background:var(--primary-soft);font-weight:800}
+.dest-foot{padding:10px 13px;border-top:1px solid var(--line)}
+.dest-foot .noday{width:100%;min-height:34px;border:1px solid var(--line2);background:#fff;border-radius:5px;font-size:11px;margin-bottom:8px}
+.dest-foot .confirm{width:100%;min-height:38px;border:1px solid var(--primary);background:var(--primary);color:#fff;border-radius:5px;font-size:12px;font-weight:800}
+.lineage-note{font-size:9px;color:var(--muted);margin-top:7px;line-height:1.35}
+
+/* mobile */
+.mobile-zone{display:grid;grid-template-columns:repeat(3,290px);gap:18px;align-items:start}
+.phonecase h3{margin:0 0 7px;font-size:12px}
+.phone{height:610px;border:6px solid var(--ink);border-radius:24px;background:var(--canvas);overflow:hidden;position:relative;display:flex;flex-direction:column}
+.statusbar{height:20px;background:#fff;padding:3px 12px;display:flex;justify-content:space-between;font-size:8px;flex:none}
+.m-head{background:#fff;border-bottom:1px solid var(--line);padding:9px 11px;flex:none}
+.m-head h4{font-size:15px;margin:0}
+.m-head small{font-size:8px;color:var(--muted)}
+.m-monthbar{display:flex;gap:6px;padding:7px 9px;background:#fff;border-bottom:1px solid var(--line);overflow-x:auto;flex:none}
+.m-monthbar button{flex:none;min-height:34px;border:1px solid var(--line);background:#fff;border-radius:5px;font-size:10px;padding:0 9px;display:flex;align-items:center;gap:5px}
+.m-monthbar .on{background:var(--primary-soft);border-color:var(--primary);color:var(--primary);font-weight:800}
+.m-monthbar .cc{font-size:8px;color:var(--muted)}
+.m-monthbar .goto{margin:0;border-style:dashed;min-height:34px;padding:0 10px;font-size:10px}
+.m-capture{display:flex;gap:6px;padding:7px 9px;background:#fff;border-bottom:1px solid var(--line);flex:none}
+.m-capture input{flex:1;border:1px solid var(--line);border-radius:5px;padding:6px 8px;font-size:11px;background:#fff}
+.m-capture .primary{border:1px solid var(--primary);background:var(--primary);color:#fff;border-radius:5px;font-size:11px;font-weight:800;padding:0 11px}
+.m-list{flex:1;overflow:auto;padding:6px 9px}
+.m-list .task{grid-template-columns:20px 44px minmax(0,1fr) auto;min-height:50px}
+.m-empty{padding:30px 16px;text-align:center;color:var(--muted);font-size:11px}
+.sheet{position:absolute;left:0;right:0;bottom:0;background:#fff;border-radius:14px 14px 0 0;padding:10px 12px 14px;box-shadow:0 -8px 24px rgba(37,35,31,.14)}
+.handle{display:block;width:36px;height:4px;border-radius:99px;background:var(--line2);margin:0 auto 10px}
+.sheet h4{margin:0 0 3px;font-size:14px}
+.sheet p{margin:0 0 9px;color:var(--muted);font-size:9px}
+
+/* states */
+.state-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.statecard{background:var(--surface);border:1px solid var(--line2);border-radius:8px;padding:13px}
+.statecard h3{font-size:13px;margin:0 0 4px}
+.statecard>p{font-size:10px;color:var(--muted);margin:0 0 10px}
+.banner{border-left:3px solid var(--info);background:var(--info-soft);padding:9px;font-size:10px;margin-bottom:8px;border-radius:0 4px 4px 0}
+.banner.error{border-color:var(--danger);background:var(--danger-soft)}
+.banner.offline{border-color:var(--warn);background:var(--warn-soft)}
+.sk{background:linear-gradient(90deg,var(--subtle),#f4f1e9,var(--subtle));border-radius:4px;height:12px;margin:6px 0}
+.sk.h{height:30px}
+.mini-task{display:grid;grid-template-columns:16px 34px minmax(0,1fr);gap:6px;align-items:center;min-height:34px;border-bottom:1px solid var(--line);border-left:3px solid var(--line);padding:4px 3px 4px 6px;background:#fff;font-size:11px}
+.mini-task.blue{border-left-color:var(--blue)}.mini-task.teal{border-left-color:var(--teal)}
+.mini-task.terminal{opacity:.58}
+.mini-task .arrow{color:var(--info);font-size:13px;background:transparent;border:0}
+.rolabel{display:inline-block;border:1px solid var(--line2);border-radius:3px;padding:2px 6px;font-size:9px;margin-bottom:7px;color:var(--muted)}
+.statebtn{min-height:32px;border:1px solid var(--line2);background:#fff;border-radius:5px;font-size:10px;padding:0 10px}
+
+/* reconciliation notes */
+.notes{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-top:6px}
+.note{border-top:3px solid var(--primary);background:var(--surface);padding:12px;font-size:11px;color:var(--muted);border-radius:0 0 6px 6px}
+.note.delta{border-top-color:var(--warn)}
+.note b{display:block;color:var(--ink);margin-bottom:5px;font-size:12px}
+.note ul{margin:0;padding-left:16px}.note li{margin:3px 0}
+.tag-delta{display:inline-block;font-size:9px;font-weight:800;color:var(--warn);background:var(--warn-soft);border:1px solid #e3d3a8;border-radius:3px;padding:1px 6px;margin-left:6px}
+.tag-keep{display:inline-block;font-size:9px;font-weight:800;color:var(--success);background:var(--success-soft);border:1px solid #bcd2bb;border-radius:3px;padding:1px 6px;margin-left:6px}
+
+@media(max-width:1150px){.board{padding:14px}.future-layout{grid-template-columns:200px minmax(0,1fr)}.state-grid{grid-template-columns:1fr 1fr}.notes{grid-template-columns:1fr}.mobile-zone{grid-template-columns:repeat(2,290px)}}
+</style>
+</head>
+<body><main class="board">
+<header class="intro">
+  <div class="eyebrow">M08 · mockup canônico para aprovação</div>
+  <h1>Future Log: capturar longe, encontrar depois</h1>
+  <p>Os oito meses seguintes ficam sempre à mão no trilho; qualquer mês mais adiante que tenha algo é alcançável pelo seletor, com a contagem à vista — nada capturado se perde no horizonte. Datear ou mover um item acontece no lugar, preservando a linhagem.</p>
+</header>
+
+<!-- ============ A · DESKTOP ============ -->
+<section class="spec">
+  <div class="caption"><h2>A · Futuro — desktop (híbrido trilho + foco)</h2><span>trilho: 8 meses fixos · foco: mês selecionado com Task Rows integrais</span></div>
+  <div class="browser"><div class="browserbar"><i class="dot"></i><i class="dot"></i><i class="dot"></i></div>
+  <div class="app">
+    <nav class="rail" aria-label="Navegação principal"><div class="brand">B</div>
+      <button class="nav"><b>◉</b>Hoje</button>
+      <button class="nav"><b>▤</b>Semana</button>
+      <button class="nav"><b>▦</b>Mês</button>
+      <button class="nav active"><b>⇱</b>Futuro</button>
+      <span class="grow"></span><button class="nav"><b>•••</b>Mais</button>
+    </nav>
+    <div class="workspace">
+      <header class="period">
+        <div><h3>Futuro</h3><div class="meta">horizonte rolante · agosto 2026 – março 2027</div></div>
+        <span class="spacer"></span>
+        <div class="capture"><input placeholder="Capturar no futuro… (título + data ou mês)" aria-label="Capturar item no futuro"><button class="primary">Adicionar</button></div>
+      </header>
+      <div class="future-layout">
+        <nav class="trail" aria-label="Meses do horizonte">
+          <div class="zone">Horizonte · 8 meses</div>
+          <button class="mrow on"><span class="m">Agosto 2026</span><span class="c">3</span></button>
+          <button class="mrow"><span class="m">Setembro 2026</span><span class="c">1</span></button>
+          <button class="mrow"><span class="m">Outubro 2026</span><span class="c">1</span></button>
+          <button class="mrow zero"><span class="m">Novembro 2026</span><span class="c">0</span></button>
+          <button class="mrow"><span class="m">Dezembro 2026</span><span class="c">2</span></button>
+          <button class="mrow"><span class="m">Janeiro 2027</span><span class="c">2</span></button>
+          <button class="mrow zero"><span class="m">Fevereiro 2027</span><span class="c">0</span></button>
+          <button class="mrow"><span class="m">Março 2027</span><span class="c">1</span></button>
+          <button class="goto">⌖ Ir para mês…</button>
+        </nav>
+        <div class="focus">
+          <div class="fhead"><h4>Agosto de 2026</h4><span class="fc">3 itens · 2 com dia · 1 sem dia</span></div>
+          <div class="flist">
+            <div class="task blue"><span class="st"></span><span class="daytag">(14)</span><div class="ttl"><strong>Renovar passaporte</strong></div><div class="trailing"><span class="prio ui">U+I</span><button class="iconbtn" title="Mover de mês" aria-label="Mover de mês">⇢</button></div></div>
+            <div class="task teal"><span class="st"></span><span class="daytag mono">— ago</span><div class="ttl"><strong>Consulta com a dentista</strong><small>sem dia definido</small></div><div class="trailing"><button class="setday">definir dia</button><button class="iconbtn" title="Mover de mês" aria-label="Mover de mês">⇢</button></div></div>
+            <div class="task pink"><span class="st"></span><span class="daytag">(20)</span><div class="ttl"><strong>Aniversário da Maria</strong></div><div class="trailing"><button class="iconbtn" title="Mover de mês" aria-label="Mover de mês">⇢</button></div></div>
+          </div>
+          <div class="annual">
+            <p class="at">⟳ Anuais pendentes de 2026</p>
+            <div class="aritem"><span class="an">Check-up médico anual</span><button class="place">Alocar</button></div>
+            <div class="aritem"><span class="an">Backup fiscal do ano</span><button class="place">Alocar</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div></div>
+</section>
+
+<!-- ============ B · SELETOR IR PARA MÊS ============ -->
+<section class="spec">
+  <div class="caption"><h2>B · Seletor "Ir para mês…" — além do horizonte</h2><span>lista só meses com itens, agrupados por ano, com contagem · à direita, o estado vazio</span></div>
+  <div class="mobile-zone" style="grid-template-columns:repeat(2,minmax(320px,420px))">
+    <div class="phonecase" style="width:auto">
+      <h3>Com meses distantes populados</h3>
+      <div class="browser frame-rel">
+        <div class="pop-head"><h4>Ir para mês</h4><p>Meses além do horizonte que têm itens. Para capturar em um mês vazio distante, use o campo de captura com a data.</p></div>
+        <div class="yr">2027</div>
+        <button class="distrow"><span class="m">Junho 2027</span><span class="c">2 itens</span></button>
+        <button class="distrow"><span class="m">Setembro 2027</span><span class="c">1 item</span></button>
+        <div class="yr">2028</div>
+        <button class="distrow"><span class="m">Janeiro 2028</span><span class="c">4 itens</span></button>
+        <button class="distrow" style="border-bottom:0"><span class="m">Julho 2028</span><span class="c">1 item</span></button>
+      </div>
+    </div>
+    <div class="phonecase" style="width:auto">
+      <h3>Sem nada além do horizonte</h3>
+      <div class="browser">
+        <div class="pop-head"><h4>Ir para mês</h4><p>Meses além do horizonte que têm itens.</p></div>
+        <div class="pop-empty">Nada capturado além de março 2027.<br>Use o campo de captura com uma data para registrar mais adiante.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ C · DATEAR / MOVER ============ -->
+<section class="spec">
+  <div class="caption"><h2>C · Datear / mover no lugar — seletor de destino</h2><span>confirma no próprio seletor · gera linhagem: origem terminal migrada + sucessor</span></div>
+  <div class="mobile-zone" style="grid-template-columns:repeat(2,minmax(340px,440px))">
+    <div class="phonecase" style="width:auto">
+      <h3>Seletor de destino ("definir dia" / "mover")</h3>
+      <div class="browser destsel" style="width:auto">
+        <div class="pop-head"><h4>Definir destino · Consulta com a dentista</h4><p>Escolha um dia de agosto, mantenha sem dia, ou envie a outro mês.</p></div>
+        <div class="tabbar"><button class="on">Dia em agosto</button><button>Outro mês</button></div>
+        <div class="daygrid" role="grid" aria-label="Dias de agosto de 2026">
+          <span class="wd">S</span><span class="wd">T</span><span class="wd">Q</span><span class="wd">Q</span><span class="wd">S</span><span class="wd">S</span><span class="wd">D</span>
+          <button class="out">28</button><button class="out">29</button><button class="out">30</button><button class="out">31</button><button>1</button><button>2</button><button>3</button>
+          <button>4</button><button>5</button><button>6</button><button>7</button><button>8</button><button>9</button><button>10</button>
+          <button>11</button><button>12</button><button>13</button><button class="sel">14</button><button>15</button><button>16</button><button>17</button>
+        </div>
+        <div class="dest-foot">
+          <button class="noday">Manter sem dia definido</button>
+          <button class="confirm">Datar em 14 de agosto</button>
+          <p class="lineage-note">A tarefa atual vira <b>migrada</b> (readonly, com seta para o sucessor) e um sucessor nasce no destino. A linhagem é preservada — mesmo padrão da migração do ritual.</p>
+        </div>
+      </div>
+    </div>
+    <div class="phonecase" style="width:auto">
+      <h3>Resultado na lista — linhagem preservada</h3>
+      <div class="browser" style="padding:14px">
+        <div style="font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Agosto de 2026 · depois de datar</div>
+        <div class="mini-task teal terminal"><span style="font-size:12px">➜</span><span class="daytag mono">— ago</span><div><strong style="font-size:11px">Consulta com a dentista</strong></div></div>
+        <div style="font-size:8px;color:var(--muted);margin:3px 0 10px;padding-left:22px">origem migrada · seta navega ao sucessor</div>
+        <div class="mini-task teal" style="box-shadow:inset 0 0 0 2px var(--info);background:var(--info-soft)"><span class="st" style="width:15px;height:15px"></span><span class="daytag">(14)</span><div><strong style="font-size:11px">Consulta com a dentista</strong></div></div>
+        <div style="font-size:8px;color:var(--muted);margin:3px 0 0;padding-left:22px">sucessor · entra destacado (contorno info temporário)</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ D · MOBILE ============ -->
+<section class="spec">
+  <div class="caption"><h2>D · Recomposição mobile</h2><span>trilho vira barra de meses rolável + "Ir para mês" em sheet · datear em sheet</span></div>
+  <div class="mobile-zone">
+    <div class="phonecase">
+      <h3>Foco do mês + captura</h3>
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span>▮▮▮</span></div>
+        <div class="m-head"><h4>Futuro</h4><small>agosto 2026 · 3 itens</small></div>
+        <div class="m-monthbar">
+          <button class="on">ago<span class="cc">3</span></button>
+          <button>set<span class="cc">1</span></button>
+          <button>out<span class="cc">1</span></button>
+          <button>nov<span class="cc">0</span></button>
+          <button>dez<span class="cc">2</span></button>
+          <button class="goto">⌖ ir para</button>
+        </div>
+        <div class="m-capture"><input placeholder="Capturar no futuro…"><button class="primary">+</button></div>
+        <div class="m-list">
+          <div class="task blue"><span class="st"></span><span class="daytag">(14)</span><div class="ttl"><strong>Renovar passaporte</strong></div><div class="trailing"><span class="prio ui">U+I</span></div></div>
+          <div class="task teal"><span class="st"></span><span class="daytag mono">— ago</span><div class="ttl"><strong>Consulta dentista</strong><small>toque: definir dia / mover</small></div></div>
+          <div class="task pink"><span class="st"></span><span class="daytag">(20)</span><div class="ttl"><strong>Aniversário da Maria</strong></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="phonecase">
+      <h3>"Ir para mês" em sheet</h3>
+      <div class="phone frame-rel">
+        <div class="statusbar"><span>9:41</span><span>▮▮▮</span></div>
+        <div class="m-head"><h4>Futuro</h4><small>agosto 2026 · 3 itens</small></div>
+        <div class="m-monthbar"><button class="on">ago<span class="cc">3</span></button><button>set<span class="cc">1</span></button><button>out<span class="cc">1</span></button></div>
+        <div class="m-list" style="opacity:.4"><div class="task teal"><span class="st"></span><span class="daytag mono">— ago</span><div class="ttl"><strong>Consulta dentista</strong></div></div></div>
+        <div class="scrim"></div>
+        <div class="sheet">
+          <span class="handle"></span>
+          <h4>Ir para mês</h4>
+          <p>Meses além do horizonte que têm itens.</p>
+          <div class="yr">2027</div>
+          <button class="distrow"><span class="m">Junho 2027</span><span class="c">2</span></button>
+          <button class="distrow"><span class="m">Setembro 2027</span><span class="c">1</span></button>
+          <div class="yr">2028</div>
+          <button class="distrow" style="border-bottom:0"><span class="m">Janeiro 2028</span><span class="c">4</span></button>
+        </div>
+      </div>
+    </div>
+    <div class="phonecase">
+      <h3>Datear / mover em sheet</h3>
+      <div class="phone frame-rel">
+        <div class="statusbar"><span>9:41</span><span>▮▮▮</span></div>
+        <div class="m-head"><h4>Futuro</h4><small>agosto 2026</small></div>
+        <div class="m-list" style="opacity:.4"><div class="task teal"><span class="st"></span><span class="daytag mono">— ago</span><div class="ttl"><strong>Consulta dentista</strong></div></div></div>
+        <div class="scrim"></div>
+        <div class="sheet">
+          <span class="handle"></span>
+          <h4>Definir destino</h4>
+          <p>Consulta com a dentista · agosto 2026</p>
+          <div class="tabbar" style="margin-bottom:8px"><button class="on">Dia em agosto</button><button>Outro mês</button></div>
+          <div class="daygrid" style="padding:0 0 8px">
+            <span class="wd">S</span><span class="wd">T</span><span class="wd">Q</span><span class="wd">Q</span><span class="wd">S</span><span class="wd">S</span><span class="wd">D</span>
+            <button>4</button><button>5</button><button>6</button><button>7</button><button>8</button><button>9</button><button>10</button>
+            <button>11</button><button>12</button><button>13</button><button class="sel">14</button><button>15</button><button>16</button><button>17</button>
+          </div>
+          <button class="confirm" style="width:100%;min-height:44px;border:1px solid var(--primary);background:var(--primary);color:#fff;border-radius:6px;font-weight:800">Datar em 14 de agosto</button>
+          <p class="lineage-note">Origem vira migrada; sucessor nasce no dia 14.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ E · ESTADOS ============ -->
+<section class="spec">
+  <div class="caption"><h2>E · Estados do Future Log</h2><span>empty · loading · erro · offline · data parcial/completa · anuais sem pendência</span></div>
+  <div class="state-grid">
+    <div class="statecard">
+      <h3>Vazio saudável</h3>
+      <p>Todo o horizonte sem itens — convida a capturar, não parece quebrado.</p>
+      <div style="text-align:center;padding:22px 8px;color:var(--muted)">
+        <div style="font-size:24px;margin-bottom:6px">⇱</div>
+        <div style="font-size:12px;color:var(--ink);font-weight:600">Nada no futuro ainda</div>
+        <div style="font-size:10px;margin-top:4px">Capture algo que ainda não tem data certa e ele espera aqui até você decidir o dia.</div>
+      </div>
+    </div>
+    <div class="statecard">
+      <h3>Carregando</h3>
+      <p>Skeleton preserva a geometria do trilho + foco.</p>
+      <div class="sk h" style="width:60%"></div>
+      <div class="sk" style="width:90%"></div><div class="sk" style="width:75%"></div><div class="sk" style="width:85%"></div>
+    </div>
+    <div class="statecard">
+      <h3>Erro (junto ao dado)</h3>
+      <p>Falha ao carregar o futuro; oferece retry sem sair da tela.</p>
+      <div class="banner error">Não foi possível carregar os itens do futuro.</div>
+      <button class="statebtn">Tentar de novo</button>
+    </div>
+    <div class="statecard">
+      <h3>Offline</h3>
+      <p>Consulta o cache; mutações desabilitadas com motivo, sem fila local.</p>
+      <div class="banner offline">Você está offline. Consulta disponível; capturar, datar e mover ficam indisponíveis até reconectar.</div>
+      <button class="statebtn" disabled style="opacity:.5">Adicionar (indisponível)</button>
+    </div>
+    <div class="statecard">
+      <h3>Data parcial vs. completa</h3>
+      <p>Só mês usa <code>— ago</code>; com dia usa <code>(14)</code>. Ordena por dia; sem dia vem depois dos datados no mês.</p>
+      <div class="mini-task blue"><span></span><span class="daytag">(14)</span><div><strong style="font-size:11px">Com dia definido</strong></div></div>
+      <div class="mini-task teal"><span></span><span class="daytag mono">— ago</span><div><strong style="font-size:11px">Só o mês (parcial)</strong></div></div>
+    </div>
+    <div class="statecard">
+      <h3>Item migrado (terminal)</h3>
+      <p>Após datar/mover, a origem fica readonly com seta navegável ao sucessor.</p>
+      <span class="rolabel">readonly · migrada</span>
+      <div class="mini-task teal terminal"><button class="arrow" title="Ir ao sucessor">➜</button><span class="daytag mono">— ago</span><div><strong style="font-size:11px">Consulta com a dentista</strong></div></div>
+    </div>
+  </div>
+  <p style="font-size:10px;color:var(--muted);margin-top:10px">Anuais pendentes seguem o molde implementado "banner vazio = sem DOM": quando não há anual pendente do ano, a seção simplesmente não renderiza (não há placeholder).</p>
+</section>
+
+<!-- ============ RECONCILIAÇÃO ============ -->
+<section class="spec">
+  <div class="caption"><h2>Reconciliação vs. implementado (FuturePage.tsx)</h2><span>o que este mockup preserva e o que amplia o contrato — deltas vão a Correct Course</span></div>
+  <div class="notes">
+    <div class="note">
+      <b>Preservado do contrato atual</b>
+      <ul>
+        <li>Future Log como visão dos próprios <code>monthly_log</code> futuros <span class="tag-keep">mantém</span></li>
+        <li>Agrupamento por mês e cabeçalho "Mês Ano" <span class="tag-keep">mantém</span></li>
+        <li>Data parcial <code>— ago</code> vs. completa <code>(14)</code> (FR-1.2) <span class="tag-keep">mantém</span></li>
+        <li>Captura pelo <code>FutureLogItemForm</code> no topo <span class="tag-keep">mantém</span></li>
+        <li>Seção "Anuais pendentes de {ano}" + "Alocar" → dialog; vazio = sem DOM <span class="tag-keep">mantém</span></li>
+        <li>Loading via skeleton do planner <span class="tag-keep">mantém</span></li>
+      </ul>
+    </div>
+    <div class="note delta">
+      <b>Amplia o contrato — requer Correct Course / arquitetura</b>
+      <ul>
+        <li>Horizonte rolante fixo de 8 meses com meses vazios visíveis (hoje só mostra meses com itens) <span class="tag-delta">delta</span></li>
+        <li>Composição híbrida trilho + foco (hoje é lista vertical única) <span class="tag-delta">delta</span></li>
+        <li>Seletor "Ir para mês…" listando só meses distantes com itens + contagem <span class="tag-delta">delta</span></li>
+        <li>Datear/mover no lugar, fora dos rituais, com linhagem (origem <code>migrated</code> + sucessor) <span class="tag-delta">delta</span></li>
+        <li>Estados offline/erro explícitos na superfície <span class="tag-delta">delta</span></li>
+      </ul>
+    </div>
+  </div>
+  <p style="font-size:10px;color:var(--muted);margin-top:8px">Questão aberta a confirmar: o horizonte de 8 meses começa no mês seguinte ao operacional (assumido aqui) ou inclui o corrente? Concluir/cancelar seguem fora desta superfície (mantêm o contrato da fonte no ritual).</p>
+</section>
+
+</main></body>
+</html>

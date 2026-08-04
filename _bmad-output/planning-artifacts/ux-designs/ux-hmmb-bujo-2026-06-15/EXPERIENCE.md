@@ -8,7 +8,7 @@ sources:
   - decision-log: ".decision-log.md"
   - design: "DESIGN.md"
   - spec: "../../../specs/spec-design-system-migration/SPEC.md"
-  - architecture: "../../architecture.md"
+  - architecture: "../../architecture/architecture-hmmb-bujo-2026-07-29/ARCHITECTURE-SPINE.md"
   - epics: "../../epics.md"
   - handoff: "imports/mybujo-full-handoff/design_handoff_full_app/README.md"
 ---

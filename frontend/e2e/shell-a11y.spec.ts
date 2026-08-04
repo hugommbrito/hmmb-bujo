@@ -28,8 +28,22 @@ import { bottomNav, captureSheet, mainNav, sidebarPaper } from './shellHelpers'
 // e `compact 390 · /today · sheet de navegação aberto` em
 // `shell-bottomnav.spec.ts`.
 //
+// **Capture Sheet — FECHADA na Story 15.3** (fecha o `deferred[medium]` da
+// 15.2, "justificativa inválida sem remoção coordenada"): as duas células
+// "Capture Sheet aberto" abaixo excluíam também a superfície do
+// `BrainDumpCaptureSheet` (`LEGACY_CAPTURE_SURFACE`) porque ela era, até a
+// Story 15.2, a captura LEGADA — o `TextField` "Título" em foco usava
+// `primary.main` do tema legado (`theme.ts` `brandPrimary = #2BADA0`,
+// ≈2,8:1, reprovando `color-contrast`; achado `LEG-03` em
+// `13-shell-a11y-legacy-inventory.md`). A Story 15.2 migrou o componente para
+// tokens `--ds-*` (`--ds-primary = #315F5A`, contraste conforme) — verificado
+// nesta story rodando as duas células SEM a exclusão: zero violação. A causa
+// raiz não existe mais, então a exclusão foi removida (só `exclude: 'main'`
+// permanece); ver `15-brain-dump-parity-checklist.md` para o registro formal.
+//
 // [Source: Story 13.4 AC4; EXPERIENCE.md §Accessibility Floor / §Responsive &
-//  Platform; 13-shell-parity-checklist.md §Onda 2a — equivalência comprovada]
+//  Platform; 13-shell-parity-checklist.md §Onda 2a — equivalência comprovada;
+//  15-brain-dump-parity-checklist.md]
 
 /**
  * Vai para uma rota do shell e espera um marcador ESTÁVEL antes de medir: o
@@ -41,30 +55,6 @@ async function gotoShellRoute(page: Page, path: string, title: string): Promise<
   await page.goto(path)
   await expect(page.getByRole('banner')).toContainText(title)
 }
-
-/**
- * Escopo das células com o **Capture Sheet aberto**.
- *
- * DIVERGÊNCIA REGISTRADA (Story 13.4 AC4 — "célula que reprove é corrigida no
- * chrome OU registrada como divergência com o motivo e o artefato upstream"):
- * o `BrainDumpCaptureSheet` é a superfície de captura **LEGADA** (migra no
- * Épico 15) e o MUI a renderiza num PORTAL — logo ela cai fora do `<main>` e o
- * `exclude: 'main'` da SHELL-DEBT-02 não a alcança. Medido no browser real: o
- * label do `TextField` "Título" em foco usa o `primary.main` do tema LEGADO
- * (`theme.ts` `brandPrimary = #2BADA0`), que dá ≈2,8:1 sobre a superfície clara
- * — reprova `color-contrast` (WCAG 1.4.3). Não é dívida do chrome: o
- * `--ds-primary` do sistema NOVO (`#315F5A`) já resolve o mesmo papel com
- * contraste conforme, e esta story tem `theme.ts` explicitamente FORA de escopo
- * (rota de rollback).
- *
- * Portanto a exclusão da superfície legada é EXTENSÃO da SHELL-DEBT-02, não uma
- * regra silenciada: nenhuma regra do axe é desligada, o achado está inventariado
- * com dono em `13-shell-a11y-legacy-inventory.md` e registrado como divergência
- * no checklist de paridade. O que a célula mede continua sendo o CHROME com a
- * captura aberta: FAB/âncora, topbar, backdrop, skip link e a inertização do
- * conteúdo inferior pelo Modal.
- */
-const LEGACY_CAPTURE_SURFACE = '[role="dialog"][aria-label="Captura rápida"]'
 
 /**
  * Espera o RAIL do tablet ASSENTAR. O tablet nasce com a sidebar expandida e
@@ -84,7 +74,7 @@ async function waitForRailSettled(page: Page): Promise<void> {
 /** Abre o Capture Sheet real e espera ele assentar (título em foco). */
 async function openCaptureSheet(page: Page, trigger: 'fab' | 'anchor'): Promise<void> {
   if (trigger === 'fab') {
-    await page.getByRole('button', { name: 'Captura rápida', exact: true }).click()
+    await page.getByRole('button', { name: 'Abrir captura rápida', exact: true }).click()
   } else {
     await mainNav(page).getByRole('button', { name: 'Abrir captura rápida', exact: true }).click()
   }
@@ -145,7 +135,7 @@ test.describe('Matriz axe — wide 1440×900', () => {
     await openCaptureSheet(page, 'anchor')
 
     await expectNoAxeViolations(page, {
-      exclude: ['main', LEGACY_CAPTURE_SURFACE],
+      exclude: 'main',
       label: 'wide · /today · Capture Sheet aberto pela âncora',
     })
   })
@@ -253,7 +243,7 @@ test.describe('Matriz axe — compact 390×720', () => {
   test('compact 390 · /today · topbar + bottom nav + FAB', async ({ page }) => {
     await expect(page.getByRole('banner')).toContainText('Hoje')
     await expect(bottomNav(page)).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Captura rápida', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Abrir captura rápida', exact: true })).toBeVisible()
 
     // A 13.1 media só 320: 390 é a largura real de um telefone moderno e a
     // composição da barra (4 colunas com label) muda com ela.
@@ -280,15 +270,15 @@ test.describe('Matriz axe — compact 390×720', () => {
     await openCaptureSheet(page, 'fab')
 
     await expectNoAxeViolations(page, {
-      exclude: ['main', LEGACY_CAPTURE_SURFACE],
+      exclude: 'main',
       label: 'compact 390 · /today · Capture Sheet aberto pelo FAB',
     })
   })
 
   test('compact 390 · /today · offline (FAB aria-disabled)', async ({ page, context }) => {
-    await expect(page.getByRole('button', { name: 'Captura rápida', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Abrir captura rápida', exact: true })).toBeVisible()
     await context.setOffline(true)
-    await expect(page.getByRole('button', { name: 'Captura rápida (sem conexão)' })).toHaveAttribute(
+    await expect(page.getByRole('button', { name: 'Abrir captura rápida (sem conexão)' })).toHaveAttribute(
       'aria-disabled',
       'true',
     )

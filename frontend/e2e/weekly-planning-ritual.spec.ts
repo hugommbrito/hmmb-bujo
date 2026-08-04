@@ -1,7 +1,7 @@
 import { test, expect } from './fixtures'
 import { expectNoAxeViolations } from './axeHelper'
 import { countRitualContainers } from './countRitualContainers'
-import { mainNav } from './shellHelpers'
+import { expectVisibleWithoutScrolling, mainNav, waitForDialogSettled } from './shellHelpers'
 import { seedWeeklyPlanningScenario } from './seedWeeklyPlanningScenario'
 
 // Cobre o ritual de planejamento semanal do sistema novo (Story 14.5, AC5/AC9)
@@ -94,7 +94,13 @@ test.describe('Weekly Planning Ritual — wide 1440×900', () => {
     await expect(page.getByText('Tarefa do Monthly na semana-alvo')).toBeVisible()
   })
 
-  test('seletor de destino: teclas 1-7/0 + Enter confirmam o destino nomeado (AC5)', async ({
+  // Este é o teste do DEFEITO relatado: antes da correção o seletor não era um
+  // `Dialog` no desktop — entrava no fluxo do DOM depois da grade de 3 colunas
+  // do ritual e abria ABAIXO DA DOBRA, então clicar em "Escolher destino…"
+  // parecia não fazer nada. A prova é GEOMÉTRICA (o diálogo inteiro dentro da
+  // viewport), não só de presença no DOM. Cobre também a Story 14.5 AC5: as
+  // teclas `1`–`7`/`0` e o Enter que confirma o destino nomeado.
+  test('seletor abre SOBREPOSTO e visível sem rolagem; teclas 1-7/0 + Enter confirmam o destino nomeado (AC5)', async ({
     page,
     email,
   }) => {
@@ -105,14 +111,55 @@ test.describe('Weekly Planning Ritual — wide 1440×900', () => {
     await expect(page.getByText('Tarefa do Monthly na semana-alvo')).toBeVisible()
 
     await page.getByRole('button', { name: 'Escolher destino…' }).click()
-    await expect(page.getByRole('dialog', { name: 'Escolher destino' })).toBeVisible()
+    const picker = page.getByRole('dialog', { name: 'Escolher destino' })
+    await expect(picker).toBeVisible()
+
+    // Medido ANTES de qualquer clique: `.click()` do Playwright rola o elemento
+    // para a viewport, o que mascararia exatamente o defeito sob teste.
+    await waitForDialogSettled(page)
+    await expectVisibleWithoutScrolling(page, picker)
+
+    // Lembrete visível dos atalhos + o foco inicial na PRIMEIRA opção de dia (não
+    // no "×" do cabeçalho), as duas affordances restauradas da 14.5.
+    await expect(picker.getByText(/^Atalhos: 1–7 escolhem o dia/)).toBeVisible()
+    await expect(picker.getByRole('radio', { name: /^1 Segunda/ })).toBeFocused()
 
     await page.keyboard.press('2') // terça da semana-alvo
-    await expect(page.getByText(/Migrar para terça/)).toBeVisible()
+    await expect(picker.getByRole('radio', { name: /^2 Terça/ })).toHaveAttribute('aria-checked', 'true')
+    await expect(picker.getByRole('button', { name: /^Migrar para terça/ })).toBeVisible()
+
+    const migrateResponse = page.waitForResponse(
+      (r) => r.url().includes('/migrate/') && r.request().method() === 'POST',
+    )
     await page.keyboard.press('Enter')
+    expect((await migrateResponse).status()).toBe(200)
 
     await expect(page.getByRole('dialog', { name: 'Escolher destino' })).toHaveCount(0)
     await expect(page.getByText('Tarefa do Monthly na semana-alvo')).toHaveCount(0)
+  })
+
+  test('"Sem dia definido" fica indisponível COM MOTIVO quando a semana-alvo não é a corrente (lacuna B7)', async ({
+    page,
+    email,
+  }) => {
+    seedWeeklyPlanningScenario(email)
+
+    await page.goto('/planner/week/planning')
+    await expect(page.getByRole('main', { name: 'Planejar a semana' })).toBeVisible()
+    await expect(page.getByText('Tarefa do Monthly na semana-alvo')).toBeVisible()
+
+    await page.getByRole('button', { name: 'Escolher destino…' }).click()
+    const picker = page.getByRole('dialog', { name: 'Escolher destino' })
+    await expect(picker).toBeVisible()
+
+    // O cenário semeia a PRÓXIMA semana como alvo: migrar `destination: 'week'`
+    // sem `scheduledDate` cairia na semana CORRENTE no servidor, nunca na alvo.
+    const undated = picker.getByRole('button', { name: /^0 Sem dia definido — indisponível/ })
+    await expect(undated).toHaveAttribute('aria-disabled', 'true')
+    await undated.click({ force: true })
+    // Nem o atalho `0` arma um destino que cairia na semana errada.
+    await page.keyboard.press('0')
+    await expect(picker.getByRole('button', { name: /^Migrar/ })).toHaveCount(0)
   })
 
   test('painel de verificação: os 3 gates de Iniciar semana aparecem individualmente (AC3)', async ({

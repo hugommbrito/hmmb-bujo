@@ -77,6 +77,8 @@ describe('shellRouting — registro por rota', () => {
     'archive',
     'archive/weekly/:weekStart',
     'archive/monthly/:monthFirst',
+    // Story 15.1 (M11) — Brain Dump/Inbox no sistema novo.
+    'brain-dump',
   ])
 
   it('test_shell_e_novo_em_tudo_e_apenas_as_rotas_migradas_tem_surfaceMigrated_true', () => {
@@ -115,6 +117,15 @@ describe('shellRouting — registro por rota', () => {
     // intocado até o Épico 17.
     expect(shellRoutes.find((route) => route.routeId === 'today')?.surfaceMigrated).toBe(false)
     expect(shellRoutes.find((route) => route.routeId === 'daily/:date')?.surfaceMigrated).toBe(false)
+  })
+
+  it('test_brain_dump_e_a_rota_migrada_da_story_15_1', () => {
+    const entry = shellRoutes.find((route) => route.routeId === 'brain-dump')
+    expect(entry?.surfaceMigrated).toBe(true)
+    // Irmã de NÃO-VACUIDADE (mesmo padrão das demais rotas migradas acima):
+    // `settings` continua `false` — a flag não "vazou" para toda rota ainda
+    // não migrada.
+    expect(shellRoutes.find((route) => route.routeId === 'settings')?.surfaceMigrated).toBe(false)
   })
 
   it('test_resolve_rota_estatica_e_rota_parametrizada', () => {

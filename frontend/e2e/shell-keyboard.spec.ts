@@ -471,14 +471,14 @@ test.describe('Teclado e foco — compact 390×720', () => {
     ])
     // O FAB vem imediatamente DEPOIS do Menu no DOM, apesar de ficar acima da
     // barra na tela — comportamento verificado e registrado no checklist.
-    expect(names[hojeIndex + 4]).toBe('Captura rápida')
+    expect(names[hojeIndex + 4]).toBe('Abrir captura rápida')
     // O conteúdo vem antes da barra (ordem visual: topbar → conteúdo → barra).
     expect(names.indexOf('Nova tarefa')).toBeLessThan(hojeIndex)
 
     // Ambos alcançáveis POR TECLADO de fato (não só presentes no DOM).
     await page.getByRole('button', { name: 'Menu' }).focus()
     await page.keyboard.press('Tab')
-    await expect(page.getByRole('button', { name: 'Captura rápida', exact: true })).toBeFocused()
+    await expect(page.getByRole('button', { name: 'Abrir captura rápida', exact: true })).toBeFocused()
   })
 
   test('primeiro e último focáveis ficam visíveis e não encobertos (compact)', async ({ page }) => {
@@ -591,7 +591,7 @@ async function expectChromeUsableInCompact(page: Page): Promise<void> {
   for (const label of ['Hoje', 'Esta Semana', 'Este Mês', 'Menu']) {
     await expect(nav.getByRole('button', { name: label })).toBeVisible()
   }
-  await expect(page.getByRole('button', { name: 'Captura rápida', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Abrir captura rápida', exact: true })).toBeVisible()
 
   // Nenhum destino perdido na recomposição: o sheet lista TODOS.
   await nav.getByRole('button', { name: 'Menu' }).click()
@@ -606,7 +606,7 @@ async function expectChromeUsableInCompact(page: Page): Promise<void> {
   await expect(sheet).toBeHidden()
 
   // Captura acionável de fato (não só visível).
-  await page.getByRole('button', { name: 'Captura rápida', exact: true }).click()
+  await page.getByRole('button', { name: 'Abrir captura rápida', exact: true }).click()
   await expect(captureSheet(page)).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(captureSheet(page)).toBeHidden()

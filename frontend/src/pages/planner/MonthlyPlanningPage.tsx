@@ -46,7 +46,10 @@ import {
 import { PlannerSkeleton } from '../../features/bujo/components/PlannerSkeleton'
 import { MonthlySourceRail, type MonthlySourceRailEntry } from '../../features/bujo/components/monthly/MonthlySourceRail'
 import { MonthlyDecisionList } from '../../features/bujo/components/monthly/MonthlyDecisionList'
-import { MonthlyDestinationPicker } from '../../features/bujo/components/monthly/MonthlyDestinationPicker'
+import {
+  DestinationDialog,
+  type DestinationSelection,
+} from '../../features/bujo/components/DestinationDialog'
 import { MonthlyContextRail, type MonthlyProgressSourceInput } from '../../features/bujo/components/monthly/MonthlyContextRail'
 import {
   normalizeAlreadyPlacedBuckets,
@@ -81,6 +84,11 @@ export function MonthlyPlanningPage() {
   const [itemErrors, setItemErrors] = useState<Record<string, string>>({})
   const retryActionsRef = useRef<Record<string, () => void>>({})
   const [destinationError, setDestinationError] = useState<string | null>(null)
+  // Story 14.6 AC6 — dia escolhido no rail de densidade. O rail fica `aria-hidden`
+  // atrás do backdrop enquanto o seletor está aberto, então o clique acontece
+  // ANTES: guardamos o dia e o seletor abre com ele JÁ ARMADO, a um clique da
+  // confirmação nomeada. É o que mantém o caminho do rail vivo e alcançável.
+  const [dayFromDensityRail, setDayFromDensityRail] = useState<string | null | undefined>(undefined)
   const isCompact = useMediaQuery(mediaQueries.compact)
   const isOnline = useOnlineStatus()
 
@@ -95,9 +103,13 @@ export function MonthlyPlanningPage() {
   const recurring = useMonthlyRecurringSourceQuery(targetMonthFirst ?? '', { enabled: hasTarget })
   const futureLog = useMonthlyFutureLogSourceQuery(targetMonthFirst ?? '', { enabled: hasTarget })
   const previousMonthly = usePreviousMonthlySourceQuery(targetMonthFirst ?? '', { enabled: hasTarget })
-  // Pré-carrega a densidade (o rail de contexto também consulta a mesma
-  // chave — dedup automático, mesmo padrão do Weekly).
-  useMonthlyDensityQuery(targetMonthFirst ?? '', { enabled: hasTarget })
+  // Densidade real do mês-alvo — a MESMA chave que o rail de contexto consulta
+  // (dedup automático do TanStack Query, zero rede extra). O seletor de destino
+  // recebe o mapa PRONTO daqui: se ele fizesse a sua própria query
+  // (`/task-density/`, endpoint diferente do `/rituals/monthly/density/` do
+  // rail), os dois calendários do mesmo mês poderiam mostrar contagens
+  // divergentes na mesma tela — achado de review.
+  const monthlyDensity = useMonthlyDensityQuery(targetMonthFirst ?? '', { enabled: hasTarget })
 
   const transitionTask = useRitualTaskTransitionMutation()
   const migrateTask = useMigrateTaskMutation()
@@ -325,6 +337,7 @@ export function MonthlyPlanningPage() {
   function handleCloseDestinationPicker() {
     setDestinationTarget(null)
     setDestinationError(null)
+    setDayFromDensityRail(undefined)
   }
 
   function handleConfirmDestination(scheduledDate: string | null) {
@@ -338,7 +351,7 @@ export function MonthlyPlanningPage() {
           onSuccess: () => {
             recordMutation('recurring', id, 'allocated')
             invalidateRitualQueries(queryClient)
-            setDestinationTarget(null)
+            handleCloseDestinationPicker()
           },
           onError: () => setDestinationError('Não foi possível alocar o template. Tente novamente.'),
         },
@@ -356,7 +369,7 @@ export function MonthlyPlanningPage() {
         onSuccess: () => {
           recordMutation(activeSourceId, id, 'migrated')
           invalidateRitualQueries(queryClient)
-          setDestinationTarget(null)
+          handleCloseDestinationPicker()
         },
         onError: () => setDestinationError('Não foi possível migrar a tarefa. Tente novamente.'),
       },
@@ -392,10 +405,43 @@ export function MonthlyPlanningPage() {
     setView('pending')
   }
 
+  // Story 14.6 AC6 — "selecionar um dia escolhe destino para a decisão corrente".
+  // Com o seletor ABERTO o rail está `aria-hidden` atrás do backdrop, então este
+  // clique só chega com o seletor FECHADO: ele arma o dia, que o seletor adota
+  // (`armedDate`) na próxima abertura — o rail continua sendo o segundo caminho
+  // para o MESMO destino, a um clique da confirmação nomeada, em vez de virar
+  // código morto.
   function handleSelectDayFromDensity(scheduledDate: string | null) {
-    if (!destinationTarget) return
-    handleConfirmDestination(scheduledDate)
+    if (destinationTarget) {
+      handleConfirmDestination(scheduledDate)
+      return
+    }
+    setDayFromDensityRail(scheduledDate)
   }
+
+  // Rótulo NOMEADO do ato, nunca um "Confirmar" genérico: o MESMO seletor serve
+  // "Alocar" (recorrentes → `place/`) e "Escolher destino…" (tasks →
+  // `migrate/`), e o verbo tem de dizer qual dos dois está sendo confirmado.
+  function confirmLabelForDestination({ scheduledDate }: DestinationSelection): string {
+    const isTemplate = destinationTarget?.kind === 'template'
+    if (!scheduledDate) {
+      const monthLabel = formatMonthTitle(targetMonthFirst).toLowerCase()
+      return isTemplate
+        ? `Alocar sem dia definido em ${monthLabel}`
+        : `Migrar sem dia definido para ${monthLabel}`
+    }
+    const day = Number(scheduledDate.slice(8, 10))
+    const monthName = MONTH_NAMES_PT[Number(scheduledDate.slice(5, 7)) - 1]
+    return isTemplate ? `Alocar em ${day} de ${monthName}` : `Migrar para ${day} de ${monthName}`
+  }
+
+  const monthlyDensityByDate = new Map(
+    (monthlyDensity.data?.days ?? []).map((day) => [day.date, day.total]),
+  )
+  // Guard de escrita EM CURSO, além do offline: gate na mutação que este alvo vai
+  // realmente disparar, não numa qualquer da página.
+  const destinationMutationPending =
+    destinationTarget?.kind === 'template' ? placeTemplate.isPending : migrateTask.isPending
 
   const progressSources: MonthlyProgressSourceInput[] = MONTHLY_RITUAL_SOURCE_ORDER.map((sourceId) => ({
     sourceId,
@@ -464,11 +510,25 @@ export function MonthlyPlanningPage() {
         />
       </Box>
 
+      {/* O mês-alvo do ritual vem de `readiness`, fixo. O `Dialog` portalizado do
+          `DestinationDialog` é o que faz o seletor aparecer sobreposto e visível
+          sem rolagem no desktop. `disabled` cobre offline E mutação em curso:
+          sem a segunda metade, dois cliques rápidos em confirmar viram dois POST
+          (duas instâncias do mesmo recorrente, no caso do "Alocar"). */}
       {destinationTarget && (
-        <MonthlyDestinationPicker
-          targetMonthFirst={targetMonthFirst}
+        <DestinationDialog
+          title="Escolher destino"
+          description={formatMonthTitle(targetMonthFirst)}
+          offer={{
+            id: 'target-month',
+            day: { kind: 'month', monthFirst: targetMonthFirst, densityByDate: monthlyDensityByDate },
+            undated: {},
+          }}
+          armedDate={dayFromDensityRail}
           compact={isCompact}
+          disabled={!isOnline || destinationMutationPending}
           error={destinationError}
+          confirmLabelFor={confirmLabelForDestination}
           onConfirm={handleConfirmDestination}
           onClose={handleCloseDestinationPicker}
         />

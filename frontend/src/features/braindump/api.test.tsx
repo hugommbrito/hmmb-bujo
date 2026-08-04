@@ -25,11 +25,13 @@ import {
   useCreateBrainDumpItemMutation,
   useProcessBrainDumpItemMutation,
   useDiscardBrainDumpItemMutation,
+  useUpdateBrainDumpItemMutation,
 } from './api'
 import type { BrainDumpCount, BrainDumpItem } from './types'
 
 const mockGet = client.get as ReturnType<typeof vi.fn>
 const mockPost = client.post as ReturnType<typeof vi.fn>
+const mockPatch = client.patch as ReturnType<typeof vi.fn>
 const mockDelete = client.delete as ReturnType<typeof vi.fn>
 
 function makeWrapper() {
@@ -188,6 +190,48 @@ describe('useProcessBrainDumpItemMutation', () => {
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'weeklyLog'] })
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'monthlyLog'] })
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'taskDensity'] })
+  })
+})
+
+describe('useUpdateBrainDumpItemMutation', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+  })
+
+  it('envia PATCH parcial e invalida só brainDump.list no sucesso (M11, não-otimista)', async () => {
+    const { qc, wrapper } = makeWrapper()
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+    mockPatch.mockResolvedValueOnce({ data: { ...ITEM, title: 'Renomeado' } })
+
+    const { result } = renderHook(() => useUpdateBrainDumpItemMutation(), { wrapper })
+
+    result.current.mutate({ itemId: 'item-1', title: 'Renomeado' })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(mockPatch).toHaveBeenCalledWith('/api/brain-dump/items/item-1/', {
+      title: 'Renomeado',
+    })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.brainDump.list() })
+    expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: keys.brainDump.count('user-1') })
+  })
+
+  it('não altera o cache antes da resposta do servidor (não-otimista)', async () => {
+    const { qc, wrapper } = makeWrapper()
+    qc.setQueryData(keys.brainDump.list(), [ITEM])
+    let resolvePatch: (value: { data: BrainDumpItem }) => void = () => {}
+    mockPatch.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolvePatch = resolve
+      }),
+    )
+
+    const { result } = renderHook(() => useUpdateBrainDumpItemMutation(), { wrapper })
+    result.current.mutate({ itemId: 'item-1', title: 'Renomeado' })
+
+    expect(qc.getQueryData(keys.brainDump.list())).toEqual([ITEM])
+
+    resolvePatch({ data: { ...ITEM, title: 'Renomeado' } })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
   })
 })
 

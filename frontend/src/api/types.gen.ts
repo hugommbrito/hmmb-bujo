@@ -105,7 +105,7 @@ export interface paths {
         delete: operations["brain_dump_items_destroy"];
         options?: never;
         head?: never;
-        patch?: never;
+        patch: operations["brain_dump_items_partial_update"];
         trace?: never;
     };
     "/api/brain-dump/items/{id}/process/": {
@@ -1459,6 +1459,22 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AccountsLoginFailedResponse: {
+            detail: string;
+        };
+        AccountsTokenErrorCode: {
+            code: string[];
+        };
+        AccountsTokenInvalidResponse: {
+            detail: string;
+            fields?: components["schemas"]["AccountsTokenErrorCode"];
+        };
+        AccountsValidationErrorResponse: {
+            detail: string;
+            fields?: {
+                [key: string]: string[];
+            };
+        };
         /**
          * @description POST de registro de avulso/PRN (AC7). ``time_block_id``/``dose`` opcionais:
          *     ``dose`` omitida herda da agenda vigente (se houver bloco), senão o serviço exige
@@ -2279,6 +2295,24 @@ export interface components {
         };
         /** @enum {unknown} */
         NullEnum: null;
+        /**
+         * @description Corpo do `PATCH /api/brain-dump/items/{id}/` (M11) — mesmo molde de
+         *     `bujo/serializers.py::TaskUpdateSerializer`: os três campos são opcionais
+         *     porque cada um declara `required=False` (sem `default=`), o que já basta
+         *     para o DRF pular um campo ausente do corpo (`SkipField`) e não incluí-lo
+         *     em `validated_data`. `partial=True` na view NÃO é a causa da
+         *     opcionalidade aqui — com todos os campos `required=False`, o
+         *     comportamento de ausência é idêntico com ou sem `partial=True`; um campo
+         *     NOVO que nascesse sem `required=False` continuaria obrigatório mesmo
+         *     passando `partial=True`. Sem `validate()` — nenhum dos três campos
+         *     depende do estado atual do item (diferente de `TaskUpdateSerializer`, que
+         *     valida `scheduled_date` contra o Monthly Log na VIEW, não aqui).
+         */
+        PatchedBrainDumpItemUpdate: {
+            title?: string;
+            description?: string | null;
+            targetLog?: (components["schemas"]["TargetLogEnum"] | components["schemas"]["NullEnum"]) | null;
+        };
         PatchedDoctorUpdate: {
             name?: string;
             specialty?: string | null;
@@ -2519,6 +2553,16 @@ export interface components {
             /** Format: date */
             date: string;
             isHoliday: boolean;
+        };
+        Signup: {
+            /** Format: email */
+            email: string;
+            password: string;
+            /** @default America/Sao_Paulo */
+            timezone: string;
+        };
+        SignupSuccessResponse: {
+            detail: string;
         };
         /**
          * @description * `scheduled` - Scheduled
@@ -2835,14 +2879,27 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Signup"];
+            };
+        };
         responses: {
-            /** @description No response body */
-            200: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["SignupSuccessResponse"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountsValidationErrorResponse"];
+                };
             };
         };
     };
@@ -2867,6 +2924,22 @@ export interface operations {
                     "application/json": components["schemas"]["TokenObtainPair"];
                 };
             };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountsValidationErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountsLoginFailedResponse"];
+                };
+            };
         };
     };
     accounts_token_refresh_create: {
@@ -2888,6 +2961,22 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TokenRefresh"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountsValidationErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountsTokenInvalidResponse"];
                 };
             };
         };
@@ -2970,6 +3059,31 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    brain_dump_items_partial_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PatchedBrainDumpItemUpdate"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrainDumpItem"];
+                };
             };
         };
     };

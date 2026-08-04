@@ -8,7 +8,7 @@ sessionStatus: 'Breakdown do MVP completo em 2026-06-22 (Épicos 1–11; entregu
 inputDocuments:
   - '_bmad-output/planning-artifacts/prds/prd-hmmb-bujo-2026-06-15/prd.md'
   - '_bmad-output/planning-artifacts/prds/prd-hmmb-bujo-2026-06-15/addendum.md'
-  - '_bmad-output/planning-artifacts/architecture.md'
+  - '_bmad-output/planning-artifacts/architecture/architecture-hmmb-bujo-2026-07-29/ARCHITECTURE-SPINE.md'
   - '_bmad-output/planning-artifacts/ux-designs/ux-hmmb-bujo-2026-07-17/EXPERIENCE.md'
   - '_bmad-output/planning-artifacts/ux-designs/ux-hmmb-bujo-2026-07-17/DESIGN.md'
   - '_bmad-output/planning-artifacts/sprint-change-proposal-2026-06-22.md'
@@ -327,7 +327,7 @@ _Requisitos acionáveis extraídos do EXPERIENCE.md (comportamento, fluxos, comp
 - **UX-DR17 (Arquitetura de Informação / Roteamento)** — mapa de superfícies (Hoje, Planner: Esta Semana/Este Mês/Futuro, Hábitos, Saúde: Métricas/Medicamentos, Gratidão, Brain Dump, Arquivo, Configurações + sub-seções); empilhamento de modal máximo 1 nível; Fluxo de Migração nunca navegado diretamente.
 - **UX-DR18 (Responsividade)** — breakpoints desktop ≥1024 / tablet 768–1023 / mobile <768; Weekly Log 7 colunas (desktop) → seletor de dia (tablet/mobile), sem scroll horizontal; Monthly Log lista vertical no mobile; detalhe de tarefa = bottom sheet no mobile; Migração full-screen no mobile.
 - **UX-DR19 (Primitivos de interação / teclado)** — atalhos globais `[` (sidebar), `N` (nova tarefa), `B` (Brain Dump), `Esc` (fechar modal/popover); drag-and-drop de reordenação só desktop; ciclo de status por clique; proibições explícitas (migração automática, drag mobile, modal aninhado, gamificação, sugestões de IA, scroll horizontal de navegação). **[Fronteira registrada — CC 2026-07-22]**: "sugestões de IA" proíbe IA como **primitivo de interação** (sugerir/preencher/automatizar captura e migração — atalhos em fluxos intencionalmente atritosos). **Não** proíbe análises sobre dados já preenchidos (collection Análises) nem transcrição sob confirmação humana obrigatória (Pressão Arterial foto+IA). Guardrail obrigatório nas stories dessas features: *a IA analisa e explica; nunca sugere, preenche ou automatiza captura/migração; transcrição só salva após confirmação explícita.* Consentimento: campo de journalling só vira contexto com `contexto_ia: on` (opt-in, default off); métrica selecionada em Modelo de Relatório ganha badge "dado lido por IA" no formulário de origem (cor + ícone/texto, conforme UX-DR20).
-- **UX-DR20 (Acessibilidade — WCAG 2.2 AA)** — cor nunca único indicador (sempre + ícone/texto); touch target ≥ 44px mobile; focus ring MUI preservado; tab order = ordem visual; `Esc` fecha modal/popover; anúncios `aria-live` (mudança de superfície, progresso de migração, status de tarefa, badge do Brain Dump); semântica HTML (`<nav>`, `<main>`, `role=dialog`/`aria-modal` com foco travado).
+- **UX-DR20 (Acessibilidade — WCAG 2.2 AA)** — cor nunca único indicador (sempre + ícone/texto); touch target ≥ 44px mobile; focus ring MUI preservado; tab order = ordem visual; `Esc` fecha modal/popover; anúncios `aria-live` (mudança de superfície, progresso de migração, status de tarefa, badge do Brain Dump); semântica HTML (`<nav>`, `<main>`, `role=dialog`/`aria-modal` com foco travado). **[EMENDA 2026-07-31 — ver `sprint-change-proposal-2026-07-31.md`]:** estes princípios seguem valendo como convenção de design herdada dos componentes compartilhados (grátis, já embutida), mas deixam de ser **verificação formal obrigatória** por story — ver `UX-DR30` item (6).
 
 **Sistema de design novo — migração 2026-07-17 (governa todo trabalho novo; CAP-3):**
 
@@ -340,7 +340,7 @@ _Requisitos acionáveis extraídos do EXPERIENCE.md (comportamento, fluxos, comp
 - **UX-DR27 (Pictogramas de domínio — Phosphor)** — `iconKey` estável de **catálogo fechado** pesquisável por nome (nunca componente React/SVG persistido); monocromático `currentColor`, weight regular, 18/20px; identifica o assunto, **nunca** estado/conclusão/severidade; mesmo `iconKey` em cadastro, Hoje, grids e histórico; `emoticon` existente preservado como fallback na migração; introdução do campo `iconKey` = mudança de contrato com **story própria**; fronteira: Phosphor = domínio, MUI = controles/ações, vocabulário de tarefas = estados.
 - **UX-DR28 (Alternador do Hoje — Onda 2b)** — Icon Button único terciário com `aria-pressed` alterna **Dia completo ↔ Foco nas tarefas**; mesma rota/data/dados/regras — muda só composição e nível de detalhe; preferência local (default Dia completo); totalizadores são resumos navegáveis (não KPIs) — acioná-los troca a lente, posiciona o módulo e transfere foco programático; módulos não implementados não geram cards vazios/placeholders; alternância não perde edição confirmada e preserva/confirma drafts.
 - **UX-DR29 (Access Surface — "Limiar do workspace", Onda 6)** — Login/Signup com formulário operacional em primeiro plano + silhueta abstrata da área autenticada (`surface-subtle`/`border`/opacidade reduzida; sem conteúdo real, sem interação, oculta de tecnologia assistiva); signup com confirmação de senha **local** (divergência impede envio, preserva valores, `"As senhas não coincidem."` associado ao campo e anunciado); não bloquear colar/gerenciador de senhas; só email/senha/timezone na requisição existente.
-- **UX-DR30 (Aceite UX por story + DoR da migração)** — toda story de implementação de UI: (1) rastreia SPEC CAP, FR/épico e padrão do spine; (2) inventaria e preserva ações/estados/atalhos/feedback da superfície real; (3) consome tokens/componentes do DESIGN.md novo sem valores estruturais locais injustificados; (4) demonstra wide/medium/compact por recomposição; (5) cobre loading/empty/error/offline/disabled/readonly-closed; (6) passa teclado/foco/screen reader/touch target/zoom-reflow/reduced motion/contraste; (7) preserva conteúdo em falha + otimismo/rollback da arquitetura; (8) preserva ciclos/status/linhagem/snapshots/alocação manual; (9) testes semânticos/interação + E2E representativo + regressão visual; (10) define ativação/rollback/remoção do legado por superfície. **DoR do migration-plan** aplica-se integralmente (superfície inventariada, fronteira legado/novo, paridade testável, nenhuma funcionalidade nascida só do handoff). Condições da Sally: (a) extração do manifest = contrato puro; (c) todo mockup inclui o estado "collection desligada/ausente".
+- **UX-DR30 (Aceite UX por story + DoR da migração)** — toda story de implementação de UI: (1) rastreia SPEC CAP, FR/épico e padrão do spine; (2) inventaria e preserva ações/estados/atalhos/feedback da superfície real; (3) consome tokens/componentes do DESIGN.md novo sem valores estruturais locais injustificados; (4) demonstra wide/medium/compact por recomposição; (5) cobre loading/empty/error/offline/disabled/readonly-closed; (6) mantém teclado/foco funcionais como comportamento herdado dos componentes compartilhados — **[EMENDA 2026-07-31]** descontinuada a verificação formal dedicada de screen reader/zoom-reflow/reduced motion/matriz axe-core por viewport (grupo de usuários fechado, sem necessidade confirmada de tecnologia assistiva; ver `sprint-change-proposal-2026-07-31.md`); touch target/contraste seguem garantidos pelos tokens do `DESIGN.md` (Accessibility Floor), sem gate de teste dedicado por story; (7) preserva conteúdo em falha + otimismo/rollback da arquitetura; (8) preserva ciclos/status/linhagem/snapshots/alocação manual; (9) testes semânticos/interação + E2E representativo + regressão visual; (10) define ativação/rollback/remoção do legado por superfície. **DoR do migration-plan** aplica-se integralmente (superfície inventariada, fronteira legado/novo, paridade testável, nenhuma funcionalidade nascida só do handoff). Condições da Sally: (a) extração do manifest = contrato puro; (c) todo mockup inclui o estado "collection desligada/ausente".
 - **UX-DR31 (Story x.0 de UX — gate de entrada de épico)** — todo épico novo com superfície de UI abre com story `x.0` de design: o rito **bmad-ux** (human-in-the-loop, nunca dev-story/automator) produz o mockup/spec da superfície com as features já decididas (M11–M23 conforme a onda) e promove o resultado a DESIGN/EXPERIENCE; **nenhuma story de implementação do épico começa antes da x.0 aprovada**; épicos sem UI (Tier 0/plataforma, 10.0 observabilidade) não ganham x.0; a spec da nova home é formalmente a x.0 **ampliada** da Onda 2b (pré-requisito dela).
 
 ### FR Coverage Map
@@ -2477,7 +2477,7 @@ Para que o tracker diário, a config e o histórico vivam na linguagem nova sem 
 **Dado que** o inventário do módulo legado,
 **Quando** as superfícies migram (tracker, config de hábitos/grupos, histórico por data, grid, gráfico de evolução com anotações),
 **Então** paridade completa de ações/estados/cálculos (completude ponderada, multiplicador por tipo de dia, snapshot imutável intocados — zero mudança de regra),
-**E** axe-core + estados obrigatórios passam; emoji atual permanece exibido como fallback.
+**E** estados obrigatórios passam; emoji atual permanece exibido como fallback.
 
 ### Story 16.2: Campo `icon_key` e catálogo Phosphor (mudança de contrato)
 
@@ -2520,7 +2520,7 @@ Para que o ritual matinal viva na linguagem nova (paridade FR-8.1–8.3; UX-DR21
 **Dado que** o inventário do módulo legado,
 **Quando** as superfícies migram (log diário com campos de ontem no topo, tabela, gráficos, dashboard de período),
 **Então** paridade completa (tipos de campo, inativos preservados, validação JSONB no service intocada),
-**E** axe-core + estados obrigatórios passam; gráficos com resumo textual/tabela equivalente.
+**E** estados obrigatórios passam; gráficos com resumo textual/tabela equivalente.
 
 ### Story 16.5: Refinos C3 — reordenar (#16) e editar métricas (#17)
 
@@ -2760,7 +2760,7 @@ Para que a superfície mais usada do produto viva na linguagem nova (paridade FR
 **Dado que** o inventário do Daily legado,
 **Quando** a superfície migra (Day Header, lista de tasks com a Task Row canônica, criação/edição/detalhe, subtarefas, ordenação manual, ciclo de estados),
 **Então** paridade completa de ações/estados/atalhos (`N` nova tarefa etc.),
-**E** axe-core + estados obrigatórios passam em wide/medium/compact.
+**E** estados obrigatórios passam em wide/medium/compact.
 
 **Dado que** a premissa blindada se encerra aqui,
 **Quando** o Daily novo assume,
@@ -2784,18 +2784,18 @@ Para que dependências externas fiquem visíveis onde eu trabalho (FR-4.15 UI; D
 **Quando** uma tarefa aguardando é migrada,
 **Então** o sucessor mantém o indicador (comportamento já garantido; verificado na UI).
 
-### Story 17.6: Passe de paridade e acessibilidade da Onda 2b
+### Story 17.6: Passe de paridade e performance da Onda 2b
 
 Como Hugo,
-Quero a Onda 2b fechada com paridade e acessibilidade comprovadas,
-Para que a home nova entre sem regressão no fluxo mais frequente do produto (UX-DR30; NFR-1/2).
+Quero a Onda 2b fechada com paridade funcional e performance comprovadas,
+Para que a home nova entre sem regressão no fluxo mais frequente do produto (NFR-1/2).
 
 **Critérios de Aceitação:**
 
 **Dado que** as checklists de paridade (Daily + entrada pós-login),
 **Quando** o passe roda,
 **Então** captura a um toque, migrações pendentes, prefetch/performance percebida (<2s) e todos os estados estão verificados,
-**E** axe-core + teclado + zoom/reflow passam; e2e representativo cobre login → dashboard → agir no card → Hoje → Daily.
+**E** e2e representativo cobre login → dashboard → agir no card → Hoje → Daily. **[EMENDA 2026-07-31]** verificação dedicada de acessibilidade (axe-core/teclado/zoom-reflow) descontinuada — ver `sprint-change-proposal-2026-07-31.md`; comportamento de teclado/foco dos componentes compartilhados permanece inalterado.
 
 ---
 
@@ -2827,7 +2827,7 @@ Para que preferências e cadastros vivam num só lugar coerente (UX-DR21/30; par
 **Dado que** as superfícies de configuração existentes (hábitos, métricas, medicamentos, journalling, timezone, preferências),
 **Quando** o índice novo entra,
 **Então** cada sub-superfície é alcançável e mantém paridade (as configs por módulo migradas nas ondas anteriores são linkadas, não duplicadas),
-**E** axe-core + estados passam.
+**E** estados passam.
 
 ### Story 18.2: Nome às categorias (#24)
 
@@ -2986,7 +2986,7 @@ Para que os logs do Canadá vivam no bujo (FR-14.2, FR-14.9).
 **Dado que** uma collection com schema,
 **Quando** a superfície de registros entra,
 **Então** lista com colunas derivadas do schema, criação/edição com inputs por tipo (incl. sub-registros em tabela aninhada), detalhe legível,
-**E** campos desativados ficam ocultos na criação e visíveis (readonly) no histórico dos registros antigos; axe-core + estados obrigatórios passam,
+**E** campos desativados ficam ocultos na criação e visíveis (readonly) no histórico dos registros antigos; estados obrigatórios passam,
 **E** o e2e representativo do épico cobre: criar collection → registrar → evoluir schema → desativar campo → desativar container (absorvido da ex-19.6).
 
 ---
@@ -3291,7 +3291,7 @@ Para que a collection funcione por inteiro mesmo sem chave de IA (FR-12.4; DIR-2
 **Dado que** o mockup da 22.0,
 **Quando** a superfície entra (entrada no manifest — DoD),
 **Então** formulário manual completo (par + pulso + braço/posição/momento + notas), histórico/lista com contexto e origem (`source`),
-**E** sem `ai_available`, a captura por foto aparece inativa com a tag "função de IA" (21.2) — o manual é pleno; axe-core + estados passam.
+**E** sem `ai_available`, a captura por foto aparece inativa com a tag "função de IA" (21.2) — o manual é pleno; estados passam.
 
 ### Story 22.4: Captura por foto + IA (human-in-the-loop obrigatório)
 

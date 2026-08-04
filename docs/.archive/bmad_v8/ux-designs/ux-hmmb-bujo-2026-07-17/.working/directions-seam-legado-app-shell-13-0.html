@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Story 13.0 — direções para o seam legado</title>
+  <style>
+    :root{
+      --canvas:#f5f2ea;--surface:#fbfaf6;--subtle:#eeebe2;--strong:#e3dfd5;
+      --ink:#25231f;--muted:#666159;--disabled:#969087;--border:#d6d1c7;
+      --border-strong:#aaa399;--primary:#315f5a;--primary-soft:#ddeae7;
+      --focus:#166c9c;--info:#315f72;--info-soft:#e2eaf0;
+    }
+    *{box-sizing:border-box}
+    html{background:#e4e0d7}
+    body{margin:0;color:var(--ink);font:14px/1.45 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+    button{font:inherit;color:inherit}
+    .board{max-width:1740px;margin:auto;padding:32px}
+    .intro{max-width:1040px;margin-bottom:24px}
+    .eyebrow{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--primary)}
+    h1{font-size:32px;line-height:1.15;letter-spacing:-.03em;margin:6px 0 8px}
+    .intro p{font-size:15px;color:var(--muted);margin:0}
+    .guardrail{margin:18px 0 28px;padding:14px 16px;border-left:3px solid var(--primary);background:var(--surface);max-width:1180px}
+    .guardrail b{display:block;margin-bottom:3px}
+    .options{display:grid;gap:32px}
+    .option{background:#ebe7de;border:1px solid var(--border-strong);border-radius:8px;padding:18px}
+    .option-head{display:grid;grid-template-columns:auto minmax(0,1fr) minmax(280px,520px);gap:14px;align-items:start;margin-bottom:14px}
+    .letter{width:38px;height:38px;display:grid;place-items:center;border:1px solid var(--ink);border-radius:6px;background:var(--surface);font-size:18px;font-weight:750}
+    .option h2{font-size:19px;margin:0 0 2px}
+    .option-head p{margin:0;color:var(--muted)}
+    .tension{border-left:2px solid var(--border-strong);padding-left:12px;font-size:12px;color:var(--muted)}
+    .frames{display:grid;grid-template-columns:minmax(690px,1.8fr) minmax(370px,1fr);gap:14px;align-items:start}
+    .frame{background:var(--canvas);border:1px solid var(--border-strong);border-radius:8px;overflow:hidden}
+    .frame-label{padding:7px 10px;background:#dedad1;border-bottom:1px solid var(--border);font-size:11px;font-weight:700;color:var(--muted);display:flex;justify-content:space-between}
+    .app{height:470px;display:grid;grid-template-columns:240px minmax(0,1fr)}
+    .app.rail{grid-template-columns:64px minmax(0,1fr)}
+    .side{background:var(--surface);border-right:1px solid var(--border);padding:8px;display:flex;flex-direction:column;min-width:0}
+    .brand{height:42px;display:flex;align-items:center;gap:9px;padding:0 8px;font-weight:750}
+    .brandmark{width:30px;height:30px;border:2px solid var(--ink);border-radius:6px;display:grid;place-items:center}
+    .nav{min-height:38px;border:0;border-left:3px solid transparent;border-radius:4px;background:transparent;display:flex;align-items:center;gap:9px;padding:0 9px;text-align:left;color:var(--muted)}
+    .nav.active{border-left-color:var(--primary);background:var(--primary-soft);color:var(--ink);font-weight:700}
+    .nav svg,.capture svg,.fab svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;flex:none}
+    .nav.active svg{fill:currentColor;stroke-width:1.2}
+    .spacer{flex:1}
+    .capture{min-height:44px;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);display:flex;align-items:center;gap:9px;padding:0 10px;font-weight:650}
+    .rail .brand{justify-content:center;padding:0}.rail .brand span:last-child,.rail .nav span,.rail .capture span{display:none}
+    .rail .nav,.rail .capture{justify-content:center;padding:0}.rail .nav{min-height:44px}
+    .workspace{min-width:0;padding:0 24px 24px;overflow:hidden}
+    .topbar{height:56px;margin:0 -24px 18px;padding:0 24px;border-bottom:1px solid var(--border);background:var(--surface);display:flex;align-items:center;justify-content:space-between}
+    .topbar b{font-size:16px}.topbar span{font-size:12px;color:var(--muted)}
+    .legacy-content{min-width:0}
+    .legacy-head{display:flex;justify-content:space-between;gap:12px;align-items:start;margin-bottom:12px}
+    .legacy-head h3{font-size:22px;margin:0 0 2px}.legacy-head p{margin:0;color:var(--muted);font-size:12px}
+    .old-action{min-height:36px;border:1px solid var(--border-strong);border-radius:4px;background:var(--surface);padding:0 11px;font-weight:650}
+    .old-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(200px,1fr);gap:10px}
+    .old-panel{border:1px solid var(--border);border-radius:6px;background:var(--surface);padding:12px;min-width:0}
+    .old-panel h4{margin:0 0 8px;font-size:14px}
+    .row{min-height:43px;border-top:1px solid var(--border);display:grid;grid-template-columns:22px minmax(0,1fr) auto;gap:7px;align-items:center}
+    .row:first-of-type{border-top:0}.row small{display:block;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .metric{display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid var(--border)}.metric:first-of-type{border-top:0}
+    .seam-banner{display:flex;gap:10px;align-items:start;padding:10px 12px;margin-bottom:12px;background:var(--info-soft);border-left:3px solid var(--info)}
+    .seam-banner svg,.seam-label svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;flex:none;margin-top:1px}
+    .seam-banner b{display:block;font-size:13px}.seam-banner span{font-size:12px;color:var(--muted)}
+    .top-ident{display:flex;align-items:center;gap:8px}.top-ident .chip{border:1px solid var(--border-strong);border-radius:4px;padding:3px 7px;color:var(--muted);font-size:11px;font-weight:700}
+    .outlined{border:1px solid var(--border-strong);border-radius:6px;padding:12px;position:relative}
+    .seam-label{display:flex;align-items:center;gap:7px;margin:-25px 0 11px 8px;width:max-content;max-width:calc(100% - 16px);padding:3px 7px;background:var(--canvas);font-size:11px;font-weight:700;color:var(--muted)}
+    .mobile-wrap{padding:12px;display:flex;justify-content:center}
+    .phone{width:350px;height:630px;border:1px solid var(--border-strong);border-radius:26px;overflow:hidden;background:var(--canvas);position:relative}
+    .status{height:24px;padding:5px 16px;font-size:10px;display:flex;justify-content:space-between}
+    .m-top{height:56px;border-bottom:1px solid var(--border);background:var(--surface);display:flex;align-items:center;justify-content:space-between;padding:0 14px}
+    .m-top b{font-size:15px}.m-main{height:488px;overflow:hidden;padding:14px 14px 96px}
+    .m-main .seam-banner{margin:-2px 0 10px}.m-main .legacy-head h3{font-size:19px}
+    .m-main .old-grid{grid-template-columns:1fr}.m-main .old-panel.secondary{display:none}
+    .m-main .outlined{padding:11px}.m-main .seam-label{white-space:normal}
+    .bottom{height:62px;position:absolute;left:0;right:0;bottom:0;border-top:1px solid var(--border);background:var(--surface);display:grid;grid-template-columns:repeat(4,1fr);place-items:center;font-size:10px;color:var(--muted)}
+    .bottom b{color:var(--primary)}.fab{position:absolute;right:16px;bottom:76px;width:52px;height:52px;border:0;border-radius:50%;background:var(--primary);color:white;display:grid;place-items:center}
+    .fab svg{width:22px;height:22px}
+    .focus{outline:2px solid var(--focus);outline-offset:2px}
+    .a .topbar,.c .topbar{margin-bottom:14px}
+    .notes{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:26px}
+    .note{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:13px}
+    .note h3{font-size:14px;margin:0 0 5px}.note p{font-size:12px;color:var(--muted);margin:0}
+    @media(max-width:1180px){.board{padding:18px}.frames{grid-template-columns:1fr}.wideframe{overflow:auto}.wideframe .app{min-width:900px}.notes{grid-template-columns:1fr}}
+    @media(max-width:720px){.board{padding:12px}.option{padding:12px}.option-head{grid-template-columns:auto 1fr}.tension{grid-column:1/-1}.intro h1{font-size:25px}.wideframe{display:none}}
+  </style>
+</head>
+<body>
+<main class="board">
+  <header class="intro">
+    <div class="eyebrow">Story 13.0 · decisão human-in-the-loop</div>
+    <h1>Como mostrar uma superfície anterior dentro do App Shell novo?</h1>
+    <p>As três opções preservam a mesma rota, o mesmo conteúdo funcional e o mesmo shell. Só varia o sinal visual do limite temporário entre a moldura nova e a superfície ainda não migrada.</p>
+  </header>
+  <aside class="guardrail"><b>Contrato comum às três opções</b>Não há seletor “Legado/Moderno”. A superfície ocupa toda a largura disponível do workspace, continua funcional e é descrita sem julgamento. DESIGN.md e EXPERIENCE.md vencem esta prancha em qualquer conflito.</aside>
+
+  <section class="options" aria-label="Alternativas para o seam legado">
+    <article class="option a">
+      <header class="option-head"><span class="letter">A</span><div><h2>Aviso editorial no início do conteúdo</h2><p>Uma nota curta abre a superfície e explica a coexistência antes do conteúdo reconhecível.</p></div><div class="tension"><b>Tensão:</b> é a alternativa mais explícita e fácil de encontrar, mas consome altura e pode parecer repetitiva em visitas frequentes.</div></header>
+      <div class="frames">
+        <div class="frame wideframe"><div class="frame-label"><span>Wide · sidebar 240 px</span><span>workspace sem restrição adicional</span></div><div class="app">
+          <nav class="side" aria-label="Navegação principal"><div class="brand"><span class="brandmark">B</span><span>HMMB BuJo</span></div><button class="nav"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4m8-4v4M4 10h16"/></svg><span>Hoje</span></button><button class="nav active" aria-current="page"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4m8-4v4M4 10h16"/></svg><span>Esta Semana</span></button><button class="nav"><svg viewBox="0 0 24 24"><path d="M5 7h14v12H5zM8 4v5m8-5v5"/></svg><span>Este Mês</span></button><button class="nav"><svg viewBox="0 0 24 24"><path d="M5 4h14v16H5zM8 8h8m-8 4h6"/></svg><span>Arquivo</span></button><span class="spacer"></span><button class="capture"><svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4Zm9-13 4 4"/></svg><span>Abrir captura rápida</span></button></nav>
+          <section class="workspace"><header class="topbar"><b>Esta Semana</b><span>Semana 30 · 20–26 de julho</span></header><div class="seam-banner" role="note"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10h.01"/></svg><div><b>Esta área continua com a experiência anterior</b><span>Ela permanece disponível durante a atualização gradual da plataforma.</span></div></div><div class="legacy-content"><div class="legacy-head"><div><h3>Semana 30</h3><p>20 a 26 de julho · 8 tarefas</p></div><button class="old-action focus">+ Nova tarefa</button></div><div class="old-grid"><section class="old-panel"><h4>Tarefas da semana</h4><div class="row"><span>○</span><div><b>Revisar cronograma do projeto</b><small>Segunda-feira · Profissional</small></div><span>1</span></div><div class="row"><span>✓</span><div><b>Separar documentos</b><small>Terça-feira · Pessoal</small></div><span>2</span></div><div class="row"><span>→</span><div><b>Agendar retorno</b><small>Sem dia definido</small></div><span>3</span></div></section><aside class="old-panel"><h4>Resumo</h4><div class="metric"><span>Pendentes</span><b>5</b></div><div class="metric"><span>Concluídas</span><b>2</b></div><div class="metric"><span>Migradas</span><b>1</b></div></aside></div></div></section>
+        </div></div>
+        <div class="frame"><div class="frame-label"><span>Mobile · 320–767 px</span><span>aviso recomposto</span></div><div class="mobile-wrap"><div class="phone"><div class="status"><span>09:42</span><span>● ●</span></div><header class="m-top"><b>Esta Semana</b><span>20–26 jul.</span></header><main class="m-main"><div class="seam-banner" role="note"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10h.01"/></svg><div><b>Experiência anterior</b><span>Disponível durante a atualização da plataforma.</span></div></div><div class="legacy-head"><div><h3>Semana 30</h3><p>8 tarefas</p></div><button class="old-action focus">+ Nova</button></div><section class="old-panel"><h4>Tarefas da semana</h4><div class="row"><span>○</span><div><b>Revisar cronograma</b><small>Segunda-feira</small></div><span>1</span></div><div class="row"><span>✓</span><div><b>Separar documentos</b><small>Terça-feira</small></div><span>2</span></div></section></main><button class="fab" aria-label="Abrir captura rápida"><svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4Zm9-13 4 4"/></svg></button><nav class="bottom" aria-label="Navegação mobile"><b>Hoje</b><span>Semana</span><span>Arquivo</span><span>Menu</span></nav></div></div></div>
+      </div>
+    </article>
+
+    <article class="option b">
+      <header class="option-head"><span class="letter">B</span><div><h2>Identificação discreta na topbar</h2><p>O contexto transitório aparece junto ao nome da superfície; o conteúdo começa sem uma faixa adicional.</p></div><div class="tension"><b>Tensão:</b> preserva mais área útil e reduz repetição, mas o sinal pode passar despercebido quando a atenção já está no conteúdo.</div></header>
+      <div class="frames">
+        <div class="frame wideframe"><div class="frame-label"><span>Tablet/medium · rail 64 px</span><span>foco no primeiro controle interno</span></div><div class="app rail">
+          <nav class="side rail" aria-label="Navegação principal"><div class="brand"><span class="brandmark">B</span></div><button class="nav"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4m8-4v4M4 10h16"/></svg><span>Hoje</span></button><button class="nav active" aria-current="page"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4m8-4v4M4 10h16"/></svg><span>Esta Semana</span></button><button class="nav"><svg viewBox="0 0 24 24"><path d="M5 4h14v16H5zM8 8h8m-8 4h6"/></svg><span>Arquivo</span></button><span class="spacer"></span><button class="capture"><svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4Zm9-13 4 4"/></svg><span>Abrir captura rápida</span></button></nav>
+          <section class="workspace"><header class="topbar"><div class="top-ident"><b>Esta Semana</b><span class="chip">Experiência anterior</span></div><span>Semana 30 · 20–26 de julho</span></header><div class="legacy-content"><div class="legacy-head"><div><h3>Semana 30</h3><p>20 a 26 de julho · 8 tarefas</p></div><button class="old-action focus">+ Nova tarefa</button></div><div class="old-grid"><section class="old-panel"><h4>Tarefas da semana</h4><div class="row"><span>○</span><div><b>Revisar cronograma do projeto</b><small>Segunda-feira · Profissional</small></div><span>1</span></div><div class="row"><span>✓</span><div><b>Separar documentos</b><small>Terça-feira · Pessoal</small></div><span>2</span></div><div class="row"><span>→</span><div><b>Agendar retorno</b><small>Sem dia definido</small></div><span>3</span></div></section><aside class="old-panel"><h4>Resumo</h4><div class="metric"><span>Pendentes</span><b>5</b></div><div class="metric"><span>Concluídas</span><b>2</b></div><div class="metric"><span>Migradas</span><b>1</b></div></aside></div></div></section>
+        </div></div>
+        <div class="frame"><div class="frame-label"><span>Mobile · 320–767 px</span><span>identificação em segunda linha</span></div><div class="mobile-wrap"><div class="phone"><div class="status"><span>09:42</span><span>● ●</span></div><header class="m-top"><div><b>Esta Semana</b><br><span style="font-size:11px;color:var(--muted)">Experiência anterior</span></div><span>20–26 jul.</span></header><main class="m-main"><div class="legacy-head"><div><h3>Semana 30</h3><p>8 tarefas</p></div><button class="old-action focus">+ Nova</button></div><section class="old-panel"><h4>Tarefas da semana</h4><div class="row"><span>○</span><div><b>Revisar cronograma</b><small>Segunda-feira</small></div><span>1</span></div><div class="row"><span>✓</span><div><b>Separar documentos</b><small>Terça-feira</small></div><span>2</span></div></section></main><button class="fab" aria-label="Abrir captura rápida"><svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4Zm9-13 4 4"/></svg></button><nav class="bottom" aria-label="Navegação mobile"><b>Hoje</b><span>Semana</span><span>Arquivo</span><span>Menu</span></nav></div></div></div>
+      </div>
+    </article>
+
+    <article class="option c">
+      <header class="option-head"><span class="letter">C</span><div><h2>Contorno com legenda de contexto</h2><p>Uma borda neutra envolve somente a superfície anterior e nomeia o limite sem inserir aviso no fluxo.</p></div><div class="tension"><b>Tensão:</b> torna o limite espacial muito claro, mas acrescenta uma moldura à página e precisa evitar leitura de “card” decorativo.</div></header>
+      <div class="frames">
+        <div class="frame wideframe"><div class="frame-label"><span>Wide · sidebar 240 px</span><span>contorno acompanha o workspace</span></div><div class="app">
+          <nav class="side" aria-label="Navegação principal"><div class="brand"><span class="brandmark">B</span><span>HMMB BuJo</span></div><button class="nav"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4m8-4v4M4 10h16"/></svg><span>Hoje</span></button><button class="nav active" aria-current="page"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4m8-4v4M4 10h16"/></svg><span>Esta Semana</span></button><button class="nav"><svg viewBox="0 0 24 24"><path d="M5 7h14v12H5zM8 4v5m8-5v5"/></svg><span>Este Mês</span></button><button class="nav"><svg viewBox="0 0 24 24"><path d="M5 4h14v16H5zM8 8h8m-8 4h6"/></svg><span>Arquivo</span></button><span class="spacer"></span><button class="capture"><svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4Zm9-13 4 4"/></svg><span>Abrir captura rápida</span></button></nav>
+          <section class="workspace"><header class="topbar"><b>Esta Semana</b><span>Semana 30 · 20–26 de julho</span></header><div class="outlined"><div class="seam-label"><svg viewBox="0 0 24 24"><path d="M5 5h14v14H5zM9 5v14"/></svg><span>Superfície na experiência anterior · disponível durante a atualização</span></div><div class="legacy-content"><div class="legacy-head"><div><h3>Semana 30</h3><p>20 a 26 de julho · 8 tarefas</p></div><button class="old-action focus">+ Nova tarefa</button></div><div class="old-grid"><section class="old-panel"><h4>Tarefas da semana</h4><div class="row"><span>○</span><div><b>Revisar cronograma do projeto</b><small>Segunda-feira · Profissional</small></div><span>1</span></div><div class="row"><span>✓</span><div><b>Separar documentos</b><small>Terça-feira · Pessoal</small></div><span>2</span></div><div class="row"><span>→</span><div><b>Agendar retorno</b><small>Sem dia definido</small></div><span>3</span></div></section><aside class="old-panel"><h4>Resumo</h4><div class="metric"><span>Pendentes</span><b>5</b></div><div class="metric"><span>Concluídas</span><b>2</b></div><div class="metric"><span>Migradas</span><b>1</b></div></aside></div></div></div></section>
+        </div></div>
+        <div class="frame"><div class="frame-label"><span>Mobile · 320–767 px</span><span>contorno sem scroll horizontal</span></div><div class="mobile-wrap"><div class="phone"><div class="status"><span>09:42</span><span>● ●</span></div><header class="m-top"><b>Esta Semana</b><span>20–26 jul.</span></header><main class="m-main"><div class="outlined"><div class="seam-label"><svg viewBox="0 0 24 24"><path d="M5 5h14v14H5zM9 5v14"/></svg><span>Experiência anterior</span></div><div class="legacy-head"><div><h3>Semana 30</h3><p>8 tarefas</p></div><button class="old-action focus">+ Nova</button></div><section class="old-panel"><h4>Tarefas da semana</h4><div class="row"><span>○</span><div><b>Revisar cronograma</b><small>Segunda-feira</small></div><span>1</span></div><div class="row"><span>✓</span><div><b>Separar documentos</b><small>Terça-feira</small></div><span>2</span></div></section></div></main><button class="fab" aria-label="Abrir captura rápida"><svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4Zm9-13 4 4"/></svg></button><nav class="bottom" aria-label="Navegação mobile"><b>Hoje</b><span>Semana</span><span>Arquivo</span><span>Menu</span></nav></div></div></div>
+      </div>
+    </article>
+  </section>
+
+  <section class="notes" aria-label="Critérios comuns">
+    <article class="note"><h3>Foco e semântica</h3><p>O seam é contexto, não controle. A ordem de foco segue navegação → topbar → primeiro controle da superfície; o exemplo mostra foco visível em “+ Nova tarefa”.</p></article>
+    <article class="note"><h3>Reflow</h3><p>Em 320 CSS px, cabeçalho e conteúdo recompõem em uma coluna. A moldura não cria largura mínima nem scroll horizontal; o FAB permanece acima da bottom nav.</p></article>
+    <article class="note"><h3>Transitoriedade</h3><p>As strings dizem “experiência anterior” e “durante a atualização”. Não prometem data, não depreciam a superfície e não sugerem que a migração já terminou.</p></article>
+  </section>
+</main>
+</body>
+</html>

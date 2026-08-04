@@ -1,53 +1,44 @@
 installation:
-  version: 6.10.1-next.20
-  installDate: 2026-07-27T15:07:40.770Z
-  lastUpdated: 2026-07-27T15:07:40.770Z
+  version: 6.10.1-next.32
+  installDate: 2026-07-29T19:03:07.911Z
+  lastUpdated: 2026-07-29T19:03:07.911Z
 modules:
   - name: core
-    version: 6.10.1-next.20
-    installDate: 2026-07-27T15:07:40.494Z
-    lastUpdated: 2026-07-27T15:07:40.764Z
+    version: 6.10.1-next.32
+    installDate: 2026-07-29T19:03:07.712Z
+    lastUpdated: 2026-07-29T19:03:07.907Z
     source: built-in
     npmPackage: null
     repoUrl: null
   - name: bmm
-    version: 6.10.1-next.20
-    installDate: 2026-07-27T15:07:40.452Z
-    lastUpdated: 2026-07-27T15:07:40.764Z
+    version: 6.10.1-next.32
+    installDate: 2026-07-29T19:03:07.679Z
+    lastUpdated: 2026-07-29T19:03:07.908Z
     source: built-in
     npmPackage: null
     repoUrl: null
   - name: bmad-loop
     version: main
-    installDate: 2026-07-27T15:07:40.501Z
-    lastUpdated: 2026-07-27T15:07:40.766Z
+    installDate: 2026-07-29T19:03:07.718Z
+    lastUpdated: 2026-07-29T19:03:07.909Z
     source: external
     npmPackage: null
     repoUrl: https://github.com/bmad-code-org/bmad-loop
     channel: next
-    sha: fb9aafaa35573ffdd7285b329aa0d7b51c03fc0e
+    sha: 5c86f98c7b13ce55947a2bd59d5c8d7861c57d9c
   - name: bmb
     version: main
-    installDate: 2026-07-27T15:07:40.541Z
-    lastUpdated: 2026-07-27T15:07:40.768Z
+    installDate: 2026-07-29T19:03:07.753Z
+    lastUpdated: 2026-07-29T19:03:07.910Z
     source: external
     npmPackage: bmad-builder
     repoUrl: https://github.com/bmad-code-org/bmad-builder
     channel: next
     sha: e6935f2776c34ffd9b18f4ef1e334584ef10a50f
-  - name: cis
-    version: main
-    installDate: 2026-07-27T15:07:40.552Z
-    lastUpdated: 2026-07-27T15:07:40.769Z
-    source: external
-    npmPackage: bmad-creative-intelligence-suite
-    repoUrl: https://github.com/bmad-code-org/bmad-module-creative-intelligence-suite
-    channel: next
-    sha: 07a8dd03d196a762f21c241d985293fe5b0f90e7
   - name: wds
     version: main
-    installDate: 2026-07-27T15:07:40.718Z
-    lastUpdated: 2026-07-27T15:07:40.770Z
+    installDate: 2026-07-29T19:03:07.874Z
+    lastUpdated: 2026-07-29T19:03:07.911Z
     source: external
     npmPackage: bmad-wds
     repoUrl: https://github.com/bmad-code-org/bmad-method-wds-expansion

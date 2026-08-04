@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BuJo Digital — Daily Dashboard Wireframe</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Architects+Daughter&display=swap" rel="stylesheet">
+<style>
+  @font-face { font-family:'Sora'; src:url('fonts/Sora-Regular.ttf') format('truetype'); font-weight:400; font-display:swap; }
+  @font-face { font-family:'Sora'; src:url('fonts/Sora-Medium.ttf') format('truetype'); font-weight:500; font-display:swap; }
+  @font-face { font-family:'Sora'; src:url('fonts/Sora-SemiBold.ttf') format('truetype'); font-weight:600; font-display:swap; }
+  @font-face { font-family:'Sora'; src:url('fonts/Sora-Bold.ttf') format('truetype'); font-weight:700; font-display:swap; }
+
+  :root{
+    --paper:#eceae4;
+    --box:#ffffff;
+    --ink:#2c2a26;
+    --ink-soft:#6f6c64;
+    --ink-faint:#a6a299;
+    --line:#9b978d;
+    --line-soft:#cbc8c0;
+    --fill:#dedbd3;        /* placeholder bars */
+    --fill-2:#e8e6df;
+    --pink:#e0559b;
+    --purple:#8b5cf6;        /* reserved for Monday migration-ritual accent */
+    --red:#d6453c;
+    --orange:#e07b1a;
+    --yellow:#dca200;
+    --green:#3aa861;
+    --pin:#2f5fa6;         /* annotation ink */
+    --pin-bg:#eaf0fa;
+    --sketch:'Architects Daughter', cursive;
+    --ui:'Sora', system-ui, sans-serif;
+    --r:10px;
+  }
+
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      repeating-linear-gradient(0deg, transparent, transparent 27px, rgba(155,151,141,.07) 27px, rgba(155,151,141,.07) 28px),
+      var(--paper);
+    color:var(--ink);
+    font-family:var(--ui);
+    -webkit-font-smoothing:antialiased;
+  }
+
+  /* ============ TOP CONTROL BAR ============ */
+  .toolbar{
+    position:sticky; top:0; z-index:50;
+    display:flex; align-items:center; gap:18px;
+    padding:11px 26px;
+    background:rgba(236,234,228,.92);
+    backdrop-filter:blur(6px);
+    border-bottom:1.5px solid var(--line);
+  }
+  .toolbar .brand{ display:flex; align-items:baseline; gap:10px; }
+  .toolbar .brand b{ font-weight:700; font-size:15px; letter-spacing:.02em; }
+  .toolbar .brand span{ font-family:var(--sketch); color:var(--ink-soft); font-size:15px; }
+  .toolbar .spacer{ flex:1; }
+  .tabs{ display:flex; gap:6px; background:#dedbd3; padding:4px; border-radius:9px; border:1.5px solid var(--line-soft); }
+  .tab{
+    font-family:var(--sketch); font-size:15px; color:var(--ink-soft);
+    padding:5px 14px; border-radius:6px; cursor:pointer; border:none; background:transparent; white-space:nowrap;
+  }
+  .tab.active{ background:var(--box); color:var(--ink); box-shadow:0 1px 2px rgba(0,0,0,.12); }
+  .toggle{
+    display:flex; align-items:center; gap:8px; cursor:pointer; user-select:none;
+    font-family:var(--sketch); font-size:15px; color:var(--ink);
+  }
+  .toggle .sw{ width:38px; height:21px; border-radius:11px; background:var(--line); position:relative; transition:.18s; border:1.5px solid var(--line); }
+  .toggle .sw::after{ content:''; position:absolute; top:1.5px; left:1.5px; width:15px; height:15px; border-radius:50%; background:var(--box); transition:.18s; }
+  .toggle.on .sw{ background:var(--pin); }
+  .toggle.on .sw::after{ left:19px; }
+  .toggle.purple.on .sw{ background:var(--purple); border-color:var(--purple); }
+
+  /* ============ APP FRAME ============ */
+  .stage{ padding:30px 30px 70px; display:flex; justify-content:center; }
+  .app{
+    width:1320px; max-width:100%;
+    display:grid; grid-template-columns:78px 1fr;
+    background:var(--paper);
+    border:2.25px solid var(--ink);
+    border-radius:16px;
+    box-shadow:7px 9px 0 rgba(44,42,38,.13);
+    overflow:hidden;
+  }
+
+  /* ---- left nav rail ---- */
+  .rail{
+    background:var(--fill-2);
+    border-right:2px solid var(--ink);
+    display:flex; flex-direction:column; align-items:center; gap:6px;
+    padding:16px 8px;
+  }
+  .rail .logo{
+    width:42px; height:42px; border:2px solid var(--ink); border-radius:11px;
+    display:grid; place-items:center; font-weight:700; font-size:18px; margin-bottom:12px; background:var(--box);
+  }
+  .navitem{
+    width:54px; padding:9px 4px 7px; border-radius:10px; border:1.5px solid transparent;
+    display:flex; flex-direction:column; align-items:center; gap:5px; cursor:pointer;
+  }
+  .navitem .ic{ width:24px; height:24px; border:1.75px solid var(--ink-soft); border-radius:6px; display:grid; place-items:center; }
+  .navitem .ic svg{ width:15px; height:15px; stroke:var(--ink-soft); fill:none; stroke-width:1.8; }
+  .navitem small{ font-size:9.5px; color:var(--ink-soft); letter-spacing:.01em; font-weight:500; }
+  .navitem.active{ background:var(--box); border-color:var(--ink); }
+  .navitem.active .ic{ border-color:var(--ink); background:var(--ink); }
+  .navitem.active .ic svg{ stroke:var(--box); }
+  .navitem.active small{ color:var(--ink); font-weight:600; }
+
+  /* ---- main scroll surface ---- */
+  .main{ padding:20px 22px 26px; min-width:0; }
+
+  /* ============ REGION / WIREFRAME BOX ============ */
+  .region{ position:relative; background:var(--box); border:2px solid var(--ink); border-radius:var(--r); }
+  .region.dashed{ border-style:dashed; }
+  .rtag{
+    position:absolute; top:-11px; left:14px; z-index:3;
+    font-family:var(--sketch); font-size:12.5px; line-height:1; letter-spacing:.04em;
+    background:var(--paper); color:var(--ink-soft); padding:1px 8px; text-transform:uppercase;
+  }
+  .pin{
+    position:absolute; top:-13px; right:-13px; z-index:6;
+    width:27px; height:27px; border-radius:50%;
+    background:var(--pin); color:#fff; border:2px solid var(--box);
+    display:none; place-items:center; font-family:var(--sketch); font-size:14px; font-weight:400;
+    box-shadow:0 2px 5px rgba(47,95,166,.4);
+  }
+  body.annotated .pin{ display:grid; }
+
+  /* ---- generic placeholders ---- */
+  .bar{ height:9px; border-radius:5px; background:var(--fill); }
+  .bar.dk{ background:var(--line-soft); }
+  .lbl-up{ font-family:var(--sketch); font-size:13px; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.06em; }
+
+  /* ============ HEADER REGION ============ */
+  .hdr{ display:flex; align-items:center; gap:20px; padding:16px 20px; margin-bottom:16px; }
+  .daybox{ display:flex; align-items:baseline; gap:14px; }
+  .daybox .dow{ font-size:30px; font-weight:700; letter-spacing:-.01em; }
+  .daybox .full{ font-size:15px; color:var(--ink-soft); }
+  .liturg{ font-family:var(--sketch); font-size:13.5px; color:var(--ink-faint); border-left:1.5px solid var(--line-soft); padding-left:14px; }
+  .hdr .spacer{ flex:1; }
+  .daynav{ display:flex; align-items:center; gap:6px; }
+  .ghost{
+    border:1.75px solid var(--line); background:var(--box); border-radius:8px;
+    padding:7px 12px; font-family:var(--ui); font-size:13px; color:var(--ink); cursor:pointer; font-weight:500;
+    display:inline-flex; align-items:center; gap:7px;
+  }
+  .ghost.icon{ padding:7px 9px; }
+  .ghost svg{ width:15px; height:15px; stroke:var(--ink); fill:none; stroke-width:1.9; }
+  .ghost.cta{ background:var(--ink); color:var(--box); border-color:var(--ink); }
+  .ghost.cta svg{ stroke:var(--box); }
+
+  /* ============ SCORE WIDGET ============ */
+  .scorewrap{ padding:18px 18px 16px; }
+  .score-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+  .score-head .ttl{ font-weight:600; font-size:15px; }
+  .avg{ display:flex; align-items:center; gap:9px; font-size:13px; color:var(--ink-soft); }
+  .avg b{ font-family:var(--sketch); font-size:21px; color:var(--ink); }
+  .periods{ display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+  .periods.col{ grid-template-columns:1fr; }
+  .period{
+    border:1.75px solid var(--line); border-radius:10px; padding:13px 13px 14px; background:var(--fill-2);
+    display:flex; flex-direction:column; gap:10px;
+  }
+  .period.now{ border:2.25px solid var(--ink); background:var(--box); box-shadow:0 0 0 3px rgba(44,42,38,.07); }
+  .period .ptop{ display:flex; align-items:center; justify-content:space-between; }
+  .period .pname{ font-weight:600; font-size:13.5px; display:flex; align-items:center; gap:7px; }
+  .period .pname .dotnow{ width:8px; height:8px; border-radius:50%; background:var(--green); }
+  .period .now-tag{ font-family:var(--sketch); font-size:11px; color:var(--green); }
+  .scorerow{ display:flex; align-items:center; gap:9px; }
+  .scorebox{
+    width:54px; height:46px; border:2px solid var(--ink); border-radius:8px; background:var(--box);
+    display:grid; place-items:center; font-weight:700; font-size:24px;
+  }
+  .scorebox.empty{ border:2px dashed var(--line); color:var(--ink-faint); font-weight:400; font-size:13px; font-family:var(--sketch); }
+  .scoremeta{ display:flex; flex-direction:column; gap:5px; font-size:11.5px; color:var(--ink-soft); }
+  .slider{ height:6px; width:96px; border-radius:4px; background:linear-gradient(90deg,var(--ink) 70%, var(--line-soft) 70%); position:relative; }
+  .slider.mid{ background:linear-gradient(90deg,var(--ink) 50%, var(--line-soft) 50%); }
+  .slider::after{ content:''; position:absolute; top:50%; transform:translateY(-50%); width:13px; height:13px; border-radius:50%; background:var(--box); border:2px solid var(--ink); }
+  .slider::after{ left:64%; } .slider.mid::after{ left:46%; }
+  .na-toggle{ display:inline-flex; align-items:center; gap:6px; font-size:11px; color:var(--ink-soft); font-family:var(--sketch); }
+  .na-pill{ border:1.5px solid var(--line); border-radius:20px; padding:2px 9px; font-size:11px; font-family:var(--ui); }
+  .na-pill.on{ background:var(--ink); color:var(--box); border-color:var(--ink); }
+
+  /* ============ TASK LIST ============ */
+  .tasks{ padding:16px 18px 14px; }
+  .tasks-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
+  .tasks-head .ttl{ font-weight:600; font-size:16px; }
+  .tasks-head .meta{ font-size:12.5px; color:var(--ink-soft); }
+  .ritual{
+    display:flex; align-items:center; gap:11px; margin:10px 0 14px;
+    border:1.75px dashed var(--purple); border-radius:10px; padding:11px 13px; background:#f6f1fe;
+  }
+  .ritual .rbadge{ font-family:var(--sketch); font-size:12px; color:var(--purple); border:1.5px solid var(--purple); border-radius:6px; padding:2px 8px; white-space:nowrap; }
+  .ritual .rtxt{ font-size:12.5px; color:#5b4a86; }
+  .ritual .rtxt b{ color:#3f3068; }
+  .ritual .rgo{ margin-left:auto; font-family:var(--sketch); font-size:13px; color:var(--purple); white-space:nowrap; }
+
+  .tlist{ display:flex; flex-direction:column; }
+  .trow{
+    display:grid; grid-template-columns:22px 30px 14px 1fr auto; align-items:center; gap:11px;
+    padding:9px 6px; border-bottom:1.5px solid var(--line-soft);
+  }
+  .trow:first-child{ border-top:1.5px solid var(--line-soft); }
+  .grip{ display:flex; flex-direction:column; gap:2.5px; cursor:grab; opacity:.5; }
+  .grip i{ width:13px; height:1.6px; background:var(--ink); border-radius:2px; }
+  .tnum{
+    width:28px; height:28px; border:1.75px solid var(--ink); border-radius:7px; display:grid; place-items:center;
+    font-weight:700; font-size:14px; background:var(--fill-2);
+  }
+  .pdot{ width:13px; height:13px; border-radius:50%; }
+  .pdot.red{ background:var(--red); } .pdot.orange{ background:var(--orange); }
+  .pdot.yellow{ background:var(--yellow); } .pdot.green{ background:var(--green); }
+  .tbody{ display:flex; align-items:center; gap:9px; min-width:0; }
+  .tbody .ttext{ font-size:14px; color:var(--ink); }
+  .recur{ display:inline-flex; align-items:center; gap:4px; font-family:var(--sketch); font-size:11px; color:var(--ink-soft); border:1.5px solid var(--line-soft); border-radius:5px; padding:1px 6px; white-space:nowrap; }
+  .recur svg{ width:11px; height:11px; stroke:var(--ink-soft); fill:none; stroke-width:1.8; flex:none; }
+  .tbody .tag{ font-size:11px; color:var(--ink-soft); background:var(--fill-2); border-radius:5px; padding:2px 7px; white-space:nowrap; }
+  .tstatus{ justify-self:end; display:flex; align-items:center; gap:8px; }
+  .chk{ width:21px; height:21px; border:2px solid var(--ink); border-radius:6px; display:grid; place-items:center; }
+  .chk svg{ width:13px; height:13px; stroke:var(--ink); fill:none; stroke-width:2.4; }
+  .chk.empty svg{ display:none; }
+  /* in-progress / “doing” mark — half-filled box (BuJo “/”) */
+  .chk.doing{ background:linear-gradient(135deg, var(--ink) 0 50%, transparent 50% 100%); }
+  .chk.doing svg{ display:none; }
+  .st-mig, .st-can{ font-family:var(--sketch); font-size:20px; line-height:1; width:21px; text-align:center; }
+  .st-mig{ color:var(--ink-soft); } .st-can{ color:var(--ink-faint); }
+  .trow.doing{ background:var(--fill-2); }
+  .trow.doing .ttext{ font-weight:600; }
+  .trow.done .ttext{ color:var(--ink-faint); text-decoration:line-through; }
+  .trow.mig .ttext, .trow.can .ttext{ color:var(--ink-faint); }
+  .trow.can .ttext{ text-decoration:line-through; }
+  .addtask{
+    display:flex; align-items:center; gap:10px; margin-top:12px;
+    border:1.75px dashed var(--line); border-radius:9px; padding:11px 13px; color:var(--ink-soft); cursor:pointer;
+  }
+  .addtask .plus{ width:22px; height:22px; border:1.75px solid var(--ink-soft); border-radius:6px; display:grid; place-items:center; font-size:16px; }
+  .addtask .ph{ font-family:var(--sketch); font-size:14px; }
+
+  /* ============ HABITS ============ */
+  .habits{ padding:15px 16px 14px; }
+  .panel-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+  .panel-head .ttl{ font-weight:600; font-size:14.5px; display:flex; align-items:center; gap:8px; }
+  .panel-head .ttl .fr{ font-family:var(--sketch); font-size:12px; color:var(--ink-faint); font-weight:400; }
+  .count-pill{ font-size:12px; color:var(--ink); border:1.5px solid var(--ink); border-radius:20px; padding:2px 10px; font-weight:600; }
+  .hgrid{ display:grid; grid-template-columns:1fr 1fr; gap:7px 14px; }
+  .hrow{ display:flex; align-items:center; gap:9px; }
+  .hbox{ width:17px; height:17px; border:1.75px solid var(--ink); border-radius:5px; display:grid; place-items:center; flex:none; }
+  .hbox svg{ width:11px; height:11px; stroke:var(--ink); fill:none; stroke-width:2.6; }
+  .hbox.off{ border-color:var(--line); }
+  .hbox.off svg{ display:none; }
+  .hrow .hname{ font-size:12.5px; color:var(--ink); }
+  .hrow.off .hname{ color:var(--ink-faint); }
+  .progress{ height:8px; border-radius:5px; background:var(--fill); margin:13px 0 4px; overflow:hidden; }
+  .progress i{ display:block; height:100%; width:58%; background:var(--ink); border-radius:5px; }
+  .link-row{ display:flex; align-items:center; justify-content:space-between; margin-top:11px; }
+  .link{ font-family:var(--sketch); font-size:13px; color:var(--pin); cursor:pointer; display:inline-flex; align-items:center; gap:5px; }
+  .link svg{ width:12px; height:12px; stroke:var(--pin); fill:none; stroke-width:2; }
+
+  /* ============ GRATITUDE ============ */
+  .grat{ padding:15px 16px 14px; }
+  .gentry{ display:flex; gap:10px; padding:10px 0; border-bottom:1.5px solid var(--line-soft); }
+  .gentry .qm{ font-family:var(--sketch); font-size:22px; line-height:.8; color:var(--green); flex:none; }
+  .gentry .gtext{ font-size:12.5px; color:var(--ink); line-height:1.45; }
+  .gadd{ display:flex; align-items:center; gap:9px; margin-top:12px; border:1.75px dashed var(--line); border-radius:9px; padding:10px 12px; cursor:pointer; }
+  .gadd .plus{ width:20px; height:20px; border:1.75px solid var(--green); color:var(--green); border-radius:6px; display:grid; place-items:center; font-size:15px; }
+  .gadd .ph{ font-family:var(--sketch); font-size:13.5px; color:var(--ink-soft); }
+
+  /* ---- layout columns ---- */
+  .cols{ display:grid; gap:16px; align-items:start; }
+  .cols.a{ grid-template-columns:1fr 372px; }
+  .cols.b{ grid-template-columns:1fr 400px; }
+  .stack{ display:grid; gap:16px; align-items:start; }
+  .mb16{ margin-bottom:16px; }
+
+  /* ============ LEGEND ============ */
+  .legend{
+    position:fixed; right:18px; bottom:18px; z-index:60; width:330px;
+    background:var(--box); border:2px solid var(--pin); border-radius:13px;
+    box-shadow:0 14px 36px rgba(44,42,38,.24); overflow:hidden; display:none;
+  }
+  body.annotated .legend{ display:block; }
+  .legend-h{ background:var(--pin); color:#fff; padding:9px 14px; font-family:var(--sketch); font-size:15px; display:flex; align-items:center; justify-content:space-between; }
+  .legend-h .x{ cursor:pointer; opacity:.85; font-size:18px; line-height:1; }
+  .legend-b{ padding:10px 14px 13px; max-height:46vh; overflow:auto; }
+  .lg{ display:flex; gap:10px; padding:7px 0; border-bottom:1px solid var(--line-soft); }
+  .lg:last-child{ border-bottom:none; }
+  .lg .n{ flex:none; width:21px; height:21px; border-radius:50%; background:var(--pin-bg); color:var(--pin); border:1.5px solid var(--pin); display:grid; place-items:center; font-family:var(--sketch); font-size:12px; }
+  .lg .t{ font-size:12px; color:var(--ink); line-height:1.4; }
+  .lg .t b{ font-weight:600; }
+
+  /* priority key inside legend area / footer */
+  .keybar{
+    display:flex; align-items:center; gap:18px; flex-wrap:wrap;
+    border-top:1.75px solid var(--line-soft); margin-top:18px; padding-top:14px;
+  }
+  .keybar .kt{ font-family:var(--sketch); font-size:13px; color:var(--ink-soft); }
+  .keyitem{ display:flex; align-items:center; gap:7px; font-size:12px; color:var(--ink); }
+  .keyitem .pdot{ width:12px; height:12px; }
+  .keyitem.stat .chk{ width:16px; height:16px; }
+  .keyitem.stat .chk svg{ width:10px; height:10px; }
+
+  /* ---- origin badge (set during the ritual) ---- */
+  .origin{ display:inline-flex; align-items:center; gap:4px; font-family:var(--sketch); font-size:11px; line-height:1; border-radius:5px; padding:2px 7px; white-space:nowrap; border:1.5px solid var(--line-soft); color:var(--ink-soft); }
+  .origin svg{ width:11px; height:11px; stroke:currentColor; fill:none; stroke-width:1.8; flex:none; }
+  .origin.mig{ color:var(--purple); border-color:var(--purple); background:#f6f1fe; }
+  .origin.rec{ color:var(--ink-soft); border-color:var(--line-soft); }
+  .origin.new{ color:var(--ink-faint); border-color:var(--line-soft); border-style:dashed; }
+
+  /* ---- daily ritual gate (pending state) ---- */
+  .ritual-gate{ display:none; position:relative; border:2px solid var(--purple); border-radius:10px; background:#f6f1fe; padding:15px 16px; margin:10px 0 14px; }
+  body.ritual-pending .ritual-gate{ display:block; }
+  .ritual-gate .rg-top{ display:flex; align-items:center; gap:11px; }
+  .rg-badge{ font-family:var(--sketch); font-size:12.5px; color:#fff; background:var(--purple); border-radius:7px; padding:3px 10px; white-space:nowrap; }
+  .rg-title{ font-size:16px; font-weight:700; color:#33285c; }
+  .rg-sub{ margin:8px 0 12px; font-size:12.5px; color:#5b4a86; line-height:1.5; max-width:560px; }
+  .rg-steps{ display:grid; gap:7px; margin-bottom:13px; }
+  .rg-step{ display:flex; align-items:center; gap:10px; background:var(--box); border:1.5px solid var(--line-soft); border-radius:8px; padding:8px 11px; }
+  .rg-step .rg-n{ width:22px; height:22px; border:1.5px solid var(--purple); color:var(--purple); border-radius:6px; display:grid; place-items:center; font-family:var(--sketch); font-size:12px; flex:none; }
+  .rg-step .rg-tx{ font-size:12.5px; color:var(--ink); }
+  .rg-step .rg-tx b{ font-weight:600; }
+  .rg-auto{ font-family:var(--sketch); font-size:10.5px; color:var(--ink-soft); border:1.5px solid var(--line-soft); border-radius:5px; padding:1px 6px; margin-left:4px; }
+  .rg-step.monday{ border-color:var(--purple); border-style:dashed; }
+  .rg-link{ font-family:var(--sketch); font-size:12px; color:var(--purple); margin-left:6px; text-decoration:none; white-space:nowrap; }
+  .rg-cta{ display:flex; align-items:center; gap:10px; }
+  .ritual-gate .ghost.cta{ background:var(--purple); border-color:var(--purple); }
+
+  /* ---- task list veil while ritual is pending ---- */
+  .tlist-wrap{ position:relative; }
+  .tlist-veil{ display:none; }
+  body.ritual-pending .tlist{ filter:grayscale(.25); opacity:.42; pointer-events:none; }
+  body.ritual-pending .tlist-veil{ position:absolute; inset:0; display:flex; align-items:flex-start; justify-content:center; padding-top:34px; }
+  .tlist-veil span{ display:inline-flex; align-items:center; gap:8px; font-family:var(--sketch); font-size:13px; color:var(--ink-soft); background:var(--box); border:1.5px solid var(--line); border-radius:8px; padding:8px 13px; box-shadow:0 4px 12px rgba(44,42,38,.12); }
+  .tlist-veil svg{ width:14px; height:14px; stroke:var(--ink-soft); fill:none; stroke-width:1.8; }
+
+  .hide{ display:none !important; }
+</style>
+</head>
+<body class="annotated">
+
+  <!-- ===================== TOOLBAR ===================== -->
+  <div class="toolbar">
+    <div class="brand"><b>BuJo Digital</b><span>· Daily Dashboard — lo-fi wireframe</span></div>
+    <div class="spacer"></div>
+    <div class="tabs" id="tabs">
+      <button class="tab active" data-var="a">Layout A · score band</button>
+      <button class="tab" data-var="b">Layout B · score rail</button>
+    </div>
+    <div class="toggle purple" id="ritualToggle"><span class="sw"></span>Daily ritual pending</div>
+    <div class="toggle on" id="annoToggle"><span class="sw"></span>Annotations</div>
+  </div>
+
+  <!-- ===================== STAGE ===================== -->
+  <div class="stage">
+    <div class="app">
+      <!-- left nav rail -->
+      <nav class="rail" id="rail"></nav>
+      <!-- main -->
+      <div class="main" id="main"></div>
+    </div>
+  </div>
+
+  <!-- ===================== LEGEND ===================== -->
+  <aside class="legend" id="legend">
+    <div class="legend-h">Annotations — what &amp; why <span class="x" id="legendX">×</span></div>
+    <div class="legend-b" id="legendBody"></div>
+  </aside>
+
+<script>
+/* ---------- tiny svg helpers ---------- */
+const ICON = {
+  chevL:'<svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>',
+  chevR:'<svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>',
+  grid:'<svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>',
+  cal:'<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/></svg>',
+  repeat:'<svg viewBox="0 0 24 24"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>',
+  heart:'<svg viewBox="0 0 24 24"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 1 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>',
+  sun:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/></svg>',
+  check:'<svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>',
+  arrow:'<svg viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>',
+  week:'<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="9" y1="10" x2="9" y2="20"/></svg>',
+  health:'<svg viewBox="0 0 24 24"><path d="M3 12h4l2 5 4-12 2 7h6"/></svg>',
+  forward:'<svg viewBox="0 0 24 24"><line x1="4" y1="12" x2="18" y2="12"/><polyline points="13 7 18 12 13 17"/></svg>',
+  lock:'<svg viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>',
+  layers:'<svg viewBox="0 0 24 24"><polygon points="12 2 22 8.5 12 15 2 8.5 12 2"/><polyline points="2 15.5 12 22 22 15.5"/></svg>',
+};
+
+/* ---------- nav rail ---------- */
+const NAV = [
+  {ic:'sun', label:'Daily', active:true},
+  {ic:'week', label:'Weekly'},
+  {ic:'cal', label:'Monthly'},
+  {ic:'repeat', label:'Recurr.'},
+  {ic:'health', label:'Health'},
+];
+document.getElementById('rail').innerHTML =
+  '<div class="logo">B</div>' +
+  NAV.map(n=>`<div class="navitem ${n.active?'active':''}">
+      <span class="ic">${ICON[n.ic]}</span><small>${n.label}</small></div>`).join('');
+
+/* ---------- region wrapper ---------- */
+function region(tag, pin, inner, cls=''){
+  return `<section class="region ${cls}">
+    <span class="rtag">${tag}</span>
+    ${pin?`<span class="pin">${pin}</span>`:''}
+    ${inner}
+  </section>`;
+}
+
+/* ---------- HEADER ---------- */
+function header(){
+  return region('Header bar', 1, `
+    <div class="hdr">
+      <div class="daybox">
+        <div class="dow">Monday</div>
+        <div class="full">June 8, 2026 · week 24</div>
+      </div>
+      <div class="liturg">10th wk · Ordinary Time<br>St. William of York</div>
+      <div class="spacer"></div>
+      <div class="daynav">
+        <button class="ghost icon">${ICON.chevL}</button>
+        <button class="ghost">Today</button>
+        <button class="ghost icon">${ICON.chevR}</button>
+        <button class="ghost cta">${ICON.week} Weekly View</button>
+      </div>
+    </div>`);
+}
+
+/* ---------- SCORE WIDGET ---------- */
+function score(col){
+  const period = (name, state, score, slider, na, now) => `
+    <div class="period ${now?'now':''}">
+      <div class="ptop">
+        <span class="pname">${now?'<span class="dotnow"></span>':''}${name}</span>
+        ${now?'<span class="now-tag">now</span>':''}
+      </div>
+      <div class="scorerow">
+        ${na
+          ? '<div class="scorebox empty">NA</div>'
+          : `<div class="scorebox">${score}</div>`}
+        <div class="scoremeta">
+          <div class="slider ${slider}"></div>
+          <span class="na-toggle">0–10 · <span class="na-pill ${na?'on':''}">NA</span></span>
+        </div>
+      </div>
+    </div>`;
+  return region('Productivity score', 2, `
+    <div class="scorewrap">
+      <div class="score-head">
+        <span class="ttl">Today’s productivity</span>
+        <span class="avg">daily avg <b>6.5</b><span>/ 10</span></span>
+      </div>
+      <div class="periods ${col?'col':''}">
+        ${period('Morning','', '8', '', false, false)}
+        ${period('Afternoon','', '5', 'mid', false, true)}
+        ${period('Night','', '', '', true, false)}
+      </div>
+    </div>`);
+}
+
+/* ---------- TASK LIST ---------- */
+const TASKS = [
+  {n:1, p:'red',    t:'Finish Q3 board deck — exec review', tag:'Work', origin:'migrated', st:'doing'},
+  {n:2, p:'orange', t:'Reply to landlord re: lease renewal', origin:'new', st:'done'},
+  {n:3, p:'green',  t:'30-min walk', origin:'recurrent', recur:'daily', st:'open'},
+  {n:4, p:'yellow', t:'Dentist appointment — 3:00pm', tag:'Health', origin:'new', st:'open'},
+  {n:5, p:'green',  t:'Water the plants', origin:'recurrent', recur:'weekly', st:'done'},
+  {n:6, p:'yellow', t:'Draft blog post on fasting protocol', origin:'migrated', st:'mig'},
+  {n:7, p:'orange', t:'Buy birthday gift for Ana', origin:'new', st:'can'},
+  {n:8, p:'red',    t:'Prep Tuesday client call agenda', tag:'Work', origin:'new', st:'doing'},
+];
+function statusEl(st){
+  if(st==='done')  return '<span class="chk">'+ICON.check+'</span>';
+  if(st==='doing') return '<span class="chk doing" title="in progress"></span>';
+  if(st==='mig')   return '<span class="st-mig" title="migrated">→</span>';
+  if(st==='can')   return '<span class="st-can" title="cancelled">×</span>';
+  return '<span class="chk empty">'+ICON.check+'</span>';
+}
+function originBadge(t){
+  if(t.origin==='migrated')  return `<span class="origin mig">${ICON.forward} migrated</span>`;
+  if(t.origin==='recurrent') return `<span class="origin rec">${ICON.repeat} recurrent${t.recur?` · ${t.recur}`:''}</span>`;
+  return `<span class="origin new">+ new</span>`;
+}
+function tasks(){
+  const rows = TASKS.map(t=>`
+    <div class="trow ${t.st}">
+      <span class="grip"><i></i><i></i><i></i></span>
+      <span class="tnum">${t.n}</span>
+      <span class="pdot ${t.p}"></span>
+      <span class="tbody">
+        <span class="ttext">${t.t}</span>
+        ${originBadge(t)}
+        ${t.tag?`<span class="tag">${t.tag}</span>`:''}
+      </span>
+      <span class="tstatus">${statusEl(t.st)}</span>
+    </div>`).join('');
+  return region('Task list — main working surface', 3, `
+    <div class="tasks">
+      <div class="tasks-head">
+        <span class="ttl">Today’s tasks</span>
+        <span class="meta">8 items · renumber each morning · drag to reorder</span>
+      </div>
+
+      <div class="ritual-gate">
+        <span class="pin">6</span>
+        <div class="rg-top">
+          <span class="rg-badge">Daily ritual</span>
+          <span class="rg-title">Set the day up before the tasks open</span>
+        </div>
+        <p class="rg-sub">Your first act each morning — quick and deliberate, never automated. Today’s tasks stay locked behind it until it’s run.</p>
+        <div class="rg-steps">
+          <div class="rg-step"><span class="rg-n">1</span><span class="rg-tx"><b>Score yesterday</b> — Morning / Afternoon / Night (0–10 or NA)</span></div>
+          <div class="rg-step"><span class="rg-n">2</span><span class="rg-tx"><b>Pull in recurrents</b> — today’s auto-injected tasks<span class="rg-auto">auto</span></span></div>
+          <div class="rg-step"><span class="rg-n">3</span><span class="rg-tx"><b>Number &amp; prioritise</b> today’s tasks</span></div>
+          <div class="rg-step monday"><span class="rg-n">★</span><span class="rg-tx"><b>Weekly migration ritual</b> — Mondays only<a class="rg-link" href="Migration Ritual Wireframe.html">open ritual →</a></span></div>
+        </div>
+        <div class="rg-cta">
+          <button class="ghost cta" id="beginRitual">Begin daily ritual →</button>
+          <button class="ghost" id="skipRitual">Skip just for today</button>
+        </div>
+      </div>
+
+      <div class="tlist-wrap">
+        <div class="tlist">${rows}</div>
+        <div class="tlist-veil"><span>${ICON.lock} Tasks unlock after today’s ritual</span></div>
+      </div>
+
+      <div class="addtask">
+        <span class="plus">+</span>
+        <span class="ph">Quick-add a task…</span>
+      </div>
+
+      <div class="keybar">
+        <span class="kt">Priority:</span>
+        <span class="keyitem"><span class="pdot red"></span>Urgent + Important</span>
+        <span class="keyitem"><span class="pdot orange"></span>Urgent</span>
+        <span class="keyitem"><span class="pdot yellow"></span>Important</span>
+        <span class="keyitem"><span class="pdot green"></span>Personal</span>
+        <span class="keyitem stat"><span class="chk doing"></span>doing</span>
+        <span class="keyitem stat"><span class="chk">${ICON.check}</span>done</span>
+        <span class="keyitem stat"><span class="st-mig">→</span>migrated</span>
+        <span class="keyitem stat"><span class="st-can">×</span>cancelled</span>
+        <span class="kt" style="margin-left:6px">Origin:</span>
+        <span class="keyitem"><span class="origin mig">${ICON.forward} migrated</span></span>
+        <span class="keyitem"><span class="origin rec">${ICON.repeat} recurrent</span></span>
+        <span class="keyitem"><span class="origin new">+ new</span></span>
+      </div>
+    </div>`);
+}
+
+/* ---------- HABITS ---------- */
+const HABITS = [
+  ['Wake 6:30',1],['Meditate 10m',1],['Read 20 min',1],['Exercise',1],
+  ['No added sugar',0],['Vitamins',1],['Journal',1],['Stretch',0],
+  ['Water 2L',0],['Duolingo',1],['Skincare',0],['Lights out 23:00',0],
+];
+function habits(){
+  const left = HABITS.slice(0,6), right = HABITS.slice(6);
+  const cell = ([name,on]) => `
+    <div class="hrow ${on?'':'off'}">
+      <span class="hbox ${on?'':'off'}">${ICON.check}</span>
+      <span class="hname">${name}</span>
+    </div>`;
+  return region('Habits snapshot · “Tous les Jours”', 4, `
+    <div class="habits">
+      <div class="panel-head">
+        <span class="ttl">Habits <span class="fr">— tous les jours</span></span>
+        <span class="count-pill">7 / 12</span>
+      </div>
+      <div class="hgrid">
+        <div>${left.map(cell).join('')}</div>
+        <div>${right.map(cell).join('')}</div>
+      </div>
+      <div class="progress"><i></i></div>
+      <div class="link-row">
+        <span class="meta" style="font-size:11.5px;color:var(--ink-soft)">5 remaining today</span>
+        <span class="link">Full habits tracker ${ICON.arrow}</span>
+      </div>
+    </div>`);
+}
+
+/* ---------- GRATITUDE ---------- */
+function gratitude(){
+  return region('Gratitude journal', 5, `
+    <div class="grat">
+      <div class="panel-head">
+        <span class="ttl">Gratitude ${ICON.heart}</span>
+        <span class="count-pill">2 today</span>
+      </div>
+      <div class="gentry"><span class="qm">“</span><span class="gtext">Slow coffee on the balcony before everyone woke up — quiet 20 minutes.</span></div>
+      <div class="gentry"><span class="qm">“</span><span class="gtext">M. called out of the blue just to check in.</span></div>
+      <div class="gadd"><span class="plus">+</span><span class="ph">Add a gratitude entry…</span></div>
+    </div>`);
+}
+
+/* ---------- LAYOUTS ---------- */
+function layoutA(){
+  return `
+    ${header()}
+    <div class="mb16">${score(false)}</div>
+    <div class="cols a">
+      <div>${tasks()}</div>
+      <div class="stack">
+        ${habits()}
+        ${gratitude()}
+      </div>
+    </div>`;
+}
+function layoutB(){
+  return `
+    ${header()}
+    <div class="cols b">
+      <div>${tasks()}</div>
+      <div class="stack">
+        ${score(true)}
+        ${habits()}
+        ${gratitude()}
+      </div>
+    </div>`;
+}
+
+/* ---------- LEGEND CONTENT ---------- */
+const LEGEND = [
+  ['Header bar','Current weekday + full date + week number. Prev / next day + “Today”. Subtle liturgical line (small, optional). Primary jump to <b>Weekly View</b>.'],
+  ['Productivity score','Morning / Afternoon / Night, each 0–10 <b>or NA</b> (chose not to be productive ≠ scored 0). Current period highlighted. Daily average shown.'],
+  ['Task list','The day’s working surface. Manual <b>numbering</b> (renumbered each morning), drag to reorder, priority dot, status (◩ doing · ✓ done · → migrated · × cancelled), tags, and an <b>origin badge</b> on every task — <b>migrated</b> / <b>recurrent</b> / <b>new</b> — now that origin is decided in the ritual.'],
+  ['Habits — Tous les Jours','~12 daily habits with checkboxes, live <b>n / 12</b> count + progress bar. Links to full tracker.'],
+  ['Gratitude journal','Freeform entries, multiple per day, with count and inline quick-add.'],
+  ['Daily ritual gate','When today’s setup ritual hasn’t run, the task list is <b>locked behind a CTA</b>: score yesterday, pull recurrents, number today’s tasks (Mondays also link out to the separate <b>weekly migration ritual</b>). Toggle “Daily ritual pending” in the toolbar to preview this state.'],
+];
+document.getElementById('legendBody').innerHTML = LEGEND.map((l,i)=>`
+  <div class="lg"><span class="n">${i+1}</span><span class="t"><b>${l[0]}.</b> ${l[1]}</span></div>`).join('');
+
+/* ---------- RENDER + CONTROLS ---------- */
+const main = document.getElementById('main');
+function render(v){ main.innerHTML = v==='b' ? layoutB() : layoutA(); }
+render('a');
+
+document.getElementById('tabs').addEventListener('click', e=>{
+  const b = e.target.closest('.tab'); if(!b) return;
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active', t===b));
+  render(b.dataset.var);
+});
+
+/* daily ritual pending state */
+const ritualT = document.getElementById('ritualToggle');
+ritualT.addEventListener('click', ()=>{
+  ritualT.classList.toggle('on');
+  document.body.classList.toggle('ritual-pending', ritualT.classList.contains('on'));
+});
+document.getElementById('main').addEventListener('click', e=>{
+  if(e.target.closest('#beginRitual') || e.target.closest('#skipRitual')){
+    ritualT.classList.remove('on');
+    document.body.classList.remove('ritual-pending');
+  }
+});
+
+const annoT = document.getElementById('annoToggle');
+annoT.addEventListener('click', ()=>{
+  annoT.classList.toggle('on');
+  document.body.classList.toggle('annotated', annoT.classList.contains('on'));
+});
+document.getElementById('legendX').addEventListener('click', ()=>{
+  annoT.classList.remove('on'); document.body.classList.remove('annotated');
+});
+</script>
+</body>
+</html>

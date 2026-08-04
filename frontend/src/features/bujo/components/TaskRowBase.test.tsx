@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { axe } from 'jest-axe'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { TaskRowBase } from './TaskRowBase'
+import { LINEAGE_HIGHLIGHT_EVENT, TaskRowBase } from './TaskRowBase'
 import type { CycleStatus, Task } from '../types'
 
 function baseTask(overrides: Partial<Task> = {}): Task {
@@ -418,6 +418,53 @@ describe('TaskRowBase — onNavigateToSuccessor (Story 14.10)', () => {
     await user.click(arrow)
 
     expect(onNavigateToSuccessor).toHaveBeenCalledWith('sub-em-outro-periodo', 'sub-migrada', MIGRATION_TARGET)
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DW-19 — guarda de `successorReachable` no handler, não só na aparência
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('TaskRowBase — handleLineageClick guarda successorReachable (DW-19)', () => {
+  it('nó com o mesmo data-task-id do sucessor aparece no DOM FORA do ciclo do efeito de disponibilidade: clique na seta indisponível não foca nem rola até ele', async () => {
+    // Reproduz a divergência do I/O Matrix: o efeito de disponibilidade
+    // (dependente só de `status`/`migratedToTask`) já rodou e fixou
+    // `successorAvailable=false` — o nó injetado ABAIXO só existe no DOM
+    // vivo, sem disparar um novo ciclo do efeito. Antes da guarda em
+    // `handleLineageClick`, o `querySelector` interno encontraria esse nó
+    // (a UI anunciava `aria-disabled=true`, mas o clique agia como se o
+    // sucessor estivesse disponível) — um acidente de implementação, não
+    // uma invariante. Com a guarda, `successorReachable` bloqueia ANTES de
+    // qualquer `querySelector`.
+    const origem = baseTask({ id: 'origem', status: 'migrated', migratedToTask: 'fantasma' })
+    render(<TaskRowBase task={origem} cycleStatus="active" />)
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    const arrow = screen.getByRole('button', { name: /o sucessor está em outro período/i })
+    expect(arrow).toHaveAttribute('aria-disabled', 'true')
+
+    const fantasma = document.createElement('div')
+    fantasma.setAttribute('data-task-id', 'fantasma')
+    fantasma.tabIndex = -1
+    document.body.appendChild(fantasma)
+    try {
+      const focusSpy = vi.spyOn(fantasma, 'focus')
+      const highlightSpy = vi.fn()
+      fantasma.addEventListener(LINEAGE_HIGHLIGHT_EVENT, highlightSpy)
+
+      fireEvent.click(arrow)
+
+      // Os três efeitos colaterais que o clique dispararia sobre o sucessor
+      // (evento de destaque, scroll, foco) nunca devem tocar o nó fantasma.
+      expect(highlightSpy).not.toHaveBeenCalled()
+      expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled()
+      expect(focusSpy).not.toHaveBeenCalled()
+      expect(fantasma).not.toHaveFocus()
+    } finally {
+      document.body.removeChild(fantasma)
+    }
   })
 })
 

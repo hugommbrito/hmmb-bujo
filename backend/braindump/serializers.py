@@ -23,6 +23,26 @@ class BrainDumpItemCreateSerializer(serializers.Serializer):
     )
 
 
+class BrainDumpItemUpdateSerializer(serializers.Serializer):
+    """Corpo do `PATCH /api/brain-dump/items/{id}/` (M11) — mesmo molde de
+    `bujo/serializers.py::TaskUpdateSerializer`: os três campos são opcionais
+    porque cada um declara `required=False` (sem `default=`), o que já basta
+    para o DRF pular um campo ausente do corpo (`SkipField`) e não incluí-lo
+    em `validated_data`. `partial=True` na view NÃO é a causa da
+    opcionalidade aqui — com todos os campos `required=False`, o
+    comportamento de ausência é idêntico com ou sem `partial=True`; um campo
+    NOVO que nascesse sem `required=False` continuaria obrigatório mesmo
+    passando `partial=True`. Sem `validate()` — nenhum dos três campos
+    depende do estado atual do item (diferente de `TaskUpdateSerializer`, que
+    valida `scheduled_date` contra o Monthly Log na VIEW, não aqui)."""
+
+    title = serializers.CharField(max_length=500, required=False)
+    description = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    target_log = serializers.ChoiceField(
+        choices=BrainDumpItem.TargetLog.choices, required=False, allow_null=True
+    )
+
+
 class BrainDumpItemProcessSerializer(serializers.Serializer):
     destination = serializers.ChoiceField(choices=["today", "week", "month", "future"])
     month_first = serializers.DateField(required=False)

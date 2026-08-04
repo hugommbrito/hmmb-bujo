@@ -26,6 +26,10 @@ import { SHELL_BADGE_SX } from './shellDestinations'
  */
 export const SHELL_CONTENT_ID = 'conteudo-da-superficie'
 
+/** Mesmo texto de `BrainDumpInboxPage.tsx:35` — replicado aqui porque o
+ * Capture Sheet do shell é um consumidor independente daquela página. */
+const OFFLINE_REASON = 'Sem conexão. Esta ação exige rede.'
+
 /**
  * Ícone do FAB de captura maior que o `NAV_ICON_SIZE` (20px) dos itens de nav:
  * o mockup usa ~24px no FAB para presença visual na área de 52px
@@ -234,7 +238,7 @@ export function ShellLayout({ surfaceMigrated = false }: ShellLayoutProps) {
               identidade preservados, motivo acessível — AC6). */}
           <Tooltip title={isOnline ? '' : 'Sem conexão'}>
             <ButtonBase
-              aria-label={isOnline ? 'Captura rápida' : 'Captura rápida (sem conexão)'}
+              aria-label={isOnline ? 'Abrir captura rápida' : 'Abrir captura rápida (sem conexão)'}
               aria-disabled={isOnline ? undefined : true}
               onClick={() => {
                 if (!isOnline) return
@@ -272,8 +276,17 @@ export function ShellLayout({ surfaceMigrated = false }: ShellLayoutProps) {
       )}
 
       {/* ÚNICA instância do sheet de captura no shell (FAB-05 sobe do BottomNav
-          legado para cá): compartilhada por FAB (compact) e âncora da sidebar. */}
-      <BrainDumpCaptureSheet open={captureOpen} onClose={() => setCaptureOpen(false)} />
+          legado para cá): compartilhada por FAB (compact) e âncora da sidebar.
+          `compact`/`disabled`/`disabledReason` são as únicas props novas
+          (Story 15.2) — `ShellLayout` é o único chamador que alterna entre
+          Dialog (ponteiro) e Drawer (compact). */}
+      <BrainDumpCaptureSheet
+        open={captureOpen}
+        onClose={() => setCaptureOpen(false)}
+        compact={isCompact}
+        disabled={!isOnline}
+        disabledReason={OFFLINE_REASON}
+      />
     </Box>
   )
 }

@@ -156,15 +156,33 @@ def _normalise_body(data):
       sometimes ``non_field_errors``). We surface field errors under ``fields``
       and lift ``non_field_errors`` (or a top-level list) into ``detail``.
     - A plain ``{"detail": "..."}`` (404/401/throttle/etc.) passes through, with
-      no ``fields`` key added.
+      no ``fields`` key added. When extra keys sit alongside a real ``detail``,
+      that ``detail`` is kept as-is — never demoted into ``fields`` — and the
+      extra keys (INCLUDING ``non_field_errors``, which is just a normal field
+      key once ``detail`` already won the slot) become ``fields``.
+    - ``data is None`` (no body at all) maps to a fixed generic detail, never
+      the literal string ``"None"``.
     """
+    if data is None:
+        return {"detail": "Unexpected error"}
+
     if isinstance(data, dict):
-        if "detail" in data and len(data) == 1:
-            return {"detail": _stringify(data["detail"])}
+        detail_value = data.get("detail")
+        if detail_value is not None:
+            # Route detail_value through the same flattening as every other
+            # field: it may itself be a list/dict (e.g. a nested serializer
+            # error under a literal "detail" key) and must never surface as a
+            # stringified container.
+            detail_list = _as_list(detail_value)
+            fields = {k: _as_list(v) for k, v in data.items() if k != "detail"}
+            body = {"detail": detail_list[0] if detail_list else "Validation failed"}
+            if fields:
+                body["fields"] = fields
+            return body
 
         fields = {k: _as_list(v) for k, v in data.items() if k != "non_field_errors"}
         non_field = data.get("non_field_errors")
-        detail = _stringify(non_field[0]) if non_field else "Validation failed"
+        detail = _stringify(_first_message(non_field)) if non_field else "Validation failed"
 
         body = {"detail": detail}
         if fields:
@@ -173,15 +191,45 @@ def _normalise_body(data):
 
     if isinstance(data, list):
         # Top-level list of messages (e.g. raised on the serializer root).
-        return {"detail": _stringify(data[0]) if data else "Validation failed"}
+        return {"detail": _stringify(_first_message(data)) if data else "Validation failed"}
 
     return {"detail": _stringify(data)}
 
 
+def _first_message(value):
+    """Return the first message of a list, or ``value`` itself when it is not one.
+
+    Guards ``non_field_errors``/top-level lists: DRF's native shape is a list,
+    but a non-list scalar (e.g. a plain string) must be returned whole, never
+    indexed by character.
+    """
+    return value[0] if isinstance(value, list) else value
+
+
 def _as_list(value):
-    """Field errors are always a list of message strings (native DRF shape)."""
+    """Coerce a field's error value into a flat list of message strings.
+
+    ``fields`` is always ``{field: [str, ...]}`` (native DRF shape) — never a
+    nested structure. Recurses into ``dict`` (flattening every value) and
+    ``list`` (flattening every ``list``/``dict`` item, stringifying everything
+    else) so a nested serializer error never surfaces as a stringified
+    container.
+    """
+    if isinstance(value, dict):
+        flattened = []
+        for v in value.values():
+            flattened.extend(_as_list(v))
+        return flattened
+
     if isinstance(value, list):
-        return [_stringify(v) for v in value]
+        flattened = []
+        for item in value:
+            if isinstance(item, (list, dict)):
+                flattened.extend(_as_list(item))
+            else:
+                flattened.append(_stringify(item))
+        return flattened
+
     return [_stringify(value)]
 
 

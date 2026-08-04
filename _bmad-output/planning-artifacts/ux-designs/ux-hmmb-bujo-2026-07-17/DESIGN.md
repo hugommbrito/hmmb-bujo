@@ -3,17 +3,18 @@ name: HMMB BuJo — Sistema Operacional Visual
 description: Design system denso, calmo e produtivo para o Bullet Journal digital do hmmb-bujo.
 status: final
 created: 2026-07-17
-updated: 2026-07-24
+updated: 2026-07-29
 sources:
   - ../../../specs/spec-design-system-migration/SPEC.md
   - ../../../specs/spec-design-system-migration/design-system-contract.md
   - ../../../specs/spec-design-system-migration/migration-plan.md
   - ../../prds/prd-hmmb-bujo-2026-06-15/prd.md
-  - ../../architecture.md
+  - ../../architecture/architecture-hmmb-bujo-2026-07-29/ARCHITECTURE-SPINE.md
   - ../../epics.md
   - ../../../implementation-artifacts/13-0-ux-spec-do-app-shell-novo.md
   - ../../../implementation-artifacts/14-0-ux-mockups-complementares-do-nucleo-bujo.md
   - imports/mybujo-full-handoff/design_handoff_full_app/README.md
+  - imports/story-15-0-brain-dump-handoff/README.md
 colors:
   # Aliases canônicos: Mineral Light.
   canvas: '#F5F2EA'
@@ -538,6 +539,7 @@ Raios de 2–8px comunicam ferramenta, não aplicativo lifestyle. Pills ficam re
 | Monthly Planning Sources | Monthly Planning Workspace | rail de três fontes |
 | Month Density | Monthly Planning Workspace | minicalendário e distribuição |
 | Archive History | Workspace Surface | abas temporais + filtros + lista mestre + detalhe readonly |
+| Brain Dump (Inbox) | Workspace Surface | Panel Capturar + Section Header + lista Item Row; sem rail de contexto |
 
 ### App Shell
 
@@ -592,7 +594,7 @@ Título, contexto temporal, anterior/próximo, ação Atual/Hoje, status do cicl
 
 ### Workspace Surface
 
-Região principal obrigatória; região secundária apenas quando oferece contexto necessário à decisão atual. Pode ser `focus`, `planner`, `ritual`, `collection`, `history` ou `settings`.
+Região principal obrigatória; região secundária apenas quando oferece contexto necessário à decisão atual. Pode ser `focus`, `planner`, `ritual`, `collection`, `history`, `inbox` ou `settings`.
 
 ### Weekly Board
 
@@ -662,6 +664,16 @@ As **fontes** são os níveis **Meses → Semanas → Dias** (ordem fixa; "ontem
 
 → Referência aprovada: [`mockups/key-migracao.html`](mockups/key-migracao.html). Os spines vencem em qualquer conflito com este mockup.
 
+### Brain Dump (Inbox)
+
+Superfície de padrão **Inbox** conforme `{components.workspace}`: `inbox`, sem rail de contexto. O Page/Period Header usa só `{typography.page-title}` e contexto textual — sem stepper, sem status de ciclo, sem seletor de período. Um único Panel **Capturar** no topo (Título obrigatório, Descrição multiline de duas linhas, Select Destino com as cinco opções canônicas e Brain Dump como padrão) antecede o Section Header **Pendências** com contagem textual e a lista, na ordem de leitura captura → pendências → processamento. Leitura limitada a `{components.workspace.reading-width}`; nenhum Panel aninhado.
+
+Cada linha é a **variante Brain Dump** do Item Row: título, descrição truncada em uma linha, borda esquerda **neutra** — sem categoria, sem Eisenhower, sem ícone de status, porque o item não tem máquina de estado — com chip textual opcional para a dica de destino (`target_log` gravado, texto verbatim “Fica no Brain Dump até ser processado.”) e meta tabular com a data de captura. Trailing traz duas ações nomeadas (Mover, Descartar) sempre visíveis no ponteiro; no compact a linha inteira é o alvo único de `{components.task-row.min-height-touch}` e as ações migram para o sheet de item, incluindo os campos de edição do item (Título, Descrição, Destino).
+
+A captura persistente do shell (`{components.capture-action}`) abre o **Capture Sheet**, variante do Dialog/Sheet: dialog de 400px em wide/medium/tablet, sheet no compact, foco no Título, Brain Dump como destino padrão, ação primária nomeando a consequência (*Salvar no Brain Dump*). **Mover** abre o **seletor de destino**, que reusa integralmente a anatomia do seletor do ritual de migração acima — calendário de densidade, atalhos, ação nomeada — trocando as abas por um seletor de log em `radiogroup` com os quatro destinos (Hoje, Esta Semana, Este Mês, Futuro) e os mesmos ícones/rótulos da navegação lateral (`calendar-dot` · `calendar-dots` · `calendar` · `calendar-plus`); o campo de mês de **Futuro** usa `input type="month"` nativo. Fechar o Capture Sheet ou o sheet de edição do item com pendência abre **Descartar item?**/**Descartar alterações?** em dialog, em todas as faixas — condição exata de disparo em `EXPERIENCE.md.Brain Dump e captura`.
+
+→ Referência aprovada: [`mockups/key-brain-dump.html`](mockups/key-brain-dump.html), a partir do handoff em [`imports/story-15-0-brain-dump-handoff/`](imports/story-15-0-brain-dump-handoff/). Os spines vencem em qualquer conflito.
+
 ### Task Row
 
 O cluster leading reúne borda de categoria, ícone de status e Eisenhower. Título, descrição e indicação de subtarefas ocupam o centro. O indicador numérico de ordem fica no trailing; a alça de drag, quando disponível, fica junto dele sem substituir a alternativa por teclado/comando. A linha secundária mostra apenas descrição e, quando aplicável, quantidade/expansão de subtarefas — não repete origem, horário ou status. Hover pode revelar atalhos, mas foco e touch têm equivalentes.
@@ -706,6 +718,8 @@ Headers persistentes, célula com estados nomeados, foco navegável e alternativ
 ### Dialog/Sheet
 
 Dialog para decisão curta; sheet para detalhe/captura compacta e escolha de destino. Migração/Catch-Up **não** usa camada modal própria nem tela cheia: reusa o **ritual** (fontes + decisões + contexto) dentro do workspace, como o planejamento semanal/mensal. Apenas uma camada modal por vez. Ações destrutivas ficam separadas e nomeiam a consequência. Migração, adiamento e alocação confirmam no próprio seletor com destino explícito; cancelamento e finalização irreversível usam dialog.
+
+O Brain Dump usa três variantes deste componente: **Capture** (captura persistente do shell), **destino** (idêntica ao seletor do ritual de migração, com seletor de log no lugar das abas) e **confirmação** (Descartar item?/Descartar alterações?, foco inicial em Continuar editando — ver `Brain Dump (Inbox)` acima para a condição exata de disparo). Nenhuma delas abre sobre outra — o seletor de destino e o sheet de item nunca empilham sobre o Capture Sheet.
 
 ### Feedback
 

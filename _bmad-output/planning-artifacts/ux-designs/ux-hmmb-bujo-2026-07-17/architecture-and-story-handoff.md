@@ -50,6 +50,12 @@ Definir fila unificada de `/migration/queue/` + `/catch-up/queue/`, ordenada mê
 
 Preservam detecção por pendências, decisão individual, destinos `today/week/month/future/cancel`, atalhos e ausência de toast. Ampliam contrato: unificação, ritual, seletor rico, pausa/retomada, resumo e erro. Migração não conclui tarefa.
 
+## M11 — Brain Dump/Captura
+
+Definir endpoint de atualização do item (`PATCH /api/brain-dump/items/{id}/`, campos `title`/`description`/`target_log`) para a edição paritária decidida no gate 15.0 — o domínio hoje só tem criar/listar/processar/descartar/contar; processamento aceitando `scheduled_date` opcional nos destinos `week`/`month` (contratado, nunca exercitado pela UI legada — registrar divergência de paridade na 15.3); chaves de query `['brainDump','count',userId]` e lista, invalidadas em toda mutação; captura otimista sobre a contagem, com rollback em falha de escrita.
+
+Preservam `BrainDumpPage`/`CaptureSheet.tsx`: rotas `GET/POST /api/brain-dump/items/` · `DELETE .../items/{id}/` · `POST .../items/{id}/process/` · `GET .../count/`; campos `id`, `title` (máx. 500), `description`, `target_log` (`today|week|month|future` ou nulo), `created_at`; ordenação por `created_at`; destinos `today·week·month·future`, com `future` exigindo `month_first` posterior ao mês corrente e `month` resolvendo o mês corrente no servidor; processar cria a Task e apaga o item; descartar apaga sem confirmação, sem desfazer. Ampliam contrato: endpoint de atualização do item, `scheduled_date` exercitado por Esta Semana/Este Mês no seletor de destino, e sheet de edição do item com confirmação de descarte de rascunho equivalente à do Capture Sheet.
+
 ## Checklist de cada story
 
 Cada story carrega onda, superfície, paridade, tokens/componentes, matriz responsiva, estados, aceite acessível, ownership, dependências, rollout/rollback, testes e dívida legada removida. Trocar MUI ou regras de domínio não é autorizado por esta UX. `iconKey` é mudança contratual isolada, retrocompatível e explicitamente aprovada.
@@ -59,8 +65,9 @@ Cada story carrega onda, superfície, paridade, tokens/componentes, matriz respo
 - `../../../specs/spec-design-system-migration/SPEC.md`
 - `../../../specs/spec-design-system-migration/design-system-contract.md`
 - `../../../specs/spec-design-system-migration/migration-plan.md`
-- `../../architecture.md`
+- `../../architecture/architecture-hmmb-bujo-2026-07-29/ARCHITECTURE-SPINE.md`
 - `../../epics.md`
 - `../../prds/prd-hmmb-bujo-2026-06-15/prd.md`
 - `../../prds/prd-hmmb-bujo-2026-06-15/addendum.md`
 - [`requirements-traceability.md`](requirements-traceability.md)
+- [`imports/story-15-0-brain-dump-handoff/`](imports/story-15-0-brain-dump-handoff/)

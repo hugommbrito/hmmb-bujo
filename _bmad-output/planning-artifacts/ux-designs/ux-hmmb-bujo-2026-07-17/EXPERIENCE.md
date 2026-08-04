@@ -2,19 +2,20 @@
 name: HMMB BuJo — Sistema Operacional Visual
 status: final
 created: 2026-07-17
-updated: 2026-07-24
+updated: 2026-07-29
 sources:
   - ../../../specs/spec-design-system-migration/SPEC.md
   - ../../../specs/spec-design-system-migration/design-system-contract.md
   - ../../../specs/spec-design-system-migration/migration-plan.md
   - ../../prds/prd-hmmb-bujo-2026-06-15/prd.md
   - ../../prds/prd-hmmb-bujo-2026-06-15/addendum.md
-  - ../../architecture.md
+  - ../../architecture/architecture-hmmb-bujo-2026-07-29/ARCHITECTURE-SPINE.md
   - ../../epics.md
   - ../../../implementation-artifacts/13-0-ux-spec-do-app-shell-novo.md
   - ../../../implementation-artifacts/14-0-ux-mockups-complementares-do-nucleo-bujo.md
   - ../../../implementation-artifacts/sprint-status.yaml
   - imports/mybujo-full-handoff/design_handoff_full_app/README.md
+  - imports/story-15-0-brain-dump-handoff/README.md
 ---
 
 # HMMB BuJo — Experience Spine
@@ -96,6 +97,7 @@ pt-BR, direto, sereno e específico. O sistema descreve estado e consequência; 
 | “Não foi possível salvar. Tente novamente.” | “Ops! Algo deu errado.” |
 | “Brain Dump vazio.” | “Tudo limpo por aqui 🎉” |
 | “Sem conexão. Esta ação exige rede.” | “Você está offline, mas cuidamos de tudo.” |
+| “Fica no Brain Dump até ser processado.” | “Salvo no Brain Dump até você processar.” |
 
 Empty states explicam a ausência e oferecem no máximo uma ação pertinente. Ciclos fechados usam “Fechado”; arquivo usa “Somente leitura” quando necessário.
 
@@ -134,6 +136,7 @@ Empty states explicam a ausência e oferecem no máximo uma ação pertinente. C
 | Monthly Planning Sources | Planejamento mensal | recorrentes → Future Log → Monthly anterior; navegação livre e decisões próprias por fonte |
 | Month Density | Planejamento mensal | minicalendário real, total e distribuição textual por status em cada dia e no pool sem dia |
 | Archive History | Arquivo | abas Semanal/Mensal; filtros de data; lista selecionável; detalhe readonly; linhagem e restauração de contexto |
+| Brain Dump (Inbox) | Brain Dump | padrão Inbox; captura → pendências → processamento; Mover/Descartar/editar por linha; badge/contagem otimista |
 
 ### App Shell, aparência e atalhos
 
@@ -356,6 +359,8 @@ Criar e editar abrem o mesmo card do detalhe de tarefa, com paridade e o conjunt
 
 **Alocar** permanece decisão dos rituais, não da biblioteca: os templates ativos aparecem na fonte **Recorrentes** do planejamento semanal/mensal e nos anuais do Future Log, onde o ato **Alocar** cria a instância. A biblioteca só os alimenta. Falha de escrita preserva o rascunho, mostra o motivo e oferece retry; offline mantém a consulta e desabilita criar/editar/ativar/excluir com motivo, sem fila local. Configurações — recorrentes (superfície futura) compartilha esta biblioteca.
 
+→ Composição e estados aprovados: [`mockups/key-recorrentes.html`](mockups/key-recorrentes.html). Os spines vencem em conflito.
+
 ### Migração e Catch-Up
 
 Tudo que ficou sem lugar — de meses, semanas ou dias anteriores — é migração. Uma **faixa discreta** no Hoje ("N tarefas precisam de decisão", com contagem por fonte) é o único ponto de entrada; vazio = sem faixa. O fluxo **reusa o ritual de planejamento** dentro do shell, não uma camada full-screen própria: rail de fontes, lista de decisões e rail de contexto.
@@ -363,6 +368,20 @@ Tudo que ficou sem lugar — de meses, semanas ou dias anteriores — é migraç
 Uma **fila unificada** reúne as pendências dos três níveis, ordenadas **mês → semana → dia** ("ontem" é o nível dia); a arquitetura mescla as filas hoje separadas (`/migration/queue/` + `/catch-up/queue/`) numa lista com rótulo e contagem por fonte. Cada item é uma Task Row com origem/linhagem; a decisão é individual: **Migrar para hoje** (ação destacada em toda fonte), **Escolher destino…** ou **Cancelar** — não há "Concluir". O seletor de destino é o mesmo dos rituais/Future Log, com as abas **Esta semana**, **Dia no mês** e **Outro mês** e os atalhos **Hoje** e **Sem dia**; migrar gera linhagem (origem terminal + sucessor). O rail de contexto mostra progresso, o que já foi decidido e o que resta por fonte — sem calendário-alvo.
 
 **Pausar e sair** não perde decisões (cada uma persiste por item); retomar reabre pela faixa e continua com os **itens restantes**, sem persistir posição exata. Ao decidir tudo, um **resumo** factual (migradas/adiadas/canceladas) antecede **Voltar ao Hoje**, onde só aparecem as tarefas trazidas. Falha de escrita preserva a decisão e o item, com retry local; offline desabilita as decisões com motivo, sem fila local; uma fonte que não carrega não bloqueia as demais. O escopo é o Hoje: a migração por-tarefa ("Mover") e as decisões dos rituais de planejamento são superfícies distintas que reusam o mesmo seletor.
+
+→ Composição e estados aprovados: [`mockups/key-migracao.html`](mockups/key-migracao.html). Os spines vencem em conflito.
+
+### Brain Dump e captura
+
+Brain Dump é a única superfície no padrão **Inbox**: sem data, vazio é o estado normal e saudável. A ordem de leitura é fixa em toda faixa — Panel **Capturar** → Section Header **Pendências** com contagem → lista de Item Rows — sem Page/Period Header pleno (sem stepper, sem status de ciclo, sem seletor de período). Título é obrigatório; descrição e log de destino (`target_log`) são opcionais e default para Brain Dump. A captura persistente do shell (ancorada na navegação em wide/medium/tablet, FAB no compact) abre o mesmo formulário num **Capture Sheet** que nunca navega: fecha e devolve o foco ao acionador na rota onde Hugo estava, mesmo quando essa rota já é o próprio Brain Dump.
+
+Processamento é sempre manual e nomeado: cada linha tem **Mover** (abre o seletor de destino) e **Descartar** — nunca migração automática, sugestão de destino, IA, categoria, prioridade, tags, filtro, busca ou ordenação manual, e o item não tem máquina de estado de tarefa. O `target_log` gravado aparece como dica textual (“Fica no Brain Dump até ser processado.”) e pré-seleciona o destino no seletor, mas nunca move o item sozinho. **Descartar** executa direto, sem dialog nem desfazer — paridade deliberada com o comportamento legado. **Mover** abre o mesmo seletor de destino do ritual de migração (`DESIGN.md.Migração / Catch-Up`), com o seletor de log em `radiogroup` no lugar das abas: **Hoje** (`today`), **Esta Semana** (`week` + `scheduled_date` do dia escolhido), **Este Mês** (`month` + `scheduled_date` opcional) e **Futuro** (`future` + `month_first` via `input month` nativo, recusando o mês corrente com erro associado ao campo — o mês corrente é atendido por Este Mês). **Sem dia definido** é sempre alcançável em Esta Semana/Este Mês e nunca o resultado silencioso de não escolher; Futuro não oferece dia, porque o item entra no início do mês como no Future Log. Confirmar cria a Task no destino e remove a linha; contagem e badge caem juntos, sem toast.
+
+O item ganha edição paritária com a captura: o sheet de item (aberto por tap na linha no compact; a linha mantém as duas ações inline no ponteiro) expõe os mesmos três campos — Título, Descrição, Destino, pré-preenchidos com o valor atual — e persiste via o endpoint de atualização definido em [M11](architecture-and-story-handoff.md#m11--brain-dumpcaptura). Foco inicial vai ao Título tanto no Capture Sheet quanto no sheet de edição; `Enter` no Título salva em ambos. Salvar a edição fecha o sheet, atualiza a linha in-place (sem otimismo — só após confirmação do servidor, como qualquer mutação além da contagem) e devolve o foco ao acionador da linha, espelhando o ciclo do Capture Sheet; falha preserva os três campos com o erro junto à ação. Fechar o Capture Sheet com o Título preenchido sempre passa por **Descartar item?**; fechar o sheet de edição do item com **alterações não salvas** em relação ao valor carregado — não com o simples fato de ter texto, que é o estado normal de um item existente — passa por **Descartar alterações?**. Ambas as confirmações têm foco inicial em **Continuar editando**; `Escape` equivale a continuar editando, nunca a descartar.
+
+Item Row usa a variante Brain Dump: título, descrição truncada em uma linha, borda esquerda neutra — sem categoria, sem Eisenhower, sem ícone de status — com a data de captura (`created_at`) em meta tabular; a lista ordena por `created_at`. Offline desabilita captura e ações de item com o motivo no nome acessível; leitura já carregada permanece; nenhuma fila local, rascunho persistido ou promessa de envio posterior. Loading preserva shell/header/captura com skeleton de 5 linhas na geometria real; erro de leitura fica junto à lista com retry local, sem bloquear captura; escrita preserva a entrada e mostra “Salvando…” com `aria-busy`, envio duplicado bloqueado. Lista e contador do badge são fontes independentes: um pode falhar sem o outro (ver **Badge Brain Dump** em State Patterns).
+
+→ Composição e estados aprovados: [`mockups/key-brain-dump.html`](mockups/key-brain-dump.html); especificação de origem em [`imports/story-15-0-brain-dump-handoff/story-15.0-brain-dump.md`](imports/story-15-0-brain-dump-handoff/story-15.0-brain-dump.md). Os spines vencem em conflito.
 
 ### Arquivo e ciclo fechado
 
@@ -427,6 +446,8 @@ Wide/medium usam lista + detalhe; tablet reduz a lista; compact usa lista → de
 | Grupo com filho ativo recolhido | permanece recolhido; indicador no grupo; filho conserva rota ativa; grupo não recebe `aria-current` |
 | Badge Brain Dump 0/loading/error | badge oculto; navegação e captura continuam funcionais |
 | Badge Brain Dump 1–9/maior | valor literal até 9; `9+` acima; nome acessível anuncia contagem exata |
+| Brain Dump erro parcial | lista e contador são fontes independentes: badge oculto com lista íntegra, ou lista em erro com badge correto e captura operante |
+| Descartar rascunho do Brain Dump | Capture Sheet dispara por texto preenchido; sheet de edição dispara por alteração não salva; foco inicial em Continuar editando, `Escape` nunca descarta |
 | Captura offline | ação indisponível com motivo acessível; conteúdo e navegação continuam; contador não determina disponibilidade |
 | Menu mobile aberto | sheet alto; foco inicial no destino ativo, foco contido, rolagem interna e conteúdo inferior inerte |
 | Aparência dirty | draft visível; aparência aplicada permanece inalterada; Salvar habilitado |
@@ -466,6 +487,8 @@ No detalhe de tarefa, falha de escrita preserva todo o rascunho e exibe `Não fo
 - Drag no Monthly reordena somente dentro do mesmo dia; mudança de dia usa migração explícita.
 - Navegação de linhagem leva ao sucessor imediato, posiciona e destaca sem abrir detalhe.
 - `[` alterna sidebar expandida/rail nas faixas que permitem; `B` abre Brain Dump. Ambos respeitam foco em campo editável e o inventário vigente.
+- `Enter` no Título do Brain Dump/Capture Sheet/sheet de edição do item salva; após capturar na superfície, o Título limpa e mantém o foco para a captura seguinte, e após salvar uma edição o foco volta ao acionador da linha. Digitar em qualquer campo editável nunca aciona atalhos de navegação.
+- No seletor de destino do Brain Dump, `1`–`7`/`0` e as setas herdam o mesmo comportamento do seletor de migração (ver acima); trocar o destino no seletor de log troca a escolha de dia abaixo.
 - Menu mobile abre um sheet alto com foco no destino ativo. `Tab` fica contido; Fechar, backdrop, `Escape` e gesto de arrastar para baixo encerram. Sem navegação, foco retorna a Menu.
 - Alterar família, modo ou atalhos modifica somente o draft de Configurações. `Salvar` é o único commit; falha nunca descarta escolhas.
 
@@ -556,6 +579,7 @@ Uma story de implementação precisa:
 | Future | horizonte, meses distantes e datear/mover | queries, linhagem e estados | [M08](architecture-and-story-handoff.md#m08--future-log) |
 | Recorrentes | biblioteca, edição e soft delete | preservar `source_template` e alocação | [M09](architecture-and-story-handoff.md#m09--recorrentes) |
 | Migração | fila unificada e ritual no shell | unificação, retomada, resumo e erro | [M10](architecture-and-story-handoff.md#m10--migraçãocatch-up) |
+| Brain Dump | edição paritária do item; `scheduled_date` exercitado por Esta Semana/Este Mês; contagem otimista | endpoint de atualização (`PATCH`), invalidação de chaves, rollback de contagem | [M11](architecture-and-story-handoff.md#m11--brain-dumpcaptura) |
 
 ## Inspiration & Anti-patterns
 
@@ -596,7 +620,7 @@ Os nove HTMLs são referências ilustrativas: os spines vencem em conflito. Scri
 |---|---|---|---|
 | FR-0–FR-3 | Fundação, collections, IA e automação | plataforma/handoff | PRD + arquitetura |
 | FR-4 | Núcleo BuJo | Fluxos 1, 2 e 5 | PRD/épicos |
-| FR-5 | Brain Dump/captura | Fluxo 3 | PRD/Story 13.0 |
+| FR-5 | Brain Dump/captura | Fluxo 3 | PRD/Story 13.0 + Story 15.0 |
 | FR-6 | Home/dashboard | diferido | x.0 do Épico 17 |
 | FR-7 | Hábitos | diferido | Story 16.0 |
 | FR-8–FR-9 | Saúde-Métricas + Medicamentos | diferido | Story 16.3 |
@@ -635,8 +659,11 @@ Falha: aplica **Resiliência canônica**; a exceção do ritual é que uma fonte
 
 1. Hugo aciona captura persistente.
 2. O sheet abre com foco no título e Brain Dump como destino padrão.
-3. Salva; em falha, o texto permanece e retry fica disponível.
-4. **Clímax:** o sheet fecha após confirmação e o indicador do Brain Dump aumenta, sem tirar Hugo do contexto anterior.
+3. Salva; o sheet fecha, o indicador do Brain Dump aumenta e o foco volta ao acionador, sem tirar Hugo do contexto anterior.
+4. Mais tarde, no Brain Dump, Hugo encontra o item na lista e aciona **Mover**: escolhe o destino no seletor (mesma anatomia do ritual de migração) e confirma — a tarefa nasce no destino, a linha some da caixa e a contagem cai. Se só quer ajustar o texto, abre o item e edita Título/Descrição/Destino em vez de mover.
+5. **Clímax:** o item que nasceu como uma nota rápida durante o deslocamento vira uma tarefa no lugar certo, sem que Hugo tenha perdido o pensamento nem parado o que estava fazendo para decidir o destino na hora da captura.
+
+Falha: a captura preserva o texto digitado, com retry na própria ação; Mover e a edição do item preservam a entrada e mostram o erro junto ao controle, com retry local. Offline desabilita captura e ações de item com motivo acessível; a leitura da lista já carregada permanece disponível.
 
 ### Fluxo 4 — Consultar ciclo fechado (Hugo, desktop, revisão mensal)
 

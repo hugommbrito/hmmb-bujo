@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BuJo Digital — Monthly &amp; Future Log Wireframe</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Architects+Daughter&display=swap" rel="stylesheet">
+<style>
+  @font-face { font-family:'Sora'; src:url('fonts/Sora-Regular.ttf') format('truetype'); font-weight:400; font-display:swap; }
+  @font-face { font-family:'Sora'; src:url('fonts/Sora-Medium.ttf') format('truetype'); font-weight:500; font-display:swap; }
+  @font-face { font-family:'Sora'; src:url('fonts/Sora-SemiBold.ttf') format('truetype'); font-weight:600; font-display:swap; }
+  @font-face { font-family:'Sora'; src:url('fonts/Sora-Bold.ttf') format('truetype'); font-weight:700; font-display:swap; }
+
+  :root{
+    --paper:#eceae4; --box:#ffffff;
+    --ink:#2c2a26; --ink-soft:#6f6c64; --ink-faint:#a6a299;
+    --line:#9b978d; --line-soft:#cbc8c0;
+    --fill:#dedbd3; --fill-2:#e8e6df;
+    --red:#d6453c; --orange:#e07b1a; --yellow:#dca200; --green:#3aa861;
+    --pin:#2f5fa6; --pin-bg:#eaf0fa;
+    --sketch:'Architects Daughter', cursive;
+    --ui:'Sora', system-ui, sans-serif;
+    --r:10px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{ background:
+      repeating-linear-gradient(0deg, transparent, transparent 27px, rgba(155,151,141,.07) 27px, rgba(155,151,141,.07) 28px),
+      var(--paper);
+    color:var(--ink); font-family:var(--ui); -webkit-font-smoothing:antialiased; }
+
+  .toolbar{ position:sticky; top:0; z-index:50; display:flex; align-items:center; gap:18px; padding:11px 26px;
+    background:rgba(236,234,228,.92); backdrop-filter:blur(6px); border-bottom:1.5px solid var(--line); }
+  .toolbar .brand{ display:flex; align-items:baseline; gap:10px; }
+  .toolbar .brand b{ font-weight:700; font-size:15px; letter-spacing:.02em; }
+  .toolbar .brand span{ font-family:var(--sketch); color:var(--ink-soft); font-size:15px; }
+  .toolbar .spacer{ flex:1; }
+  .tabs{ display:flex; gap:6px; background:#dedbd3; padding:4px; border-radius:9px; border:1.5px solid var(--line-soft); }
+  .tab{ font-family:var(--sketch); font-size:15px; color:var(--ink-soft); padding:5px 15px; border-radius:6px; cursor:pointer; border:none; background:transparent; white-space:nowrap; }
+  .tab.active{ background:var(--box); color:var(--ink); box-shadow:0 1px 2px rgba(0,0,0,.12); }
+  .toggle{ display:flex; align-items:center; gap:8px; cursor:pointer; user-select:none; font-family:var(--sketch); font-size:15px; color:var(--ink); }
+  .toggle .sw{ width:38px; height:21px; border-radius:11px; background:var(--line); position:relative; transition:.18s; border:1.5px solid var(--line); }
+  .toggle .sw::after{ content:''; position:absolute; top:1.5px; left:1.5px; width:15px; height:15px; border-radius:50%; background:var(--box); transition:.18s; }
+  .toggle.on .sw{ background:var(--pin); } .toggle.on .sw::after{ left:19px; }
+
+  .stage{ padding:30px 30px 70px; display:flex; justify-content:center; }
+  .app{ width:1320px; max-width:100%; display:grid; grid-template-columns:78px 1fr;
+    background:var(--paper); border:2.25px solid var(--ink); border-radius:16px; box-shadow:7px 9px 0 rgba(44,42,38,.13); overflow:hidden; }
+  .rail{ background:var(--fill-2); border-right:2px solid var(--ink); display:flex; flex-direction:column; align-items:center; gap:6px; padding:16px 8px; }
+  .rail .logo{ width:42px; height:42px; border:2px solid var(--ink); border-radius:11px; display:grid; place-items:center; font-weight:700; font-size:18px; margin-bottom:12px; background:var(--box); }
+  .navitem{ width:54px; padding:9px 4px 7px; border-radius:10px; border:1.5px solid transparent; display:flex; flex-direction:column; align-items:center; gap:5px; cursor:pointer; text-decoration:none; }
+  .navitem .ic{ width:24px; height:24px; border:1.75px solid var(--ink-soft); border-radius:6px; display:grid; place-items:center; }
+  .navitem .ic svg{ width:15px; height:15px; stroke:var(--ink-soft); fill:none; stroke-width:1.8; }
+  .navitem small{ font-size:9.5px; color:var(--ink-soft); font-weight:500; }
+  .navitem.active{ background:var(--box); border-color:var(--ink); }
+  .navitem.active .ic{ border-color:var(--ink); background:var(--ink); }
+  .navitem.active .ic svg{ stroke:var(--box); }
+  .navitem.active small{ color:var(--ink); font-weight:600; }
+
+  .main{ padding:18px 20px 24px; min-width:0; }
+
+  .region{ position:relative; background:var(--box); border:2px solid var(--ink); border-radius:var(--r); }
+  .rtag{ position:absolute; top:-11px; left:14px; z-index:3; font-family:var(--sketch); font-size:12.5px; line-height:1; letter-spacing:.04em; background:var(--paper); color:var(--ink-soft); padding:1px 8px; text-transform:uppercase; }
+  .pin{ position:absolute; top:-13px; right:-13px; z-index:6; width:27px; height:27px; border-radius:50%; background:var(--pin); color:#fff; border:2px solid var(--box); display:none; place-items:center; font-family:var(--sketch); font-size:14px; box-shadow:0 2px 5px rgba(47,95,166,.4); }
+  body.annotated .pin{ display:grid; }
+
+  .ghost{ border:1.75px solid var(--line); background:var(--box); border-radius:8px; padding:7px 12px; font-family:var(--ui); font-size:13px; color:var(--ink); cursor:pointer; font-weight:500; display:inline-flex; align-items:center; gap:7px; text-decoration:none; }
+  .ghost.icon{ padding:7px 9px; }
+  .ghost svg{ width:15px; height:15px; stroke:var(--ink); fill:none; stroke-width:1.9; }
+  .ghost.cta{ background:var(--ink); color:var(--box); border-color:var(--ink); }
+  .ghost.cta svg{ stroke:var(--box); }
+
+  /* view switching */
+  .view{ display:none; }
+  body[data-view="month"] #vMonth{ display:block; }
+  body[data-view="future"] #vFuture{ display:block; }
+
+  /* ===== month header ===== */
+  .mhead{ display:flex; align-items:center; gap:18px; padding:15px 18px; margin-bottom:14px; }
+  .mhead .mname{ font-size:27px; font-weight:700; letter-spacing:-.01em; }
+  .mhead .msub{ font-size:13px; font-family:var(--sketch); color:var(--ink-soft); }
+  .mhead .spacer{ flex:1; }
+  .daynav{ display:flex; align-items:center; gap:6px; }
+
+  /* stats band */
+  .statsband{ display:grid; grid-template-columns:repeat(4,1fr); gap:12px; padding:14px; margin-bottom:14px; }
+  .sbox{ border:1.75px solid var(--line); border-radius:9px; padding:11px 13px; background:var(--fill-2); }
+  .sbox .sv{ font-size:23px; font-weight:700; line-height:1; }
+  .sbox .sv small{ font-size:13px; color:var(--ink-soft); font-weight:500; }
+  .sbox .sl{ font-size:11px; color:var(--ink-soft); margin-top:4px; }
+  .sbox .mini{ height:6px; border-radius:4px; background:var(--fill); margin-top:8px; overflow:hidden; }
+  .sbox .mini i{ display:block; height:100%; background:var(--ink); border-radius:4px; }
+
+  /* split */
+  .split{ display:grid; grid-template-columns:42fr 58fr; gap:16px; align-items:start; }
+  .lcol{ display:grid; gap:16px; align-items:start; }
+
+  /* calendar */
+  .cal{ padding:14px 14px 13px; }
+  .cal-h{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+  .cal-h .ttl{ font-weight:600; font-size:14.5px; }
+  .cal-h .hint{ font-size:11px; color:var(--ink-soft); font-family:var(--sketch); }
+  .dows{ display:grid; grid-template-columns:repeat(7,1fr); gap:5px; margin-bottom:5px; }
+  .dows span{ text-align:center; font-size:10.5px; color:var(--ink-soft); font-weight:600; text-transform:uppercase; letter-spacing:.03em; }
+  .cgrid{ display:grid; grid-template-columns:repeat(7,1fr); gap:5px; }
+  .cell{ aspect-ratio:1/.92; border:1.5px solid var(--line-soft); border-radius:7px; background:var(--box); padding:5px 6px; display:flex; flex-direction:column; cursor:pointer; position:relative; }
+  .cell .dn{ font-size:12px; font-weight:600; color:var(--ink); }
+  .cell.out{ background:var(--fill-2); }
+  .cell.out .dn{ color:var(--ink-faint); font-weight:400; }
+  .cell.today{ border:2.25px solid var(--ink); background:#fff; }
+  .cell.today .dn{ background:var(--ink); color:var(--box); width:20px; height:20px; border-radius:50%; display:grid; place-items:center; font-size:11px; }
+  .cell .dots{ margin-top:auto; display:flex; gap:3px; align-items:center; flex-wrap:wrap; }
+  .cell .dots i{ width:6px; height:6px; border-radius:50%; }
+  .cell .more{ font-size:9px; color:var(--ink-soft); font-family:var(--sketch); }
+  .di.red{ background:var(--red); } .di.orange{ background:var(--orange); } .di.yellow{ background:var(--yellow); } .di.green{ background:var(--green); }
+
+  /* intention card */
+  .card{ position:relative; background:var(--box); border:2px solid var(--ink); border-radius:var(--r); padding:14px; }
+  .card h4{ margin:0 0 11px; font-size:14px; font-weight:600; display:flex; align-items:center; justify-content:space-between; }
+  .card h4 .fr{ font-family:var(--sketch); font-size:11px; color:var(--ink-faint); font-weight:400; }
+  .note{ border:1.5px dashed var(--line); border-radius:8px; padding:9px 11px; margin-bottom:10px; background:var(--fill-2); }
+  .note .nl{ font-family:var(--sketch); font-size:11.5px; color:var(--ink-soft); margin-bottom:5px; text-transform:uppercase; letter-spacing:.04em; }
+  .note .nt{ font-size:12.5px; color:var(--ink); line-height:1.45; }
+  .note.empty .nt{ color:var(--ink-faint); font-style:italic; }
+
+  /* monthly list */
+  .mlist{ padding:15px 16px 14px; }
+  .mlist-h{ display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
+  .mlist-h .ttl{ font-weight:600; font-size:15px; }
+  .mlist-h .meta{ font-size:11.5px; color:var(--ink-soft); }
+  .section{ margin-top:13px; }
+  .sec-h{ display:flex; align-items:center; gap:9px; margin-bottom:6px; }
+  .sec-h .name{ font-family:var(--sketch); font-size:14px; color:var(--ink); text-transform:uppercase; letter-spacing:.05em; }
+  .sec-h .ln{ flex:1; height:1.5px; background:var(--line-soft); }
+  .sec-h .ct{ font-size:11px; color:var(--ink-soft); }
+  .mrow{ display:grid; grid-template-columns:13px 1fr auto auto; gap:10px; align-items:center; padding:8px 5px; border-bottom:1.5px solid var(--line-soft); }
+  .mrow .pd{ width:12px; height:12px; border-radius:50%; }
+  .pd.red{ background:var(--red); } .pd.orange{ background:var(--orange); } .pd.yellow{ background:var(--yellow); } .pd.green{ background:var(--green); }
+  .mrow .mt{ font-size:13.5px; color:var(--ink); }
+  .mrow .dchip{ font-size:11px; color:var(--ink-soft); background:var(--fill-2); border-radius:5px; padding:2px 8px; white-space:nowrap; }
+  .mrow .mst{ justify-self:end; }
+  .chk{ width:19px; height:19px; border:2px solid var(--ink); border-radius:5px; display:grid; place-items:center; }
+  .chk svg{ width:12px; height:12px; stroke:var(--ink); fill:none; stroke-width:2.4; }
+  .chk.empty svg{ display:none; }
+  .chk.doing{ background:linear-gradient(135deg,var(--ink) 0 50%, transparent 50%); }
+  .chk.doing svg{ display:none; }
+  .mrow.done .mt{ color:var(--ink-faint); text-decoration:line-through; }
+  .mrow.doing .mt{ font-weight:600; }
+  .evdot{ font-family:var(--sketch); font-size:15px; color:var(--ink-soft); width:19px; text-align:center; }
+  .addrow{ display:flex; align-items:center; gap:9px; margin-top:9px; border:1.5px dashed var(--line); border-radius:8px; padding:9px 11px; color:var(--ink-soft); cursor:pointer; font-family:var(--sketch); font-size:13px; }
+  .addrow .plus{ width:19px; height:19px; border:1.5px solid var(--ink-soft); border-radius:5px; display:grid; place-items:center; font-size:14px; }
+
+  /* ===== FUTURE LOG ===== */
+  .fhead{ display:flex; align-items:center; gap:16px; padding:15px 18px; margin-bottom:14px; }
+  .fhead .ftitle{ font-size:25px; font-weight:700; }
+  .fhead .fsub{ font-size:12.5px; color:var(--ink-soft); font-family:var(--sketch); }
+  .fhead .spacer{ flex:1; }
+  .fkey{ display:flex; gap:15px; align-items:center; }
+  .fkey .keyitem{ display:flex; align-items:center; gap:7px; font-size:11.5px; color:var(--ink-soft); }
+
+  .yearstrip{ padding:13px 14px; margin-bottom:16px; }
+  .ys-h{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+  .ys-h .ttl{ font-weight:600; font-size:14px; }
+  .ys-h .yr{ font-family:var(--sketch); font-size:13px; color:var(--ink-soft); }
+  .ycells{ display:grid; grid-template-columns:repeat(12,1fr); gap:6px; }
+  .yc{ border:1.5px solid var(--line-soft); border-radius:7px; padding:7px 4px 6px; text-align:center; background:var(--box); }
+  .yc.past{ background:var(--fill-2); opacity:.7; }
+  .yc.curr{ border:2.25px solid var(--ink); }
+  .yc .ym{ font-size:11px; font-weight:600; }
+  .yc .ycount{ margin-top:5px; font-size:15px; font-weight:700; }
+  .yc .ycount.zero{ color:var(--ink-faint); font-weight:400; }
+  .yc .yl{ font-size:8.5px; color:var(--ink-soft); }
+
+  .fmonths{ display:grid; grid-template-columns:1fr 1fr; gap:14px; align-items:start; }
+  .fmonth{ position:relative; background:var(--box); border:2px solid var(--ink); border-radius:var(--r); overflow:hidden; }
+  .fm-h{ display:flex; align-items:center; gap:11px; padding:12px 14px; cursor:pointer; border-bottom:1.5px solid var(--line-soft); }
+  .fm-h.collapsed{ border-bottom:none; }
+  .fm-h .caret{ width:16px; height:16px; transition:.18s; }
+  .fm-h .caret svg{ width:16px; height:16px; stroke:var(--ink); fill:none; stroke-width:2; }
+  .fm-h.collapsed .caret{ transform:rotate(-90deg); }
+  .fm-h .fmname{ font-weight:700; font-size:15px; }
+  .fm-h .fmcount{ margin-left:auto; font-size:11px; color:var(--ink-soft); border:1.5px solid var(--line-soft); border-radius:20px; padding:2px 10px; }
+  .fm-body{ padding:8px 14px 12px; }
+  .fm-h.collapsed + .fm-body{ display:none; }
+  .frow{ display:grid; grid-template-columns:13px 1fr auto; gap:10px; align-items:center; padding:8px 3px; border-bottom:1.5px solid var(--line-soft); }
+  .frow:last-of-type{ border-bottom:none; }
+  .frow .fmain{ min-width:0; }
+  .frow .ft{ font-size:12.5px; color:var(--ink); }
+  .frow .ftype{ display:block; font-family:var(--sketch); font-size:10.5px; color:var(--ink-faint); margin-top:1px; text-transform:capitalize; }
+  /* date-specific vs whole-month scheduling granularity */
+  .when{ display:inline-flex; align-items:center; gap:5px; font-size:11px; font-family:var(--sketch); border-radius:6px; padding:3px 9px; white-space:nowrap; border:1.5px solid; }
+  .when svg{ width:12px; height:12px; stroke:currentColor; fill:none; stroke-width:1.8; flex:none; }
+  .when.date{ color:var(--pin); border-color:var(--pin); background:var(--pin-bg); }
+  .when.month{ color:var(--ink-soft); border-color:var(--line-soft); background:var(--fill-2); }
+
+  /* legend */
+  .legend{ position:fixed; right:18px; bottom:18px; z-index:60; width:336px; background:var(--box); border:2px solid var(--pin); border-radius:13px; box-shadow:0 14px 36px rgba(44,42,38,.24); overflow:hidden; display:none; }
+  body.annotated .legend{ display:block; }
+  .legend-h{ background:var(--pin); color:#fff; padding:9px 14px; font-family:var(--sketch); font-size:15px; display:flex; align-items:center; justify-content:space-between; }
+  .legend-h .x{ cursor:pointer; opacity:.85; font-size:18px; }
+  .legend-b{ padding:10px 14px 13px; max-height:46vh; overflow:auto; }
+  .lg{ display:flex; gap:10px; padding:7px 0; border-bottom:1px solid var(--line-soft); }
+  .lg:last-child{ border-bottom:none; }
+  .lg .n{ flex:none; width:21px; height:21px; border-radius:50%; background:var(--pin-bg); color:var(--pin); border:1.5px solid var(--pin); display:grid; place-items:center; font-family:var(--sketch); font-size:12px; }
+  .lg .t{ font-size:12px; color:var(--ink); line-height:1.4; }
+  .lg .t b{ font-weight:600; }
+  .lg.head{ border-bottom:1.5px solid var(--line); }
+  .lg.head .t{ font-family:var(--sketch); text-transform:uppercase; letter-spacing:.05em; color:var(--ink-soft); }
+
+  .keybar{ display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-top:14px; padding:11px 4px 2px; }
+  .keybar .kt{ font-family:var(--sketch); font-size:13px; color:var(--ink-soft); }
+  .keyitem{ display:flex; align-items:center; gap:7px; font-size:12px; color:var(--ink); }
+  .keyitem .pd{ width:11px; height:11px; border-radius:50%; }
+</style>
+</head>
+<body class="annotated" data-view="month">
+
+  <div class="toolbar">
+    <div class="brand"><b>BuJo Digital</b><span>· Monthly &amp; Future Log — lo-fi wireframe</span></div>
+    <div class="spacer"></div>
+    <div class="tabs" id="tabs">
+      <button class="tab active" data-view="month">Monthly Log</button>
+      <button class="tab" data-view="future">Future Log</button>
+    </div>
+    <div class="toggle on" id="annoToggle"><span class="sw"></span>Annotations</div>
+  </div>
+
+  <div class="stage">
+    <div class="app">
+      <nav class="rail" id="rail"></nav>
+      <div class="main">
+        <div class="view" id="vMonth"></div>
+        <div class="view" id="vFuture"></div>
+      </div>
+    </div>
+  </div>
+
+  <aside class="legend" id="legend">
+    <div class="legend-h">Annotations — what &amp; why <span class="x" id="legendX">×</span></div>
+    <div class="legend-b" id="legendBody"></div>
+  </aside>
+
+<script>
+const ICON = {
+  chevL:'<svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>',
+  chevR:'<svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>',
+  chevD:'<svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>',
+  cal:'<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/></svg>',
+  sun:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/></svg>',
+  week:'<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="9" y1="10" x2="9" y2="20"/></svg>',
+  repeat:'<svg viewBox="0 0 24 24"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>',
+  health:'<svg viewBox="0 0 24 24"><path d="M3 12h4l2 5 4-12 2 7h6"/></svg>',
+  check:'<svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>',
+  arrow:'<svg viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>',
+  layers:'<svg viewBox="0 0 24 24"><polygon points="12 2 22 8.5 12 15 2 8.5 12 2"/><polyline points="2 15.5 12 22 22 15.5"/></svg>',
+};
+
+const NAV = [
+  {ic:'sun', label:'Daily', href:'Daily Dashboard Wireframe.html'},
+  {ic:'week', label:'Weekly', href:'Weekly View Wireframe.html'},
+  {ic:'cal', label:'Monthly', active:true},
+  {ic:'repeat', label:'Recurr.'},
+  {ic:'health', label:'Health'},
+];
+document.getElementById('rail').innerHTML =
+  '<div class="logo">B</div>' +
+  NAV.map(n=>`<a class="navitem ${n.active?'active':''}" ${n.href?`href="${n.href}"`:''}>
+      <span class="ic">${ICON[n.ic]}</span><small>${n.label}</small></a>`).join('');
+
+/* ============ MONTHLY LOG ============ */
+/* June 2026 — starts Monday Jun 1, today = Jun 8 */
+const DAY_ITEMS = {
+  3:['green'], 5:['orange'], 8:['red','orange','green','yellow'], 9:['red','yellow'],
+  11:['yellow','green'], 15:['yellow'], 18:['green','orange'], 20:['green'],
+  21:['green'], 24:['red','green','yellow'], 27:['orange'], 29:['green']
+};
+function calendar(){
+  const dows = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  let cells='';
+  // June 1 2026 is Monday -> no leading out-days; 30 days; fill to 42
+  for(let i=1;i<=42;i++){
+    if(i<=30){
+      const items = DAY_ITEMS[i]||[];
+      const dots = items.slice(0,3).map(c=>`<i class="di ${c}"></i>`).join('');
+      const more = items.length>3?`<span class="more">+${items.length-3}</span>`:'';
+      cells += `<div class="cell ${i===8?'today':''}">
+        <span class="dn">${i}</span>
+        <span class="dots">${dots}${more}</span></div>`;
+    } else {
+      cells += `<div class="cell out"><span class="dn">${i-30}</span></div>`;
+    }
+  }
+  return `<section class="region cal">
+    <span class="rtag">Monthly calendar</span><span class="pin">2</span>
+    <div class="cal-h"><span class="ttl">June 2026</span><span class="hint">click a day → daily dashboard</span></div>
+    <div class="dows">${dows.map(d=>`<span>${d}</span>`).join('')}</div>
+    <div class="cgrid">${cells}</div>
+  </section>`;
+}
+
+const EVENTS = [
+  {p:'yellow', t:'Quarterly business review', date:'Jun 15', ev:true},
+  {p:'green', t:'Dad’s birthday', date:'Jun 21', ev:true},
+  {p:'orange', t:'Conference — DesignOps', date:'Jun 24–25', ev:true},
+];
+const MTASKS = [
+  {p:'red', t:'Q3 OKR draft', date:'this month', st:'doing'},
+  {p:'orange', t:'Renew car insurance', date:'due Jun 30', st:'open'},
+  {p:'green', t:'Plan summer trip', st:'open'},
+  {p:'green', t:'Back up photo library', st:'done'},
+];
+const MGOALS = [
+  {p:'red', t:'Ship v2.0 to production', st:'open'},
+  {p:'yellow', t:'Read 2 books', st:'doing'},
+  {p:'green', t:'Run a 10k', st:'open'},
+];
+function mst(st, ev){
+  if(ev) return '<span class="evdot" title="event">◇</span>';
+  if(st==='done')  return '<span class="chk">'+ICON.check+'</span>';
+  if(st==='doing') return '<span class="chk doing"></span>';
+  return '<span class="chk empty">'+ICON.check+'</span>';
+}
+function mrow(it){
+  return `<div class="mrow ${it.st||''}">
+    <span class="pd ${it.p}"></span>
+    <span class="mt">${it.t}</span>
+    <span>${it.date?`<span class="dchip">${it.date}</span>`:''}</span>
+    <span class="mst">${mst(it.st, it.ev)}</span>
+  </div>`;
+}
+function section(name, count, items){
+  return `<div class="section">
+    <div class="sec-h"><span class="name">${name}</span><span class="ln"></span><span class="ct">${count}</span></div>
+    ${items.map(mrow).join('')}
+  </div>`;
+}
+function monthlyList(){
+  return `<section class="region mlist">
+    <span class="rtag">Monthly collection — events · tasks · goals</span><span class="pin">3</span>
+    <div class="mlist-h"><span class="ttl">June — not tied to a specific day</span><span class="meta">drag onto a calendar day to schedule</span></div>
+    ${section('Events', '3', EVENTS)}
+    ${section('Tasks', '4', MTASKS)}
+    ${section('Goals · Intentions', '3', MGOALS)}
+    <div class="addrow"><span class="plus">+</span>Quick-add to month…</div>
+  </section>`;
+}
+function buildMonth(){
+  return `
+  <section class="region mhead">
+    <span class="rtag">Month header</span><span class="pin">1</span>
+    <div><div class="mname">June 2026</div><div class="msub">month 6 of 12 · week 23–27</div></div>
+    <div class="daynav" style="margin-left:18px">
+      <button class="ghost icon">${ICON.chevL}</button>
+      <button class="ghost">This month</button>
+      <button class="ghost icon">${ICON.chevR}</button>
+    </div>
+    <div class="spacer"></div>
+    <button class="ghost cta" onclick="setView('future')">${ICON.layers} Future Log →</button>
+  </section>
+
+  <section class="region statsband">
+    <span class="rtag">Month summary</span><span class="pin">5</span>
+    <div class="sbox"><div class="sv">6.4<small> / 10</small></div><div class="sl">productivity avg</div><div class="mini"><i style="width:64%"></i></div></div>
+    <div class="sbox"><div class="sv">18<small> / 41</small></div><div class="sl">tasks completed</div><div class="mini"><i style="width:44%"></i></div></div>
+    <div class="sbox"><div class="sv">78<small>%</small></div><div class="sl">habits completion</div><div class="mini"><i style="width:78%"></i></div></div>
+    <div class="sbox"><div class="sv">3<small> / 7</small></div><div class="sl">monthly goals met</div><div class="mini"><i style="width:43%"></i></div></div>
+  </section>
+
+  <div class="split">
+    <div class="lcol">
+      ${calendar()}
+      <div class="card">
+        <span class="pin">4</span>
+        <h4>Monthly intention <span class="fr">— freeform</span></h4>
+        <div class="note">
+          <div class="nl">Start-of-month note</div>
+          <div class="nt">A heavy launch month — protect mornings for deep work, keep evenings light. One word: <b>focus</b>.</div>
+        </div>
+        <div class="note empty">
+          <div class="nl">End-of-month review</div>
+          <div class="nt">Write your reflection at month’s end…</div>
+        </div>
+      </div>
+    </div>
+    ${monthlyList()}
+  </div>`;
+}
+
+/* ============ FUTURE LOG ============ */
+const YEAR = [
+  ['Jan',0,'past'],['Feb',0,'past'],['Mar',0,'past'],['Apr',0,'past'],['May',0,'past'],
+  ['Jun',12,'curr'],['Jul',5,''],['Aug',3,''],['Sep',4,''],['Oct',2,''],['Nov',1,''],['Dec',3,'']
+];
+const FMONTHS = [
+  {m:'July 2026', count:5, open:true, items:[
+    {p:'green', t:'Summer trip — book flights & stay', type:'event', when:'Jul 6'},
+    {p:'orange', t:'Conference travel — DesignOps follow-up', type:'task', when:null},
+    {p:'yellow', t:'Dentist — 6-month checkup', type:'event', when:'Jul 14'},
+    {p:'red', t:'Mid-year OKR review', type:'task', when:'Jul 20'},
+    {p:'green', t:'Goal: 1 weekend offline', type:'goal', when:null},
+  ]},
+  {m:'August 2026', count:3, open:true, items:[
+    {p:'orange', t:'Quarterly taxes due', type:'task', when:'Aug 15'},
+    {p:'yellow', t:'Passport renewal pickup', type:'task', when:'Aug 3'},
+    {p:'green', t:'Family reunion', type:'event', when:null},
+  ]},
+  {m:'September 2026', count:4, open:false, items:[
+    {p:'red', t:'Q4 planning offsite', type:'event', when:'Sep 17'},
+    {p:'green', t:'Marathon training block starts', type:'goal', when:'Sep 1'},
+    {p:'yellow', t:'Renew gym membership', type:'task', when:null},
+    {p:'orange', t:'Lease renewal decision', type:'task', when:null},
+  ]},
+  {m:'October 2026', count:2, open:false, items:[
+    {p:'green', t:'Anniversary trip', type:'event', when:'Oct 12'},
+    {p:'yellow', t:'Flu shot', type:'task', when:null},
+  ]},
+  {m:'November 2026', count:1, open:false, items:[
+    {p:'orange', t:'Black Friday — replace laptop', type:'task', when:'Nov 27'},
+  ]},
+  {m:'December 2026', count:3, open:false, items:[
+    {p:'green', t:'Year-end review & 2027 goals', type:'goal', when:null},
+    {p:'green', t:'Holiday travel', type:'event', when:'Dec 23'},
+    {p:'yellow', t:'Annual health checkup', type:'task', when:null},
+  ]},
+];
+function frow(it){
+  const when = it.when
+    ? `<span class="when date" title="pinned to a day — surfaces in the daily & weekly log">${ICON.cal} ${it.when}</span>`
+    : `<span class="when month" title="whole month — no fixed day">${ICON.layers} no date</span>`;
+  return `<div class="frow">
+    <span class="pd ${it.p}"></span>
+    <span class="fmain"><span class="ft">${it.t}</span><span class="ftype">${it.type}</span></span>
+    ${when}
+  </div>`;
+}
+function fmonth(fm,i){
+  return `<div class="fmonth">
+    ${i===0?'<span class="pin">7</span>':''}
+    <div class="fm-h ${fm.open?'':'collapsed'}" data-fm="${i}">
+      <span class="caret">${ICON.chevD}</span>
+      <span class="fmname">${fm.m}</span>
+      <span class="fmcount">${fm.count} item${fm.count!==1?'s':''}</span>
+    </div>
+    <div class="fm-body">
+      ${fm.items.map(frow).join('')}
+      <div class="addrow"><span class="plus">+</span>Add to ${fm.m.split(' ')[0]}…</div>
+    </div>
+  </div>`;
+}
+function buildFuture(){
+  return `
+  <section class="region fhead">
+    <span class="rtag">Future Log header</span><span class="pin">6</span>
+    <div><div class="ftitle">Future Log</div><div class="fsub">parked for months ahead, from “Schedule → Future Log” — reviewed &amp; pulled in when the month arrives</div></div>
+    <div class="spacer"></div>
+    <div class="fkey">
+      <span class="keyitem"><span class="when date">${ICON.cal} Jul 14</span>pinned to a day</span>
+      <span class="keyitem"><span class="when month">${ICON.layers} no date</span>whole month</span>
+    </div>
+    <button class="ghost cta" onclick="setView('month')">${ICON.cal} ← Back to Monthly Log</button>
+  </section>
+
+  <section class="region yearstrip">
+    <span class="rtag">Year-ahead overview</span><span class="pin">8</span>
+    <div class="ys-h"><span class="ttl">2026 at a glance</span><span class="yr">item counts per month</span></div>
+    <div class="ycells">
+      ${YEAR.map(([m,c,cls])=>`<div class="yc ${cls}">
+        <div class="ym">${m}</div>
+        <div class="ycount ${c===0?'zero':''}">${c}</div>
+        <div class="yl">item${c!==1?'s':''}</div></div>`).join('')}
+    </div>
+  </section>
+
+  <div class="fmonths">${FMONTHS.map(fmonth).join('')}</div>`;
+}
+
+/* ============ LEGEND ============ */
+const LEGEND = [
+  ['h','Monthly Log'],
+  ['Month header','Month + year, prev/next month nav, “this month”, and a jump to the Future Log view.'],
+  ['Monthly calendar','Traditional 6×7 grid (Mon-start). Each day shows its number + colored item dots; <b>today</b> is highlighted; clicking a day opens the Daily Dashboard for it.'],
+  ['Monthly collection','Items not yet pinned to a day, in three sections — <b>Events</b> (◇), <b>Tasks</b>, <b>Goals/Intentions</b> — each with priority color + optional date + status. Drag onto a calendar day to schedule. Quick-add at the bottom.'],
+  ['Monthly intention','Freeform monthly goals with explicit <b>start-of-month</b> and <b>end-of-month</b> review notes.'],
+  ['Month summary','High-level stats: productivity average, tasks completed / total, habits completion rate, goals met.'],
+  ['h','Future Log'],
+  ['Future Log header','Title + toggle back to Monthly Log. Holds items scheduled for future months.'],
+  ['Future months','Collapsible block per upcoming month. Each item shows its kind (event / task / goal) <b>and how it was scheduled</b>: a blue <b>date chip</b> (e.g. “Jul 14”) means it was pinned to a specific day and will surface in the daily &amp; weekly log; <b>“no date”</b> means it lives at the month level only. Both arrive from the Schedule action — date picker vs month picker. Per-month quick-add at the bottom.'],
+  ['Year-ahead overview','Compact 12-month strip showing item counts per month; current month highlighted, past months dimmed.'],
+];
+document.getElementById('legendBody').innerHTML = LEGEND.map(l=>{
+  if(l[0]==='h') return `<div class="lg head"><span class="t">${l[1]}</span></div>`;
+  const i = LEGEND.filter(x=>x[0]!=='h').indexOf(l)+1;
+  return `<div class="lg"><span class="n">${i}</span><span class="t"><b>${l[0]}.</b> ${l[1]}</span></div>`;
+}).join('');
+
+/* ============ render + controls ============ */
+document.getElementById('vMonth').innerHTML = buildMonth();
+document.getElementById('vFuture').innerHTML = buildFuture();
+
+window.setView = function(v){
+  document.body.dataset.view = v;
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active', t.dataset.view===v));
+  window.scrollTo(0,0);
+};
+document.getElementById('tabs').addEventListener('click', e=>{
+  const b=e.target.closest('.tab'); if(!b) return; setView(b.dataset.view);
+});
+/* collapsible future months */
+document.getElementById('vFuture').addEventListener('click', e=>{
+  const h=e.target.closest('.fm-h'); if(!h) return; h.classList.toggle('collapsed');
+});
+const annoT = document.getElementById('annoToggle');
+annoT.addEventListener('click', ()=>{
+  annoT.classList.toggle('on');
+  document.body.classList.toggle('annotated', annoT.classList.contains('on'));
+});
+document.getElementById('legendX').addEventListener('click', ()=>{
+  annoT.classList.remove('on'); document.body.classList.remove('annotated');
+});
+</script>
+</body>
+</html>

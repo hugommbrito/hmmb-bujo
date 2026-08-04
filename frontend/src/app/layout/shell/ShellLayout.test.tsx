@@ -21,10 +21,33 @@ vi.mock('../../../shared/hooks/useAuth', () => ({
 // BrainDumpBadge/BrainDumpCaptureSheet usam TanStack Query direto — mesmo mock
 // do AppLayout.test.tsx. O registro do shell é dados puros: nenhum mock NOVO de
 // Query é necessário por causa dele (AC 7).
+//
+// `compact`/`disabled`/`disabledReason` são surfaced no mock (mesmo padrão de
+// `BrainDumpInboxCaptureForm` em `BrainDumpInboxPage.test.tsx:39-42`) para que
+// os testes provem que o `ShellLayout` de fato CALCULA e REPASSA essas props
+// (Story 15.2) — sem isso, um valor invertido ou solto (ex.: `disabled=
+// {isOnline}`) passaria despercebido por qualquer teste existente.
 vi.mock('../../../features/braindump', () => ({
   BrainDumpBadge: ({ children }: { children: React.ReactNode }) => children,
-  BrainDumpCaptureSheet: ({ open }: { open: boolean }) =>
-    open ? <div>capture sheet aberto</div> : null,
+  BrainDumpCaptureSheet: ({
+    open,
+    compact,
+    disabled,
+    disabledReason,
+  }: {
+    open: boolean
+    compact?: boolean
+    disabled?: boolean
+    disabledReason?: string
+  }) =>
+    open ? (
+      <div>
+        capture sheet aberto
+        <span data-testid="capture-sheet-compact">{String(compact)}</span>
+        <span data-testid="capture-sheet-disabled">{String(disabled)}</span>
+        {disabled && <span>{disabledReason}</span>}
+      </div>
+    ) : null,
 }))
 
 function mockMatchMedia(desktop: boolean, compact: boolean, tablet = false) {
@@ -148,12 +171,14 @@ describe('ShellLayout — topbar e workspace', () => {
     const user = userEvent.setup()
     renderShell()
 
-    const fab = screen.getByRole('button', { name: 'Captura rápida' })
+    const fab = screen.getByRole('button', { name: 'Abrir captura rápida' })
     expect(fab).toBeInTheDocument()
     expect(screen.queryByText('capture sheet aberto')).not.toBeInTheDocument()
 
     await user.click(fab)
     expect(screen.getByText('capture sheet aberto')).toBeInTheDocument()
+    // `ShellLayout` repassa `compact={isCompact}` — no compact, `true`.
+    expect(screen.getByTestId('capture-sheet-compact')).toHaveTextContent('true')
   })
 
   it('test_desktop_nao_tem_fab_mas_a_ancora_da_sidebar_abre_o_mesmo_sheet', async () => {
@@ -161,10 +186,43 @@ describe('ShellLayout — topbar e workspace', () => {
     const user = userEvent.setup()
     renderShell()
 
-    expect(screen.queryByRole('button', { name: 'Captura rápida' })).not.toBeInTheDocument()
+    // FAB e âncora da sidebar compartilham o MESMO nome acessível
+    // ("Abrir captura rápida", paridade corrigida na Story 15.2) — no
+    // desktop só a âncora existe (o bloco do FAB nem renderiza fora do
+    // compact), então a prova de "sem FAB duplicado" é exatamente um
+    // elemento com esse nome, não zero.
+    expect(screen.getAllByRole('button', { name: 'Abrir captura rápida' })).toHaveLength(1)
 
     await user.click(screen.getByRole('button', { name: 'Abrir captura rápida' }))
     expect(screen.getByText('capture sheet aberto')).toBeInTheDocument()
+    // `ShellLayout` repassa `compact={isCompact}` — fora do compact, `false`.
+    expect(screen.getByTestId('capture-sheet-compact')).toHaveTextContent('false')
+  })
+
+  it('test_capture_sheet_recebe_disabled_e_disabledReason_ao_ficar_offline_com_o_sheet_aberto', async () => {
+    mockMatchMedia(true, false)
+    const user = userEvent.setup()
+    renderShell()
+
+    await user.click(screen.getByRole('button', { name: 'Abrir captura rápida' }))
+    // Online (default de jsdom): `disabled` chega `false`, sem motivo.
+    expect(screen.getByTestId('capture-sheet-disabled')).toHaveTextContent('false')
+    expect(screen.queryByText('Sem conexão. Esta ação exige rede.')).not.toBeInTheDocument()
+
+    // Perde conexão com o sheet JÁ aberto (I/O Matrix) — mesmo evento nativo
+    // que `useOnlineStatus.test.ts` usa para simular a transição pós-mount
+    // (`navigator.onLine` só cobre o estado NA MONTAGEM).
+    act(() => {
+      window.dispatchEvent(new Event('offline'))
+    })
+
+    expect(screen.getByTestId('capture-sheet-disabled')).toHaveTextContent('true')
+    expect(screen.getByText('Sem conexão. Esta ação exige rede.')).toBeInTheDocument()
+
+    act(() => {
+      window.dispatchEvent(new Event('online'))
+    })
+    expect(screen.getByTestId('capture-sheet-disabled')).toHaveTextContent('false')
   })
 
   it('test_compact_reserva_padding_bottom_para_bottom_nav_e_safe_area', () => {
