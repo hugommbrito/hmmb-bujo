@@ -6,7 +6,7 @@ status: 'done'
 review_loop_iteration: 0
 followup_review_recommended: true
 baseline_revision: 'd768310f03cbfafcc30bf108b83ec97a656ec538'
-final_revision: 'cd237d786e7f1483a75426661f9090376f1280eb'
+final_revision: '27f492866d478e4d2a0e51b8844618e9088ffe06'
 context: []
 warnings: ['multiple-goals', 'oversized']
 deferred:
@@ -73,6 +73,48 @@ deferred:
       interceptor já trata com early-return. Latente, não vivo.
     location: >-
       frontend/src/api/client.ts:25-59
+    severity: medium
+  - summary: >-
+      `JWTAuthentication.get_user` do simplejwt distingue usuário apagado
+      (`code="user_not_found"`) de desativado (`code="user_inactive"`) — mensagem E
+      código diferentes — em TODA rota autenticada, anulando fora do refresh a
+      indistinguibilidade que a DW-25 construiu dentro dele.
+    evidence: |-
+      Achado pelo blind-hunter (2026-08-03), confirmado por mim lendo o simplejwt
+      instalado (`authentication.py:120-139`): o ramo `DoesNotExist` levanta
+      `AuthenticationFailed(_("User not found"), code="user_not_found")` e o ramo
+      `is_active` levanta `AuthenticationFailed(_("User is inactive"),
+      code="user_inactive")`. `TenantAwareJWTAuthentication` herda esse `get_user`,
+      logo a distinção vaza em toda request autenticada. Quem tem um access token
+      ainda válido — isto é, quem acabou de obter o refresh token que replayaria —
+      distingue os dois casos trivialmente. Pré-existente e fora do escopo: o intent
+      da DW-25 nomeia só o handler central e a rota de refresh, e fechar isso exige
+      decidir a política no autenticador (provável override de `get_user` colapsando
+      os dois ramos), não no exception handler. Carrega decisão de produto embutida:
+      se a propriedade vale, vale projeto-inteiro e este é o furo principal; se não
+      vale, `_authenticate_header` e metade do teste de paridade são complexidade
+      não-ganha. Registrado como DW-27.
+    location: >-
+      rest_framework_simplejwt/authentication.py:120-139 — superfície do projeto em backend/core/authentication.py
+    severity: medium
+  - summary: >-
+      Os três ramos de `Response` construída à mão em `custom_exception_handler` não
+      chamam `set_rollback()`, que o handler default do DRF sempre chama antes de
+      devolver — então uma exceção dentro de `ATOMIC_REQUESTS` não rolaria de volta.
+    evidence: |-
+      Achado pelo blind-hunter (2026-08-03), confirmado por mim no DRF instalado:
+      `rest_framework/views.py:99` chama `set_rollback()` imediatamente antes do
+      `return`, exatamente para não deixar escrita parcial commitada. LATENTE, não
+      vivo: `ATOMIC_REQUESTS` não está setado em lugar nenhum de `backend/config/`
+      (grep vazio), logo não há transação por request para rolar de volta hoje.
+      Pré-existente em 2 dos 3 ramos (`TenantScopeViolation` e `DomainError`
+      antecedem esta story); a DW-25 só acrescentou a terceira instância do mesmo
+      padrão, e corrigir só o ramo novo deixaria a inconsistência pior. Vale uma
+      correção única nos três, com teste de rollback, e vale ANTES de qualquer
+      decisão de ligar `ATOMIC_REQUESTS` — é aí que o latente vira perda de dados
+      silenciosa. Registrado como DW-28.
+    location: >-
+      backend/core/exceptions.py (ramos TenantScopeViolation, DomainError e User.DoesNotExist)
     severity: medium
 ---
 
@@ -156,7 +198,33 @@ deferred:
 - **Não houve re-derivação:** os findings foram triados como `patch` e corrigidos no código desta pass; o `<intent-contract>` não foi tocado e `review_loop_iteration` permanece 0.
 - **KEEP (deve sobreviver a qualquer re-derivação):** o ramo fica no `custom_exception_handler` central, **sem** subclassar/patchar `TokenRefreshSerializer`; `isinstance(exc, ObjectDoesNotExist)` vem antes do `get_user_model()`; a mensagem é o msgid lazy compartilhado, nunca um segundo literal congelado; `_authenticate_header(context)` deriva o challenge do jeito que o `APIView.handle_exception` do DRF deriva e **não** replica o rebaixamento "sem challenge → 403"; e o teste de paridade roda sob `pt-br` com as duas guardas anti-vacuidade (challenge não-vazio, corpo pt-br ≠ en-us) — em `en-us` puro um literal inglês passaria por acidente.
 
+### 2026-08-03 — Correção do snippet das Design Notes (sem loopback de implementação)
+
+- **Achado que disparou:** dois reviewers independentes (blind-hunter e intent-alignment) notaram que `response.data["detail"]` do ramo novo era um `__proxy__` de `gettext_lazy`, e não um `str` — o único ramo do handler assim, contra um `<intent-contract>` que especifica `{"detail": str}`.
+- **O que foi emendado:** o bloco de código das Design Notes, que prescrevia literalmente `{"detail": _NO_ACTIVE_ACCOUNT}`, passou a `{"detail": str(_NO_ACTIVE_ACCOUNT)}`, com a razão explicitada; e o `logger.warning` do snippet passou a inglês, alinhado ao `logger.critical` pré-existente do mesmo handler.
+- **Estado ruim evitado:** patchar só o código deixaria a spec contradizendo-o, e como `followup_review_recommended` continua `true`, uma re-derivação futura reintroduziria o proxy lazy — exatamente o modo de falha que a entrada anterior deste change log descreve.
+- **Não houve re-derivação:** o achado foi triado como `patch` e corrigido no código desta pass; o `<intent-contract>` não foi tocado e `review_loop_iteration` permanece 0.
+- **KEEP (deve sobreviver a qualquer re-derivação):** tudo do KEEP anterior, mais — o `str()` resolve o msgid lazy **no momento da request** (nunca em import time, ou a tradução congelaria); a ordem `isinstance(exc, ObjectDoesNotExist)` antes de `get_user_model()` agora é asseverada por teste, não por comentário; o `try/except` de `_authenticate_header` tem teste próprio e não pode ser estreitado por uma limpeza de broad-except sem falhar; e o teste unitário cobre as **duas** formas de contexto (o `{}` degenerado e a de produção, com `view`+`request`), porque `APIView.get_exception_handler_context()` sempre fornece ambos.
+
 ## Review Triage Log
+
+### 2026-08-03 — Review pass (follow-up)
+- intent_gap: 0
+- bad_spec: 0
+- patch: 8: (high 0, medium 0, low 8)
+- defer: 2: (high 0, medium 2, low 0)
+- reject: 10: (high 0, medium 0, low 10)
+- addressed_findings:
+  - `[low]` `[patch]` O `try/except` de `_authenticate_header` — cuja única função é impedir que derivar um header transforme o 401 da DW-25 de volta no 500 que ela existe para remover — não era exercitado por teste nenhum. A verification-gap review provou com canário: trocando o corpo do `except` por um `raise`, a suíte inteira seguia verde, logo o guarda podia ser estreitado ou apagado por qualquer limpeza de broad-except sem uma única objeção. Adicionado `test_challenge_derivation_failure_still_returns_the_401` com uma view-stub cujo `get_authenticate_header` levanta.
+  - `[low]` `[patch]` A ordem `isinstance(exc, ObjectDoesNotExist)` antes de `get_user_model()` — invariante KEEP declarada nesta spec — era imposta só por comentário. A verification-gap review provou por mutação: trocando os operandos, a suíte seguia verde. Adicionado `test_get_user_model_is_not_resolved_on_the_fallback_path`, que monkeypatcha `get_user_model` para levantar e asseve que um `RuntimeError` ainda cai em `None`.
+  - `[low]` `[patch]` Os dois testes unitários do ramo só exercitavam `context={}`, forma que **não ocorre em produção** (`APIView.get_exception_handler_context()` sempre fornece `view`+`request`), então a asserção de header pinava o caminho degenerado e toda a garantia real ficava dependendo de um único teste de integração. Adicionado `test_user_does_not_exist_carries_the_views_challenge`, que roda a forma de produção e asseve que o challenge da view é anexado.
+  - `[low]` `[patch]` `response.data["detail"]` era um `__proxy__` de `gettext_lazy`, o único ramo do handler assim — os dois ramos vizinhos passam string literal e todo erro reconhecido pelo DRF passa por `_normalise_body`/`_stringify`. O corpo na rede era idêntico, mas o `{"detail": str}` do contrato vale na superfície de `response.data` também. Corrigido com `str(...)` (resolve com o locale ativo na request) e pinado com `isinstance(response.data["detail"], str)`.
+  - `[low]` `[patch]` O docstring de módulo de `core/tests/test_health.py` afirmava que o módulo "now touches the DB ... rather than being auth-free" — factualmente errado: a fixture autouse `_enable_db_access(db)` do `conftest` raiz já dava acesso a DB a **todo** teste antes deste diff (o que mudou é que agora ele *escreve* uma linha). E a rewrite apagou sem relocar a razão documentada da existência do módulo (garantir que o pytest colete ≥1 teste, evitando exit code 5). Ambos corrigidos.
+  - `[low]` `[patch]` `_login_e_refresh` não tinha diagnóstico de falha: `login.json()["refresh"]` viraria `KeyError: 'refresh'` a qualquer regressão no login, fazendo os **três** testes que dependem dele apontar para o helper em vez de para a rota que quebrou. Adicionado `assert login.status_code == 200, login.content`.
+  - `[low]` `[patch]` As duas mensagens de log novas estavam em português enquanto o `logger.critical("TenantScopeViolation: ...")` pré-existente, na mesma função, está em inglês — e mensagem de log é chave de grep/alerta. Ambas passadas para inglês (a asserção `"User.DoesNotExist" in ...` do teste unitário sobrevive por ser o nome da exceção).
+  - `[low]` `[patch]` O comentário do teste de paridade afirmava um risco de locale que **não é alcançável hoje**: verifiquei que não há `LocaleMiddleware` no `MIDDLEWARE` e `LANGUAGE_CODE = "en-us"`, então toda request real renderiza os dois corpos em inglês e só o `translation.override` do teste ativa pt-br. Comentário reescrito para o valor vivo da asserção (detectar rewording upstream do simplejwt, que é o que torna aceitável o msgid congelado) mantendo o registro de que o eixo vira canal lateral real no dia em que houver negociação de idioma.
+
+Rejeitados (10, todos low): (1) blast radius global do ramo para um bug que vive num serializer de terceiro, com a sugestão de subclassar `TokenRefreshSerializer` — o `<intent-contract>` manda exatamente o desenho implementado e o **Block If** proíbe nominalmente subclasse/monkeypatch/fork do simplejwt, então a alternativa proposta é vedada pela própria autoridade de escopo; (2) o `logger.warning` seria invisível porque não haveria `LOGGING` dictConfig — **factualmente errado**, `config/settings/prod.py:50` define `LOGGING` com root em WARNING para stdout (Railway); (3) `exc_info` em caminho acionável por cliente polui log / é amplificador — já rejeitado na pass anterior pela mesma razão, e o alcance segue limitado; (4) `/api/schema/` e swagger-ui com a mesma classe de bug — já estava em `deferred` desde a pass anterior, não é achado novo; (5) interceptor de 401 do frontend sem guarda de `_retry` — idem, já deferido; (6) `get_user_model()` deveria ser envolvido em `try/except` por simetria com `_authenticate_header` — em tempo de execução do handler o app registry está sempre pronto (só há chamada via dispatch de view), e um `AUTH_USER_MODEL` mal configurado quebraria toda request de qualquer forma: seria uma segunda camada de mascaramento para condição inalcançável; (7) refresh token sem claim `user_id` passa sem checagem de existência/`is_active` — confirmei o `if user_id and (...)` no simplejwt, mas forjar tal token exige a `SECRET_KEY`, e o access token resultante é inútil (`get_user` levanta `InvalidToken` por não reconhecer identificação de usuário); (8) `test_user_does_not_exist_maps_to_401_without_fields` seria tautológico — não é: `response.data["detail"] == _NO_ACTIVE_ACCOUNT` falha se o ramo trocar a constante por um literal, que é exatamente o que o comentário afirma cobrir; (9) o comentário do teste de paridade atribuiria o challenge ao `exc.auth_header` do DRF quando a origem real é o override hardcoded de `TokenViewBase` — o mecanismo descrito está correto (o DRF anexa via `exc.auth_header`; o valor vem da view), e o teste falhar num rewording upstream é precisamente o tripwire pretendido; (10) volume de comentário e anotações de histórico de review no código-fonte — reescrever os mesmos comentários uma terceira vez tem valor negativo, e as anotações são o que explica por que invariantes não-óbvias existem. Também rejeitados por serem organizacionais/não-defeitos: cobertura de `/api/health/` espalhada por três módulos; a nota de vacuidade do `hasattr(_tenant_context_token)` (a afirmação local do comentário segue verdadeira); a alegação errada de import-linter dentro do `<intent-contract>` (bloco imutável, e Code Map/Design Notes já registram o fato correto).
 
 ### 2026-08-03 — Review pass
 - intent_gap: 0
@@ -185,16 +253,18 @@ Forma do ramo novo (espelhando o ramo `TenantScopeViolation`):
 
 ```python
 if isinstance(exc, ObjectDoesNotExist) and isinstance(exc, get_user_model().DoesNotExist):
-    logger.warning("User.DoesNotExist escapou para o handler central", exc_info=exc)
+    logger.warning("User.DoesNotExist escaped to the central handler", exc_info=exc)
     auth_header = _authenticate_header(context)
     return Response(
-        {"detail": _NO_ACTIVE_ACCOUNT},
+        {"detail": str(_NO_ACTIVE_ACCOUNT)},
         status=status.HTTP_401_UNAUTHORIZED,
         headers={"WWW-Authenticate": auth_header} if auth_header else None,
     )
 ```
 
-O `isinstance(exc, ObjectDoesNotExist)` vem primeiro para que `get_user_model()` não seja chamado no caminho de fallback de toda exceção não reconhecida.
+O `isinstance(exc, ObjectDoesNotExist)` vem primeiro para que `get_user_model()` não seja chamado no caminho de fallback de toda exceção não reconhecida — e essa ordem é asseverada por `test_get_user_model_is_not_resolved_on_the_fallback_path`, não só por comentário (corrigido na review de 2026-08-03: trocar os operandos deixava a suíte inteira verde).
+
+O `str(...)` em torno da constante lazy é deliberado e resolve com o locale ativo **no momento da request**, que é quando o handler roda — mesmo valor, mas um `str` de verdade em `response.data`. Sem ele, este seria o único ramo do handler em que `response.data["detail"]` não é o `str` que o contrato de `AccountsTokenInvalidResponse` promete: os dois ramos acima passam string literal e todo erro reconhecido pelo DRF passa por `_normalise_body`, cujo `_stringify` garante isso (corrigido na review de 2026-08-03).
 
 **A garantia de neutralidade é sobre a RESPOSTA inteira, não sobre a string.** `_NO_ACTIVE_ACCOUNT` é `gettext_lazy` com o **mesmo msgid** que o simplejwt usa em `no_active_account` — não um literal copiado. O msgid resolve pelo catálogo mesclado do simplejwt (o app está em `INSTALLED_APPS`), então os dois ramos traduzem igual sob qualquer locale ativo; um literal fixo ficaria em inglês e delataria o caso. E o `WWW-Authenticate` tem que ser derivado à mão (`_authenticate_header(context)`), porque um `Response` construído no handler não passa pelo caminho em que o DRF anexa `exc.auth_header` — sem isso, o 401 de apagado seria o único de `/token/refresh/` sem challenge, um canal lateral de um header só. Ambos os furos existiram na primeira implementação e só apareceram porque nada comparava as duas respostas; hoje `test_token_refresh_401_de_desativado_e_de_apagado_sao_indistinguiveis` é o dono dessa invariante.
 
@@ -214,44 +284,56 @@ Blocking condition: nenhuma
 
 ### Mudança implementada
 
-Fechou os dois gaps de erro em torno de auth da bundle. **DW-24:** `core/views.py::health` ganhou `@authentication_classes([])` — antes herdava `DEFAULT_AUTHENTICATION_CLASSES` e um `Authorization` header malformado fazia o liveness check responder 401 em vez de 200 (confirmado empiricamente antes do fix: `{"detail":"Given token not valid for any token type"}`). **DW-25:** `custom_exception_handler` ganhou um ramo que traduz `User.DoesNotExist` — que o `TokenRefreshSerializer.validate()` do simplejwt levanta sem `try/except` quando a linha do usuário do refresh token foi apagada — para o 401 documentado, em vez do 500 cru do Django (confirmado antes do fix: `accounts.models.DoesNotExist` escapando sem tratamento). O 401 novo é indistinguível do 401 de usuário desativado em status, corpo **e** header `WWW-Authenticate`, sob qualquer locale.
+Fechou os dois gaps de erro em torno de auth da bundle. **DW-24:** `core/views.py::health` ganhou `@authentication_classes([])` — antes herdava `DEFAULT_AUTHENTICATION_CLASSES` e um `Authorization` header malformado fazia o liveness check responder 401 em vez de 200 (confirmado empiricamente antes do fix: `{"detail":"Given token not valid for any token type"}`). **DW-25:** `custom_exception_handler` ganhou um ramo que traduz `User.DoesNotExist` — que o `TokenRefreshSerializer.validate()` do simplejwt levanta sem `try/except` quando a linha do usuário do refresh token foi apagada — para o 401 documentado, em vez do 500 cru do Django. O 401 novo é indistinguível do 401 de usuário desativado em status, corpo **e** header `WWW-Authenticate`.
+
+Esta pass foi uma **review de follow-up** (a spec entrou como `done`, com `followup_review_recommended: true`). Ela não mudou comportamento de produção: os 8 patches são de verificação (4 testes novos/reforçados que fecham caminhos que mutação provou não-observados), de superfície de dados (`detail` como `str` de verdade) e de precisão de documentação/log. Duas condições pré-existentes de escopo maior foram deferidas como DW-27/DW-28.
 
 ### Arquivos alterados
 
-- `backend/core/views.py` — `@authentication_classes([])` no `health`; racional movido para fora da pilha de decorators e docstring reescrita com o contrato real (qualquer `Authorization` é ignorado).
-- `backend/core/exceptions.py` — constante `_NO_ACTIVE_ACCOUNT` (`gettext_lazy`, mesmo msgid do simplejwt), ramo `ObjectDoesNotExist` + `User.DoesNotExist` → 401 com `logger.warning` e challenge, e helper `_authenticate_header(context)` que deriva o `WWW-Authenticate` como o DRF deriva.
-- `backend/accounts/views.py` — só comentário: o inventário dos ramos de 401 de `/token/refresh/` passou de dois para três (schema inalterado, `spectacular` byte-idêntico).
-- `backend/core/tests/test_health.py` — 2 testes novos (header inválido → 200; bearer válido → 200, request anônima e sem tenant context) e docstring do módulo atualizada.
-- `backend/core/tests/test_exceptions.py` — teste unitário do ramo novo (401, sem `fields`, msgid compartilhado, sem challenge com `context={}`, warning do logger certo com `exc_info`) e guarda de estreiteza (`DoesNotExist` de outro model segue caindo em `None`).
-- `backend/accounts/tests/test_views.py` — teste de integração do usuário apagado + teste de paridade que compara os dois 401 sob `pt-br` (status, corpo, header) com guardas anti-vacuidade; helpers `_login_e_refresh`/`_desativar`/`_apagar`.
+- `backend/core/views.py` — `@authentication_classes([])` no `health`; racional fora da pilha de decorators e docstring com o contrato real (qualquer `Authorization` é ignorado). *(inalterado nesta pass)*
+- `backend/core/exceptions.py` — constante `_NO_ACTIVE_ACCOUNT` (`gettext_lazy`, msgid do simplejwt), ramo `ObjectDoesNotExist` + `User.DoesNotExist` → 401 com `logger.warning` e challenge, helper `_authenticate_header(context)`. **Nesta pass:** `detail` passou a `str(...)` (resolvido no locale da request) e as duas mensagens de log passaram a inglês, alinhadas ao `logger.critical` da mesma função.
+- `backend/accounts/views.py` — só comentário: inventário dos ramos de 401 de `/token/refresh/` (dois → três). *(inalterado nesta pass)*
+- `backend/core/tests/test_health.py` — 2 testes de header (inválido → 200; bearer válido → 200, anônima e sem tenant context). **Nesta pass:** docstring de módulo corrigido (a alegação de "agora toca o DB" era falsa — a fixture autouse do `conftest` raiz sempre deu acesso; o que mudou é que agora *escreve* uma linha) e a razão original do módulo (exit code 5) restaurada.
+- `backend/core/tests/test_exceptions.py` — **+3 testes nesta pass:** contexto de produção anexa o challenge da view; falha ao derivar o header ainda devolve o 401 (cobre o `try/except` que canário provou não-exercitado); `get_user_model` não é resolvido no caminho de fallback (pina a ordem dos `isinstance`, que mutação provou não-asseverada). Mais `isinstance(detail, str)`.
+- `backend/accounts/tests/test_views.py` — teste do usuário apagado + teste de paridade dos dois 401 sob `pt-br`. **Nesta pass:** `assert login.status_code == 200` no helper compartilhado (3 testes dependem dele) e o comentário de locale corrigido para o que é verificável hoje.
 
 ### Achados de review
 
-- **Patches aplicados: 7** (high 0, medium 3, low 4) — os 3 medium: `WWW-Authenticate` ausente (canal lateral que derrotava a neutralidade), literal inglês fixo (divergiria sob locale ativo), e a ausência de qualquer teste da invariante de paridade — que foi justamente o que deixou os outros dois passarem.
-- **Deferidos: 3** (todos medium) — mesma classe de bug da DW-24 em `/api/schema/` e `/api/schema/swagger-ui/`; ausência de guarda sistêmico contra o padrão `@api_view` + `AllowAny` sem `authentication_classes`; interceptor de 401 do frontend sem guarda de `_retry`. Detalhes e evidência no `deferred` do frontmatter.
-- **Rejeitados: 5** (todos low) — detalhados no fim do Review Triage Log, incluindo uma alegação de 500 no swagger-ui que **não reproduziu** (medi 401).
+- **Patches aplicados: 8** (high 0, medium 0, low 8) — 3 fecham caminhos que canário/mutação provaram não-observados, 1 alinha `response.data["detail"]` ao contrato `{"detail": str}`, 4 corrigem imprecisão de documentação/log/diagnóstico.
+- **Deferidos: 2** (ambos medium) — **DW-27:** `JWTAuthentication.get_user` do simplejwt distingue apagado (`user_not_found`) de desativado (`user_inactive`), mensagem **e** código, em toda rota autenticada, anulando fora do refresh a indistinguibilidade construída dentro dele. **DW-28:** os três ramos de `Response` à mão do handler não chamam `set_rollback()` (latente: `ATOMIC_REQUESTS` não está setado). Ambos pré-existentes, ambos exigindo mudança maior que o escopo desta bundle. Anexados ao ledger como entradas novas.
+- **Rejeitados: 10** (todos low) — detalhados no fim do Review Triage Log. Dois merecem nota por serem alegações **falsas** que verifiquei: "não existe `LOGGING` dictConfig" (existe, `prod.py:50`) e "o teste unitário é tautológico" (a asserção falha se o ramo trocar a constante por um literal).
 
 ### Recomendação de review de follow-up
 
-`true`. Só os findings triados `patch` contam: high 0, medium 3, low 4. Score = 3 × 3 + 1 × 4 = **13** ≥ 5.
+`true`. Só os findings triados `patch` contam: high 0, medium 0, low 8. Score = 3 × 0 + 1 × 8 = **8** ≥ 5.
 
 ### Verificação realizada
 
 Todos os comandos da seção `## Verification`, re-rodados **depois** dos patches:
 
-- `uv run pytest core/tests/test_health.py core/tests/test_exceptions.py accounts/tests/test_views.py accounts/tests/test_isolation.py core/tests/test_api_contract.py -q` → **56 passed**
-- `uv run pytest -q` (suíte completa, gate cross-app) → **1375 passed** em 6m24s
+- `uv run pytest core/tests/test_health.py core/tests/test_exceptions.py accounts/tests/test_views.py -q` → **44 passed** (41 + os 3 novos)
+- `uv run pytest -q` (suíte completa, gate cross-app) → **1378 passed** em 4m22s
 - `uv run ruff check .` → `All checks passed!`
 - `uv run lint-imports` → `core must not import domain apps (port rule) KEPT` — 1 kept, 0 broken
 - Drift de schema: `spectacular` regerado → `Errors: 0`, **diff vazio**; `git status --porcelain schema.yaml frontend/src/api/types.gen.ts` limpo
 
-**Controles negativos (as asserções não são vacuosas):** revertendo só `core/views.py`, os 2 testes de health falham — inclusive o `hasattr(_tenant_context_token)`, que era `True` antes do fix. Revertendo `core/views.py` + `core/exceptions.py`, os 3 testes obrigatórios da spec falham, com o traço do `User.DoesNotExist` escapando para um 500. E o teste de paridade falha na asserção pretendida ao remover o `headers=` (challenge `None` vs `Bearer realm="api"`) ou ao trocar o msgid lazy por literal (corpo inglês vs português).
+**Controles negativos dos 4 testes desta pass (nenhuma asserção é vacuosa).** Cada mutação foi aplicada isoladamente e falhou exatamente um teste, o pretendido:
 
-**Auditoria da matriz de I/O:** as 7 linhas têm teste que rodou e passou — health sem auth (`test_health_returns_ok`, `test_health_sem_auth_retorna_200`), header inválido (`test_health_com_authorization_header_invalido_retorna_200`), bearer válido (`test_health_com_bearer_valido_ignora_o_header_e_nao_seta_tenant_context`, adicionado na auditoria por não haver cobertura — os 2 testes de isolamento que tocam `/api/health/` usam `force_authenticate`, que pula os authenticators), usuário apagado (`test_token_refresh_usuario_apagado_retorna_401_sem_fields` + unitário do handler), usuário desativado (`test_token_refresh_usuario_desativado_retorna_401_sem_fields`), token blacklisted (`test_token_refresh_rotacao_blacklist`), exceção desconhecida (`test_unknown_exception_falls_through_to_django` + `test_other_models_does_not_exist_still_falls_through_to_django`).
+| Mutação em `core/exceptions.py` | Teste que falhou |
+|---|---|
+| `str(_NO_ACTIVE_ACCOUNT)` → `_NO_ACTIVE_ACCOUNT` | `test_user_does_not_exist_maps_to_401_without_fields` |
+| `try/except` de `_authenticate_header` removido | `test_challenge_derivation_failure_still_returns_the_401` |
+| operandos dos `isinstance` trocados | `test_get_user_model_is_not_resolved_on_the_fallback_path` |
+| kwarg `headers=` removido | `test_user_does_not_exist_carries_the_views_challenge` |
+
+Os controles negativos da pass anterior seguem válidos (reverter `core/views.py` falha os 2 testes de health; reverter o ramo do handler falha os 3 testes obrigatórios).
 
 ### Riscos residuais
 
-- **Amplitude do ramo global:** qualquer `User.DoesNotExist` não capturado, de qualquer view, agora vira 401 em vez de 500. É o que o intent pede explicitamente, e verifiquei que não há call site de `User.objects.get()` em `backend/` fora da lib e dos testes — logo é latente, não vivo. O `logger.warning` com `exc_info` é o que mantém uma ocorrência de origem estranha diagnosticável.
-- **Msgid congelado:** `_NO_ACTIVE_ACCOUNT` repete o msgid do simplejwt em vez de ler a constante da lib (import de terceiro em runtime dentro de um handler de exceção seria pior). Um rewording upstream dentro de `>=5.3,<6` separaria as duas mensagens — mas quebra o teste de paridade em vez de passar silencioso, que é o que torna a escolha aceitável.
-- **Nada apaga usuários hoje:** o caminho da DW-25 só é alcançável por intervenção direta em banco/admin (o app só desativa via `is_active=False`), então o fix é hardening, não correção de bug vivo.
-- **Deferidos ainda abertos:** as rotas de schema seguem 401ando com bearer velho em produção, e o interceptor do frontend segue sem guarda de retry.
+- **A indistinguibilidade é uma propriedade de uma rota, não do sistema (DW-27).** Esta é a nota mais importante: `JWTAuthentication.get_user` vaza a distinção apagado/desativado em **toda** rota autenticada, com código de erro diferente inclusive. Quem tem um access token válido distingue os dois casos trivialmente. O trabalho de header/locale desta bundle vale para `/token/refresh/`; a propriedade só passa a valer de verdade quando a DW-27 for decidida.
+- **Amplitude do ramo global:** qualquer `User.DoesNotExist` não capturado, de qualquer view, vira 401. É o que o intent pede explicitamente, e não há call site de `User.objects.get()` em `backend/` fora da lib e dos testes — latente, não vivo. `logger.warning` com `exc_info` mantém diagnosticável uma ocorrência de origem estranha (e `prod.py` roteia WARNING para stdout, verificado nesta pass).
+- **Msgid congelado:** `_NO_ACTIVE_ACCOUNT` repete o msgid do simplejwt em vez de ler a constante da lib. Um rewording upstream dentro de `>=5.3,<6` separaria as mensagens — mas quebra o teste de paridade em vez de passar silencioso.
+- **O eixo de locale do teste de paridade não é alcançável em produção hoje** (sem `LocaleMiddleware`, `LANGUAGE_CODE="en-us"`). O valor vivo dessa metade é detectar o rewording acima; ela vira defesa real quando houver negociação de idioma.
+- **`set_rollback()` ausente nos três ramos (DW-28):** latente enquanto `ATOMIC_REQUESTS` não estiver ligado — e é exatamente o momento de ligar que transforma isso em perda de dados silenciosa.
+- **Deferidos ainda abertos:** as rotas de schema seguem 401ando com bearer velho em produção; o interceptor do frontend segue sem guarda de retry; não há guarda sistêmico contra a próxima recorrência de `@api_view` + `AllowAny` sem `authentication_classes`.
+
