@@ -26,6 +26,15 @@
     "label": "Cablear completo: estender props do di\u00e1logo e reescrever os 4 E2E",
     "resolution": ""
   },
+  "DW-29": {
+    "answered_at": "2026-08-04",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Remover frontend/src/features/bujo/components/weekly/WeeklyDestinationPicker.tsx junto com WeeklyDestinationPicker.test.tsx e, no MESMO commit, o `?raw` de weekly/noLiteralTokens.test.ts:13 e a chave correspondente do mapa SOURCES em :25 \u2014 um `?raw` \u00f3rf\u00e3o quebra a transforma\u00e7\u00e3o do Vite, ent\u00e3o os tr\u00eas t\u00eam de sair juntos. Antes de apagar, confirmar que nenhum consumidor novo apareceu (grep por WeeklyDestinationPicker em frontend/src e frontend/e2e deve sobrar s\u00f3 prosa de coment\u00e1rio em DestinationPicker.tsx:7,17, DestinationDialog.tsx:5,229,433,452 e MonthlyDestinationPicker.tsx:3) e N\u00c3O tocar em monthly/MonthlyDestinationPicker.tsx, que continua vivo em FutureBoardPage.tsx:470. Ajustar de passagem os coment\u00e1rios que apontam para o arquivo removido, para n\u00e3o deixar refer\u00eancia pendurada.",
+    "key": "1",
+    "label": "Apagar agora o componente, o teste e a entrada do noLiteralTokens",
+    "resolution": ""
+  },
   "DW-31": {
     "answered_at": "2026-08-04",
     "bundle_name": "",
