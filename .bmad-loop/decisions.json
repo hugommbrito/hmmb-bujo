@@ -17,6 +17,15 @@
     "label": "Adicionar um segundo step sem filtro de tag, em --fail-level ERROR",
     "resolution": ""
   },
+  "DW-27": {
+    "answered_at": "2026-08-04",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Estender DestinationDialog.tsx de forma ADITIVA \u2014 `offer` volta a aceitar lista e DestinationDayOffer recupera as variantes `none` ('Hoje', sem dia) e `month-choice` ('Futuro', m\u00eas escolhido) \u2014, sem quebrar o contrato onConfirm(scheduledDate, meta); a anatomia removida est\u00e1 no hist\u00f3rico do git (primeira passada da spec dos seletores) e serve de molde. Passar onMove em WeeklyBoardPage.tsx e MonthlyBoardPage.tsx abrindo o di\u00e1logo novo a partir do detalhe da tarefa, respeitando a regra do Monthly (destination 'month' no m\u00eas corrente, 'future' + monthFirst caso contr\u00e1rio) e o limite de que POST /migrate/ n\u00e3o aceita m\u00eas-alvo j\u00e1 passado (Quest\u00e3o aberta #5 da Story 14.6). REESCREVER, n\u00e3o reabilitar, os 4 testes de frontend/e2e/move-task.spec.ts:86,131,194,341: eles dependem de um bot\u00e3o 'Mover tarefa' na LINHA e do di\u00e1logo legado 'Migrar Tarefa' com abas, anatomia que o sistema novo n\u00e3o tem \u2014 o caminho real \u00e9 detalhe da tarefa \u2192 seletor novo. Atualizar o coment\u00e1rio de cabe\u00e7alho de MonthlyBoardPage.tsx:24-26, que documenta o gap como deliberado.",
+    "key": "1",
+    "label": "Cablear completo: estender props do di\u00e1logo e reescrever os 4 E2E",
+    "resolution": ""
+  },
   "DW-31": {
     "answered_at": "2026-08-04",
     "bundle_name": "",
