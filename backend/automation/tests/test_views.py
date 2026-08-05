@@ -10,6 +10,7 @@ pelo middleware → a auth seta o contexto e o `TenantMiddleware` reseta no
 `finally` — é o único caminho que exercita o isolamento de verdade.
 """
 
+import json
 import logging
 from decimal import Decimal
 from unittest.mock import patch
@@ -20,6 +21,7 @@ from rest_framework.test import APIClient
 from rest_framework.throttling import ScopedRateThrottle
 
 from automation.models import SCOPE_CAPTURE, SCOPE_SUMMARY, AutomationToken
+from automation.tests.factories import casos_de_falha_de_auth
 from braindump.models import BrainDumpItem
 from bujo.services.logs import get_or_create_daily_log
 from bujo.tests.factories import TaskFactory
@@ -466,3 +468,87 @@ def test_summary_log_estruturado_com_prefix_endpoint_status_e_sem_token_pleno(us
     assert full not in caplog.text
     for r in caplog.records:
         assert full not in str(getattr(r, "token_prefix", ""))
+
+
+# =============================================================================
+# DW-41/DW-43 — 401 uniforme nas duas rotas de automação
+# =============================================================================
+#
+# Os testes de 401 acima (`test_token_invalido_retorna_401` e companhia) asseveram
+# só o status, e status igual era exatamente o que os dois casos JÁ tinham: a
+# distinção vazava pelo CORPO (`"Token inválido"` vs. `"Token revogado"`) e o dono
+# desativado não falhava sequer. Estes dois testes medem o que faltava — a
+# identidade dos corpos e o fim do bypass da desativação — na superfície externa,
+# que é onde o defeito era observável.
+
+
+def _respostas_de_recusa_nas_duas_rotas():
+    """`{"<rota>/<caso>": response}` — os 4 casos de recusa × as 2 rotas.
+
+    O MESMO token vai às duas rotas de propósito: a credencial não é consumida, e
+    reusá-la é o que torna a comparação entre rotas uma comparação de superfície e
+    não de credencial.
+    """
+    respostas = {}
+    for caso in casos_de_falha_de_auth():
+        client = APIClient()
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {caso.token_pleno}")
+        respostas[f"capture/{caso.nome}"] = client.post(
+            CAPTURE_URL, {"type": "braindump", "text": "x"}, format="json"
+        )
+        respostas[f"summary/{caso.nome}"] = client.get(SUMMARY_URL)
+    return respostas
+
+
+def test_os_quatro_casos_de_recusa_dao_o_mesmo_401_nas_duas_rotas():
+    """DW-41/DW-43 no fio: um 401 só, em `POST /api/capture` e `GET /api/summary/today`.
+
+    Os dicts nomeados vão dentro do `assert` para a falha dizer QUAL rota/caso
+    divergiu. `json.dumps(sort_keys=True)` porque dict não entra em `set` —
+    serializar canonicamente dá a comparação por valor de graça, inclusive se o
+    corpo ganhar chaves aninhadas, que é a regressão caçada.
+    """
+    respostas = _respostas_de_recusa_nas_duas_rotas()
+
+    corpos = {nome: r.json() for nome, r in respostas.items()}
+    challenges = {nome: r.headers.get("WWW-Authenticate") for nome, r in respostas.items()}
+
+    assert len(respostas) == 8, sorted(respostas)
+    assert {r.status_code for r in respostas.values()} == {401}, {
+        nome: r.status_code for nome, r in respostas.items()
+    }
+    assert len({json.dumps(c, sort_keys=True) for c in corpos.values()}) == 1, corpos
+    # Sem `fields`, logo sem `fields.code` — a mesma forma do 401 de refresh
+    # (DW-25) e das rotas JWT (DW-31).
+    assert all("fields" not in c for c in corpos.values()), corpos
+    assert len(set(challenges.values())) == 1, challenges
+    # Não-vacuidade: "todos ausentes" satisfaria a igualdade acima, e um 401 sem
+    # challenge viola a RFC 7235 (além de o DRF rebaixar para 403 sem ele).
+    assert all(challenges.values()), challenges
+
+
+def test_dono_desativado_nao_recebe_mais_200_em_nenhuma_rota_de_automacao(user):
+    """DW-41: o bypass da desativação, medido onde ele era observável.
+
+    Antes: o autenticador nunca consultava `is_active`, então desativar a conta no
+    admin não invalidava token algum dela — `POST /api/capture` seguia respondendo
+    201 e `GET /api/summary/today` 200, com o corpo completo. Mede-se o par
+    200-vs-401 no MESMO token, antes e depois da desativação: sem o "antes", um
+    token quebrado por qualquer outro motivo faria o "depois" passar vacuamente.
+    """
+    client, _token, _full = _token_client(user, scopes=[SCOPE_CAPTURE, SCOPE_SUMMARY])
+
+    antes_capture = client.post(CAPTURE_URL, {"type": "braindump", "text": "x"}, format="json")
+    antes_summary = client.get(SUMMARY_URL)
+
+    user.is_active = False
+    user.save(update_fields=["is_active"])
+
+    depois_capture = client.post(CAPTURE_URL, {"type": "braindump", "text": "y"}, format="json")
+    depois_summary = client.get(SUMMARY_URL)
+
+    assert (antes_capture.status_code, antes_summary.status_code) == (201, 200)
+    assert (depois_capture.status_code, depois_summary.status_code) == (401, 401)
+    # A recusa acontece ANTES do handler: o segundo POST não escreveu nada.
+    with tenant_context(user):
+        assert BrainDumpItem.objects.count() == 1

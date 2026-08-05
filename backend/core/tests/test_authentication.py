@@ -15,18 +15,23 @@ itself). Testing against the raw request directly would silently miss that.
 
 A segunda metade do arquivo (a partir de ``_desativar``) cobre outra coisa: a
 DW-31, que colapsa "usuário apagado" e "usuário inativo" num 401 único em toda
-rota autenticada por esta classe. Aqui vive também o ÚNICO teste do projeto que
-compara as duas superfícies de ``no_active_account`` entre si
-(``test_401_de_no_active_account_e_uma_convencao_so_nas_duas_superficies``) — a
+rota autenticada por esta classe — mais a DW-47, que traz para o mesmo colapso o
+access token assinado cujo claim ``user_id`` a PK não parseia (``UUIDField``, ver
+``accounts/models.py``), que antes escapava como 500 cru do Django. Aqui vive
+também o ÚNICO teste do projeto que compara as três superfícies de
+``no_active_account`` entre si
+(``test_401_de_no_active_account_e_uma_convencao_so_nas_tres_superficies``) — a
 paridade dentro de cada superfície é testada em ``accounts/tests/test_views.py``
-(refresh × refresh) e logo abaixo (rota × rota), e nenhuma das duas notaria as
-convenções se separando.
+(refresh × refresh), logo abaixo (rota × rota) e em
+``automation/tests/test_views.py`` (4 casos × 2 rotas de automação), e nenhuma
+delas notaria as convenções se separando.
 """
 
 import json
 
 import pytest
 import rest_framework_simplejwt.settings as simplejwt_settings
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils import translation
 from drf_spectacular.extensions import OpenApiAuthenticationExtension
 from rest_framework.exceptions import AuthenticationFailed, ErrorDetail
@@ -52,6 +57,16 @@ from core.tenant import current_user_id
 # quebraria o contrato de import do `core` (port rule, pyproject.toml).
 TODAY_LOG_URL = "/api/bujo/logs/today/"
 REFRESH_URL = "/api/accounts/token/refresh/"
+
+# A terceira superfície (DW-41/DW-43), pelo mesmo acoplamento por string e pela
+# MESMA razão: `automation` está em `forbidden_modules` do contrato de import do
+# `core` (DW-33), então nem a URL, nem os escopos, nem o model podem vir de um
+# `import automation` aqui — o model é resolvido por `apps.get_model` em
+# `_token_de_automacao_de_usuario_mutado`. É o preço de manter a comparação
+# cross-superfície num lugar só, que é o que faz ela existir.
+CAPTURE_URL = "/api/capture"
+SUMMARY_URL = "/api/summary/today"
+_ESCOPOS_DE_AUTOMACAO = ["capture", "summary"]
 
 
 @pytest.mark.django_db
@@ -277,7 +292,7 @@ def test_os_dois_settings_de_que_o_colapso_depende_seguem_nos_defaults_seguros()
 def test_o_setting_de_que_a_paridade_do_refresh_depende_segue_no_default_seguro():
     """Pin do TERCEIRO knob — o que governa a outra metade da comparação.
 
-    ``test_401_de_no_active_account_e_uma_convencao_so_nas_duas_superficies``
+    ``test_401_de_no_active_account_e_uma_convencao_so_nas_tres_superficies``
     compara a rota autenticada contra ``POST /api/accounts/token/refresh/``, e as
     duas metades derivam o 401 de desativado de settings DIFERENTES. A rota vem de
     ``CHECK_USER_IS_ACTIVE`` (pinçado acima, dentro de
@@ -333,6 +348,58 @@ def test_get_user_nao_colapsa_token_sem_claim_de_usuario():
         TenantAwareJWTAuthentication().get_user(token)
 
     assert exc.value.detail["code"] == "token_not_valid"
+
+
+def _token_com_claim_nao_uuid():
+    """Access token com assinatura VÁLIDA cujo claim de usuário não é um UUID.
+
+    ``Token.__str__`` re-encoda o payload com a chave do projeto, então o token sai
+    assinado e passa por ``get_validated_token()`` — é justamente isso que faz a
+    request chegar a ``get_user`` e ao lookup pela PK. Emitido a partir de um usuário
+    real (e depois sobrescrito) para o resto do payload ficar exatamente igual ao de
+    um token legítimo: o único desvio é o claim.
+    """
+    token = AccessToken.for_user(UserFactory())
+    token.payload[jwt_settings.USER_ID_CLAIM] = "nao-e-uuid"
+    return token
+
+
+def test_get_user_colapsa_claim_de_usuario_que_a_pk_nao_parseia(caplog):
+    """DW-47: claim não-parseável entra no MESMO 401, em vez de virar 500 cru.
+
+    ``accounts/models.py`` declara ``id = UUIDField(primary_key=True)``, então o
+    ``objects.get(**{USER_ID_FIELD: user_id})`` de ``JWTAuthentication.get_user``
+    (upstream, sem try para isto) levanta ``django.core.exceptions.ValidationError``
+    — que não é ``AuthenticationFailed``, não é ``APIException`` e não é
+    ``DomainError``: escapava pelo ``return None`` de ``core/exceptions.py`` e o
+    cliente recebia o 500 do Django.
+
+    Colapsa em "no active account" e NÃO em ``token_not_valid``: um claim que a PK
+    não parseia é uma linha que não pode existir, o mesmo eixo que a DW-31 fecha
+    (existência de linha), não uma questão de validade de token.
+    """
+    token = _token_com_claim_nao_uuid()
+
+    with caplog.at_level("WARNING", logger="core.authentication"):
+        with pytest.raises(AuthenticationFailed) as exc:
+            TenantAwareJWTAuthentication().get_user(token)
+
+    assert str(exc.value.detail) == str(_NO_ACTIVE_ACCOUNT)
+    assert exc.value.detail.code == "no_active_account"
+    # Mesma FORMA do colapso da DW-31: exceção nativa do DRF (sem o
+    # ``DetailDictMixin``), logo corpo ``{"detail": str}`` sem ``fields``.
+    assert not isinstance(exc.value.detail, dict)
+    assert not isinstance(exc.value, SimpleJWTAuthFailed)
+    # O encadeamento é o último rastro da causa real depois de o corpo ficar neutro
+    # — e, de graça, o pin de que o upstream continua NÃO tratando este caso: no dia
+    # em que ele passar a tratá-lo, ``__cause__`` deixa de ser a exceção do Django.
+    assert isinstance(exc.value.__cause__, DjangoValidationError)
+
+    mensagens = [r.getMessage() for r in caplog.records if r.name == "core.authentication"]
+    assert len(mensagens) == 1, mensagens
+    # O operador vê o motivo; o VALOR do claim nunca entra no log.
+    assert "DW-47" in mensagens[0]
+    assert "nao-e-uuid" not in mensagens[0]
 
 
 def test_failure_code_le_as_tres_formas_de_detail():
@@ -416,6 +483,31 @@ def test_401_de_apagado_e_de_desativado_sao_indistinguiveis_em_rota_autenticada(
     assert en_apagado.json()["detail"] == en_msgid
 
 
+def test_401_de_claim_nao_uuid_e_indistinguivel_de_apagado_e_desativado_no_fio():
+    """DW-47 no stack HTTP: 401 (nunca 500) com corpo e challenge dos outros dois.
+
+    Antes da mudança este teste nem chegava a falhar por asserção: o
+    ``ValidationError`` subia pelo test client (``raise_request_exception``) em vez de
+    virar resposta — que é o defeito, visto de dentro. Em produção o mesmo caminho
+    rende o 500 cru do Django.
+    """
+    client = APIClient()
+    client.credentials(HTTP_AUTHORIZATION=f"Bearer {_token_com_claim_nao_uuid()}")
+
+    nao_uuid = client.get(TODAY_LOG_URL)
+    apagado = _get_today_log(_apagar)
+    desativado = _get_today_log(_desativar)
+
+    assert nao_uuid.status_code == 401
+    assert nao_uuid.json() == apagado.json() == desativado.json()
+    assert "fields" not in nao_uuid.json()
+    challenge = nao_uuid.headers.get("WWW-Authenticate")
+    assert challenge == apagado.headers.get("WWW-Authenticate")
+    assert challenge == desativado.headers.get("WWW-Authenticate")
+    # Não-vacuidade: "todos ausentes" satisfaria as igualdades acima.
+    assert challenge
+
+
 def test_401_de_token_invalido_em_rota_autenticada_segue_dizendo_token_not_valid():
     """Contraste de FORMA no stack HTTP: um 401 não-colapsado ainda traz ``fields``.
 
@@ -453,47 +545,94 @@ def _post_refresh(mutate):
     return APIClient().post(REFRESH_URL, {"refresh": str(token)}, format="json")
 
 
-def test_401_de_no_active_account_e_uma_convencao_so_nas_duas_superficies():
-    """UMA convenção nas duas superfícies que este colapso liga, não duas (DW-31).
+def _token_de_automacao_de_usuario_mutado(mutate):
+    """Segredo pleno de um `AutomationToken` emitido ANTES de ``mutate`` agir no dono.
+
+    O model vem de ``apps.get_model`` (string), não de um ``import automation``: o
+    contrato de import do ``core`` proíbe a direção (DW-33) e valeria para este
+    módulo de teste também. ``issue`` é classmethod do próprio model, então nada de
+    ``automation`` precisa ser importado para materializar a credencial.
+
+    Um usuário novo por chamada, pela mesma razão de ``_token_de_usuario_mutado``:
+    desativar e apagar são destrutivos.
+    """
+    from django.apps import apps
+
+    automation_token = apps.get_model("automation", "AutomationToken")
+    user = UserFactory()
+    _instancia, full = automation_token.issue(
+        user=user, name="dw-41", scopes=list(_ESCOPOS_DE_AUTOMACAO)
+    )
+    mutate(user)
+    return full
+
+
+def _client_de_automacao(mutate):
+    client = APIClient()
+    client.credentials(HTTP_AUTHORIZATION=f"Bearer {_token_de_automacao_de_usuario_mutado(mutate)}")
+    return client
+
+
+def test_401_de_no_active_account_e_uma_convencao_so_nas_tres_superficies():
+    """UMA convenção nas três superfícies que este colapso liga, não três (DW-31/DW-41).
 
     ``accounts/tests/test_views.py`` compara refresh contra refresh; o teste de rota
-    autenticada acima compara rota contra rota. Nenhum dos dois compara as DUAS
-    superfícies entre si — então se o ramo da DW-25 no handler central passasse a
-    emitir, digamos, uma chave ``fields``, as duas convenções se separariam em
-    silêncio com toda a suíte verde. Este teste é o único lugar onde isso falha.
+    autenticada acima compara rota contra rota; ``automation/tests/test_views.py``
+    compara as rotas de automação entre si. Nenhum dos três compara as superfícies
+    entre si — então se o ramo da DW-25 no handler central passasse a emitir, digamos,
+    uma chave ``fields``, as convenções se separariam em silêncio com toda a suíte
+    verde. Este teste é o único lugar onde isso falha.
 
-    O que ele NÃO afirma, e o nome antigo afirmava: que ``no_active_account`` seja
-    uma convenção única em todo o projeto. O login levanta o MESMO ``code`` com
-    outro msgid (``"...with the given credentials"``, upstream ``serializers.py``),
-    então acrescentá-lo como terceira superfície aqui falharia pelo texto e não por
-    defeito — no login, apagado e desativado já produzem a mesma resposta. As duas
-    superfícies comparadas são as que este colapso passou a ligar; a divergência do
-    login está registrada à parte.
+    O que ele NÃO afirma: que ``no_active_account`` seja uma convenção única em todo
+    o projeto. O login levanta o MESMO ``code`` com outro msgid (``"...with the given
+    credentials"``, upstream ``serializers.py``), então acrescentá-lo como quarta
+    superfície aqui falharia pelo texto e não por defeito — no login, apagado e
+    desativado já produzem a mesma resposta. As três superfícies comparadas são as
+    que este colapso passou a ligar; a divergência do login está registrada à parte.
     """
-    respostas = {
+    respostas_jwt = {
         "refresh/apagado": _post_refresh(_apagar),
         "refresh/desativado": _post_refresh(_desativar),
         "rota/apagado": _get_today_log(_apagar),
         "rota/desativado": _get_today_log(_desativar),
     }
+    # A terceira superfície (DW-41/DW-43): `AutomationTokenAuthentication`, opt-in
+    # por view, que até então tinha convenção PRÓPRIA (`"Token inválido"` /
+    # `"Token revogado"`) e nem consultava `is_active`. Uma amostra por rota basta
+    # aqui — a matriz completa (4 casos × 2 rotas) vive em
+    # `automation/tests/test_views.py`; o que este teste mede é a convenção do CORPO
+    # atravessando as superfícies.
+    respostas_automacao = {
+        "automacao/capture/desativado": _client_de_automacao(_desativar).post(
+            CAPTURE_URL, {"type": "braindump", "text": "x"}, format="json"
+        ),
+        "automacao/summary/apagado": _client_de_automacao(_apagar).get(SUMMARY_URL),
+    }
+    respostas = {**respostas_jwt, **respostas_automacao}
 
     corpos = {nome: r.json() for nome, r in respostas.items()}
-    challenges = {nome: r.headers.get("WWW-Authenticate") for nome, r in respostas.items()}
 
     assert {r.status_code for r in respostas.values()} == {401}
-    # Um único valor distinto em cada eixo — os dicts nomeados vão no `assert` para
-    # a falha dizer QUAL superfície divergiu. `json.dumps(sort_keys=True)` porque os
-    # corpos são dicts, e dict nenhum entra num `set` (é o dict que não é hasheável,
-    # não uma chave dele); serializar canonicamente dá a comparação por valor de
-    # graça, inclusive se o corpo ganhar chaves aninhadas — que é a regressão caçada.
+    # Um único valor distinto — os dicts nomeados vão no `assert` para a falha dizer
+    # QUAL superfície divergiu. `json.dumps(sort_keys=True)` porque os corpos são
+    # dicts, e dict nenhum entra num `set` (é o dict que não é hasheável, não uma
+    # chave dele); serializar canonicamente dá a comparação por valor de graça,
+    # inclusive se o corpo ganhar chaves aninhadas — que é a regressão caçada.
     assert len({json.dumps(c, sort_keys=True) for c in corpos.values()}) == 1, corpos
-    # Sobre o eixo do challenge: as duas superfícies o derivam de lugares
-    # INDEPENDENTES — o refresh de `TokenViewBase.get_authenticate_header`
-    # (`www_authenticate_realm = "api"`, upstream `views.py`), a rota autenticada de
-    # `JWTAuthentication.authenticate_header`. Eles casam hoje porque dois defaults
-    # não relacionados rendem `Bearer realm="api"`; nada nesta mudança constrói essa
-    # igualdade. Então uma falha aqui pode ser "as convenções se separaram" OU "um
-    # realm mudou de um lado só" — vale conferir qual antes de culpar o colapso.
-    assert len(set(challenges.values())) == 1, challenges
-    # Não-vacuidade: "todos ausentes" satisfaria a igualdade acima.
-    assert all(challenges.values()), challenges
+
+    # O challenge é comparado DENTRO de cada superfície, nunca entre elas — e isso é
+    # desenho, não concessão. As duas superfícies JWT o derivam de lugares
+    # INDEPENDENTES (o refresh de `TokenViewBase.get_authenticate_header`, com
+    # `www_authenticate_realm = "api"`; a rota autenticada de
+    # `JWTAuthentication.authenticate_header`) e casam hoje porque dois defaults não
+    # relacionados rendem `Bearer realm="api"`. A de automação devolve `"Bearer"`
+    # (`authenticate_header`), um terceiro default. Igualá-los mudaria
+    # `authenticate_header` sem ganho: dentro de cada superfície o header é o MESMO
+    # para toda falha, inclusive a de "sem credencial", então ele não separa caso
+    # nenhum. Uma falha aqui pode ser "as convenções se separaram" OU "um realm
+    # mudou de um lado só" — vale conferir qual antes de culpar o colapso.
+    for superficie, grupo in (("jwt", respostas_jwt), ("automacao", respostas_automacao)):
+        challenges = {nome: r.headers.get("WWW-Authenticate") for nome, r in grupo.items()}
+        assert len(set(challenges.values())) == 1, (superficie, challenges)
+        # Não-vacuidade: "todos ausentes" satisfaria a igualdade acima.
+        assert all(challenges.values()), (superficie, challenges)

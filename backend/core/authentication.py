@@ -31,6 +31,7 @@ building this fix. See ``core/context.py`` for the full explanation.
 
 import logging
 
+from django.core.exceptions import ValidationError as DjangoValidationError
 from drf_spectacular.contrib.rest_framework_simplejwt import SimpleJWTScheme
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.authentication import JWTAuthentication
@@ -87,6 +88,9 @@ class TenantAwareJWTAuthentication(JWTAuthentication):
     def get_user(self, validated_token):
         """Colapsa "usuário apagado" e "usuário inativo" num 401 único (DW-31).
 
+        E, pelo mesmo 401, o claim de usuário que a PK não parseia (DW-47) — ver o
+        comentário do ``except DjangoValidationError`` no fim do método.
+
         ``JWTAuthentication.get_user`` distingue os dois casos por mensagem *e*
         por código (``user_not_found`` vs. ``user_inactive``) em toda request
         autenticada por ESTA classe, o que anula em qualquer outro endpoint a
@@ -119,16 +123,21 @@ class TenantAwareJWTAuthentication(JWTAuthentication):
         refresh, uma convenção só para "no active account" nas superfícies que
         passam por aqui e pelo handler central.
 
-        Até onde a propriedade vale, dito sem exagero: ela cobre as rotas cujo
-        autenticador é este — ou seja, as que herdam
-        ``DEFAULT_AUTHENTICATION_CLASSES``. NÃO cobre
-        ``automation.authentication.AutomationTokenAuthentication``, que é opt-in
-        por view (``POST /api/capture``, ``GET /api/summary/today``) e nem consulta
-        ``is_active``. E o ``code`` ``no_active_account`` não é sinônimo de um msgid
-        único: o login (``TokenObtainSerializer``) usa o mesmo código com OUTRA
-        mensagem (``"...with the given credentials"``, upstream
-        ``serializers.py:35``) — o que esta classe iguala à rota de refresh é a
-        FORMA do corpo e o eixo apagado-vs-inativo, não o texto de toda a família.
+        Até onde a propriedade vale, dito sem exagero: ESTE colapso cobre as rotas
+        cujo autenticador é este — ou seja, as que herdam
+        ``DEFAULT_AUTHENTICATION_CLASSES``. Ele não alcança
+        ``automation.authentication.AutomationTokenAuthentication``, que é opt-in por
+        view (``POST /api/capture``, ``GET /api/summary/today``); lá a MESMA
+        propriedade existe, mas construída no próprio autenticador (DW-41/DW-43:
+        ele passou a consultar ``is_active`` e a colapsar os três ramos reusando
+        ``_NO_ACTIVE_ACCOUNT``), e é o teste cross-superfície de
+        ``core/tests/test_authentication.py`` que impede as duas de se separarem.
+
+        E o ``code`` ``no_active_account`` não é sinônimo de um msgid único: o login
+        (``TokenObtainSerializer``) usa o mesmo código com OUTRA mensagem
+        (``"...with the given credentials"``, upstream ``serializers.py:35``) — o que
+        esta classe iguala à rota de refresh é a FORMA do corpo e o eixo
+        apagado-vs-inativo, não o texto de toda a família.
 
         ``_NO_ACTIVE_ACCOUNT`` é importado **em runtime, dentro do método**, nunca
         no topo do módulo: a cadeia ``core.models`` → ``core.tenant`` →
@@ -151,6 +160,28 @@ class TenantAwareJWTAuthentication(JWTAuthentication):
             # é um 401 de rotina, não um escape inesperado, e um traceback por
             # request seria só ruído.
             logger.warning("Collapsed authentication failure (DW-31): code=%s", code)
+            from core.exceptions import _NO_ACTIVE_ACCOUNT
+
+            raise AuthenticationFailed(_NO_ACTIVE_ACCOUNT, code="no_active_account") from exc
+        except DjangoValidationError as exc:
+            # DW-47: um access token com assinatura VÁLIDA cujo claim de usuário a PK
+            # não parseia. ``accounts/models.py`` declara ``id =
+            # UUIDField(primary_key=True)``, então o ``objects.get(**{USER_ID_FIELD:
+            # user_id})`` do upstream (sem try para isto) levanta o
+            # ``ValidationError`` do DJANGO — que não é ``AuthenticationFailed``, não é
+            # ``APIException`` e não é ``DomainError``: escapava pelo ``return None`` de
+            # ``core/exceptions.py`` e o cliente recebia o 500 cru do Django.
+            #
+            # Colapsa em "no active account" e NÃO em ``InvalidToken``/
+            # ``token_not_valid``: um claim que a PK não parseia é uma linha que não
+            # pode existir, o mesmo eixo do ramo acima (existência de linha), não uma
+            # questão de validade de token. Fica fora de ``_INDISTINGUISHABLE_CODES``
+            # porque não é um ``code`` do simplejwt — é uma exceção do Django.
+            #
+            # Log estático: o VALOR do claim nunca entra na mensagem (ele vem do
+            # cliente e o ``ValidationError`` do Django o carrega no texto). Sem
+            # ``exc_info``, pela mesma razão do ramo acima.
+            logger.warning("Collapsed authentication failure (DW-47): unparseable user claim")
             from core.exceptions import _NO_ACTIVE_ACCOUNT
 
             raise AuthenticationFailed(_NO_ACTIVE_ACCOUNT, code="no_active_account") from exc
