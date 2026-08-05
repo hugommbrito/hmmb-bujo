@@ -1,5 +1,7 @@
+import type { Page } from '@playwright/test'
+
 import { test, expect } from './fixtures'
-import { expectNoAxeViolations } from './axeHelper'
+import { expectNoAxeViolations, waitForLayoutSettled } from './axeHelper'
 import { countRitualContainers } from './countRitualContainers'
 import { expectVisibleWithoutScrolling, mainNav, waitForDialogSettled } from './shellHelpers'
 import { seedMonthlyPlanningScenario } from './seedMonthlyPlanningScenario'
@@ -8,6 +10,18 @@ import { seedMonthlyPlanningScenario } from './seedMonthlyPlanningScenario'
 // contra o backend REAL da branch Neon `e2e`. `/planner/month/planning` é a
 // QUARTA superfície interna migrada — o gate de acessibilidade roda SEM
 // `exclude: 'main'`.
+
+// Prontidão do gate axe (achado de review da DW-16, mesmo helper do irmão
+// `weekly-planning-ritual.spec.ts`): `main` visível NÃO basta — o skeleton da
+// página carrega o MESMO `aria-label`, e nesse frame nem os botões das linhas de
+// decisão nem os avisos do rail de contexto existem no DOM. Medir ali certifica
+// uma página que o usuário nunca vê, e faz o gate passar mesmo com os fixes de
+// contraste/alvo de toque removidos.
+async function waitForRitualHydrated(page: Page): Promise<void> {
+  await expect(page.getByRole('region', { name: /Decisões —/ })).toBeVisible()
+  await expect(page.getByRole('button', { name: /pendente\(s\)/ }).first()).toBeVisible()
+  await waitForLayoutSettled(page)
+}
 
 test.describe('Monthly Planning Ritual — wide 1440×900', () => {
   test.use({ viewport: { width: 1440, height: 900 } })
@@ -250,8 +264,52 @@ test.describe('Monthly Planning Ritual — wide 1440×900', () => {
     seedMonthlyPlanningScenario(email)
     await page.goto('/planner/month/planning')
     await expect(page.getByRole('main', { name: /Planejar/ })).toBeVisible()
+    // Mede o ritual HIDRATADO e o layout ASSENTADO (DW-16).
+    await waitForRitualHydrated(page)
 
     await expectNoAxeViolations(page, { label: 'wide · /planner/month/planning' })
+  })
+
+  // O colapso de layout da DW-16 é a correção do `target-size` "partially
+  // obscured" nas faixas estreitas — e, antes disto, NADA o assertava: os testes
+  // unitários de página stubam `matchMedia` com `matches: false` para toda query,
+  // então só exercitam o branch estreito. Aqui as duas direções ficam presas.
+  test('layout do ritual: 3 colunas em desktop, 1 coluna abaixo de desktop (DW-16)', async ({
+    page,
+    email,
+  }) => {
+    seedMonthlyPlanningScenario(email)
+    await page.goto('/planner/month/planning')
+    await waitForRitualHydrated(page)
+
+    const trackCount = async () => {
+      const tracks = await page
+        .getByRole('main', { name: /Planejar/ })
+        .evaluate((el) => getComputedStyle(el).gridTemplateColumns)
+      return tracks.split(' ').length
+    }
+
+    expect(await trackCount()).toBe(3)
+
+    await page.setViewportSize({ width: 800, height: 720 })
+    await waitForLayoutSettled(page)
+    expect(await trackCount()).toBe(1)
+  })
+})
+
+// Fronteira EXATA do colapso (`mediaQueries.desktop` = 1024px): acima dela o
+// grid de 3 colunas volta a valer, e a matriz de faixas salta de 800 para 1280 —
+// então o pior caso do layout de 3 colunas (a menor largura em que ele existe)
+// não era medido por ninguém.
+test.describe('Monthly Planning Ritual — desktop mínimo 1024×720', () => {
+  test.use({ viewport: { width: 1024, height: 720 } })
+
+  test('axe sem exclude: main em 1024 (fronteira do colapso)', async ({ page, email }) => {
+    seedMonthlyPlanningScenario(email)
+    await page.goto('/planner/month/planning')
+    await waitForRitualHydrated(page)
+
+    await expectNoAxeViolations(page, { label: '1024 · /planner/month/planning' })
   })
 })
 
@@ -262,6 +320,7 @@ test.describe('Monthly Planning Ritual — medium 1280×800', () => {
     seedMonthlyPlanningScenario(email)
     await page.goto('/planner/month/planning')
     await expect(page.getByRole('main', { name: /Planejar/ })).toBeVisible()
+    await waitForRitualHydrated(page)
 
     await expectNoAxeViolations(page, { label: 'medium · /planner/month/planning' })
   })
@@ -275,6 +334,9 @@ test.describe('Monthly Planning Ritual — tablet 800×720', () => {
     await page.goto('/planner/month/planning')
     await expect(page.getByRole('main', { name: /Planejar/ })).toBeVisible()
     await mainNav(page).getByRole('button', { name: 'Expandir sidebar' }).click()
+    // Depois de expandir: a sidebar anima largura e o submenu abre via
+    // `Collapse` — assentar aqui evita medir a animação em voo.
+    await waitForRitualHydrated(page)
 
     await expectNoAxeViolations(page, { label: 'tablet · /planner/month/planning' })
   })
@@ -287,6 +349,7 @@ test.describe('Monthly Planning Ritual — compact 390×720', () => {
     seedMonthlyPlanningScenario(email)
     await page.goto('/planner/month/planning')
     await expect(page.getByRole('main', { name: /Planejar/ })).toBeVisible()
+    await waitForRitualHydrated(page)
 
     await expectNoAxeViolations(page, { label: 'compact 390 · /planner/month/planning' })
   })
@@ -302,6 +365,11 @@ test.describe('Monthly Planning Ritual — reflow 320×720', () => {
     seedMonthlyPlanningScenario(email)
     await page.goto('/planner/month/planning')
     await expect(page.getByRole('main', { name: /Planejar/ })).toBeVisible()
+
+    // Assentar ANTES de medir o reflow: o overflow horizontal é a MESMA corrida
+    // de frame que a geometria do axe — medi-lo no skeleton aprovaria um grid de
+    // 3 colunas que só transborda depois de hidratar (achado de review, DW-16).
+    await waitForRitualHydrated(page)
 
     const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth)
     const clientWidth = await page.evaluate(() => document.documentElement.clientWidth)

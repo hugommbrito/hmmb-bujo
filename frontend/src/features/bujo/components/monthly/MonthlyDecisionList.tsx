@@ -28,6 +28,13 @@ import {
 import { parseLocalDate } from '../../../../shared/date'
 import { typography } from '../../../../shared/design/tokens'
 
+/** Cor EXPLÍCITA (achado real do axe, DW-16): sem override, o MUI aplica
+ * `theme.palette.primary` — o teal de marca LEGADO —, que fica em torno de
+ * 2,4:1 sobre `--ds-surface`, abaixo do piso AA. O token novo `--ds-primary`
+ * resolve LOCALMENTE, sem tocar `theme.ts`. Paridade com
+ * `weekly/WeeklyDecisionList.tsx` e `migration/MigrationDecisionList.tsx`. */
+const DECISION_BUTTON_SX = { color: 'var(--ds-primary)' } as const
+
 export interface MonthlyDecisionListProps {
   sourceId: MonthlyRitualSourceId
   targetMonthFirst: string
@@ -133,10 +140,10 @@ export function MonthlyDecisionList({
       </Box>
 
       <Box role="group" aria-label="Alternar entre pendentes e tudo" sx={{ display: 'flex', gap: 'var(--ds-space-1)', mb: 'var(--ds-space-2)' }}>
-        <Button aria-pressed={view === 'pending'} onClick={() => onViewChange('pending')} size="small">
+        <Button aria-pressed={view === 'pending'} onClick={() => onViewChange('pending')} size="small" sx={DECISION_BUTTON_SX}>
           Pendentes de decisão
         </Button>
-        <Button aria-pressed={view === 'all'} onClick={() => onViewChange('all')} size="small">
+        <Button aria-pressed={view === 'all'} onClick={() => onViewChange('all')} size="small" sx={DECISION_BUTTON_SX}>
           Tudo
         </Button>
       </Box>
@@ -144,7 +151,7 @@ export function MonthlyDecisionList({
       {error && (
         <Box role="alert" sx={{ ...typography.body, color: 'var(--ds-danger)', mb: 'var(--ds-space-2)' }}>
           Não foi possível carregar esta fonte.{' '}
-          <Button onClick={onRetry} size="small">
+          <Button onClick={onRetry} size="small" sx={DECISION_BUTTON_SX}>
             Tentar novamente
           </Button>
         </Box>
@@ -192,12 +199,12 @@ export function MonthlyDecisionList({
                     <Box sx={{ ...typography.body, color: 'var(--ds-ink)' }}>{item.title}</Box>
                     <Box sx={{ display: 'flex', gap: 'var(--ds-space-1)', flexWrap: 'wrap' }}>
                       {actions.includes('allocate') && (
-                        <Button size="small" aria-disabled={offline} onClick={() => allocate(item.id)}>
+                        <Button size="small" aria-disabled={offline} onClick={() => allocate(item.id)} sx={DECISION_BUTTON_SX}>
                           {MONTHLY_RITUAL_ACTION_LABEL.allocate}
                         </Button>
                       )}
                       {actions.includes('keep_undated') && (
-                        <Button size="small" aria-disabled={offline} onClick={() => actOn(item.id, index, () => onKeepUndated(item.id))}>
+                        <Button size="small" aria-disabled={offline} onClick={() => actOn(item.id, index, () => onKeepUndated(item.id))} sx={DECISION_BUTTON_SX}>
                           {MONTHLY_RITUAL_ACTION_LABEL.keep_undated}
                         </Button>
                       )}
@@ -206,27 +213,28 @@ export function MonthlyDecisionList({
                           size="small"
                           aria-disabled={offline}
                           onClick={() => actOn(item.id, index, () => onMigrateNamedDay(item.id, destinationDate))}
+                          sx={DECISION_BUTTON_SX}
                         >
                           {MONTHLY_RITUAL_ACTION_LABEL.migrate_named_day} dia {destinationDay}
                         </Button>
                       )}
                       {actions.includes('choose_destination') && (
-                        <Button size="small" aria-disabled={offline} onClick={() => chooseDestination(item.id)}>
+                        <Button size="small" aria-disabled={offline} onClick={() => chooseDestination(item.id)} sx={DECISION_BUTTON_SX}>
                           {MONTHLY_RITUAL_ACTION_LABEL.choose_destination}
                         </Button>
                       )}
                       {actions.includes('complete') && (
-                        <Button size="small" aria-disabled={offline} onClick={() => actOn(item.id, index, () => onComplete(item.id))}>
+                        <Button size="small" aria-disabled={offline} onClick={() => actOn(item.id, index, () => onComplete(item.id))} sx={DECISION_BUTTON_SX}>
                           {MONTHLY_RITUAL_ACTION_LABEL.complete}
                         </Button>
                       )}
                       {actions.includes('cancel') && (
-                        <Button size="small" aria-disabled={offline} onClick={() => actOn(item.id, index, () => onCancel(item.id))}>
+                        <Button size="small" aria-disabled={offline} onClick={() => actOn(item.id, index, () => onCancel(item.id))} sx={DECISION_BUTTON_SX}>
                           {MONTHLY_RITUAL_ACTION_LABEL.cancel}
                         </Button>
                       )}
                       {actions.includes('defer_to_future_log') && (
-                        <Button size="small" aria-disabled={offline} onClick={() => actOn(item.id, index, () => onDeferToFutureLog(item.id))}>
+                        <Button size="small" aria-disabled={offline} onClick={() => actOn(item.id, index, () => onDeferToFutureLog(item.id))} sx={DECISION_BUTTON_SX}>
                           {MONTHLY_RITUAL_ACTION_LABEL.defer_to_future_log}
                         </Button>
                       )}
@@ -237,7 +245,7 @@ export function MonthlyDecisionList({
                         sx={{ display: 'flex', alignItems: 'center', gap: 'var(--ds-space-2)', width: '100%', ...typography.meta, color: 'var(--ds-danger)' }}
                       >
                         <Box component="span">{itemError}</Box>
-                        <Button size="small" onClick={() => onRetryItem?.(item.id)}>
+                        <Button size="small" onClick={() => onRetryItem?.(item.id)} sx={DECISION_BUTTON_SX}>
                           Tentar novamente
                         </Button>
                       </Box>
@@ -257,7 +265,7 @@ export function MonthlyDecisionList({
               sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'var(--ds-space-2)', borderBottom: '1px solid var(--ds-border)' }}
             >
               <Box sx={{ ...typography.body, color: 'var(--ds-ink-muted)' }}>{item.title}</Box>
-              <Button size="small" aria-disabled={offline} onClick={() => allocate(item.id)}>
+              <Button size="small" aria-disabled={offline} onClick={() => allocate(item.id)} sx={DECISION_BUTTON_SX}>
                 Alocar outra instância
               </Button>
             </Box>
@@ -274,7 +282,7 @@ export function MonthlyDecisionList({
               sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'var(--ds-space-2)', borderBottom: '1px solid var(--ds-border)' }}
             >
               <Box sx={{ ...typography.body, color: 'var(--ds-ink-muted)' }}>{item.title}</Box>
-              <Button size="small" aria-disabled={offline} onClick={() => allocate(item.id)}>
+              <Button size="small" aria-disabled={offline} onClick={() => allocate(item.id)} sx={DECISION_BUTTON_SX}>
                 Alocar outra instância
               </Button>
             </Box>

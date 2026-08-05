@@ -225,7 +225,22 @@ export function MonthlyContextRail({
               component="button"
               type="button"
               onClick={() => onNavigateToSource(source.sourceId)}
-              sx={{ ...typography.body, display: 'block', textAlign: 'left', border: 'none', background: 'none', cursor: 'pointer', color: 'var(--ds-warning)' }}
+              sx={{
+                ...typography.body,
+                display: 'flex',
+                textAlign: 'left',
+                border: 'none',
+                background: 'none',
+                cursor: 'pointer',
+                color: 'var(--ds-warning)',
+                // Piso de alvo de toque (achado real do axe na DW-16) — mesmo
+                // fix do irmão `weekly/WeeklyContextRail.tsx`: sem `minHeight`
+                // estes botões ficam abaixo do piso do WCAG 2.5.8 e encostados,
+                // reprovando tamanho E espaçamento. O token é o do projeto
+                // (`--ds-touch-target-min`, piso 44×44 da Story 14.5 AC7).
+                minHeight: 'var(--ds-touch-target-min)',
+                alignItems: 'center',
+              }}
             >
               {MONTHLY_RITUAL_SOURCE_LABEL[source.sourceId]}: {source.pendingNow} pendente(s)
             </Box>
@@ -237,7 +252,18 @@ export function MonthlyContextRail({
               component="button"
               type="button"
               onClick={() => onNavigateToSource('previous-monthly')}
-              sx={{ ...typography.body, textAlign: 'left', border: 'none', background: 'none', cursor: 'pointer', color: 'var(--ds-danger)' }}
+              sx={{
+                ...typography.body,
+                textAlign: 'left',
+                border: 'none',
+                background: 'none',
+                cursor: 'pointer',
+                color: 'var(--ds-danger)',
+                // Mesmo piso de alvo de toque dos avisos acima (WCAG 2.5.8).
+                display: 'flex',
+                alignItems: 'center',
+                minHeight: 'var(--ds-touch-target-min)',
+              }}
             >
               Monthly anterior: {previousMonthlyPendingCount} pendência(s) — bloqueia iniciar mês
             </Box>

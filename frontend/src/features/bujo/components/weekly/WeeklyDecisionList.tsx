@@ -17,6 +17,14 @@ import {
 import { addDaysIso, formatDayLabel, weekdayIndexOf } from '../../../../shared/date'
 import { typography } from '../../../../shared/design/tokens'
 
+/** Cor EXPLÍCITA (achado real do axe, DW-16): sem override, o MUI aplica
+ * `theme.palette.primary` — o teal de marca LEGADO —, que fica em torno de
+ * 2,4:1 sobre `--ds-surface`, abaixo do piso AA. O token novo `--ds-primary`
+ * resolve LOCALMENTE, sem tocar `theme.ts`. Mesmo fix já aplicado no irmão
+ * `migration/MigrationDecisionList.tsx`; const de módulo (convenção do
+ * `RETRY_BUTTON_SX`) porque aqui são ~13 botões no mesmo arquivo. */
+const DECISION_BUTTON_SX = { color: 'var(--ds-primary)' } as const
+
 export interface WeeklyDecisionListProps {
   sourceId: WeeklyRitualSourceId
   weekStart: string
@@ -124,10 +132,11 @@ export function WeeklyDecisionList({
           aria-pressed={view === 'pending'}
           onClick={() => onViewChange('pending')}
           size="small"
+          sx={DECISION_BUTTON_SX}
         >
           Pendentes de decisão
         </Button>
-        <Button aria-pressed={view === 'all'} onClick={() => onViewChange('all')} size="small">
+        <Button aria-pressed={view === 'all'} onClick={() => onViewChange('all')} size="small" sx={DECISION_BUTTON_SX}>
           Tudo
         </Button>
       </Box>
@@ -135,7 +144,7 @@ export function WeeklyDecisionList({
       {error && (
         <Box role="alert" sx={{ ...typography.body, color: 'var(--ds-danger)', mb: 'var(--ds-space-2)' }}>
           Não foi possível carregar esta fonte.{' '}
-          <Button onClick={onRetry} size="small">
+          <Button onClick={onRetry} size="small" sx={DECISION_BUTTON_SX}>
             Tentar novamente
           </Button>
         </Box>
@@ -186,17 +195,17 @@ export function WeeklyDecisionList({
                     <Box sx={{ ...typography.body, color: 'var(--ds-ink)' }}>{item.title}</Box>
                     <Box sx={{ display: 'flex', gap: 'var(--ds-space-1)', flexWrap: 'wrap' }}>
                       {actions.includes('keep') && (
-                        <Button size="small" aria-disabled={offline} onClick={() => actOn(item.id, index, () => onKeep(item.id))}>
+                        <Button size="small" aria-disabled={offline} onClick={() => actOn(item.id, index, () => onKeep(item.id))} sx={DECISION_BUTTON_SX}>
                           {WEEKLY_RITUAL_ACTION_LABEL.keep}
                         </Button>
                       )}
                       {actions.includes('skip_week') && (
-                        <Button size="small" aria-disabled={offline} onClick={() => actOn(item.id, index, () => onSkipWeek(item.id))}>
+                        <Button size="small" aria-disabled={offline} onClick={() => actOn(item.id, index, () => onSkipWeek(item.id))} sx={DECISION_BUTTON_SX}>
                           {WEEKLY_RITUAL_ACTION_LABEL.skip_week}
                         </Button>
                       )}
                       {actions.includes('allocate') && (
-                        <Button size="small" aria-disabled={offline} onClick={() => actOn(item.id, index, () => onAllocate(item.id))}>
+                        <Button size="small" aria-disabled={offline} onClick={() => actOn(item.id, index, () => onAllocate(item.id))} sx={DECISION_BUTTON_SX}>
                           {WEEKLY_RITUAL_ACTION_LABEL.allocate}
                         </Button>
                       )}
@@ -205,22 +214,23 @@ export function WeeklyDecisionList({
                           size="small"
                           aria-disabled={offline}
                           onClick={() => actOn(item.id, index, () => onMigrateNamedDay(item.id, destinationDate))}
+                          sx={DECISION_BUTTON_SX}
                         >
                           {WEEKLY_RITUAL_ACTION_LABEL.migrate_named_day} {destinationLabel}
                         </Button>
                       )}
                       {actions.includes('choose_destination') && (
-                        <Button size="small" aria-disabled={offline} onClick={() => chooseDestination(item.id)}>
+                        <Button size="small" aria-disabled={offline} onClick={() => chooseDestination(item.id)} sx={DECISION_BUTTON_SX}>
                           {WEEKLY_RITUAL_ACTION_LABEL.choose_destination}
                         </Button>
                       )}
                       {actions.includes('complete') && (
-                        <Button size="small" aria-disabled={offline} onClick={() => actOn(item.id, index, () => onComplete(item.id))}>
+                        <Button size="small" aria-disabled={offline} onClick={() => actOn(item.id, index, () => onComplete(item.id))} sx={DECISION_BUTTON_SX}>
                           {WEEKLY_RITUAL_ACTION_LABEL.complete}
                         </Button>
                       )}
                       {actions.includes('cancel') && (
-                        <Button size="small" aria-disabled={offline} onClick={() => actOn(item.id, index, () => onCancel(item.id))}>
+                        <Button size="small" aria-disabled={offline} onClick={() => actOn(item.id, index, () => onCancel(item.id))} sx={DECISION_BUTTON_SX}>
                           {WEEKLY_RITUAL_ACTION_LABEL.cancel}
                         </Button>
                       )}
@@ -231,7 +241,7 @@ export function WeeklyDecisionList({
                         sx={{ display: 'flex', alignItems: 'center', gap: 'var(--ds-space-2)', width: '100%', ...typography.meta, color: 'var(--ds-danger)' }}
                       >
                         <Box component="span">{itemError}</Box>
-                        <Button size="small" onClick={() => onRetryItem?.(item.id)}>
+                        <Button size="small" onClick={() => onRetryItem?.(item.id)} sx={DECISION_BUTTON_SX}>
                           Tentar novamente
                         </Button>
                       </Box>
@@ -252,14 +262,14 @@ export function WeeklyDecisionList({
             >
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <Box sx={{ ...typography.body, color: 'var(--ds-ink-muted)' }}>{item.title}</Box>
-                <Button size="small" aria-disabled={offline} onClick={() => allocate(item.id)}>
+                <Button size="small" aria-disabled={offline} onClick={() => allocate(item.id)} sx={DECISION_BUTTON_SX}>
                   {WEEKLY_RITUAL_ACTION_LABEL.allocate}
                 </Button>
               </Box>
               {itemErrors[item.id] && (
                 <Box role="alert" sx={{ display: 'flex', alignItems: 'center', gap: 'var(--ds-space-2)', ...typography.meta, color: 'var(--ds-danger)' }}>
                   <Box component="span">{itemErrors[item.id]}</Box>
-                  <Button size="small" onClick={() => onRetryItem?.(item.id)}>
+                  <Button size="small" onClick={() => onRetryItem?.(item.id)} sx={DECISION_BUTTON_SX}>
                     Tentar novamente
                   </Button>
                 </Box>

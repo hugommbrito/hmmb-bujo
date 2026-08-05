@@ -74,6 +74,14 @@ export function WeeklyPlanningPage() {
   // confirmação nomeada. É o que mantém o caminho do rail vivo e alcançável.
   const [dayFromDensityRail, setDayFromDensityRail] = useState<string | null | undefined>(undefined)
   const isCompact = useMediaQuery(mediaQueries.compact)
+  // Abaixo de `desktop` o grid de 3 colunas do ritual NÃO cabe: a coluna do
+  // meio é esmagada a zero e os botões da lista de decisão vazam POR CIMA do
+  // rail de contexto — achado real do axe na DW-16 (`target-size` "partially
+  // obscured" em tablet/compact/reflow-320, nunca em wide/medium). Colapsar
+  // para 1 coluna é o MESMO tratamento que `MigrationRitualPage.tsx` já aplica
+  // (`isNarrowLayout`), e não altera nenhum token de rail: eles seguem valendo
+  // a partir de `desktop`.
+  const isNarrowLayout = !useMediaQuery(mediaQueries.desktop)
   const isOnline = useOnlineStatus()
 
   const readiness = useWeeklyCycleReadinessQuery()
@@ -427,7 +435,9 @@ export function WeeklyPlanningPage() {
       aria-label="Planejar a semana"
       sx={{
         display: 'grid',
-        gridTemplateColumns: 'var(--ds-weekly-planning-source-rail) minmax(0, 1fr) var(--ds-weekly-planning-context-rail)',
+        gridTemplateColumns: isNarrowLayout
+          ? '1fr'
+          : 'var(--ds-weekly-planning-source-rail) minmax(0, 1fr) var(--ds-weekly-planning-context-rail)',
         gap: 'var(--ds-space-4)',
         alignItems: 'start',
       }}

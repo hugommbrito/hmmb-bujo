@@ -4,6 +4,7 @@ import { axe } from 'jest-axe'
 import { describe, expect, it, vi } from 'vitest'
 
 import { WeeklyDecisionList } from './WeeklyDecisionList'
+import weeklyDecisionListSource from './WeeklyDecisionList.tsx?raw'
 import type { NormalizedRitualItem } from './weeklyRitualSources'
 
 function item(overrides: Partial<NormalizedRitualItem> = {}): NormalizedRitualItem {
@@ -396,5 +397,39 @@ describe('WeeklyDecisionList — offline (AC7)', () => {
     expect(button).toHaveAttribute('aria-disabled', 'false')
     fireEvent.click(button)
     expect(onComplete).toHaveBeenCalledWith('i-1')
+  })
+})
+
+// `?raw` (molde de `noLiteralTokens.test.ts`): prova ESTRUTURAL da DW-16 — o
+// `Button` do MUI sem `color` explícito herda o teal de marca legado do tema,
+// abaixo de AA sobre `--ds-surface`. O gate axe (`weekly-planning-ritual.spec.ts`)
+// só mede os botões RENDERIZADOS na cena que ele monta; a checagem sobre a
+// fonte cobre TODOS eles — inclusive os que só aparecem em erro por item, em
+// erro da fonte e no bucket "Já alocados" — e pega qualquer botão novo.
+describe('WeeklyDecisionList — cor explícita AA em TODO botão (DW-16)', () => {
+  it('todo `<Button` do arquivo declara uma cor EXPLÍCITA de token', () => {
+    // Parear por botão, não contar ocorrências: com contagem, um
+    // `sx={DECISION_BUTTON_SX}` em qualquer OUTRO elemento compensaria um
+    // `Button` sem cor e o guard passaria com o defeito de volta.
+    // `=>` dos handlers tem um `>` que cortaria a tag no meio (o `sx` vem
+    // depois do `onClick`), então neutralizar a seta ANTES de fatiar.
+    const source = weeklyDecisionListSource.replaceAll('=>', '⇒')
+    const openingTags = source.match(/<Button\b[^>]*>/g) ?? ([] as string[])
+    const uncolored = openingTags.filter(
+      (tag) => !tag.includes('DECISION_BUTTON_SX') && !tag.includes("color: 'var(--ds-"),
+    )
+
+    expect(openingTags.length).toBeGreaterThan(0)
+    expect(uncolored).toEqual([])
+  })
+
+  it('DECISION_BUTTON_SX declara a cor pelo token --ds-primary', () => {
+    // `[\s\S]*?\} as const` em vez de `[^}]*`: a const pode ganhar objeto
+    // aninhado (ex. `'&:hover'`, como no irmão da Migração) sem que o match
+    // vire vazio e o assert deixe de checar o que promete.
+    const declaration = weeklyDecisionListSource.match(/const DECISION_BUTTON_SX = [\s\S]*?\} as const/)?.[0]
+
+    expect(declaration).toBeDefined()
+    expect(declaration).toContain("color: 'var(--ds-primary)'")
   })
 })

@@ -176,12 +176,22 @@ export function WeeklyContextRail({
               onClick={() => onNavigateToSource(source.sourceId)}
               sx={{
                 ...typography.body,
-                display: 'block',
+                display: 'flex',
                 textAlign: 'left',
                 border: 'none',
                 background: 'none',
                 cursor: 'pointer',
                 color: 'var(--ds-warning)',
+                // Piso de alvo de toque (achado real do axe na DW-16): sem
+                // `minHeight` estes botões ficam abaixo do piso do WCAG 2.5.8 e
+                // encostados uns nos outros, reprovando TANTO o tamanho quanto o
+                // espaçamento. O token é o do projeto (`--ds-touch-target-min`,
+                // o mesmo de `RETRY_BUTTON_SX` e do piso 44×44 da Story 14.5
+                // AC7) — não um passo de espaçamento reaproveitado como piso de
+                // acessibilidade. `flex` + `alignItems` centram o rótulo na
+                // altura nova em vez de deixá-lo colado no topo.
+                minHeight: 'var(--ds-touch-target-min)',
+                alignItems: 'center',
               }}
             >
               {WEEKLY_RITUAL_SOURCE_LABEL[source.sourceId]}: {source.pendingNow} pendente(s)
@@ -197,7 +207,18 @@ export function WeeklyContextRail({
               component="button"
               type="button"
               onClick={() => onNavigateToSource('previous-weekly')}
-              sx={{ ...typography.body, textAlign: 'left', border: 'none', background: 'none', cursor: 'pointer', color: 'var(--ds-danger)' }}
+              sx={{
+                ...typography.body,
+                textAlign: 'left',
+                border: 'none',
+                background: 'none',
+                cursor: 'pointer',
+                color: 'var(--ds-danger)',
+                // Mesmo piso de alvo de toque dos avisos acima (WCAG 2.5.8).
+                display: 'flex',
+                alignItems: 'center',
+                minHeight: 'var(--ds-touch-target-min)',
+              }}
             >
               Weekly anterior: {previousWeeklyPendingCount} pendência(s) — bloqueia iniciar semana
             </Box>

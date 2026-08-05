@@ -40,6 +40,75 @@ interface RunAxeOptions {
 }
 
 /**
+ * Espera o layout ASSENTAR antes de medir acessibilidade: fontes carregadas,
+ * animações/transições CSS FINITAS em voo concluídas, e um `requestAnimationFrame`
+ * duplo para o browser aplicar o layout final.
+ *
+ * Por quê: medir logo depois do `toBeVisible()` do `main` pega um frame
+ * INTERMEDIÁRIO — a sidebar ainda animando largura, o `Collapse` do submenu
+ * (MUI, `timeout="auto"`) ainda abrindo — e o axe mede geometria de transição.
+ * É a mesma classe de problema que `migration-ritual.spec.ts:220` contorna com
+ * um `waitForTimeout(300)` fixo; aqui a espera é determinística (o que está DE
+ * FATO em voo, não um número mágico). Aquele spec segue com o número fixo: está
+ * fora do escopo da DW-16 e é dívida registrada, não substituição feita.
+ *
+ * ESCOPO (medido na DW-16): cobre só o que o browser tem em voo — fontes e
+ * animações/transições CSS. NÃO espera dados (React Query) nem o re-render que
+ * eles disparam. Um gate cujo alvo só aparece depois da resposta de rede tem
+ * que esperar esse alvo ANTES de chamar esta função (é o que
+ * `weekly-planning-ritual.spec.ts`/`monthly-planning-ritual.spec.ts` fazem em
+ * `waitForRitualHydrated`).
+ *
+ * NUNCA pendura a suíte: só entram na espera as animações que PODEM terminar
+ * (fora as infinitas dos spinners, as pausadas e as sem `effect` — nenhuma delas
+ * resolve `finished`), e o teto `timeoutMs` é um orçamento TOTAL das esperas.
+ * Não silencia regra nenhuma: o gate continua medindo o estado final com o mesmo
+ * ruleset.
+ */
+export async function waitForLayoutSettled(page: Page, timeoutMs = 1000): Promise<void> {
+  await page.evaluate(async (budgetMs) => {
+    const startedAt = Date.now()
+    const remaining = () => Math.max(0, budgetMs - (Date.now() - startedAt))
+    // Cada espera corre contra o que SOBRA do orçamento — o teto vale para o
+    // conjunto, não por etapa.
+    const capped = (work: Promise<unknown>) =>
+      Promise.race([work, new Promise((resolve) => setTimeout(resolve, remaining()))])
+
+    // Só animação que PODE terminar: infinita nunca termina, e `paused`/sem
+    // `effect` também não resolvem `finished` — esperar por elas queimaria o
+    // orçamento inteiro à toa.
+    const inFlight = () =>
+      document.getAnimations().filter((animation) => {
+        if (animation.playState !== 'running') return false
+        const timing = animation.effect?.getComputedTiming()
+        return timing != null && timing.iterations !== Infinity
+      })
+
+    await capped(document.fonts.ready)
+
+    // Relê a lista a cada volta em vez de tirar um snapshot único: o `Collapse`
+    // do MUI MEDE antes de começar, e todo re-render inicia sua transição num
+    // frame POSTERIOR — um snapshot perderia exatamente essas.
+    while (remaining() > 0) {
+      const running = inFlight()
+      if (running.length === 0) break
+      // `finished` REJEITA quando a animação é cancelada (ex.: re-render no
+      // meio da transição) — engolir a rejeição mantém a espera cooperativa.
+      await capped(Promise.all(running.map((animation) => animation.finished.catch(() => undefined))))
+      // Um frame antes de reavaliar: evita laço quente quando uma animação
+      // termina no exato instante da leitura.
+      await new Promise((resolve) => requestAnimationFrame(resolve))
+    }
+
+    // FORA do orçamento, SEMPRE: são estes 2 frames que fazem o browser aplicar
+    // o layout final — a garantia central desta função. Se ficassem sob o teto,
+    // um orçamento esgotado pelas etapas anteriores devolveria exatamente a
+    // medição não-assentada que ela existe para impedir.
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+  }, timeoutMs)
+}
+
+/**
  * Roda axe numa página e falha com o DETALHE das violações (id, impacto,
  * seletores, ajuda) — mensagem acionável, não um `expect([]).toEqual([])` cru
  * que só diz "esperava array vazio".

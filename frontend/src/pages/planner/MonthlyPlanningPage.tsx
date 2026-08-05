@@ -90,6 +90,12 @@ export function MonthlyPlanningPage() {
   // confirmação nomeada. É o que mantém o caminho do rail vivo e alcançável.
   const [dayFromDensityRail, setDayFromDensityRail] = useState<string | null | undefined>(undefined)
   const isCompact = useMediaQuery(mediaQueries.compact)
+  // Mesmo colapso do ritual semanal (DW-16) e de `MigrationRitualPage.tsx`:
+  // abaixo de `desktop` as 3 colunas não cabem, a do meio é esmagada a zero e
+  // os botões da lista de decisão vazam POR CIMA do rail de contexto
+  // (`target-size` "partially obscured" no axe). Os tokens de rail seguem
+  // intactos — só param de valer abaixo de `desktop`.
+  const isNarrowLayout = !useMediaQuery(mediaQueries.desktop)
   const isOnline = useOnlineStatus()
 
   const readiness = useMonthlyCycleReadinessQuery()
@@ -455,7 +461,9 @@ export function MonthlyPlanningPage() {
       aria-label={mainLabel}
       sx={{
         display: 'grid',
-        gridTemplateColumns: 'var(--ds-monthly-planning-source-rail) minmax(0, 1fr) var(--ds-monthly-planning-context-rail)',
+        gridTemplateColumns: isNarrowLayout
+          ? '1fr'
+          : 'var(--ds-monthly-planning-source-rail) minmax(0, 1fr) var(--ds-monthly-planning-context-rail)',
         gap: 'var(--ds-space-4)',
         alignItems: 'start',
       }}
