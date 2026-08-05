@@ -218,21 +218,24 @@ origin: review (fresh review pass) of spec-dw-24-dw-25-core-auth-error-handling-
 location: backend/pyproject.toml:59-63 (contrato "core must not import domain apps (port rule)")
 severity: medium
 reason: achado pela verification-gap review (2026-08-04) e confirmado por mim — forbidden_modules lista bujo, habits, health, medications, gratitude, braindump e para aí, mas INSTALLED_APPS em config/settings/base.py:46-55 inclui automation, que é app de domínio de verdade (models.AutomationToken com FK para AUTH_USER_MODEL, mais views). O comentário logo acima do próprio contrato manda literalmente "When a new domain app is created, add its package name to forbidden_modules below": foi esquecido quando o app nasceu, então hoje o gate que a Verification de várias stories cita como prova da regra de porta é estruturalmente incapaz de ver esse import. core não importa automation hoje (grep vazio em backend/core/), logo a correção é de uma linha e o gate segue verde depois dela (uv run lint-imports continuaria "1 kept, 0 broken") — vale conferir de passagem se algum outro app instalado também ficou de fora. Pré-existente e fora do escopo da bundle DW-24/DW-25, cujo intent não fala do contrato de import. Nota para quem pegar isto: a ausência de accounts na lista é DELIBERADA e documentada (core -> accounts é permitido, ver docstring de UserHoliday e core/calendar.py); só automation é omissão.
-status: open
+status: done 2026-08-04
+resolution: already resolved: resolvido: backend/pyproject.toml:81 já lista `automation` em forbidden_modules, com bloco de comentário em :74-80 que nomeia a DW-33 e documenta a exceção deliberada de `accounts`; a cobertura ficou completa (os 7 apps de domínio de INSTALLED_APPS em config/settings/base.py:46-56 estão todos listados) e `uv run lint-imports` sai 'Contracts: 1 kept, 0 broken' sobre 76 arquivos — a premissa da entrada ('omite automation') não vale mais.
 
 ### DW-34: /api/schema/ e /api/schema/swagger-ui/ 401am com um Authorization header inválido presente — mesma classe de bug que DW-15 e DW-24 corrigiram uma view por vez
 origin: review (fresh review pass) of spec-dw-24-dw-25-core-auth-error-handling-fixes, 2026-08-04
 location: backend/config/settings/base.py (SPECTACULAR_SETTINGS, sem SERVE_AUTHENTICATION) — rotas registradas em backend/config/urls.py:32-36
 severity: medium
 reason: promovido ao ledger em 2026-08-04. Estava registrado apenas no frontmatter deferred: da spec-dw-24-dw-25 desde a primeira review pass (2026-08-03) e nunca chegou a este arquivo, então sobreviveu a três passes invisível para a varredura — é por isso que entra aqui agora, não porque seja achado novo. Reproduzido independentemente por dois reviewers nesta pass e medido a cada vez: GET /api/schema/ sem header -> 200; com Authorization: Bearer garbage -> 401 {"detail": "Given token not valid for any token type", "fields": {"code": [...]}}; com bearer válido -> 200. GET /api/schema/swagger-ui/ -> 200 sem header, 401 com o header inválido. (Um reviewer alegou 500 no swagger-ui por InvalidToken escapando no render do template; NÃO reproduziu — o que se mediu foram 401 nas duas rotas.) Causa: drf_spectacular/settings.py tem SERVE_AUTHENTICATION = None, que faz as views caírem em api_settings.DEFAULT_AUTHENTICATION_CLASSES (TenantAwareJWTAuthentication), e SPECTACULAR_SETTINGS em config/settings/base.py não sobrescreve a chave — exatamente o mecanismo que DW-15 corrigiu em accounts/views.py::signup e DW-24 em core/views.py::health. As rotas são registradas sem gate de DEBUG, logo valem em produção. Correção provável sem tocar settings globais de DRF: SPECTACULAR_SETTINGS["SERVE_AUTHENTICATION"] = []. Sem cobertura: nenhum dos 3 testes de core/tests/test_api_contract.py:63-93 envia Authorization, nada toca /api/schema/swagger-ui/, e o step de schema do CI usa manage.py spectacular (management command), que nunca passa pelo caminho HTTP de autenticação — o teste que falta é o espelho de test_health_com_authorization_header_invalido_retorna_200 para as duas rotas.
-status: open
+status: done 2026-08-04
+resolution: already resolved: resolvido: backend/config/settings/base.py:201 define SERVE_AUTHENTICATION como lista vazia, precedido pelo bloco de racional em :181-200 que nomeia a DW-34; a cobertura que faltava existe em backend/core/tests/test_api_contract.py:96-101 (swagger-ui retorna 200) e :104-124 (GET /api/schema/ com `Bearer garbage` asserindo 200), logo nenhuma das duas rotas 401a mais com Authorization inválido.
 
 ### DW-35: nada impede a próxima recorrência de @api_view + AllowAny sem authentication_classes([]) — as duas function-based views do repo tiveram o bug, em DWs consecutivas
 origin: review (fresh review pass) of spec-dw-24-dw-25-core-auth-error-handling-fixes, 2026-08-04
 location: backend/core/tests/ (meta-teste ausente) — instâncias em backend/accounts/views.py:79 (DW-15) e backend/core/views.py:11 (DW-24); terceira instância nas rotas de schema (DW-34)
 severity: medium
 reason: promovido ao ledger em 2026-08-04. Como a DW-34, estava só no frontmatter deferred: da spec-dw-24-dw-25 desde 2026-08-03 e nunca chegou a este arquivo. Achado pelo blind-hunter e re-achado nesta pass: @api_view aparece exatamente 2x em backend/ (accounts/views.py:79, core/views.py:11) e ambas precisaram do mesmo one-liner, em DWs consecutivas — 100% de taxa de defeito na classe — e as rotas de schema da DW-34 são uma terceira instância do mesmo mecanismo (rota pública que herda o autenticador JWT global e passa a 401ar com um Authorization velho). Cada correção até aqui foi um patch pontual de decorator. Um guarda sistêmico barato fecharia a classe inteira de uma vez: um meta-teste caminhando pelo ROOT_URLCONF e afirmando que toda rota alcançável sem credenciais continua não-401 diante de um bearer inválido, ou um helper compartilhado @public_api_view. Deliberadamente fora do escopo da DW-24, cujo intent pede nominalmente "the same one-line @authentication_classes([]) pattern" e cuja spec proíbe tocar DEFAULT_AUTHENTICATION_CLASSES/DEFAULT_PERMISSION_CLASSES globais.
-status: open
+status: done 2026-08-04
+resolution: already resolved: resolvido: o meta-teste que a entrada propunha existe — backend/core/tests/test_guardrails.py:209 (`_classify_drf_routes`, caminha get_resolver()/ROOT_URLCONF e sonda anônimo depois bearer inválido) alimentando test_rotas_publicas_ignoram_authorization_invalido em :293, com critério `bogus_status != anon_status` (:275-289, que pega variante 403 também), não-vacuidade medida (77 rotas DRF → 6 públicas / 71 protegidas) e bite-test em :340; as duas @api_view de produção (core/views.py:16, accounts/views.py:91) já carregam authentication_classes([]).
 
 ### DW-36: o interceptor de 401 do frontend (client.ts) não tem guarda de _retry, então um 401 determinístico com refresh saudável entra em loop ilimitado de refresh+retry
 origin: review (fresh review pass) of spec-dw-24-dw-25-core-auth-error-handling-fixes, 2026-08-04
@@ -297,7 +300,8 @@ location: n/a
 source_spec: `spec-dw-22-dw-23-prod-hardening-claims-vs-enforcement.md`
 severity: low
 reason: The follow-up-review damping cap (limits.max_followup_reviews = 1) was spent with the story finalized (status: done, verify green) while the review pass still recommended an independent follow-up. The work was committed by bmad-loop run 20260804-091035-18f0; this entry preserves the lingering recommendation for a deliberate later review.
-status: open
+status: done 2026-08-04
+resolution: already resolved: já resolvida: a follow-up review que a entrada pede demonstravelmente rodou — DW-37 (deferred-work.md:274) e DW-39 (:288) têm origin 'review (follow-up pass ...) of spec-dw-22-dw-23-prod-hardening-claims-vs-enforcement, 2026-08-04' e DW-38 (:281) 'review (fresh review pass)' da mesma spec, que registra as três passes em :159, :181 e :210; mesmo precedente pelo qual a DW-26 foi fechada.
 
 ### DW-41: AutomationTokenAuthentication nunca consulta is_active, então desativar um usuário não revoga o acesso dele às rotas de automação
 origin: review (follow-up review pass) of spec-dw-31-auth-401-indistinguishability.md, 2026-08-04
@@ -385,7 +389,8 @@ location: n/a
 source_spec: `spec-dw-31-auth-401-indistinguishability.md`
 severity: low
 reason: The follow-up-review damping cap (limits.max_followup_reviews = 1) was spent with the story finalized (status: done, verify green) while the review pass still recommended an independent follow-up. The work was committed by bmad-loop run 20260804-091035-18f0; this entry preserves the lingering recommendation for a deliberate later review.
-status: open
+status: done 2026-08-04
+resolution: already resolved: já resolvida: nove entradas (DW-41..DW-49, deferred-work.md:303,311,319,327,335,343,351,359,367) têm origin 'review (follow-up review pass) of spec-dw-31-auth-401-indistinguishability.md, 2026-08-04' e a DW-50 (:375) traz 'review (third review pass)' da mesma spec, que registra as três passes em :261, :278 e :295 — a follow-up review pedida rodou, e ainda uma terceira depois dela.
 
 ### DW-52: as duas respostas de erro construídas à mão em automation/views.py ficam fora das duas garantias do handler central — corpo `{detail, fields}` e rollback
 origin: review (follow-up review pass) of spec-dw-32-exception-handler-set-rollback.md, 2026-08-04
@@ -417,4 +422,5 @@ location: n/a
 source_spec: `spec-dw-32-exception-handler-set-rollback.md`
 severity: low
 reason: The follow-up-review damping cap (limits.max_followup_reviews = 1) was spent with the story finalized (status: done, verify green) while the review pass still recommended an independent follow-up. The work was committed by bmad-loop run 20260804-091035-18f0; this entry preserves the lingering recommendation for a deliberate later review.
-status: open
+status: done 2026-08-04
+resolution: already resolved: já resolvida: DW-52 (deferred-work.md:391), DW-53 (:399) e DW-54 (:407) têm origin 'review (follow-up review pass) of spec-dw-32-exception-handler-set-rollback.md, 2026-08-04', e a spec registra três passes (:173, :192, :204 — a terceira com triage 6 patch / 2 defer / 19 reject); a DW-53 é literalmente uma pass posterior corrigindo achado da anterior, prova mais forte não existe.
