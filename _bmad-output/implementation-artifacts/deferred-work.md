@@ -141,7 +141,9 @@ location: n/a
 source_spec: `spec-15-3-passe-de-paridade-estados-e-acessibilidade-da-captura.md`
 severity: low
 reason: The follow-up-review damping cap (limits.max_followup_reviews = 1) was spent with the story finalized (status: done, verify green) while the review pass still recommended an independent follow-up. The work was committed by bmad-loop run 20260729-230649-5530; this entry preserves the lingering recommendation for a deliberate later review.
-status: open
+status: done 2026-08-04
+resolution: closed by human decision: Fechada como moot por politica: a 15-3 possuia so matriz axe + checklist, os achados que gastaram o teto eram lacunas de simetria de viewport, e a retro de 2026-07-31 descontinuou a verificacao formal de a11y com o Epico 15 fechado — os orfaos DIV-BD-18/19/20 ficam deliberadamente sem acao (registrados aqui para nao se perderem).
+decision: 2026-08-04 Fechar DW-3 como moot e NAO agir nos 3 orfaos — Fechada como moot por politica: a 15-3 possuia so matriz axe + checklist, os achados que gastaram o teto eram lacunas de simetria de viewport, e a retro de 2026-07-31 descontinuou a verificacao formal de a11y com o Epico 15 fechado — os orfaos DIV-BD-18/19/20 ficam deliberadamente sem acao (registrados aqui para nao se perderem).
 
 ### DW-21: SECURE_PROXY_SSL_HEADER + RAILWAY_PRIVATE_DOMAIN em ALLOWED_HOSTS pode permitir spoof de X-Forwarded-Proto pela rede privada do Railway
 origin: review (fresh review pass) of spec-dw-4-dw-5-prod-settings-e-ci-hardening, 2026-07-31
