@@ -67,7 +67,9 @@ resolution: resolved by sweep bundle dw-accounts-schema-accuracy-drift-guard
 origin: migrated from legacy ledger ("Deferred from: code review of fix-deploy-ci-e-cors (2026-07-03)"), 2026-07-31
 location: backend/config/settings/base.py:160
 reason: o schema gerado marca access/refresh como obrigatórios tanto no request quanto no response, o que é logicamente incorreto para quem só possui o request — revisitar se/quando os tipos gerados forem consumidos diretamente pelo frontend para esses endpoints.
-status: open
+status: done 2026-08-04
+resolution: closed by human decision: fechada sem mudança: a condição de revisita da própria entrada (frontend consumir os tipos gerados nesses endpoints) não disparou — auth é escrito à mão em frontend/src/features/auth/types.ts:1 e api.ts:5-8, e os 6 consumidores de types.gen.ts são todos de features de domínio; a imprecisão do schema segue existindo mas sem consumidor que possa se enganar com ela.
+decision: 2026-08-04 Fechar: o gatilho da entrada nunca disparou — fechada sem mudança: a condição de revisita da própria entrada (frontend consumir os tipos gerados nesses endpoints) não disparou — auth é escrito à mão em frontend/src/features/auth/types.ts:1 e api.ts:5-8, e os 6 consumidores de types.gen.ts são todos de features de domínio; a imprecisão do schema segue existindo mas sem consumidor que possa se enganar com ela.
 
 ### DW-14: Sem guarda de CI para drift schema-vs-view
 origin: migrated from legacy ledger ("Deferred from: code review of fix-deploy-ci-e-cors (2026-07-03)"), 2026-07-31
