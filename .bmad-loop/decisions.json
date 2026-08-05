@@ -1,4 +1,13 @@
 {
+  "DW-16": {
+    "answered_at": "2026-08-04",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Dar cor expl\u00edcita AA-safe aos bot\u00f5es das linhas de decis\u00e3o em WeeklyDecisionList.tsx e MonthlyDecisionList.tsx, seguindo o precedente j\u00e1 estabelecido em RETRY_BUTTON_SX (BrainDumpDestinationPicker.tsx:89-96) e replicado em FutureBoardPage.tsx:58 e BrainDumpInboxPage.tsx:44 \u2014 sem tocar tokens compartilhados nem o tema. Isso vira verdes os 10 testes axe dos dois rituais e deixa a consolida\u00e7\u00e3o do \u00c9pico 18 livre para depois apagar as quatro c\u00f3pias de uma vez. Conferir os noLiteralTokens.test.ts correspondentes se o sx passar a carregar token. Secundariamente, fazer o gate esperar o layout assentar antes de medir, para o target-size parar de oscilar entre 1 e 2 viola\u00e7\u00f5es nas faixas wide/medium (a medi\u00e7\u00e3o hoje acontece logo ap\u00f3s o toBeVisible() do main).",
+    "key": "1",
+    "label": "Corrigir local nas duas listas de decis\u00e3o agora",
+    "resolution": ""
+  },
   "DW-23": {
     "answered_at": "2026-08-04",
     "bundle_name": "",
