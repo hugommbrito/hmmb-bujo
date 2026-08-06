@@ -3,6 +3,7 @@ import { expectNoAxeViolations } from './axeHelper'
 import {
   bottomNav,
   dsTokenPx,
+  expectVisibleWithoutScrolling,
   mainNav,
   navigationSheet,
   waitForDialogSettled,
@@ -34,9 +35,11 @@ function captura(page: import('@playwright/test').Page) {
   return page.getByRole('form', { name: 'Adicionar item ao Future Log' })
 }
 
-/** O seletor de destino. Em wide/medium/tablet é INLINE (não é `<Dialog>` do
- * MUI), então `waitForDialogSettled` — que espera `.MuiDialog-container` — nunca
- * assentaria: bastam a visibilidade e o próprio `role="dialog"`. */
+/** O seletor de destino. Desde DW-30 ele é um `<Dialog>` PORTALIZADO do MUI em
+ * wide/medium/tablet (e `Drawer anchor="bottom"` em compact) — antes disso o
+ * ramo não-compact devolvia o conteúdo cru no fluxo do DOM, que é como ele abria
+ * abaixo da dobra. Logo `waitForDialogSettled` ASSENTA aqui, e é obrigatório
+ * antes de qualquer medida de geometria ou `analyze()` do axe. */
 function seletorDestino(page: import('@playwright/test').Page) {
   return page.getByRole('dialog', { name: 'Escolher destino' })
 }
@@ -310,6 +313,39 @@ test.describe('Future Log — wide 1440×900', () => {
     await expect(page.getByText('4 itens · 3 com dia · 1 sem dia')).toBeVisible()
   })
 
+  // Este é o teste do DEFEITO relatado em DW-30, molde de
+  // `weekly-planning-ritual.spec.ts:112-154`: antes da correção o seletor não
+  // era um `Dialog` no desktop — entrava no fluxo do DOM depois do corpo da
+  // página e abria ABAIXO DA DOBRA, então clicar em "Definir dia de…" parecia
+  // não fazer nada. A prova é GEOMÉTRICA (o diálogo inteiro dentro da viewport),
+  // não só de presença no DOM: um `toBeVisible()` passava com o defeito de pé.
+  test('o seletor abre SOBREPOSTO e inteiramente dentro da viewport em wide (DW-30)', async ({
+    page,
+    email,
+  }) => {
+    test.setTimeout(60_000)
+    seedFutureLogScenario(email)
+
+    await irParaFuturo(page)
+
+    await page.getByRole('button', { name: 'Definir dia de Consulta com a dentista' }).click()
+
+    const seletor = seletorDestino(page)
+    await expect(seletor).toBeVisible()
+
+    // Medido ANTES de qualquer clique no próprio seletor: `.click()` do
+    // Playwright rola o elemento para a viewport, o que mascararia exatamente o
+    // defeito sob teste.
+    await waitForDialogSettled(page)
+    await expectVisibleWithoutScrolling(page, seletor)
+
+    // E é overlay de verdade, não conteúdo no fluxo: o papel vive no paper de
+    // uma raiz de modal, com `aria-modal` e um único `role="dialog"` na página.
+    await expect(seletor).toHaveAttribute('aria-modal', 'true')
+    await expect(page.locator('.MuiDialog-root [role="dialog"]')).toHaveCount(1)
+    await expect(page.getByRole('dialog')).toHaveCount(1)
+  })
+
   test('mover para OUTRO mês pela aba "Outro mês" retarga o destino (AC4)', async ({
     page,
     email,
@@ -411,6 +447,9 @@ test.describe('Future Log — wide 1440×900', () => {
 
     await page.getByRole('button', { name: 'Definir dia de Consulta com a dentista' }).click()
     await expect(seletorDestino(page)).toBeVisible()
+    // Desde DW-30 o seletor é um `Dialog`: sem esperar o Fade assentar, o axe
+    // mede o card translúcido em transição e acusa `color-contrast` falso.
+    await waitForDialogSettled(page)
     await expectNoAxeViolations(page, {
       label: 'wide · /planner/future · seletor de destino aberto',
     })

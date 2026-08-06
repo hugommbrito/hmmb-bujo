@@ -2,11 +2,13 @@
 // Seletor de destino AGNÓSTICO DE DOMÍNIO — correção do defeito "os seletores
 // de destino dos rituais abrem fora da viewport no desktop".
 //
-// CAUSA RAIZ que este componente fecha: `WeeklyDestinationPicker` e
-// `MonthlyDestinationPicker` fazem `if (!compact) return content`, então na
-// faixa desktop não existe `Dialog` nenhum — o "diálogo" (só `role="dialog"`,
-// sem overlay nem posição fixa) entra no fluxo normal do DOM, DEPOIS da grade
-// de 3 colunas do ritual, e abre abaixo da dobra. Aqui o par é o mesmo do
+// CAUSA RAIZ que este componente fecha: os seletores de destino legados faziam
+// `if (!compact) return content`, então na faixa desktop não existia `Dialog`
+// nenhum — o "diálogo" (só `role="dialog"`, sem overlay nem posição fixa)
+// entrava no fluxo normal do DOM, DEPOIS da grade de 3 colunas do ritual, e
+// abria abaixo da dobra. (O seletor semanal daquela época foi removido em
+// DW-29; `MonthlyDestinationPicker`/`DestinationPicker`, que seguem vivos nas
+// suas superfícies, ganharam a MESMA anatomia em DW-30.) Aqui o par é o mesmo do
 // `BrainDumpDestinationPicker` (layout já validado em uso pelo usuário):
 // `Dialog` PORTALIZADO no não-compact, `Drawer anchor="bottom"` no compact.
 //
@@ -226,9 +228,9 @@ export function DestinationDialog({
 
   // ── Foco inicial ───────────────────────────────────────────────────────────
   // Sem foco explícito o primeiro tab stop por ordem de DOM é o "×" do cabeçalho
-  // (achado de review). Molde do `WeeklyDestinationPicker` (:49-51): o foco nasce
-  // na PRIMEIRA opção de dia — o radio de segunda no semanal, a entrada do número
-  // do dia no mensal.
+  // (achado de review). Molde herdado do seletor semanal da 14.5 (removido em
+  // DW-29): o foco nasce na PRIMEIRA opção de dia — o radio de segunda no
+  // semanal, a entrada do número do dia no mensal.
   //
   // O gancho é o CALLBACK REF do próprio elemento, não um `useEffect` daqui: o
   // `Portal` do MUI só descobre o nó de montagem no seu próprio efeito, então na
@@ -430,7 +432,7 @@ export function DestinationDialog({
       </Box>
 
       {/* Lembrete DISCRETO dos atalhos — presente nos dois seletores substituídos
-          (`WeeklyDestinationPicker:90-92`, `MonthlyDestinationPicker:155-157`). */}
+          (o semanal da 14.5, removido em DW-29, e `MonthlyDestinationPicker`). */}
       <Box sx={{ ...typography.meta, color: 'var(--ds-ink-muted)' }}>{shortcutHint}</Box>
 
       {weekOffer && (
@@ -448,9 +450,9 @@ export function DestinationDialog({
             const selected = armed === iso
             const count = weekOffer.densityByDate?.get(iso)
             // Tabindex ROVING: um único tab stop no grupo — o dia armado, ou o
-            // primeiro quando nada está armado (molde de
-            // `WeeklyDestinationPicker:104`). Sem isto os 7 dias viram 7 tab
-            // stops e a promessa de `radiogroup` fica quebrada.
+            // primeiro quando nada está armado (molde herdado do seletor
+            // semanal da 14.5, removido em DW-29). Sem isto os 7 dias viram 7
+            // tab stops e a promessa de `radiogroup` fica quebrada.
             const roving = index === (armedWeekIndex >= 0 ? armedWeekIndex : 0)
             return (
               <Box

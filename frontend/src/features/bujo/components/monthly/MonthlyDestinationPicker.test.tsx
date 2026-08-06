@@ -4,6 +4,87 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { MonthlyDestinationPicker } from './MonthlyDestinationPicker'
 
+// ─────────────────────────────────────────────────────────────────────────────
+// O ASSERT DE REGRESSÃO de DW-30. O defeito era exatamente este: o não-compact
+// fazia `if (!compact) return content`, então na faixa desktop o conteúdo — com
+// `role="dialog"` mas SEM overlay nem posição fixa — ficava como filho direto do
+// container de chamada, DEPOIS do corpo da página, e abria abaixo da dobra. Um
+// teste que só verificasse `getByRole('dialog')` continuaria VERDE com o bug de
+// volta: a prova tem de ser ESTRUTURAL (portal + raiz de modal do MUI), não de
+// presença. Espelha `DestinationDialog.test.tsx:72-104`.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('MonthlyDestinationPicker — regressão: no não-compact o conteúdo vive num Dialog PORTALIZADO', () => {
+  it('o diálogo NÃO é filho do container de chamada — ele é portalizado para fora dele', () => {
+    const { container } = render(
+      <MonthlyDestinationPicker targetMonthFirst="2026-08-01" onConfirm={vi.fn()} onClose={vi.fn()} />,
+    )
+    const dialog = screen.getByRole('dialog', { name: 'Escolher destino' })
+
+    expect(document.body).toContainElement(dialog)
+    expect(container).not.toContainElement(dialog)
+    expect(container.querySelector('[role="dialog"]')).toBeNull()
+  })
+
+  it('o diálogo vive dentro de uma raiz de modal do MUI (overlay + posição fixa), não no fluxo do DOM', () => {
+    render(<MonthlyDestinationPicker targetMonthFirst="2026-08-01" onConfirm={vi.fn()} onClose={vi.fn()} />)
+    const dialog = screen.getByRole('dialog', { name: 'Escolher destino' })
+
+    expect(dialog.closest('.MuiDialog-root')).not.toBeNull()
+    expect(dialog).toHaveAttribute('aria-modal', 'true')
+  })
+
+  it('não aninha dois role="dialog" (o MUI Dialog já estampa o seu no Paper)', () => {
+    render(<MonthlyDestinationPicker targetMonthFirst="2026-08-01" onConfirm={vi.fn()} onClose={vi.fn()} />)
+    expect(screen.getAllByRole('dialog')).toHaveLength(1)
+    expect(screen.getByRole('dialog')).toHaveAccessibleName('Escolher destino')
+  })
+
+  it('faixa compact: Drawer com um único role="dialog" nomeado, também portalizado', () => {
+    const { container } = render(
+      <MonthlyDestinationPicker targetMonthFirst="2026-08-01" compact onConfirm={vi.fn()} onClose={vi.fn()} />,
+    )
+    const dialog = screen.getByRole('dialog', { name: 'Escolher destino' })
+
+    expect(screen.getAllByRole('dialog')).toHaveLength(1)
+    expect(dialog.closest('.MuiDrawer-root')).not.toBeNull()
+    expect(container).not.toContainElement(dialog)
+  })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Os DOIS caminhos de fechamento que só passaram a existir com o `Dialog`, e
+  // que os casos de Escape "de dentro do conteúdo" NÃO alcançam: lá quem atende
+  // é o `handleContainerKeyDown`, que faz `stopPropagation` e impede o handler
+  // do `Modal` (a prop `onClose` do `<Dialog>`) de rodar. Sem estes dois casos,
+  // apagar `onClose={onClose}` do `<Dialog>` deixaria a suíte inteira VERDE.
+  // ───────────────────────────────────────────────────────────────────────────
+  it('Escape no PRIMEIRO contato (foco no container do Dialog, nada clicado ainda) fecha uma única vez', () => {
+    const onClose = vi.fn()
+    render(<MonthlyDestinationPicker targetMonthFirst="2026-08-01" onConfirm={vi.fn()} onClose={onClose} />)
+
+    // Ao abrir, o FocusTrap do MUI põe o foco em `div.MuiDialog-container` — um
+    // ANCESTRAL do conteúdo. O Escape que o usuário aperta primeiro é servido
+    // exclusivamente pelo `Modal`, nunca pelo handler interno.
+    expect(document.activeElement?.closest('.MuiDialog-root')).not.toBeNull()
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' })
+
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('clique no backdrop fecha o seletor (caminho que a faixa desktop não tinha antes)', () => {
+    // Convergência deliberada com `DestinationDialog`/`FutureMonthPicker`, que
+    // também aceitam o fechamento por backdrop — sem guard de
+    // `reason !== 'backdropClick'`. Molde de `TaskDetailPanel.test.tsx:166-176`.
+    const onClose = vi.fn()
+    render(<MonthlyDestinationPicker targetMonthFirst="2026-08-01" onConfirm={vi.fn()} onClose={onClose} />)
+
+    const backdrop = document.querySelector('.MuiBackdrop-root')
+    expect(backdrop).not.toBeNull()
+    fireEvent.click(backdrop as Element)
+
+    expect(onClose).toHaveBeenCalled()
+  })
+})
+
 describe('MonthlyDestinationPicker — calendário + entrada direta (AC5)', () => {
   it('mostra 31 gridcells para agosto (mês de 31 dias)', () => {
     render(<MonthlyDestinationPicker targetMonthFirst="2026-08-01" onConfirm={vi.fn()} onClose={vi.fn()} />)
@@ -50,19 +131,40 @@ describe('MonthlyDestinationPicker — calendário + entrada direta (AC5)', () =
     expect(onConfirm).toHaveBeenCalledWith('2026-08-18')
   })
 
+  // O `keyDown` parte de DENTRO do conteúdo (uma célula do calendário), não do
+  // `role="dialog"`: com o `Dialog` do MUI o papel vive no Paper e o
+  // `handleContainerKeyDown` fica num FILHO dele — disparar no Paper não
+  // alcançaria o handler. É também o que o usuário faz de verdade.
   it('Enter confirma a ação final nomeada', () => {
     const onConfirm = vi.fn()
     render(<MonthlyDestinationPicker targetMonthFirst="2026-08-01" onConfirm={onConfirm} onClose={vi.fn()} />)
     fireEvent.click(screen.getByRole('gridcell', { name: '18' }))
-    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Enter' })
+    fireEvent.keyDown(screen.getByRole('gridcell', { name: '18' }), { key: 'Enter' })
     expect(onConfirm).toHaveBeenCalledWith('2026-08-18')
   })
 
   it('Escape fecha o seletor', () => {
     const onClose = vi.fn()
     render(<MonthlyDestinationPicker targetMonthFirst="2026-08-01" onConfirm={vi.fn()} onClose={onClose} />)
-    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
+    fireEvent.keyDown(screen.getByRole('gridcell', { name: '1' }), { key: 'Escape' })
     expect(onClose).toHaveBeenCalled()
+  })
+
+  // Uma tecla, um fechamento: sem o `stopPropagation` do handler interno, o
+  // `Modal` do MUI trataria o MESMO `Escape` na raiz do overlay e chamaria
+  // `onClose` uma segunda vez.
+  it('Escape com o Dialog no ar fecha EXATAMENTE uma vez', () => {
+    const onClose = vi.fn()
+    render(<MonthlyDestinationPicker targetMonthFirst="2026-08-01" onConfirm={vi.fn()} onClose={onClose} />)
+    fireEvent.keyDown(screen.getByRole('gridcell', { name: '1' }), { key: 'Escape' })
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('compact: o Escape do Drawer também fecha uma única vez', () => {
+    const onClose = vi.fn()
+    render(<MonthlyDestinationPicker targetMonthFirst="2026-08-01" compact onConfirm={vi.fn()} onClose={onClose} />)
+    fireEvent.keyDown(screen.getByRole('gridcell', { name: '1' }), { key: 'Escape' })
+    expect(onClose).toHaveBeenCalledTimes(1)
   })
 
   it('erro preservado é exibido e o seletor permanece armado', () => {
@@ -191,8 +293,11 @@ describe('MonthlyDestinationPicker — extensões aditivas do M08 (Story 14.7, A
 describe('MonthlyDestinationPicker — piso de acessibilidade nas duas abas (code review 14.7)', () => {
   const HORIZONTE = ['2026-08-01', '2026-09-01', '2027-06-01']
 
+  // `axe(document.body)` e não `axe(container)`: o conteúdo é PORTALIZADO, então
+  // o container do RTL fica vazio (e `aria-hidden` pelo Modal) e medi-lo não
+  // mediria nada. Precedente verde em `DestinationDialog.test.tsx:611-620`.
   it('não tem violações de axe na grade de dias', async () => {
-    const { container } = render(
+    render(
       <MonthlyDestinationPicker
         targetMonthFirst="2026-08-01"
         selectableMonths={HORIZONTE}
@@ -201,11 +306,11 @@ describe('MonthlyDestinationPicker — piso de acessibilidade nas duas abas (cod
         onClose={vi.fn()}
       />,
     )
-    expect(await axe(container)).toHaveNoViolations()
+    expect(await axe(document.body)).toHaveNoViolations()
   })
 
   it('não tem violações de axe na aba "Outro mês" aberta', async () => {
-    const { container } = render(
+    render(
       <MonthlyDestinationPicker
         targetMonthFirst="2026-08-01"
         selectableMonths={HORIZONTE}
@@ -216,6 +321,20 @@ describe('MonthlyDestinationPicker — piso de acessibilidade nas duas abas (cod
     )
     fireEvent.click(screen.getByRole('tab', { name: 'Outro mês' }))
     expect(screen.getByRole('listbox', { name: 'Meses de destino' })).toBeInTheDocument()
-    expect(await axe(container)).toHaveNoViolations()
+    expect(await axe(document.body)).toHaveNoViolations()
+  })
+
+  it('não tem violações de axe na faixa compact (Drawer)', async () => {
+    render(
+      <MonthlyDestinationPicker
+        targetMonthFirst="2026-08-01"
+        compact
+        selectableMonths={HORIZONTE}
+        onTargetMonthChange={vi.fn()}
+        onConfirm={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+    expect(await axe(document.body)).toHaveNoViolations()
   })
 })

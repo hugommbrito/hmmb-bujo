@@ -1,6 +1,6 @@
 import { test, expect } from './fixtures'
 import { expectNoAxeViolations } from './axeHelper'
-import { mainNav } from './shellHelpers'
+import { expectVisibleWithoutScrolling, mainNav, waitForDialogSettled } from './shellHelpers'
 import { seedCatchUpScenario } from './seedCatchUpScenario'
 import { seedYesterdayQueue } from './seedYesterdayQueue'
 
@@ -63,6 +63,35 @@ test.describe('Migration Ritual — wide 1440×900', () => {
     // especificamente, não um `getByText` genérico (ficaria ambíguo com 2
     // matches: Meses e Dias).
     await expect(sourceRail.getByRole('button', { name: /^Meses ✓ revisado/ })).toBeVisible()
+  })
+
+  // Este é o teste do DEFEITO relatado em DW-30 nesta superfície, molde de
+  // `weekly-planning-ritual.spec.ts:112-154`: antes da correção o seletor não
+  // era um `Dialog` no desktop — entrava no fluxo do DOM depois da grade de 3
+  // colunas do ritual e abria ABAIXO DA DOBRA, então clicar em "Escolher
+  // destino…" parecia não fazer nada. A prova é GEOMÉTRICA (o diálogo inteiro
+  // dentro da viewport), não só de presença no DOM.
+  test('"Escolher destino…" abre SOBREPOSTO e inteiramente dentro da viewport em wide (DW-30)', async ({
+    page,
+    email,
+  }) => {
+    seedCatchUpScenario(email, { monthlyTasks: [{ title: 'Renovar seguro do carro' }] })
+    await page.goto('/migration')
+    await expect(page.getByText('Renovar seguro do carro')).toBeVisible()
+
+    await page.getByRole('button', { name: 'Escolher destino…' }).click()
+    const dialog = page.getByRole('dialog', { name: 'Escolher destino' })
+    await expect(dialog).toBeVisible()
+
+    // Medido ANTES de qualquer clique no próprio diálogo: `.click()` do
+    // Playwright rola o elemento para a viewport, o que mascararia o defeito.
+    await waitForDialogSettled(page)
+    await expectVisibleWithoutScrolling(page, dialog)
+
+    // E é overlay de verdade, não conteúdo no fluxo do DOM.
+    await expect(dialog).toHaveAttribute('aria-modal', 'true')
+    await expect(page.locator('.MuiDialog-root [role="dialog"]')).toHaveCount(1)
+    await expect(page.getByRole('dialog')).toHaveCount(1)
   })
 
   test('"Escolher destino…" com as 3 abas: migrar para um dia de "Outro mês" (destination future)', async ({

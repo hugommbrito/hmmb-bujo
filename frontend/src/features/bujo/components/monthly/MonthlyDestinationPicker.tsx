@@ -1,10 +1,25 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Seletor de destino do ritual MENSAL (Story 14.6, AC5) — distinto do
-// `WeeklyDestinationPicker` (14.5): calendário navegável por setas (dia
-// anterior/próximo, não semana) + entrada direta do número do dia,
-// sincronizados, validando 28–31 dias reais do mês-alvo (incl. bissexto).
-// **Sem dia definido** é opção explícita. `Enter` confirma só a ação final
-// nomeada (ex. "Migrar para 18 de agosto de 2026").
+// Seletor de destino do FUTURE LOG. Nasceu na Story 14.6 (AC5) para o ritual
+// MENSAL, distinto do seletor semanal daquela época (14.5, hoje removido):
+// calendário navegável por setas (dia anterior/próximo, não semana) + entrada
+// direta do número do dia, sincronizados, validando 28–31 dias reais do
+// mês-alvo (incl. bissexto). **Sem dia definido** é opção explícita. `Enter`
+// confirma só a ação final nomeada (ex. "Migrar para 18 de agosto de 2026").
+//
+//   ▶ CONSUMIDOR ÚNICO hoje: `pages/planner/FutureBoardPage.tsx:470`. Os rituais
+//     semanal e mensal migraram para `DestinationDialog`; este componente ficou
+//     por não haver motivo para reabrir o risco de regressão de uma migração de
+//     call-site — o nome "MENSAL" no título é origem histórica, não a superfície
+//     atual.
+//
+//   ▶ ANATOMIA DE OVERLAY (DW-30): compact abre em sheet (`Drawer`), desktop em
+//     `Dialog` PORTALIZADO. Antes daqui o não-compact fazia `return content`, e
+//     o "diálogo" — só `role="dialog"`, sem overlay nem posição fixa — entrava
+//     no fluxo do DOM depois do corpo da página do Future Log (trilho de meses +
+//     coluna de foco), abrindo abaixo da dobra: clicar em "Definir dia de…" /
+//     "Mover…" parecia não fazer nada. Molde de
+//     `future/FutureMonthPicker.tsx:141-158`, o OUTRO overlay desta mesma
+//     superfície.
 //
 //   ▶ Não reusa `useKeyboardShortcuts` (Questão aberta #… já resolvida no
 //     Dev Notes da story): a interação de teclado aqui é digitar num
@@ -26,7 +41,7 @@
 //     qual mês está confirmando porque é ele quem detém esse estado.
 // ─────────────────────────────────────────────────────────────────────────────
 import { useEffect, useState, type KeyboardEvent } from 'react'
-import { Box, Drawer } from '@mui/material'
+import { Box, Dialog, Drawer } from '@mui/material'
 
 import { isoOf, lastDayOfMonth } from '../../../../shared/date'
 import { capitalize, MONTH_NAMES_PT } from '../../monthNames'
@@ -68,6 +83,9 @@ export interface MonthlyDestinationPickerProps {
 }
 
 const UNDATED = 'undated' as const
+
+/** Nome acessível do overlay — o MESMO nas duas faixas. */
+const DIALOG_LABEL = 'Escolher destino'
 
 export function MonthlyDestinationPicker({
   targetMonthFirst,
@@ -117,7 +135,15 @@ export function MonthlyDestinationPicker({
       confirm()
     }
     if (event.key === 'Escape') {
+      // `stopPropagation` para o `Modal` do MUI (que trata `Escape` na raiz do
+      // overlay) não chamar `onClose` de novo logo depois — uma tecla, um
+      // fechamento. Molde de `DestinationDialog.tsx:340-347`. Vale para os DOIS
+      // ramos: no `Dialog` impede o fechamento duplo que a envoltória de DW-30
+      // introduziria, e no `Drawer` do compact FECHA um fechamento duplo que já
+      // existia antes desta passada (o handler interno e o `Modal` do Drawer
+      // chamavam `onClose` cada um).
       event.preventDefault()
+      event.stopPropagation()
       onClose()
     }
   }
@@ -144,10 +170,14 @@ export function MonthlyDestinationPicker({
     return `${capitalize(MONTH_NAMES_PT[optionMonth - 1])} de ${optionYear}`
   }
 
+  // `role="dialog"`/`aria-label` só no CONTEÚDO quando a faixa é compact: o
+  // `Drawer` do MUI não estampa papel nenhum no paper, enquanto o `Dialog` já
+  // estampa o seu (com `aria-modal`) — duplicar aqui criaria dois
+  // `role="dialog"` aninhados, o de fora sem nome acessível. No `Dialog` o nome
+  // chega por `slotProps.paper['aria-label']`.
   const content = (
     <Box
-      role="dialog"
-      aria-label="Escolher destino"
+      {...(compact ? { role: 'dialog' as const, 'aria-label': DIALOG_LABEL } : {})}
       onKeyDown={handleContainerKeyDown}
       sx={{ display: 'flex', flexDirection: 'column', gap: 'var(--ds-space-2)', padding: 'var(--ds-space-3)' }}
     >
@@ -351,26 +381,47 @@ export function MonthlyDestinationPicker({
     </Box>
   )
 
-  if (!compact) return content
+  if (compact) {
+    return (
+      <Drawer
+        anchor="bottom"
+        open
+        onClose={onClose}
+        slotProps={{
+          paper: {
+            style: shellCssVariables('light'),
+            sx: {
+              padding: 'var(--ds-space-2)',
+              '& :focus-visible': { outline: '2px solid var(--ds-focus)', outlineOffset: '2px' },
+            },
+          },
+          backdrop: { style: shellCssVariables('light') },
+        }}
+      >
+        {content}
+      </Drawer>
+    )
+  }
 
+  // É ESTE `Dialog` — portalizado, sobreposto e centrado — que fecha DW-30: o
+  // conteúdo nunca mais entra no fluxo do DOM depois da grade da página.
   return (
-    <Drawer
-      anchor="bottom"
+    <Dialog
       open
       onClose={onClose}
       slotProps={{
         paper: {
+          // O paper do `Dialog` já é o `role="dialog"`; o nome tem que vir AQUI
+          // para pousar no mesmo elemento que carrega o papel.
+          'aria-label': DIALOG_LABEL,
           style: shellCssVariables('light'),
-          sx: {
-            padding: 'var(--ds-space-2)',
-            '& :focus-visible': { outline: '2px solid var(--ds-focus)', outlineOffset: '2px' },
-          },
+          sx: { '& :focus-visible': { outline: '2px solid var(--ds-focus)', outlineOffset: '2px' } },
         },
         backdrop: { style: shellCssVariables('light') },
       }}
     >
       {content}
-    </Drawer>
+    </Dialog>
   )
 }
 

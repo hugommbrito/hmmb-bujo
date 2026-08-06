@@ -10,7 +10,6 @@ import weeklyTaskPanelSource from './WeeklyTaskPanel.tsx?raw'
 import weeklyRowOverflowMenuSource from './WeeklyRowOverflowMenu.tsx?raw'
 import weeklySourceRailSource from './WeeklySourceRail.tsx?raw'
 import weeklyDecisionListSource from './WeeklyDecisionList.tsx?raw'
-import weeklyDestinationPickerSource from './WeeklyDestinationPicker.tsx?raw'
 import weeklyContextRailSource from './WeeklyContextRail.tsx?raw'
 
 const FORBIDDEN_LITERALS = ['240px', '235px', '315px', '190px', '0.58', '36px', '48px', '3px']
@@ -22,7 +21,6 @@ const SOURCES: Record<string, string> = {
   'WeeklyRowOverflowMenu.tsx': weeklyRowOverflowMenuSource,
   'WeeklySourceRail.tsx': weeklySourceRailSource,
   'WeeklyDecisionList.tsx': weeklyDecisionListSource,
-  'WeeklyDestinationPicker.tsx': weeklyDestinationPickerSource,
   'WeeklyContextRail.tsx': weeklyContextRailSource,
 }
 

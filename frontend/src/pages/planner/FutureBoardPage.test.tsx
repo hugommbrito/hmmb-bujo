@@ -389,8 +389,11 @@ describe('FutureBoardPage — datear/mover no lugar (AC4)', () => {
 
     const alerts = await screen.findAllByRole('alert')
     expect(alerts.some((el) => el.textContent?.includes('Não foi possível mover a tarefa'))).toBe(true)
-    // Seletor aberto E destino ainda armado.
-    expect(screen.getByRole('dialog', { name: 'Escolher destino' })).toBeInTheDocument()
+    // Seletor aberto E destino ainda armado. O assert é ESTRUTURAL (DW-30): só
+    // a presença de `role="dialog"` ficaria verde com o defeito de volta — era
+    // exatamente assim que o seletor abria abaixo da dobra.
+    const seletor = screen.getByRole('dialog', { name: 'Escolher destino' })
+    expect(seletor.closest('.MuiDialog-root')).not.toBeNull()
     expect(screen.getByRole('button', { name: 'Datar em 14 de agosto' })).toBeInTheDocument()
   })
 
@@ -433,7 +436,7 @@ describe('FutureBoardPage — "Mover tarefa" do detalhe (AC5 — primeiro consum
     // de verdade, então o botão existir não prova nada — o que prova é ele
     // abrir o seletor.
     mockRoutes()
-    renderPage()
+    const { container } = renderPage()
     await screen.findByRole('list', { name: 'Itens de Agosto de 2026' })
 
     fireEvent.click(screen.getByRole('button', { name: 'Ver detalhes de Renovar passaporte' }))
@@ -441,6 +444,12 @@ describe('FutureBoardPage — "Mover tarefa" do detalhe (AC5 — primeiro consum
 
     const seletor = await screen.findByRole('dialog', { name: 'Escolher destino' })
     expect(within(seletor).getByRole('grid', { name: 'Dias de Agosto de 2026' })).toBeInTheDocument()
+    // ESTRUTURAL (DW-30): o seletor é um `Dialog` PORTALIZADO para fora do
+    // container da página, não conteúdo no fluxo do DOM depois do corpo dela.
+    expect(seletor.closest('.MuiDialog-root')).not.toBeNull()
+    expect(seletor).toHaveAttribute('aria-modal', 'true')
+    expect(container).not.toContainElement(seletor)
+    expect(screen.getAllByRole('dialog', { name: 'Escolher destino' })).toHaveLength(1)
     // O detalhe deu lugar ao seletor — os dois não convivem.
     expect(screen.queryByRole('button', { name: 'Excluir tarefa' })).not.toBeInTheDocument()
   })

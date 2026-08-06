@@ -197,10 +197,18 @@ describe('MigrationRitualPage (Story 14.9)', () => {
     unifiedQueueResult = queueResult({
       data: queueWith([{ sourceId: 'month', periodStart: '2026-06-01', items: [TASK()] }]),
     })
-    renderPage()
+    const { container } = renderPage()
 
     fireEvent.click(screen.getByRole('button', { name: 'Escolher destino…' }))
-    expect(screen.getByRole('dialog', { name: 'Escolher destino' })).toBeInTheDocument()
+    // ESTRUTURAL (DW-30): o seletor é um `Dialog` PORTALIZADO para fora do
+    // container da página. Só a presença de `role="dialog"` ficaria verde com o
+    // `if (!compact) return content` de volta — o defeito em que o seletor
+    // entrava no fluxo do DOM depois da grade do ritual e abria fora da tela.
+    const seletor = screen.getByRole('dialog', { name: 'Escolher destino' })
+    expect(seletor.closest('.MuiDialog-root')).not.toBeNull()
+    expect(seletor).toHaveAttribute('aria-modal', 'true')
+    expect(container).not.toContainElement(seletor)
+    expect(screen.getAllByRole('dialog')).toHaveLength(1)
     expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
       'Esta semana',
       'Dia no mês',
@@ -216,6 +224,7 @@ describe('MigrationRitualPage (Story 14.9)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Escolher destino…' }))
     const dialog = screen.getByRole('dialog', { name: 'Escolher destino' })
+    expect(dialog.closest('.MuiDialog-root')).not.toBeNull()
     fireEvent.click(screen.getByRole('radio', { name: /Quarta/ }))
     fireEvent.click(within(dialog).getByRole('button', { name: /Migrar para/ }))
 
@@ -294,12 +303,22 @@ describe('MigrationRitualPage (Story 14.9)', () => {
     expect(await axe(container)).toHaveNoViolations()
   })
 
+  // `axe(document.body)` e não `axe(container)`: com o seletor portalizado
+  // (DW-30) o container do RTL não contém mais o diálogo — e ainda recebe
+  // `aria-hidden` do Modal —, então medi-lo pararia de medir o que o nome deste
+  // teste promete. Precedente verde em `DestinationDialog.test.tsx:611-620`.
   it('jest-axe: sem violações com a lista e o seletor de destino abertos', async () => {
     unifiedQueueResult = queueResult({
       data: queueWith([{ sourceId: 'month', periodStart: '2026-06-01', items: [TASK()] }]),
     })
-    const { container } = renderPage()
+    renderPage()
     fireEvent.click(screen.getByRole('button', { name: 'Escolher destino…' }))
-    expect(await axe(container)).toHaveNoViolations()
+    // ESTRUTURAL, não de presença: o que este teste precisa garantir antes de
+    // medir é que o seletor está aberto COMO overlay portalizado — é o que faz
+    // `document.body` ser o alvo certo do axe.
+    expect(
+      screen.getByRole('dialog', { name: 'Escolher destino' }).closest('.MuiDialog-root'),
+    ).not.toBeNull()
+    expect(await axe(document.body)).toHaveNoViolations()
   })
 })

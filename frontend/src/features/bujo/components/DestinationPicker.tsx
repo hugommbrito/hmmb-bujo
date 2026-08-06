@@ -2,19 +2,23 @@
 // Seletor de destino COMPARTILHADO (Story 14.9, M10) — promovido a partir da
 // intenção já documentada em `monthly/MonthlyDestinationPicker.tsx` (:15-21):
 // "as abas previstas são Esta semana · Dia no mês · Outro mês, superconjunto
-// das duas daqui". Único consumidor por ora: `MigrationRitualPage` — as três
-// superfícies mais antigas (`WeeklyPlanningPage`/`MonthlyPlanningPage`/
-// `FutureBoardPage`) continuam com `WeeklyDestinationPicker`/
-// `MonthlyDestinationPicker` intocados (comportamento e testes JÁ provados,
-// sem motivo para reabrir o risco de regressão de uma migração de call-site
-// que esta story não exige — `unified-migration-queue.spec.ts`/
+// das duas daqui". Único consumidor por ora: `MigrationRitualPage` — os rituais
+// semanal e mensal migraram para `DestinationDialog`, e `FutureBoardPage`
+// continua com `MonthlyDestinationPicker` intocado (comportamento e testes JÁ
+// provados, sem motivo para reabrir o risco de regressão de uma migração de
+// call-site que esta story não exige — `unified-migration-queue.spec.ts`/
 // `migration-flow.spec.ts` continuam sendo a prova de que o fluxo legado
 // segue existindo). A ANATOMIA (abas, grade de dias com entrada direta,
 // listbox de "Outro mês", radiogroup de dias da semana, atalhos de teclado)
 // é a mesma dos dois pickers mais antigos — reusada aqui, não reinventada.
 //
+//   ▶ ANATOMIA DE OVERLAY (DW-30): compact abre em sheet (`Drawer`), desktop em
+//     `Dialog` PORTALIZADO. Antes daqui o não-compact fazia `return content`, e
+//     o "diálogo" — só `role="dialog"`, sem overlay nem posição fixa — entrava
+//     no fluxo do DOM depois da grade do ritual, abrindo abaixo da dobra:
+//     clicar em "Escolher destino…" parecia não fazer nada.
 //   ▶ 3 abas, cada uma OPCIONAL por composição de props: `week` (radiogroup de
-//     dias da semana corrente, molde `WeeklyDestinationPicker`), `month`
+//     dias da semana corrente, molde do seletor semanal da 14.5), `month`
 //     (grade de dias + entrada direta do mês em foco, molde
 //     `MonthlyDestinationPicker`) e, DENTRO de `month`, "Outro mês" quando
 //     `selectableMonths` tem itens (mesma extensão aditiva da Story 14.7). Só
@@ -32,7 +36,7 @@
 //     breaking change para um eventual consumidor que só leia `scheduledDate`.
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState } from 'react'
-import { Box, Drawer } from '@mui/material'
+import { Box, Dialog, Drawer } from '@mui/material'
 
 import { addDaysIso, formatDayLabel, isoOf, lastDayOfMonth } from '../../../shared/date'
 import { capitalize, MONTH_NAMES_PT } from '../monthNames'
@@ -83,6 +87,9 @@ type Armed =
   | null
 
 const WEEKDAY_KEYS = ['1', '2', '3', '4', '5', '6', '7'] as const
+
+/** Nome acessível do overlay — o MESMO nas duas faixas. */
+const DIALOG_LABEL = 'Escolher destino'
 
 export function DestinationPicker({
   week,
@@ -190,13 +197,17 @@ export function DestinationPicker({
   const monthLabel = month ? `${capitalize(MONTH_NAMES_PT[monthMonth - 1])} de ${monthYear}` : ''
   const selection = currentSelection()
 
+  // `role="dialog"`/`aria-label` só no CONTEÚDO quando a faixa é compact: o
+  // `Drawer` do MUI não estampa papel nenhum no paper, enquanto o `Dialog` já
+  // estampa o seu (com `aria-modal`) — duplicar aqui criaria dois
+  // `role="dialog"` aninhados, o de fora sem nome acessível. No `Dialog` o nome
+  // chega por `slotProps.paper['aria-label']`.
   const content = (
     <Box
-      role="dialog"
-      aria-label="Escolher destino"
+      {...(compact ? { role: 'dialog' as const, 'aria-label': DIALOG_LABEL } : {})}
       sx={{ display: 'flex', flexDirection: 'column', gap: 'var(--ds-space-2)', padding: 'var(--ds-space-3)' }}
     >
-      <Box sx={{ ...typography['section-title'], color: 'var(--ds-ink)' }}>Escolher destino</Box>
+      <Box sx={{ ...typography['section-title'], color: 'var(--ds-ink)' }}>{DIALOG_LABEL}</Box>
 
       {(Number(Boolean(week)) + Number(Boolean(month)) + Number(hasOtherMonthTab)) > 1 && (
         <Box role="tablist" aria-label="Tipo de destino" sx={{ display: 'flex', gap: 'var(--ds-space-1)' }}>
@@ -420,26 +431,53 @@ export function DestinationPicker({
     </Box>
   )
 
-  if (!compact) return content
+  if (compact) {
+    return (
+      <Drawer
+        anchor="bottom"
+        open
+        onClose={onClose}
+        slotProps={{
+          paper: {
+            style: shellCssVariables('light'),
+            sx: {
+              padding: 'var(--ds-space-2)',
+              '& :focus-visible': { outline: '2px solid var(--ds-focus)', outlineOffset: '2px' },
+            },
+          },
+          backdrop: { style: shellCssVariables('light') },
+        }}
+      >
+        {content}
+      </Drawer>
+    )
+  }
 
+  // É ESTE `Dialog` — portalizado, sobreposto e centrado — que fecha DW-30: o
+  // conteúdo nunca mais entra no fluxo do DOM depois da grade do ritual.
+  //
+  // O `Escape` continua vindo do `useKeyboardShortcuts` (listener de `window`,
+  // fase de bolha) e NÃO precisa de guarda nova: o `Modal` do MUI trata a tecla
+  // na raiz do overlay e chama `stopPropagation` no evento nativo, então o
+  // listener global nunca chega a ver o `Escape` que fecha este diálogo — uma
+  // tecla, um fechamento.
   return (
-    <Drawer
-      anchor="bottom"
+    <Dialog
       open
       onClose={onClose}
       slotProps={{
         paper: {
+          // O paper do `Dialog` já é o `role="dialog"`; o nome tem que vir AQUI
+          // para pousar no mesmo elemento que carrega o papel.
+          'aria-label': DIALOG_LABEL,
           style: shellCssVariables('light'),
-          sx: {
-            padding: 'var(--ds-space-2)',
-            '& :focus-visible': { outline: '2px solid var(--ds-focus)', outlineOffset: '2px' },
-          },
+          sx: { '& :focus-visible': { outline: '2px solid var(--ds-focus)', outlineOffset: '2px' } },
         },
         backdrop: { style: shellCssVariables('light') },
       }}
     >
       {content}
-    </Drawer>
+    </Dialog>
   )
 }
 
