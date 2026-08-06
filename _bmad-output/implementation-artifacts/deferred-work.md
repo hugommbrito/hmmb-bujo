@@ -129,6 +129,7 @@ location: frontend/src/features/braindump/components/BrainDumpDestinationPicker.
 severity: medium
 reason: o atalho global de Enter pode confirmar um destino/dia previamente armado e obsoleto em vez do que o usuário acabou de focar, porque o clique nativo do radio-button focado (que atualiza o estado) dispara como ação default do keydown de Enter DEPOIS que o handler do atalho de nível de window já leu o estado antigo; confirmado lendo useKeyboardShortcuts (frontend/src/shared/hooks/useKeyboardShortcuts.ts:27-36 — só exclui INPUT/TEXTAREA/contentEditable do guard do atalho, não BUTTON) junto de confirm()/useKeyboardShortcuts({ Enter: confirm, ... }) em BrainDumpDestinationPicker.tsx:188-208; a mesma anatomia (atalho global de Enter + role="radio" num elemento <button>) já existe, sem modificação, no DestinationPicker.tsx de produção (M10, consumido por MigrationRitualPage.tsx) — esta story reusa deliberadamente essa anatomia conforme seu próprio comentário de cabeçalho, então o risco é herdado, não lógica nova introduzida.
 status: open
+decision: 2026-08-06 Manter aberta: nenhuma das leituras é aceitável sem mais discussão
 
 ### DW-2: Follow-up review still recommended for 15-1-brain-dump-no-sistema-novo-inbox-e-processamento after the review budget was exhausted
 origin: review-budget-followup
