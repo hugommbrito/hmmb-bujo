@@ -59,7 +59,12 @@ export { DestinationDialog } from './components/DestinationDialog'
 export type {
   DestinationDialogProps,
   DestinationOffer,
+  DestinationOfferList,
   DestinationDayOffer,
+  DayOfferWeek,
+  DayOfferMonth,
+  DayOfferNone,
+  DayOfferMonthChoice,
   DestinationConfirmMeta,
   DestinationSelection,
 } from './components/DestinationDialog'

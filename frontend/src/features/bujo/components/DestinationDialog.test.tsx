@@ -1,11 +1,16 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { ThemeProvider } from '@mui/material'
 import { axe } from 'jest-axe'
 import { describe, expect, it, vi } from 'vitest'
 import type { ReactNode } from 'react'
 
 import { createBujoTheme } from '../../../theme'
-import { DestinationDialog, type DestinationDialogProps, type DestinationSelection } from './DestinationDialog'
+import {
+  DestinationDialog,
+  type DestinationDialogProps,
+  type DestinationOffer,
+  type DestinationSelection,
+} from './DestinationDialog'
 import destinationDialogSource from './DestinationDialog.tsx?raw'
 
 /** Rótulo nomeado padrão dos testes — nunca um "Confirmar" genérico. */
@@ -618,5 +623,318 @@ describe('DestinationDialog — piso de acessibilidade', () => {
       offer: { ...WEEK_OFFER, undated: { unavailableReason: 'a semana-alvo não é a semana corrente' } },
     })
     expect(await axe(document.body)).toHaveNoViolations()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DW-27 — LISTA de destinos nomeados. A extensão é ADITIVA: os dois rituais
+// continuam passando `offer` como OBJETO ÚNICO e a anatomia deles não muda uma
+// linha (provado logo abaixo, e pelos blocos acima que seguem valendo). O que
+// nasce aqui é o caminho do "Mover tarefa" dos boards.
+// ─────────────────────────────────────────────────────────────────────────────
+const TODAY_OFFER: DestinationOffer = { id: 'today', label: 'Hoje', day: { kind: 'none' } }
+
+const LIST_WEEK_OFFER: DestinationOffer = {
+  id: 'week',
+  label: 'Esta Semana',
+  day: { kind: 'week', weekStart: '2026-07-27' },
+  undated: {},
+}
+
+const LIST_MONTH_OFFER: DestinationOffer = {
+  id: 'month',
+  label: 'Este Mês',
+  day: { kind: 'month', monthFirst: '2026-08-01' },
+  undated: {},
+}
+
+const FUTURE_MONTH_REJECTED_REASON = 'Este Mês atende o mês corrente — escolha essa opção.'
+
+const LIST_FUTURE_OFFER: DestinationOffer = {
+  id: 'future',
+  label: 'Futuro',
+  day: {
+    kind: 'month-choice',
+    rejectUpToMonthFirst: '2026-08-01',
+    rejectedMonthReason: FUTURE_MONTH_REJECTED_REASON,
+  },
+  undated: {},
+}
+
+/** O mês em foco de um board navegado para o PASSADO: `POST /migrate/` não tem
+ * combinação que grave nele, então a oferta aparece e é indisponível. */
+const LIST_PAST_MONTH_OFFER: DestinationOffer = {
+  id: 'board-month',
+  label: 'Julho de 2026',
+  day: { kind: 'month', monthFirst: '2026-07-01' },
+  undated: {},
+  unavailableReason: 'este mês já é anterior ao mês atual',
+}
+
+const OFFER_LIST = [TODAY_OFFER, LIST_WEEK_OFFER, LIST_MONTH_OFFER, LIST_FUTURE_OFFER]
+
+function destinationGroup() {
+  return screen.getByRole('radiogroup', { name: 'Selecionar destino' })
+}
+
+describe('DestinationDialog — DW-27: uma oferta só NÃO cria grupo de destinos', () => {
+  it('oferta única (objeto): nenhum radiogroup "Selecionar destino", anatomia idêntica à de hoje', () => {
+    renderDialog()
+    expect(screen.queryByRole('radiogroup', { name: 'Selecionar destino' })).not.toBeInTheDocument()
+    // A anatomia do mês continua imediatamente disponível — sem passo extra.
+    expect(screen.getByLabelText('Número do dia')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '18 de agosto, sem tarefas' })).toBeInTheDocument()
+  })
+
+  it('oferta única passada em LISTA de um item também não cria grupo (nada de grupo de um item só)', () => {
+    renderDialog({ offer: [LIST_WEEK_OFFER] })
+    expect(screen.queryByRole('radiogroup', { name: 'Selecionar destino' })).not.toBeInTheDocument()
+    expect(screen.getAllByRole('radio')).toHaveLength(7) // só os dias da semana
+  })
+})
+
+describe('DestinationDialog — DW-27: lista de ofertas', () => {
+  it('renderiza um radio por oferta, com NADA pré-selecionado e nenhuma anatomia de dia', () => {
+    renderDialog({ offer: OFFER_LIST })
+
+    const radios = within(destinationGroup()).getAllByRole('radio')
+    expect(radios.map((radio) => radio.textContent)).toEqual(['Hoje', 'Esta Semana', 'Este Mês', 'Futuro'])
+    expect(radios.every((radio) => radio.getAttribute('aria-checked') === 'false')).toBe(true)
+
+    // Sem destino escolhido não existe dia a escolher nem confirmação.
+    expect(screen.queryByLabelText('Número do dia')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Sem dia definido/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Alocar/ })).not.toBeInTheDocument()
+  })
+
+  it('a anatomia do dia é SÓ a da oferta selecionada', () => {
+    renderDialog({ offer: OFFER_LIST })
+
+    fireEvent.click(within(destinationGroup()).getByRole('radio', { name: 'Esta Semana' }))
+    expect(screen.getByRole('radiogroup', { name: /^Dias de/ })).toBeInTheDocument()
+    expect(screen.queryByLabelText('Número do dia')).not.toBeInTheDocument()
+
+    fireEvent.click(within(destinationGroup()).getByRole('radio', { name: 'Este Mês' }))
+    expect(screen.queryByRole('radiogroup', { name: /^Dias de/ })).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Número do dia')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '18 de agosto, sem tarefas' })).toBeInTheDocument()
+  })
+
+  it('trocar de destino DESCARTA o dia armado (um dia da semana não é um dia do mês)', () => {
+    renderDialog({ offer: OFFER_LIST })
+
+    fireEvent.click(within(destinationGroup()).getByRole('radio', { name: 'Esta Semana' }))
+    fireEvent.click(screen.getByRole('radio', { name: '3 Quarta, 29 jul.' }))
+    expect(screen.getByRole('button', { name: 'Alocar em 2026-07-29' })).toBeInTheDocument()
+
+    fireEvent.click(within(destinationGroup()).getByRole('radio', { name: 'Este Mês' }))
+    expect(screen.queryByRole('button', { name: /^Alocar/ })).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Número do dia')).toHaveValue(null)
+  })
+
+  it('confirma com o `offerId` da oferta ESCOLHIDA — é por ele que o chamador decide o destino do POST', () => {
+    const { onConfirm } = renderDialog({ offer: OFFER_LIST })
+
+    fireEvent.click(within(destinationGroup()).getByRole('radio', { name: 'Esta Semana' }))
+    fireEvent.click(screen.getByRole('radio', { name: '5 Sexta, 31 jul.' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Alocar em 2026-07-31' }))
+
+    expect(onConfirm).toHaveBeenCalledWith('2026-07-31', { offerId: 'week', monthFirst: '2026-07-01' })
+  })
+
+  it('o destino indisponível aparece COM o motivo no nome acessível e não é selecionável', () => {
+    const { onConfirm } = renderDialog({ offer: [...OFFER_LIST, LIST_PAST_MONTH_OFFER] })
+
+    const past = screen.getByRole('radio', {
+      name: 'Julho de 2026 — indisponível: este mês já é anterior ao mês atual',
+    })
+    expect(past).toHaveAttribute('aria-disabled', 'true')
+
+    fireEvent.click(past)
+    expect(past).toHaveAttribute('aria-checked', 'false')
+    expect(screen.queryByLabelText('Número do dia')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Alocar/ })).not.toBeInTheDocument()
+    expect(onConfirm).not.toHaveBeenCalled()
+  })
+
+  it('o assert de PORTAL segue valendo na forma de lista (o defeito original não reabre)', () => {
+    const { container } = renderDialog({ offer: OFFER_LIST })
+    const dialog = screen.getByRole('dialog', { name: 'Escolher destino' })
+
+    expect(document.body).toContainElement(dialog)
+    expect(container).not.toContainElement(dialog)
+    expect(dialog.closest('.MuiDialog-root')).not.toBeNull()
+    expect(screen.getAllByRole('dialog')).toHaveLength(1)
+  })
+
+  it('o Enter confirma EXATAMENTE uma vez também na forma de lista', () => {
+    const { onConfirm } = renderDialog({ offer: OFFER_LIST })
+
+    fireEvent.click(within(destinationGroup()).getByRole('radio', { name: 'Este Mês' }))
+    fireEvent.click(screen.getByRole('button', { name: '18 de agosto, sem tarefas' }))
+
+    pressEnter(screen.getByRole('button', { name: 'Alocar em 2026-08-18' }))
+
+    expect(onConfirm).toHaveBeenCalledTimes(1)
+    expect(onConfirm).toHaveBeenCalledWith('2026-08-18', { offerId: 'month', monthFirst: '2026-08-01' })
+  })
+
+  // Classe registrada em DW-20: "o Enter confirma o destino armado ANTERIOR em
+  // vez do que acabou de receber foco". Os radios de DESTINO são a própria ação
+  // e param o Enter no seu keydown; os de DIA deixam subir de propósito.
+  it('o Enter num radio de DESTINO não confirma o destino anterior — ele seleciona o focado', () => {
+    const { onConfirm } = renderDialog({ offer: OFFER_LIST })
+
+    // Estado armado e confirmável: "Esta Semana" + quarta-feira.
+    fireEvent.click(within(destinationGroup()).getByRole('radio', { name: 'Esta Semana' }))
+    fireEvent.click(screen.getByRole('radio', { name: '3 Quarta, 29 jul.' }))
+    expect(screen.getByRole('button', { name: 'Alocar em 2026-07-29' })).toBeInTheDocument()
+
+    // Foco vai para OUTRO destino e o usuário aperta Enter.
+    const outro = within(destinationGroup()).getByRole('radio', { name: 'Este Mês' })
+    pressEnter(outro)
+
+    // Nada foi confirmado — e o Enter selecionou o destino FOCADO (ativação
+    // nativa preservada), descartando o dia da semana anterior.
+    expect(onConfirm).not.toHaveBeenCalled()
+    expect(outro).toHaveAttribute('aria-checked', 'true')
+    expect(screen.queryByRole('button', { name: /^Alocar/ })).not.toBeInTheDocument()
+  })
+
+  // Os dois formatos de oferta ÚNICA já provam o foco inicial; sem este teste,
+  // apagar o `ref`/`captureInitialFocus` do primeiro radio de destino devolveria
+  // o foco ao "×" do cabeçalho — o achado de review que aquele bloco existe para
+  // impedir. O foco vai um frame depois da montagem (o `FocusTrap` do MUI foca a
+  // raiz do modal antes), daí o `waitFor`.
+  it('o foco inicial nasce no PRIMEIRO destino, não no "Fechar" do cabeçalho', async () => {
+    renderDialog({ offer: OFFER_LIST })
+    await waitFor(() =>
+      expect(within(destinationGroup()).getByRole('radio', { name: 'Hoje' })).toHaveFocus(),
+    )
+  })
+
+  it('`disabled` guarda também a escolha do destino', () => {
+    const { onConfirm } = renderDialog({ offer: OFFER_LIST, disabled: true })
+
+    const radios = within(destinationGroup()).getAllByRole('radio')
+    expect(radios.every((radio) => (radio as HTMLButtonElement).disabled)).toBe(true)
+
+    fireEvent.click(radios[0]) // "Hoje" — o único confirmável de imediato
+    expect(screen.queryByRole('button', { name: /^Alocar/ })).not.toBeInTheDocument()
+    expect(onConfirm).not.toHaveBeenCalled()
+  })
+
+  it('sem violações de axe com o grupo de destinos e uma oferta indisponível', async () => {
+    renderDialog({ offer: [...OFFER_LIST, LIST_PAST_MONTH_OFFER] })
+    expect(await axe(document.body)).toHaveNoViolations()
+  })
+})
+
+describe('DestinationDialog — DW-27: destino `none` ("Hoje")', () => {
+  it('é confirmável DE IMEDIATO, sem escolher dia', () => {
+    const { onConfirm } = renderDialog({ offer: OFFER_LIST })
+
+    fireEvent.click(within(destinationGroup()).getByRole('radio', { name: 'Hoje' }))
+
+    // Nenhuma superfície de dia — o servidor é quem resolve "hoje".
+    expect(screen.queryByLabelText('Número do dia')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Sem dia definido/ })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Alocar sem dia definido' }))
+    expect(onConfirm).toHaveBeenCalledWith(null, { offerId: 'today', monthFirst: '' })
+  })
+
+  // O efeito de reset de período apaga `armed` quando a chave do período muda, e
+  // escolher "Hoje" muda a chave: se a seleção viesse de `armed === null`, ela
+  // seria apagada no mesmo ciclo. Derivar do `kind` elimina a corrida.
+  it('a seleção sobrevive ao efeito de troca de período (não depende de `armed`)', () => {
+    const { onConfirm } = renderDialog({ offer: OFFER_LIST })
+
+    fireEvent.click(within(destinationGroup()).getByRole('radio', { name: 'Esta Semana' }))
+    fireEvent.click(screen.getByRole('radio', { name: '3 Quarta, 29 jul.' }))
+    fireEvent.click(within(destinationGroup()).getByRole('radio', { name: 'Hoje' }))
+
+    pressEnter(screen.getByRole('button', { name: 'Alocar sem dia definido' }))
+    expect(onConfirm).toHaveBeenCalledTimes(1)
+    expect(onConfirm).toHaveBeenCalledWith(null, { offerId: 'today', monthFirst: '' })
+  })
+})
+
+describe('DestinationDialog — DW-27: destino `month-choice` ("Futuro")', () => {
+  function selectFuture() {
+    fireEvent.click(within(destinationGroup()).getByRole('radio', { name: 'Futuro' }))
+    return screen.getByLabelText('Mês')
+  }
+
+  it('mês ≤ o teto de recusa: motivo anunciado e NENHUMA anatomia de dia nem confirmação', () => {
+    const { onConfirm } = renderDialog({ offer: OFFER_LIST })
+    const monthInput = selectFuture()
+
+    fireEvent.change(monthInput, { target: { value: '2026-08' } })
+
+    expect(screen.getByRole('alert')).toHaveTextContent(FUTURE_MONTH_REJECTED_REASON)
+    expect(screen.queryByLabelText('Número do dia')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Sem dia definido/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Alocar/ })).not.toBeInTheDocument()
+    expect(onConfirm).not.toHaveBeenCalled()
+  })
+
+  it('mês válido abre o calendário DAQUELE mês e confirma com ele em `meta.monthFirst`', () => {
+    const { onConfirm } = renderDialog({ offer: OFFER_LIST })
+    const monthInput = selectFuture()
+
+    fireEvent.change(monthInput, { target: { value: '2026-09' } })
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '15 de setembro, sem tarefas' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Alocar em 2026-09-15' }))
+
+    expect(onConfirm).toHaveBeenCalledWith('2026-09-15', { offerId: 'future', monthFirst: '2026-09-01' })
+  })
+
+  it('"Sem dia definido" do mês escolhido confirma com null e o mês escolhido', () => {
+    const { onConfirm } = renderDialog({ offer: OFFER_LIST })
+    fireEvent.change(selectFuture(), { target: { value: '2026-09' } })
+
+    fireEvent.click(screen.getByRole('button', { name: '0 Sem dia definido' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Alocar sem dia definido' }))
+
+    expect(onConfirm).toHaveBeenCalledWith(null, { offerId: 'future', monthFirst: '2026-09-01' })
+  })
+
+  // O Firefox degrada `input type="month"` para campo de TEXTO, então "2026-13"
+  // é digitável de verdade. Validar só o FORMATO deixaria passar um
+  // `2026-13-01`: calendário de mês inexistente e 400 cru no confirmar.
+  it('mês fora de 1–12 não abre anatomia de dia nem confirmação', () => {
+    const { onConfirm } = renderDialog({ offer: OFFER_LIST })
+    const monthInput = selectFuture()
+
+    fireEvent.change(monthInput, { target: { value: '2026-13' } })
+
+    expect(screen.queryByLabelText('Número do dia')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Sem dia definido/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Alocar/ })).not.toBeInTheDocument()
+
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Enter' })
+    expect(onConfirm).not.toHaveBeenCalled()
+  })
+
+  it('o `input` declara o primeiro mês ACEITÁVEL em `min` — o seletor nativo não oferece o que seria recusado', () => {
+    renderDialog({ offer: OFFER_LIST })
+    // Teto de recusa da oferta = 2026-08-01 ⇒ primeiro aceitável = setembro.
+    expect(selectFuture()).toHaveAttribute('min', '2026-09')
+  })
+
+  it('trocar o mês DESCARTA o dia armado (um "31" não sobrevive a um mês de 30 dias)', () => {
+    renderDialog({ offer: OFFER_LIST })
+    const monthInput = selectFuture()
+
+    fireEvent.change(monthInput, { target: { value: '2026-10' } })
+    fireEvent.click(screen.getByRole('button', { name: '31 de outubro, sem tarefas' }))
+    expect(screen.getByRole('button', { name: 'Alocar em 2026-10-31' })).toBeInTheDocument()
+
+    fireEvent.change(monthInput, { target: { value: '2026-11' } }) // novembro tem 30
+    expect(screen.queryByRole('button', { name: /^Alocar/ })).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Número do dia')).toHaveValue(null)
   })
 })

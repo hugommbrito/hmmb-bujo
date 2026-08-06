@@ -260,6 +260,20 @@ describe('TaskDetailCard — footer com a hierarquia de UX-DR26 (AC2)', () => {
     expect(screen.queryByRole('button', { name: 'Excluir tarefa' })).not.toBeInTheDocument()
   })
 
+  // DW-27: o botão era um clique morto silencioso (`onClick={undefined}`) em
+  // toda superfície que não passasse `onMove` — hoje as duas telas de Arquivo.
+  // Este é o ÚNICO teste que morde a condição `&& onMove`: todo outro assert de
+  // ausência é satisfeito por `isSubtask` ou `readonly`, e todo assert de
+  // presença passa `onMove`. Sem ele, reverter a condição deixaria a suíte verde.
+  it('SEM `onMove` (nem isSubtask, nem readonly): "Mover tarefa" não existe no DOM, e o resto do rodapé continua', () => {
+    render(<TaskDetailCard task={baseTask()} onClose={vi.fn()} />, { wrapper })
+    expect(screen.queryByRole('button', { name: 'Mover tarefa' })).not.toBeInTheDocument()
+    // Prova que a ausência veio de `onMove`, e não de um rodapé zerado.
+    expect(screen.getByRole('button', { name: 'Salvar' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Cancelar tarefa' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Excluir tarefa' })).toBeInTheDocument()
+  })
+
   it('Mover tarefa chama onMove', () => {
     const onMove = vi.fn()
     render(<TaskDetailCard task={baseTask()} onClose={vi.fn()} onMove={onMove} />, { wrapper })

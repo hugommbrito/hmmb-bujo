@@ -10,6 +10,12 @@
 //   ▶ Composição por faixa via `useMediaQuery(mediaQueries.*)` — nunca string
 //     literal — combinando os tokens já existentes (`wideUp`/`desktop`/
 //     `tabletUp`) para derivar wide/medium/tablet/compact.
+//   ▶ "Mover tarefa" (DW-27): o botão do `TaskDetailCard` abre o
+//     `DestinationDialog` com os destinos NOMEADOS desta superfície. O board
+//     oferta o período que MOSTRA mais os canônicos porque `'week'` e `'month'`
+//     gravam em logs DIFERENTES — não dá para alcançar um pelo outro. As regras
+//     de domínio de `POST /migrate/` viram indisponibilidade EXPLÍCITA com
+//     motivo, nunca um 400 cru (ver `WEEK_UNDATED_UNAVAILABLE_REASON`).
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
@@ -17,20 +23,34 @@ import { Box, Button, useMediaQuery } from '@mui/material'
 import { Link as RouterLink } from 'react-router-dom'
 
 import {
+  DestinationDialog,
   invalidateRitualQueries,
   TaskDetailCard,
   useCreateWeeklyTaskMutation,
+  useMigrateTaskMutation,
   useReorderTaskMutation,
+  useTodayLogQuery,
   useTransitionTaskMutation,
   useWeeklyCycleActionMutation,
   useWeeklyCycleReadinessQuery,
   useWeeklyLogQuery,
 } from '../../features/bujo'
-import type { CycleStatus, Task, TaskStatus, WeeklyDay } from '../../features/bujo'
+import type {
+  CycleStatus,
+  DestinationConfirmMeta,
+  DestinationOffer,
+  DestinationSelection,
+  MigrationDestination,
+  Task,
+  TaskStatus,
+  WeeklyDay,
+} from '../../features/bujo'
 import { WeeklyTaskPanel } from '../../features/bujo/components/weekly/WeeklyTaskPanel'
 import { PlannerSkeleton } from '../../features/bujo/components/PlannerSkeleton'
 import { capitalize, MONTH_NAMES_PT } from '../../features/bujo/monthNames'
+import { navIconFor } from '../../app/layout/shell/navIcons'
 import { mediaQueries, typography } from '../../shared/design/tokens'
+import { useOnlineStatus } from '../../shared/hooks/useOnlineStatus'
 import { addDaysIso, formatDayLabel, isoWeekNumber, parseLocalDate, weekPositionInMonth } from '../../shared/date'
 
 type StatusFilterKey = 'pending' | 'started' | 'completed' | 'migrated-postponed' | 'cancelled'
@@ -39,6 +59,37 @@ const CYCLE_STATUS_LABEL: Record<Exclude<CycleStatus, null>, string> = {
   planning: 'Em planejamento',
   active: 'Em andamento',
   finalized: 'Finalizada',
+}
+
+// ── "Mover tarefa" (DW-27) ────────────────────────────────────────────────────
+/** `POST /migrate/` com `destination: 'week'` e SEM `scheduledDate` cai na
+ * semana CORRENTE no servidor (`services/migration.py`), nunca na semana em
+ * foco. A oferta da semana navegada existe, mas sem a opção "Sem dia definido". */
+const WEEK_UNDATED_UNAVAILABLE_REASON = 'esta não é a semana corrente — escolha um dia'
+
+/** `'future'` exige `monthFirst` ESTRITAMENTE posterior ao mês corrente
+ * (`views.py`: "Use 'month' para o mês corrente."). */
+const FUTURE_MONTH_REJECTED_REASON = 'Este Mês atende o mês corrente — escolha essa opção.'
+
+const MOVE_ERROR = 'Não foi possível mover a tarefa. Tente novamente.'
+
+/** Ids das ofertas — o chamador é quem traduz `meta.offerId` no `destination`
+ * do POST (o diálogo é agnóstico de domínio). */
+const MOVE_OFFER = {
+  today: 'today',
+  currentWeek: 'week',
+  boardWeek: 'board-week',
+  currentMonth: 'month',
+  future: 'future',
+} as const
+
+function monthFirstOf(iso: string): string {
+  return `${iso.slice(0, 7)}-01`
+}
+
+function monthTitleOf(monthFirst: string): string {
+  const [year, month] = monthFirst.split('-').map(Number)
+  return `${capitalize(MONTH_NAMES_PT[month - 1])} de ${year}`
 }
 
 function flattenTasks(tasks: Task[]): Task[] {
@@ -103,16 +154,23 @@ export function WeeklyBoardPage() {
   const [hideNotOpen, setHideNotOpen] = useState(false)
   const [openTaskId, setOpenTaskId] = useState<string | null>(null)
   const [selectedIndex, setSelectedIndex] = useState(0) // 0-6 dias, 7 = pool (compact)
+  const [movingTaskId, setMovingTaskId] = useState<string | null>(null)
+  const [moveError, setMoveError] = useState<string | null>(null)
 
   const weeklyLog = useWeeklyLogQuery(explicitWeekStart)
   // Dedup automático com a query acima quando `explicitWeekStart` é `undefined`
   // (mesma chave, mesmo cache) — o custo extra só existe ao navegar.
   const currentWeekLog = useWeeklyLogQuery()
+  // Autoridade de "hoje" (Convenção #8) — daqui saem o mês corrente das ofertas
+  // de "Mover tarefa" e o teto de recusa do destino "Futuro".
+  const todayLog = useTodayLogQuery()
   const readiness = useWeeklyCycleReadinessQuery()
   const createTask = useCreateWeeklyTaskMutation()
   const transitionTask = useTransitionTaskMutation()
   const reorderTask = useReorderTaskMutation()
   const cycleAction = useWeeklyCycleActionMutation()
+  const migrateTask = useMigrateTaskMutation()
+  const isOnline = useOnlineStatus()
 
   const isWide = useMediaQuery(mediaQueries.wideUp)
   const isDesktopUp = useMediaQuery(mediaQueries.desktop)
@@ -165,6 +223,152 @@ export function WeeklyBoardPage() {
     reorderTask.mutate(
       { taskId, targetTaskId, position },
       { onSuccess: () => invalidateRitualQueries(queryClient) },
+    )
+  }
+
+  // ── "Mover tarefa" (DW-27) ─────────────────────────────────────────────────
+  // Uma oferta por destino ALCANÇÁVEL desta superfície. `'week'` e `'month'`
+  // gravam em logs diferentes, então o board precisa ofertar os dois além do
+  // período que ele mostra. As ofertas que dependem de "hoje" só entram depois
+  // que o servidor respondeu — nada é derivado de `new Date()` aqui.
+  const currentWeekStart = currentWeekLog.data?.weekStart ?? null
+  const currentMonthFirst = todayLog.data?.logDate ? monthFirstOf(todayLog.data.logDate) : null
+
+  const moveOffers: DestinationOffer[] = [
+    {
+      id: MOVE_OFFER.today,
+      label: 'Hoje',
+      icon: navIconFor('today'),
+      day: { kind: 'none' },
+    },
+    ...(currentWeekStart
+      ? [
+          {
+            id: MOVE_OFFER.currentWeek,
+            label: 'Esta Semana',
+            icon: navIconFor('planner-week'),
+            day: { kind: 'week' as const, weekStart: currentWeekStart },
+            undated: {},
+          },
+        ]
+      : []),
+    // A semana NAVEGADA só é um destino distinto quando não é a corrente — e
+    // nela "Sem dia definido" é impossível por regra do servidor.
+    //
+    // O gate é `currentWeekStart && weekStart !== currentWeekStart`, NÃO
+    // `!isCurrentWeek`: `isCurrentWeek` é `false` enquanto `currentWeekLog`
+    // carrega, e nessa janela nasceria uma oferta para a semana que É a
+    // corrente, carregando o motivo "esta não é a semana corrente" — informação
+    // falsa. (`isCurrentWeek` segue servindo o botão "Voltar para hoje", onde
+    // um `false` transitório só mostra um atalho a mais.) Mesmo padrão do
+    // Monthly.
+    ...(currentWeekStart && weekStart !== currentWeekStart
+      ? [
+          {
+            id: MOVE_OFFER.boardWeek,
+            label: formatWeekRange(weekStart),
+            icon: navIconFor('planner-week'),
+            day: { kind: 'week' as const, weekStart },
+            undated: { unavailableReason: WEEK_UNDATED_UNAVAILABLE_REASON },
+          },
+        ]
+      : []),
+    ...(currentMonthFirst
+      ? [
+          {
+            id: MOVE_OFFER.currentMonth,
+            label: 'Este Mês',
+            icon: navIconFor('planner-month'),
+            day: { kind: 'month' as const, monthFirst: currentMonthFirst },
+            undated: {},
+          },
+          {
+            id: MOVE_OFFER.future,
+            label: 'Futuro',
+            icon: navIconFor('planner-future'),
+            day: {
+              kind: 'month-choice' as const,
+              rejectUpToMonthFirst: currentMonthFirst,
+              rejectedMonthReason: FUTURE_MONTH_REJECTED_REASON,
+            },
+            undated: {},
+          },
+        ]
+      : []),
+  ]
+
+  function openMove(taskId: string) {
+    setMovingTaskId(taskId)
+    setMoveError(null)
+  }
+
+  function closeMove() {
+    setMovingTaskId(null)
+    setMoveError(null)
+  }
+
+  /** Rótulo NOMEADO do ato — nunca um "Confirmar" genérico. O dia de um destino
+   * SEMANAL é nomeado pelo dia da semana (é assim que a semana é lida); o de um
+   * destino mensal, pela data. */
+  function confirmLabelForMove({ offerId, scheduledDate, monthFirst }: DestinationSelection): string {
+    if (offerId === MOVE_OFFER.today) return 'Mover para hoje'
+    const isWeekDestination = offerId === MOVE_OFFER.currentWeek || offerId === MOVE_OFFER.boardWeek
+    if (!scheduledDate) {
+      if (offerId === MOVE_OFFER.currentWeek) return 'Mover sem dia definido (esta semana)'
+      if (offerId === MOVE_OFFER.currentMonth) return 'Mover sem dia definido (este mês)'
+      return `Mover sem dia definido (${monthTitleOf(monthFirst).toLowerCase()})`
+    }
+    if (isWeekDestination) {
+      return `Mover para ${formatDayLabel(scheduledDate, 'weekday').toLowerCase()}, ${formatDayLabel(scheduledDate, 'day-month')}`
+    }
+    return `Mover para ${formatDayLabel(scheduledDate, 'day-month')}`
+  }
+
+  /** `meta.offerId` → contrato de `POST /migrate/`. `'today'` ignora
+   * `scheduledDate` no servidor; `'month'` sempre grava no mês CORRENTE
+   * (`month_first` nunca é aceito do cliente); `'future'` exige `monthFirst`. */
+  function migrateFieldsFor(
+    offerId: string,
+    scheduledDate: string | null,
+    monthFirst: string,
+  ): { destination: MigrationDestination; monthFirst?: string; scheduledDate?: string } | null {
+    const day = scheduledDate ?? undefined
+    if (offerId === MOVE_OFFER.today) return { destination: 'today' }
+    if (offerId === MOVE_OFFER.currentWeek || offerId === MOVE_OFFER.boardWeek) {
+      return { destination: 'week', scheduledDate: day }
+    }
+    if (offerId === MOVE_OFFER.currentMonth) return { destination: 'month', scheduledDate: day }
+    if (offerId === MOVE_OFFER.future) return { destination: 'future', monthFirst, scheduledDate: day }
+    return null
+  }
+
+  function handleConfirmMove(scheduledDate: string | null, meta: DestinationConfirmMeta) {
+    if (!movingTaskId) return
+    const fields = migrateFieldsFor(meta.offerId, scheduledDate, meta.monthFirst)
+    // Oferta sem tradução para o contrato de `/migrate/` (ex.: o mês em foco já
+    // passado): NUNCA um retorno silencioso — o motivo aparece no diálogo, que
+    // é a razão de esta passada existir.
+    if (!fields) {
+      setMoveError(MOVE_ERROR)
+      return
+    }
+    setMoveError(null)
+    migrateTask.mutate(
+      { taskId: movingTaskId, ...fields },
+      {
+        // Sucesso NÃO mostra toast: a invalidação por prefixo re-deriva o board
+        // de origem e o de destino sozinha. `invalidateRitualQueries` cobre o
+        // que `useMigrateTaskMutation` NÃO invalida — prontidão de ciclo e
+        // fontes dos rituais —, como já fazem `handleTransition`/`handleReorder`:
+        // mover a ÚLTIMA pendente para fora da semana muda o banner de
+        // planejamento, e sem isto ele ficaria desatualizado.
+        onSuccess: () => {
+          invalidateRitualQueries(queryClient)
+          closeMove()
+        },
+        // Falha PRESERVA o seletor aberto, com o destino armado e o motivo.
+        onError: () => setMoveError(MOVE_ERROR),
+      },
     )
   }
 
@@ -387,8 +591,31 @@ export function WeeklyBoardPage() {
           task={openTask}
           isSubtask={isOpenTaskSubtask}
           readonly={isReadonly}
+          // Fecha o detalhe e abre o seletor (molde de `FutureBoardPage`): dois
+          // modais empilhados disputariam foco e backdrop.
+          onMove={() => {
+            const taskId = openTask.id
+            setOpenTaskId(null)
+            openMove(taskId)
+          }}
           onClose={() => setOpenTaskId(null)}
           predecessor={openTaskId ? findPredecessor(days, unscheduled, openTaskId) : null}
+        />
+      )}
+
+      {movingTaskId && (
+        <DestinationDialog
+          title="Escolher destino"
+          description={allTasksById.get(movingTaskId)?.title}
+          offer={moveOffers}
+          compact={faixa === 'compact'}
+          // Guard de escrita dupla: offline E mutação em curso — sem a segunda
+          // metade, dois cliques rápidos viram dois POST da MESMA tarefa.
+          disabled={!isOnline || migrateTask.isPending}
+          error={moveError}
+          confirmLabelFor={confirmLabelForMove}
+          onConfirm={handleConfirmMove}
+          onClose={closeMove}
         />
       )}
     </Box>

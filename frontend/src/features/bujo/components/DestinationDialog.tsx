@@ -47,12 +47,21 @@
 //     um "Confirmar" genérico.
 //   ▶ Falha de escrita NÃO fecha o diálogo: `error` aparece com o destino
 //     armado preservado, então "tentar novamente" é reconfirmar o mesmo ato.
+//   ▶ LISTA DE OFERTAS (DW-27): `offer` aceita UMA oferta (os dois rituais, que
+//     seguem passando um objeto e não mudaram uma linha) ou uma LISTA de
+//     destinos nomeados. Só com N>1 nasce o `radiogroup` "Selecionar destino" —
+//     um grupo de um item só seria ruído semântico. A anatomia do DIA é sempre
+//     a da oferta SELECIONADA, e duas variantes voltam a existir para cobrir os
+//     destinos canônicos dos boards: `none` (destino sem dia, "Hoje") e
+//     `month-choice` (mês escolhido pelo usuário, "Futuro"). O contrato
+//     `onConfirm(scheduledDate, meta)` segue intocado — quem decide o
+//     `destination` do POST a partir de `meta.offerId` continua sendo o chamador.
 // ─────────────────────────────────────────────────────────────────────────────
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { Box, Button, Dialog, Drawer } from '@mui/material'
 
 import { MonthDensityCalendar } from './MonthDensityCalendar'
-import { addDaysIso, formatDayLabel, isoOf, lastDayOfMonth } from '../../../shared/date'
+import { addDaysIso, addMonthsIso, formatDayLabel, isoOf, lastDayOfMonth } from '../../../shared/date'
 import { shellCssVariables, typography } from '../../../shared/design/tokens'
 
 /** Os 7 dias de uma semana, segunda→domingo. `densityByDate` (mapa
@@ -74,14 +83,44 @@ export interface DayOfferMonth {
   densityByDate?: ReadonlyMap<string, number>
 }
 
+/** Destino SEM escolha de dia (ex.: "Hoje", que o servidor resolve sozinho).
+ * A seleção é derivada do próprio `kind` — nunca do estado `armed` (ver o
+ * comentário de `currentSelection`). */
+export interface DayOfferNone {
+  kind: 'none'
+}
+
+/** Um mês que o USUÁRIO ainda vai escolher (ex.: "Futuro"): `input type="month"`
+ * nativo e, com um mês válido, a mesma anatomia de `DayOfferMonth` (entrada do
+ * número do dia + calendário). Sem `densityByDate`: o chamador não tem como
+ * saber de que mês buscar contagem antes da escolha. */
+export interface DayOfferMonthChoice {
+  kind: 'month-choice'
+  /** Meses ATÉ este (inclusive, comparação lexicográfica de "AAAA-MM-01") são
+   * RECUSADOS. É o que sustenta a regra de `POST /migrate/`: `'future'` exige
+   * `monthFirst` ESTRITAMENTE posterior ao mês corrente. */
+  rejectUpToMonthFirst?: string
+  /** Motivo anunciado (`role="alert"`) quando o mês digitado é recusado. */
+  rejectedMonthReason?: string
+}
+
 /** Como o DIA é escolhido dentro da oferta de destino. */
-export type DestinationDayOffer = DayOfferWeek | DayOfferMonth
+export type DestinationDayOffer = DayOfferWeek | DayOfferMonth | DayOfferNone | DayOfferMonthChoice
 
 export interface DestinationOffer {
   /** Id estável, devolvido em `meta.offerId` — é por ele que o chamador decide
    * o `destination` do POST. */
   id: string
   day: DestinationDayOffer
+  /** Rótulo do destino no `radiogroup` — só usado quando há MAIS DE UMA oferta
+   * (com uma só não existe grupo para rotular). */
+  label?: string
+  /** Ícone do destino, JÁ RESOLVIDO pelo chamador (`navIconFor('planner-week')`
+   * e afins): este componente não conhece o shell nem o catálogo de ícones. */
+  icon?: ReactNode
+  /** A oferta APARECE no grupo, indisponível e com o motivo no nome acessível —
+   * nunca um destino que some sem explicação nem um 400 cru do servidor. */
+  unavailableReason?: string | null
   /**
    * "Sem dia definido". AUSENTE = a opção não existe nesta oferta.
    * `unavailableReason` preenchido = a opção aparece, INDISPONÍVEL e com o
@@ -91,6 +130,10 @@ export interface DestinationOffer {
    */
   undated?: { unavailableReason?: string | null }
 }
+
+/** Lista de destinos NOMEADOS (2 ou mais). Uma oferta só continua sendo passada
+ * como OBJETO — é o que mantém os dois rituais sem uma linha alterada. */
+export type DestinationOfferList = ReadonlyArray<DestinationOffer>
 
 export interface DestinationConfirmMeta {
   /** `id` da oferta escolhida. */
@@ -111,7 +154,8 @@ export interface DestinationDialogProps {
   title: string
   /** Segunda linha do cabeçalho — o item/período ofertado. */
   description?: string
-  offer: DestinationOffer
+  /** UMA oferta (sem `radiogroup` de destinos) ou uma LISTA de destinos nomeados. */
+  offer: DestinationOffer | DestinationOfferList
   /**
    * Dia JÁ ARMADO na abertura (Stories 14.5/14.6 AC6): `undefined` = nada
    * armado, `null` = "Sem dia definido", string = o dia. É o que mantém vivo o
@@ -200,25 +244,72 @@ export function DestinationDialog({
   onClose,
 }: DestinationDialogProps) {
   const [armed, setArmed] = useState<Armed>(armedDate)
+  /** "AAAA-MM" digitado no `month-choice` (formato nativo do `input type="month"`). */
+  const [chosenMonth, setChosenMonth] = useState('')
+  /** Destino escolhido no `radiogroup` — irrelevante quando há uma oferta só. */
+  const [chosenOfferId, setChosenOfferId] = useState<string | null>(null)
 
-  const weekOffer = offer.day.kind === 'week' ? offer.day : null
-  const monthOffer = offer.day.kind === 'month' ? offer.day : null
+  // Uma oferta só continua vindo como OBJETO (os dois rituais): normalizar aqui
+  // é o que permite estender sem tocar nenhum call-site existente.
+  const offers: DestinationOfferList = Array.isArray(offer) ? offer : [offer as DestinationOffer]
+  const hasOfferGroup = offers.length > 1
+  // Com uma oferta só ela É a seleção (nada para escolher); com N>1 nada nasce
+  // pré-selecionado — escolher o destino é ato explícito do usuário.
+  const selectedOffer = hasOfferGroup
+    ? (offers.find((candidate) => candidate.id === chosenOfferId) ?? null)
+    : offers[0]
+
+  const dayOffer = selectedOffer?.day ?? null
+  const weekOffer = dayOffer?.kind === 'week' ? dayOffer : null
+  const fixedMonthOffer = dayOffer?.kind === 'month' ? dayOffer : null
+  const monthChoiceOffer = dayOffer?.kind === 'month-choice' ? dayOffer : null
+
+  // O mês precisa ser 01–12 de verdade: o Firefox degrada `input type="month"`
+  // para campo de TEXTO, então "2026-13" é digitável. Só o formato (`\d{4}-\d{2}`)
+  // deixaria passar um `2026-13-01`, que produz um calendário de mês inexistente
+  // e um 400 cru no confirmar.
+  const chosenMonthNumber = /^\d{4}-\d{2}$/.test(chosenMonth) ? Number(chosenMonth.slice(5, 7)) : 0
+  const chosenMonthFirst =
+    chosenMonthNumber >= 1 && chosenMonthNumber <= 12 ? `${chosenMonth}-01` : null
+  // Derivado a cada render (nunca guardado em estado próprio): o teto de recusa
+  // vem do chamador e pode chegar DEPOIS do usuário digitar o mês.
+  const rejectedMonthReason =
+    monthChoiceOffer &&
+    chosenMonthFirst &&
+    monthChoiceOffer.rejectUpToMonthFirst &&
+    chosenMonthFirst <= monthChoiceOffer.rejectUpToMonthFirst
+      ? (monthChoiceOffer.rejectedMonthReason ?? 'Escolha um mês posterior ao mês corrente.')
+      : null
+
+  /** Mês cuja anatomia de dia está ATIVA — o mês fixo da oferta, ou o mês
+   * escolhido e aceito no `month-choice`. */
+  const activeMonthFirst = fixedMonthOffer
+    ? fixedMonthOffer.monthFirst
+    : monthChoiceOffer && chosenMonthFirst && !rejectedMonthReason
+      ? chosenMonthFirst
+      : null
+  const activeMonthDensity = fixedMonthOffer?.densityByDate
 
   const weekDays = weekOffer
     ? Array.from({ length: WEEK_LENGTH }, (_, index) => addDaysIso(weekOffer.weekStart, index))
     : []
-  const lastDay = monthOffer ? lastDayOfMonth(monthOffer.monthFirst) : 0
-  const [monthYear, monthMonth] = monthOffer ? monthOffer.monthFirst.split('-').map(Number) : [0, 0]
+  const lastDay = activeMonthFirst ? lastDayOfMonth(activeMonthFirst) : 0
+  const [monthYear, monthMonth] = activeMonthFirst ? activeMonthFirst.split('-').map(Number) : [0, 0]
 
-  const undatedUnavailableReason = offer.undated?.unavailableReason ?? null
-  const undatedAvailable = Boolean(offer.undated) && !undatedUnavailableReason
+  /** Há uma superfície de escolha de dia na tela? `none` não tem nenhuma, e o
+   * `month-choice` só passa a ter depois de um mês aceito. */
+  const dayChoiceReady = Boolean(weekOffer || activeMonthFirst)
+  const undatedOffered = Boolean(selectedOffer?.undated) && dayChoiceReady
+  const undatedUnavailableReason = selectedOffer?.undated?.unavailableReason ?? null
+  const undatedAvailable = undatedOffered && !undatedUnavailableReason
 
   // Chave do PERÍODO em foco. O período muda SEM remontar o componente (o pai só
-  // troca `targetMonthFirst`/`weekStart`) e `useState` sobrevive à troca de prop,
-  // daí o reset EXPLÍCITO — um "31" armado não sobrevive a um mês de 30 dias. O
-  // `ref` existe para que o reset NÃO dispare na montagem: senão o `armedDate`
-  // que vem do rail de densidade (AC6) seria apagado no primeiro efeito.
-  const periodKey = weekOffer?.weekStart ?? monthOffer?.monthFirst ?? ''
+  // troca `targetMonthFirst`/`weekStart`, ou o usuário troca de mês no
+  // `month-choice`) e `useState` sobrevive à troca de prop, daí o reset
+  // EXPLÍCITO — um "31" armado não sobrevive a um mês de 30 dias. O `ref` existe
+  // para que o reset NÃO dispare na montagem: senão o `armedDate` que vem do
+  // rail de densidade (AC6) seria apagado no primeiro efeito.
+  const periodKey = weekOffer?.weekStart ?? activeMonthFirst ?? ''
   const previousPeriodKey = useRef(periodKey)
   useEffect(() => {
     if (previousPeriodKey.current === periodKey) return
@@ -255,7 +346,7 @@ export function DestinationDialog({
 
   const armedWeekIndex = typeof armed === 'string' ? weekDays.indexOf(armed) : -1
   const armedDay =
-    typeof armed === 'string' && monthOffer && armed.slice(0, 7) === monthOffer.monthFirst.slice(0, 7)
+    typeof armed === 'string' && activeMonthFirst && armed.slice(0, 7) === activeMonthFirst.slice(0, 7)
       ? Number(armed.slice(8, 10))
       : null
 
@@ -264,8 +355,22 @@ export function DestinationDialog({
   }
 
   function armDay(day: number) {
-    if (disabled || !monthOffer || day < 1 || day > lastDay) return
+    if (disabled || !activeMonthFirst || day < 1 || day > lastDay) return
     setArmed(isoForDay(day))
+  }
+
+  /** Trocar de destino DESCARTA o dia armado: um "31" de um mês não é um dia
+   * válido de uma semana, e um dia da semana em foco não é um dia do mês. */
+  function selectOffer(candidate: DestinationOffer) {
+    if (disabled || candidate.unavailableReason) return
+    setChosenOfferId(candidate.id)
+    setArmed(undefined)
+  }
+
+  function changeChosenMonth(value: string) {
+    if (disabled) return
+    setChosenMonth(value)
+    setArmed(undefined)
   }
 
   /** Setas anterior/próximo do mensal (14.6 AC5) — a partir do dia armado, ou do
@@ -287,16 +392,25 @@ export function DestinationDialog({
   }
 
   function currentSelection(): DestinationSelection | null {
+    if (!selectedOffer || selectedOffer.unavailableReason) return null
+    // `kind: 'none'` NÃO passa por `armed`: o efeito de reset de período apaga
+    // `armed` quando a chave do período muda, e selecionar "Hoje" muda a chave —
+    // apagaria um `armed === null` recém-posto. Derivar direto do `kind` elimina
+    // a corrida. `monthFirst: ''` já é valor possível hoje e é ignorado por quem
+    // consome `'today'`.
+    if (selectedOffer.day.kind === 'none') {
+      return { offerId: selectedOffer.id, scheduledDate: null, monthFirst: '' }
+    }
     if (armed === undefined) return null
     if (armed === null) {
       if (!undatedAvailable) return null
       return {
-        offerId: offer.id,
+        offerId: selectedOffer.id,
         scheduledDate: null,
-        monthFirst: weekOffer ? monthFirstOf(weekOffer.weekStart) : (monthOffer?.monthFirst ?? ''),
+        monthFirst: weekOffer ? monthFirstOf(weekOffer.weekStart) : (activeMonthFirst ?? ''),
       }
     }
-    return { offerId: offer.id, scheduledDate: armed, monthFirst: monthFirstOf(armed) }
+    return { offerId: selectedOffer.id, scheduledDate: armed, monthFirst: monthFirstOf(armed) }
   }
 
   const selection = currentSelection()
@@ -360,7 +474,7 @@ export function DestinationDialog({
       armWeekday(Number(event.key) - 1)
       return
     }
-    if (event.key === '0' && offer.undated) {
+    if (event.key === '0' && undatedOffered) {
       event.preventDefault()
       armUndated()
     }
@@ -393,8 +507,12 @@ export function DestinationDialog({
   }
 
   const shortcutHint = weekOffer
-    ? `Atalhos: 1–7 escolhem o dia${offer.undated ? ' · 0 deixa sem data' : ''} · Enter confirma.`
-    : 'Setas navegam dia a dia · digite o número do dia · Enter confirma.'
+    ? `Atalhos: 1–7 escolhem o dia${selectedOffer?.undated ? ' · 0 deixa sem data' : ''} · Enter confirma.`
+    : activeMonthFirst
+      ? 'Setas navegam dia a dia · digite o número do dia · Enter confirma.'
+      : selectedOffer
+        ? 'Enter confirma.'
+        : 'Escolha um destino.'
 
   // `role="dialog"`/`aria-label` só no CONTEÚDO quando a faixa é compact: o MUI
   // Drawer não estampa `role="dialog"` sozinho, enquanto o MUI Dialog já o
@@ -434,6 +552,109 @@ export function DestinationDialog({
       {/* Lembrete DISCRETO dos atalhos — presente nos dois seletores substituídos
           (o semanal da 14.5, removido em DW-29, e `MonthlyDestinationPicker`). */}
       <Box sx={{ ...typography.meta, color: 'var(--ds-ink-muted)' }}>{shortcutHint}</Box>
+
+      {/* Destinos NOMEADOS (DW-27) — molde vivo do `BrainDumpDestinationPicker`:
+          `radiogroup` com ícone + rótulo por destino, sem navegação por seta
+          (o grupo de DIAS abaixo é que a tem). Só nasce com N>1: um grupo de um
+          item só seria ruído semântico, e é o que mantém os dois rituais com a
+          anatomia idêntica à de hoje. `flexWrap` (e não `repeat(N, …)`) porque o
+          número de destinos varia por superfície. */}
+      {hasOfferGroup && (
+        <Box
+          role="radiogroup"
+          aria-label="Selecionar destino"
+          sx={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--ds-space-1)' }}
+        >
+          {offers.map((candidate, index) => {
+            const selected = selectedOffer?.id === candidate.id
+            const unavailable = Boolean(candidate.unavailableReason)
+            return (
+              <Box
+                key={candidate.id}
+                ref={(element: HTMLElement | null) => {
+                  if (index === 0) captureInitialFocus(element)
+                }}
+                component="button"
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                aria-disabled={unavailable ? true : undefined}
+                disabled={disabled}
+                aria-label={
+                  unavailable
+                    ? `${candidate.label ?? candidate.id} — indisponível: ${candidate.unavailableReason}`
+                    : undefined
+                }
+                // Os radios de DESTINO são a PRÓPRIA ação (como ×, ‹, › e o
+                // confirmar), diferente dos radios de DIA, que deliberadamente
+                // deixam o Enter subir para confirmar o dia armado. Sem este
+                // `stopPropagation` o Enter subiria até `handleContainerKeyDown`,
+                // que faz `preventDefault()` (matando a ativação nativa do
+                // botão) e `confirm()` — confirmando o destino ANTERIOR em vez
+                // de selecionar o que acabou de receber foco. É a classe exata
+                // registrada em DW-20.
+                onKeyDown={stopEnterFromDialog}
+                onClick={() => selectOffer(candidate)}
+                sx={{
+                  ...CONTROL_SX,
+                  ...(selected && CONTROL_SELECTED_SX),
+                  ...(unavailable ? CONTROL_UNAVAILABLE_SX : {}),
+                  flex: '1 1 0',
+                  minWidth: 0,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 'var(--ds-space-1)',
+                  padding: 'var(--ds-space-2)',
+                  ...typography.meta,
+                }}
+              >
+                {candidate.icon}
+                {candidate.label ?? candidate.id}
+              </Box>
+            )
+          })}
+        </Box>
+      )}
+
+      {/* `month-choice`: o mês é do USUÁRIO (`input type="month"` nativo, molde
+          de `BrainDumpDestinationPicker`). O motivo da recusa é anunciado, e
+          nenhuma anatomia de dia aparece enquanto o mês não for aceito — é o que
+          impede um 400 cru de `POST /migrate/` ("Use 'month' para o mês corrente."). */}
+      {monthChoiceOffer && (
+        <Box component="label" sx={{ display: 'flex', flexDirection: 'column', gap: 'var(--ds-space-1)' }}>
+          <span style={{ ...typography.label }}>Mês</span>
+          <input
+            aria-label="Mês"
+            type="month"
+            // Primeiro mês ACEITÁVEL: o seletor nativo nem oferece meses que o
+            // diálogo vai recusar (a validação acima continua sendo a
+            // autoridade — `min` é dica de UI, não garantia).
+            min={
+              monthChoiceOffer.rejectUpToMonthFirst
+                ? addMonthsIso(monthChoiceOffer.rejectUpToMonthFirst, 1).slice(0, 7)
+                : undefined
+            }
+            disabled={disabled}
+            value={chosenMonth}
+            onChange={(event) => changeChosenMonth(event.target.value)}
+            style={{
+              ...typography.body,
+              padding: 'var(--ds-space-2)',
+              border: '1px solid var(--ds-control-border)',
+              borderRadius: 'var(--ds-radius-sm)',
+              background: 'var(--ds-surface)',
+              color: 'var(--ds-ink)',
+              minHeight: 'var(--ds-touch-target-min)',
+            }}
+          />
+          {rejectedMonthReason && (
+            <Box role="alert" sx={{ ...typography.meta, color: 'var(--ds-danger)' }}>
+              {rejectedMonthReason}
+            </Box>
+          )}
+        </Box>
+      )}
 
       {weekOffer && (
         <Box
@@ -492,7 +713,7 @@ export function DestinationDialog({
       {/* Story 14.6 AC5 — entrada direta do número do dia + setas, sincronizadas
           com o calendário abaixo e validando os 28–31 dias REAIS do mês-alvo
           (`lastDayOfMonth` cobre bissexto). */}
-      {monthOffer && (
+      {activeMonthFirst && (
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 'var(--ds-space-1)' }}>
           <Box
             component="button"
@@ -542,21 +763,23 @@ export function DestinationDialog({
         </Box>
       )}
 
-      {monthOffer && (
+      {activeMonthFirst && (
         <Box sx={CALENDAR_TOUCH_FLOOR_SX}>
           <MonthDensityCalendar
-            monthFirst={monthOffer.monthFirst}
+            monthFirst={activeMonthFirst}
             // `MonthDensityCalendar` pede um `Map` mutável; a oferta expõe
             // `ReadonlyMap` (o chamador é o dono do dado). Cópia rasa na
-            // fronteira, sem tocar o componente compartilhado.
-            densityByDate={new Map(monthOffer.densityByDate)}
+            // fronteira, sem tocar o componente compartilhado. Um mês ainda por
+            // escolher (`month-choice`) não tem densidade: o chamador não teria
+            // como saber de qual mês buscá-la antes da escolha.
+            densityByDate={new Map(activeMonthDensity)}
             selectedDate={typeof armed === 'string' ? armed : null}
             onSelectDay={disabled ? undefined : (iso) => setArmed(iso)}
           />
         </Box>
       )}
 
-      {offer.undated && (
+      {undatedOffered && (
         <Box
           component="button"
           type="button"

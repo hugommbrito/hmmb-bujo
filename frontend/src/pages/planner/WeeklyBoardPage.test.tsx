@@ -19,6 +19,9 @@ const mockGet = client.get as ReturnType<typeof vi.fn>
 const mockPost = client.post as ReturnType<typeof vi.fn>
 
 const READINESS = { active: null, planning: null, start: null, finalize: null }
+// 2026-07-22 é uma quarta-feira da semana de 2026-07-20 (a `weeklyLog` default)
+// e do mês de julho — é a autoridade de "hoje" das ofertas de "Mover tarefa".
+const TODAY_LOG = { id: 'log-1', logDate: '2026-07-22', tasks: [] }
 
 function task(overrides: Partial<Task> = {}): Task {
   return {
@@ -62,10 +65,27 @@ function weeklyLog({
   }
 }
 
-function mockRoutes({ log, readiness = READINESS }: { log: ReturnType<typeof weeklyLog>; readiness?: unknown }) {
-  mockGet.mockImplementation((url: string) => {
+function mockRoutes({
+  log,
+  readiness = READINESS,
+  todayLog = TODAY_LOG,
+  logByWeekStart,
+}: {
+  log: ReturnType<typeof weeklyLog>
+  readiness?: unknown
+  todayLog?: unknown
+  /** Semana NAVEGADA (`?week_start=`) — sem isto o stepper devolveria a mesma
+   * semana e `isCurrentWeek` nunca ficaria falso. */
+  logByWeekStart?: Record<string, ReturnType<typeof weeklyLog>>
+}) {
+  mockGet.mockImplementation((url: string, config?: { params?: { week_start?: string } }) => {
     if (url === '/api/bujo/logs/weekly/cycle/') return Promise.resolve({ data: readiness })
-    if (url === '/api/bujo/logs/weekly/') return Promise.resolve({ data: log })
+    if (url === '/api/bujo/logs/weekly/') {
+      const weekStart = config?.params?.week_start
+      const navigated = weekStart ? logByWeekStart?.[weekStart] : undefined
+      return Promise.resolve({ data: navigated ?? log })
+    }
+    if (url === '/api/bujo/logs/today/') return Promise.resolve({ data: todayLog })
     return Promise.reject(new Error(`unhandled GET ${url}`))
   })
 }
@@ -408,6 +428,292 @@ describe('WeeklyBoardPage — criação contextual (AC1/Task 7)', () => {
         scheduledDate: null,
       }),
     )
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DW-27 — "Mover tarefa" cabeado. O botão do `TaskDetailCard` era um clique
+// morto silencioso (`onClick={undefined}`) nesta superfície; a prova por página
+// é que ele abre o seletor com as ofertas certas e que cada destino vira o POST
+// exato que a regra de domínio de `/migrate/` exige.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('WeeklyBoardPage — "Mover tarefa" (DW-27)', () => {
+  const LOG_WITH_TASK = weeklyLog({
+    days: [
+      { date: '2026-07-20', tasks: [task({ id: 't-1', title: 'Tarefa a mover' })] },
+      ...Array.from({ length: 6 }, (_, i) => ({ date: `2026-07-${21 + i}`, tasks: [] })),
+    ],
+  })
+
+  /** Semana SEGUINTE (destino do stepper "Próxima semana"). */
+  const NEXT_WEEK_LOG = weeklyLog({
+    weekStart: '2026-07-27',
+    days: [
+      { date: '2026-07-27', tasks: [task({ id: 't-1', title: 'Tarefa a mover' })] },
+      ...Array.from({ length: 6 }, (_, i) => ({ date: `2026-07-${28 + i}`, tasks: [] })),
+    ],
+  })
+
+  beforeEach(() => {
+    vi.resetAllMocks()
+    mockFaixa('wide')
+    setOnline(true)
+  })
+
+  /** `navigator.onLine` é a fonte de `useOnlineStatus`; jsdom nasce online e o
+   * `beforeEach` acima restaura, para o estado não vazar entre testes. */
+  function setOnline(value: boolean) {
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value })
+  }
+
+  async function openMoveDialog() {
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Tarefa a mover')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Ver detalhes de Tarefa a mover' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Mover tarefa' }))
+    return screen.getByRole('dialog', { name: 'Escolher destino' })
+  }
+
+  function destinationGroup() {
+    return screen.getByRole('radiogroup', { name: 'Selecionar destino' })
+  }
+
+  it('o detalhe da tarefa oferece "Mover tarefa" e o clique abre o seletor de destino', async () => {
+    mockRoutes({ log: LOG_WITH_TASK })
+    const dialog = await openMoveDialog()
+
+    expect(dialog).toBeInTheDocument()
+    // O detalhe FECHA ao abrir o seletor — dois modais empilhados disputariam
+    // foco e backdrop.
+    expect(screen.queryByRole('dialog', { name: 'Detalhe da tarefa' })).not.toBeInTheDocument()
+    // O seletor nomeia a tarefa que está sendo movida.
+    expect(within(dialog).getByText('Tarefa a mover')).toBeInTheDocument()
+  })
+
+  it('na semana CORRENTE oferta só os canônicos — a semana em foco já é "Esta Semana"', async () => {
+    mockRoutes({ log: LOG_WITH_TASK })
+    await openMoveDialog()
+
+    expect(within(destinationGroup()).getAllByRole('radio').map((radio) => radio.textContent)).toEqual([
+      'Hoje',
+      'Esta Semana',
+      'Este Mês',
+      'Futuro',
+    ])
+  })
+
+  it('numa semana NAVEGADA a oferta da semana em foco entra, e nela "Sem dia definido" fica INDISPONÍVEL com motivo', async () => {
+    mockRoutes({ log: LOG_WITH_TASK, logByWeekStart: { '2026-07-27': NEXT_WEEK_LOG } })
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Tarefa a mover')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Próxima semana' }))
+    await waitFor(() => expect(screen.getByRole('region', { name: /Segunda/ })).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ver detalhes de Tarefa a mover' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Mover tarefa' }))
+
+    const focused = within(destinationGroup()).getByRole('radio', { name: '27 de julho – 2 de agosto de 2026' })
+    fireEvent.click(focused)
+
+    // A regra de domínio: `'week'` SEM `scheduledDate` cai na semana CORRENTE no
+    // servidor, nunca na navegada.
+    const undated = screen.getByRole('button', {
+      name: '0 Sem dia definido — indisponível: esta não é a semana corrente — escolha um dia',
+    })
+    expect(undated).toHaveAttribute('aria-disabled', 'true')
+    fireEvent.click(undated)
+    expect(screen.queryByRole('button', { name: /^Mover/ })).not.toBeInTheDocument()
+  })
+
+  // Irmão do teste acima: aquele para na indisponibilidade do "Sem dia"; este
+  // exercita o POST da oferta `board-week`. Sem ele, apagar
+  // `|| offerId === MOVE_OFFER.boardWeek` de `migrateFieldsFor` quebraria mover
+  // para outra semana EM SILÊNCIO.
+  it('a oferta da semana NAVEGADA, com um dia daquela semana armado, manda destination=week + o ISO daquele dia', async () => {
+    mockRoutes({ log: LOG_WITH_TASK, logByWeekStart: { '2026-07-27': NEXT_WEEK_LOG } })
+    mockPost.mockResolvedValueOnce({ data: task({ id: 't-1' }) })
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Tarefa a mover')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Próxima semana' }))
+    await waitFor(() => expect(screen.getByRole('region', { name: /Segunda/ })).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ver detalhes de Tarefa a mover' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Mover tarefa' }))
+
+    fireEvent.click(within(destinationGroup()).getByRole('radio', { name: '27 de julho – 2 de agosto de 2026' }))
+    // Quarta-feira da semana NAVEGADA (29/jul), não da corrente.
+    fireEvent.click(screen.getByRole('radio', { name: '3 Quarta, 29 jul.' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Mover para quarta, 29 jul.' }))
+
+    await waitFor(() =>
+      expect(mockPost).toHaveBeenCalledWith('/api/bujo/tasks/t-1/migrate/', {
+        destination: 'week',
+        scheduledDate: '2026-07-29',
+      }),
+    )
+  })
+
+  it('destino "Hoje" manda destination=today, sem scheduledDate', async () => {
+    mockRoutes({ log: LOG_WITH_TASK })
+    mockPost.mockResolvedValueOnce({ data: task({ id: 't-1' }) })
+    await openMoveDialog()
+
+    fireEvent.click(within(destinationGroup()).getByRole('radio', { name: 'Hoje' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Mover para hoje' }))
+
+    await waitFor(() =>
+      expect(mockPost).toHaveBeenCalledWith('/api/bujo/tasks/t-1/migrate/', { destination: 'today' }),
+    )
+    // Metade da AC2: no SUCESSO o seletor fecha (o detalhe já fechou ao abri-lo).
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Escolher destino' })).not.toBeInTheDocument(),
+    )
+  })
+
+  it('destino "Esta Semana" com dia escolhido manda destination=week + o ISO exato do dia', async () => {
+    mockRoutes({ log: LOG_WITH_TASK })
+    mockPost.mockResolvedValueOnce({ data: task({ id: 't-1' }) })
+    await openMoveDialog()
+
+    fireEvent.click(within(destinationGroup()).getByRole('radio', { name: 'Esta Semana' }))
+    fireEvent.click(screen.getByRole('radio', { name: '3 Quarta, 22 jul.' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Mover para quarta, 22 jul.' }))
+
+    await waitFor(() =>
+      expect(mockPost).toHaveBeenCalledWith('/api/bujo/tasks/t-1/migrate/', {
+        destination: 'week',
+        scheduledDate: '2026-07-22',
+      }),
+    )
+  })
+
+  it('destino "Este Mês" sem dia manda destination=month e nenhum scheduledDate (o servidor resolve o mês corrente)', async () => {
+    mockRoutes({ log: LOG_WITH_TASK })
+    mockPost.mockResolvedValueOnce({ data: task({ id: 't-1' }) })
+    await openMoveDialog()
+
+    fireEvent.click(within(destinationGroup()).getByRole('radio', { name: 'Este Mês' }))
+    fireEvent.click(screen.getByRole('button', { name: '0 Sem dia definido' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Mover sem dia definido (este mês)' }))
+
+    await waitFor(() =>
+      expect(mockPost).toHaveBeenCalledWith('/api/bujo/tasks/t-1/migrate/', {
+        destination: 'month',
+        scheduledDate: undefined,
+      }),
+    )
+  })
+
+  // Par NÃO-VACUOSO do teste acima: `{ scheduledDate: undefined }` também casa
+  // quando a chave está AUSENTE, então só o caso "sem dia" não provaria que o
+  // dia CHEGA no payload. Cada board tem sua própria cópia de `migrateFieldsFor`.
+  it('destino "Este Mês" COM dia armado carrega o ISO do dia no payload', async () => {
+    mockRoutes({ log: LOG_WITH_TASK })
+    mockPost.mockResolvedValueOnce({ data: task({ id: 't-1' }) })
+    await openMoveDialog()
+
+    fireEvent.click(within(destinationGroup()).getByRole('radio', { name: 'Este Mês' }))
+    // Calendário do mês corrente (julho/2026, do `logDate` do servidor).
+    fireEvent.click(screen.getByRole('button', { name: '15 de julho, sem tarefas' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Mover para 15 jul.' }))
+
+    await waitFor(() =>
+      expect(mockPost).toHaveBeenCalledWith('/api/bujo/tasks/t-1/migrate/', {
+        destination: 'month',
+        scheduledDate: '2026-07-15',
+      }),
+    )
+  })
+
+  it('destino "Futuro" recusa o mês corrente e, com um mês posterior, manda destination=future + monthFirst', async () => {
+    mockRoutes({ log: LOG_WITH_TASK })
+    mockPost.mockResolvedValueOnce({ data: task({ id: 't-1' }) })
+    await openMoveDialog()
+
+    fireEvent.click(within(destinationGroup()).getByRole('radio', { name: 'Futuro' }))
+    const monthInput = screen.getByLabelText('Mês')
+
+    // Mês corrente (julho/2026, derivado do `logDate` do servidor) é recusado.
+    fireEvent.change(monthInput, { target: { value: '2026-07' } })
+    expect(screen.getByRole('alert')).toHaveTextContent('Este Mês atende o mês corrente')
+    expect(screen.queryByRole('button', { name: /^Mover/ })).not.toBeInTheDocument()
+
+    fireEvent.change(monthInput, { target: { value: '2026-09' } })
+    fireEvent.click(screen.getByRole('button', { name: '15 de setembro, sem tarefas' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Mover para 15 set.' }))
+
+    await waitFor(() =>
+      expect(mockPost).toHaveBeenCalledWith('/api/bujo/tasks/t-1/migrate/', {
+        destination: 'future',
+        monthFirst: '2026-09-01',
+        scheduledDate: '2026-09-15',
+      }),
+    )
+  })
+
+  it('falha do POST mantém o seletor ABERTO, com o destino armado e o motivo visível', async () => {
+    mockRoutes({ log: LOG_WITH_TASK })
+    mockPost.mockRejectedValueOnce(new Error('boom'))
+    await openMoveDialog()
+
+    fireEvent.click(within(destinationGroup()).getByRole('radio', { name: 'Hoje' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Mover para hoje' }))
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent('Não foi possível mover a tarefa. Tente novamente.'),
+    )
+    expect(screen.getByRole('dialog', { name: 'Escolher destino' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Mover para hoje' })).toBeInTheDocument()
+  })
+
+  it('offline: todos os controles do seletor ficam desabilitados e nenhum POST sai', async () => {
+    mockRoutes({ log: LOG_WITH_TASK })
+    setOnline(false)
+    await openMoveDialog()
+
+    const radios = within(destinationGroup()).getAllByRole('radio')
+    expect(radios.every((radio) => (radio as HTMLButtonElement).disabled)).toBe(true)
+
+    fireEvent.click(radios[0]) // "Hoje" — o único confirmável de imediato
+    expect(screen.queryByRole('button', { name: 'Mover para hoje' })).not.toBeInTheDocument()
+    expect(mockPost).not.toHaveBeenCalled()
+  })
+
+  it('mutação EM CURSO desabilita a confirmação — o segundo clique não vira um 2º POST', async () => {
+    mockRoutes({ log: LOG_WITH_TASK })
+    // Promessa que nunca resolve: a mutação fica EM CURSO durante todo o teste,
+    // que é exatamente a janela em que o duplo clique geraria a escrita dupla.
+    mockPost.mockReturnValue(new Promise(() => {}))
+    await openMoveDialog()
+
+    fireEvent.click(within(destinationGroup()).getByRole('radio', { name: 'Hoje' }))
+    const confirmar = screen.getByRole('button', { name: 'Mover para hoje' })
+    fireEvent.click(confirmar)
+
+    await waitFor(() => expect(confirmar).toBeDisabled())
+    fireEvent.click(confirmar)
+    expect(mockPost).toHaveBeenCalledTimes(1)
+  })
+
+  it('semana finalized: o rodapé inteiro do detalhe some — não há "Mover tarefa" a clicar', async () => {
+    mockRoutes({
+      log: weeklyLog({
+        status: 'finalized',
+        closed: true,
+        days: [
+          { date: '2026-07-20', tasks: [task({ id: 't-1', title: 'Tarefa a mover' })] },
+          ...Array.from({ length: 6 }, (_, i) => ({ date: `2026-07-${21 + i}`, tasks: [] })),
+        ],
+      }),
+    })
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Tarefa a mover')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ver detalhes de Tarefa a mover' }))
+    await screen.findByRole('dialog', { name: 'Detalhe da tarefa' })
+    expect(screen.queryByRole('button', { name: 'Mover tarefa' })).not.toBeInTheDocument()
   })
 })
 

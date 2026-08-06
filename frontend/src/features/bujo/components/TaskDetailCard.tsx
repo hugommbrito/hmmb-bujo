@@ -313,7 +313,12 @@ export function TaskDetailCard({
             >
               Salvar
             </Button>
-            {!isSubtask && (
+            {/* CONDICIONADO a `onMove` (DW-27): sem handler o botão era um
+                clique morto silencioso (`onClick={undefined}`) em toda superfície
+                que renderizasse o card sem a prop. Um controle que não faz nada é
+                pior que controle nenhum — aqui ele deixa de existir por
+                construção, em qualquer chamador. */}
+            {!isSubtask && onMove && (
               <Button onClick={onMove} sx={{ color: 'var(--ds-ink)', border: '1px solid var(--ds-control-border)' }}>
                 Mover tarefa
               </Button>

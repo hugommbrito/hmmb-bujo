@@ -21,9 +21,13 @@
 //     ativamente o stepper — o histórico teria sua própria superfície mais
 //     rica em `archive/monthly/:monthFirst` (Story 14.10). Risco de mudança
 //     de uma linha se o Product Owner quiser essa restrição ativa aqui.
-//   ▶ `onMove` de `TaskDetailCard` fica INTOCADO (mesmo gap da 14.5 — mover
-//     entre dias pelo board, fora do ritual, não está wireado no Weekly
-//     Board também; não é regressão, é o mesmo escopo).
+//   ▶ `onMove` de `TaskDetailCard` está CABEADO desde DW-27 (o gap da 14.5/14.6
+//     foi fechado nos dois boards): o botão abre o `DestinationDialog` com os
+//     destinos nomeados desta superfície. A oferta do mês EM FOCO mapeia para
+//     `'future'` + `monthFirst` quando o foco é posterior ao mês corrente, e
+//     aparece INDISPONÍVEL com motivo quando é anterior — `POST /migrate/` não
+//     tem combinação que grave num mês já passado (mesmo racional de
+//     `monthWouldBeRejectedAsFuture()` em `MonthlyPlanningPage`).
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
@@ -31,9 +35,11 @@ import { Box, Button, useMediaQuery } from '@mui/material'
 import { Link as RouterLink } from 'react-router-dom'
 
 import {
+  DestinationDialog,
   invalidateRitualQueries,
   TaskDetailCard,
   useCreateMonthlyTaskMutation,
+  useMigrateTaskMutation,
   useMonthlyCycleActionMutation,
   useMonthlyCycleReadinessQuery,
   useMonthlyLogQuery,
@@ -41,7 +47,15 @@ import {
   useTodayLogQuery,
   useTransitionTaskMutation,
 } from '../../features/bujo'
-import type { CycleStatus, Task, TaskStatus } from '../../features/bujo'
+import type {
+  CycleStatus,
+  DestinationConfirmMeta,
+  DestinationOffer,
+  DestinationSelection,
+  MigrationDestination,
+  Task,
+  TaskStatus,
+} from '../../features/bujo'
 import { MonthlyCalendarGrid } from '../../features/bujo/components/monthly/MonthlyCalendarGrid'
 // Reuso deliberado (AD-21/"zero recriação"): `WeeklyTaskPanel` é uma
 // composição genérica (header + contagem + lista rolável + criação
@@ -50,8 +64,10 @@ import { MonthlyCalendarGrid } from '../../features/bujo/components/monthly/Mont
 import { WeeklyTaskPanel } from '../../features/bujo/components/weekly/WeeklyTaskPanel'
 import { PlannerSkeleton } from '../../features/bujo/components/PlannerSkeleton'
 import { capitalize, MONTH_NAMES_PT } from '../../features/bujo/monthNames'
+import { navIconFor } from '../../app/layout/shell/navIcons'
 import { mediaQueries, typography } from '../../shared/design/tokens'
-import { formatDayLabel, monthGridWeeks, parseLocalDate } from '../../shared/date'
+import { formatDayLabel, mondayIsoOf, monthGridWeeks, parseLocalDate } from '../../shared/date'
+import { useOnlineStatus } from '../../shared/hooks/useOnlineStatus'
 
 type StatusFilterKey = 'pending' | 'started' | 'completed' | 'migrated-postponed' | 'cancelled'
 
@@ -60,6 +76,28 @@ const CYCLE_STATUS_LABEL: Record<Exclude<CycleStatus, null>, string> = {
   active: 'Em andamento',
   finalized: 'Finalizada',
 }
+
+// ── "Mover tarefa" (DW-27) ────────────────────────────────────────────────────
+/** `POST /migrate/` não tem combinação que grave num mês ANTERIOR ao corrente:
+ * `'month'` resolve sempre para o mês corrente no servidor e `'future'` exige
+ * `monthFirst` estritamente posterior. Mesmo texto de `STALE_TARGET_MIGRATE_ERROR`
+ * em `MonthlyPlanningPage`, encurtado para caber no nome acessível da oferta. */
+const PAST_MONTH_UNAVAILABLE_REASON = 'este mês já é anterior ao mês atual'
+
+/** `'future'` recusa o mês corrente ("Use 'month' para o mês corrente."). */
+const FUTURE_MONTH_REJECTED_REASON = 'Este Mês atende o mês corrente — escolha essa opção.'
+
+const MOVE_ERROR = 'Não foi possível mover a tarefa. Tente novamente.'
+
+/** Ids das ofertas — o chamador é quem traduz `meta.offerId` no `destination`
+ * do POST (o diálogo é agnóstico de domínio). */
+const MOVE_OFFER = {
+  today: 'today',
+  currentWeek: 'week',
+  currentMonth: 'month',
+  boardMonth: 'board-month',
+  future: 'future',
+} as const
 
 function flattenTasks(tasks: Task[]): Task[] {
   return tasks.flatMap((task) => [task, ...flattenTasks(task.subtasks ?? [])])
@@ -113,6 +151,8 @@ export function MonthlyBoardPage() {
   const [hideNotOpen, setHideNotOpen] = useState(false)
   const [openTaskId, setOpenTaskId] = useState<string | null>(null)
   const [compactSelection, setCompactSelection] = useState<string | 'undated' | null>(null)
+  const [movingTaskId, setMovingTaskId] = useState<string | null>(null)
+  const [moveError, setMoveError] = useState<string | null>(null)
 
   const monthlyLog = useMonthlyLogQuery(explicitMonthFirst)
   // Dedup automático com a query acima quando `explicitMonthFirst` é `undefined`.
@@ -123,6 +163,8 @@ export function MonthlyBoardPage() {
   const transitionTask = useTransitionTaskMutation()
   const reorderTask = useReorderTaskMutation()
   const cycleAction = useMonthlyCycleActionMutation()
+  const migrateTask = useMigrateTaskMutation()
+  const isOnline = useOnlineStatus()
 
   const isWide = useMediaQuery(mediaQueries.wideUp)
   const isDesktopUp = useMediaQuery(mediaQueries.desktop)
@@ -171,6 +213,151 @@ export function MonthlyBoardPage() {
 
   function handleReorder(taskId: string, targetTaskId: string, position: 'before' | 'after') {
     reorderTask.mutate({ taskId, targetTaskId, position }, { onSuccess: () => invalidateRitualQueries(queryClient) })
+  }
+
+  // ── "Mover tarefa" (DW-27) ─────────────────────────────────────────────────
+  // A semana corrente sai de `mondayIsoOf(todayIso)` (espelho exato de
+  // `core.calendar.week_start_of`), não de `new Date()` — "hoje" continua vindo
+  // do servidor (Convenção #8), como já faz `BrainDumpDestinationPicker`.
+  const currentMonthFirst = currentMonthLog.data?.monthFirst ?? null
+  const currentWeekStart = todayIso ? mondayIsoOf(todayIso) : null
+  const boardMonthIsPast = Boolean(currentMonthFirst && monthFirst < currentMonthFirst)
+
+  const moveOffers: DestinationOffer[] = [
+    {
+      id: MOVE_OFFER.today,
+      label: 'Hoje',
+      icon: navIconFor('today'),
+      day: { kind: 'none' },
+    },
+    ...(currentWeekStart
+      ? [
+          {
+            id: MOVE_OFFER.currentWeek,
+            label: 'Esta Semana',
+            icon: navIconFor('planner-week'),
+            day: { kind: 'week' as const, weekStart: currentWeekStart },
+            undated: {},
+          },
+        ]
+      : []),
+    ...(currentMonthFirst
+      ? [
+          {
+            id: MOVE_OFFER.currentMonth,
+            label: 'Este Mês',
+            icon: navIconFor('planner-month'),
+            day: { kind: 'month' as const, monthFirst: currentMonthFirst },
+            undated: {},
+          },
+        ]
+      : []),
+    // O mês NAVEGADO só é destino distinto quando não é o corrente. Posterior ⇒
+    // `'future'` + `monthFirst`; anterior ⇒ visível e INDISPONÍVEL com o motivo,
+    // nunca um 400 cru do servidor.
+    ...(currentMonthFirst && monthFirst !== currentMonthFirst
+      ? [
+          {
+            id: MOVE_OFFER.boardMonth,
+            label: formatMonthTitle(monthFirst),
+            icon: navIconFor('planner-month'),
+            day: { kind: 'month' as const, monthFirst },
+            undated: {},
+            unavailableReason: boardMonthIsPast ? PAST_MONTH_UNAVAILABLE_REASON : null,
+          },
+        ]
+      : []),
+    ...(currentMonthFirst
+      ? [
+          {
+            id: MOVE_OFFER.future,
+            label: 'Futuro',
+            icon: navIconFor('planner-future'),
+            day: {
+              kind: 'month-choice' as const,
+              rejectUpToMonthFirst: currentMonthFirst,
+              rejectedMonthReason: FUTURE_MONTH_REJECTED_REASON,
+            },
+            undated: {},
+          },
+        ]
+      : []),
+  ]
+
+  function openMove(taskId: string) {
+    setMovingTaskId(taskId)
+    setMoveError(null)
+  }
+
+  function closeMove() {
+    setMovingTaskId(null)
+    setMoveError(null)
+  }
+
+  /** Rótulo NOMEADO do ato — nunca um "Confirmar" genérico. */
+  function confirmLabelForMove({ offerId, scheduledDate, monthFirst: selectionMonth }: DestinationSelection): string {
+    if (offerId === MOVE_OFFER.today) return 'Mover para hoje'
+    if (!scheduledDate) {
+      if (offerId === MOVE_OFFER.currentWeek) return 'Mover sem dia definido (esta semana)'
+      if (offerId === MOVE_OFFER.currentMonth) return 'Mover sem dia definido (este mês)'
+      return `Mover sem dia definido (${formatMonthTitle(selectionMonth).toLowerCase()})`
+    }
+    if (offerId === MOVE_OFFER.currentWeek) {
+      return `Mover para ${formatDayLabel(scheduledDate, 'weekday').toLowerCase()}, ${formatDayLabel(scheduledDate, 'day-month')}`
+    }
+    return `Mover para ${formatDayLabel(scheduledDate, 'day-month')}`
+  }
+
+  /** `meta.offerId` → contrato de `POST /migrate/`. `'month'` sempre grava no
+   * mês CORRENTE (o servidor calcula `month_first`), então o mês NAVEGADO só é
+   * alcançável por `'future'` — e apenas quando é posterior ao corrente. */
+  function migrateFieldsFor(
+    offerId: string,
+    scheduledDate: string | null,
+    selectionMonthFirst: string,
+  ): { destination: MigrationDestination; monthFirst?: string; scheduledDate?: string } | null {
+    const day = scheduledDate ?? undefined
+    if (offerId === MOVE_OFFER.today) return { destination: 'today' }
+    if (offerId === MOVE_OFFER.currentWeek) return { destination: 'week', scheduledDate: day }
+    if (offerId === MOVE_OFFER.currentMonth) return { destination: 'month', scheduledDate: day }
+    if (offerId === MOVE_OFFER.boardMonth) {
+      if (boardMonthIsPast) return null
+      return { destination: 'future', monthFirst, scheduledDate: day }
+    }
+    if (offerId === MOVE_OFFER.future) {
+      return { destination: 'future', monthFirst: selectionMonthFirst, scheduledDate: day }
+    }
+    return null
+  }
+
+  function handleConfirmMove(scheduledDate: string | null, meta: DestinationConfirmMeta) {
+    if (!movingTaskId) return
+    const fields = migrateFieldsFor(meta.offerId, scheduledDate, meta.monthFirst)
+    // Oferta sem tradução para o contrato de `/migrate/` (o mês em foco já
+    // passado é exatamente esse caso): NUNCA um retorno silencioso — o motivo
+    // aparece no diálogo, que é a razão de esta passada existir.
+    if (!fields) {
+      setMoveError(MOVE_ERROR)
+      return
+    }
+    setMoveError(null)
+    migrateTask.mutate(
+      { taskId: movingTaskId, ...fields },
+      {
+        // Sucesso NÃO mostra toast: a invalidação por prefixo re-deriva o board
+        // de origem e o de destino sozinha. `invalidateRitualQueries` cobre o
+        // que `useMigrateTaskMutation` NÃO invalida — prontidão de ciclo e
+        // fontes dos rituais —, como já fazem `handleTransition`/`handleReorder`:
+        // mover a ÚLTIMA pendente para fora do mês muda o banner de
+        // planejamento, e sem isto ele ficaria desatualizado.
+        onSuccess: () => {
+          invalidateRitualQueries(queryClient)
+          closeMove()
+        },
+        // Falha PRESERVA o seletor aberto, com o destino armado e o motivo.
+        onError: () => setMoveError(MOVE_ERROR),
+      },
+    )
   }
 
   function handleOpenPlanning() {
@@ -418,7 +605,30 @@ export function MonthlyBoardPage() {
           task={openTask}
           isSubtask={isOpenTaskSubtask}
           readonly={isReadonly}
+          // Fecha o detalhe e abre o seletor (molde de `FutureBoardPage`): dois
+          // modais empilhados disputariam foco e backdrop.
+          onMove={() => {
+            const taskId = openTask.id
+            setOpenTaskId(null)
+            openMove(taskId)
+          }}
           onClose={() => setOpenTaskId(null)}
+        />
+      )}
+
+      {movingTaskId && (
+        <DestinationDialog
+          title="Escolher destino"
+          description={allTasksById.get(movingTaskId)?.title}
+          offer={moveOffers}
+          compact={faixa === 'compact'}
+          // Guard de escrita dupla: offline E mutação em curso — sem a segunda
+          // metade, dois cliques rápidos viram dois POST da MESMA tarefa.
+          disabled={!isOnline || migrateTask.isPending}
+          error={moveError}
+          confirmLabelFor={confirmLabelForMove}
+          onConfirm={handleConfirmMove}
+          onClose={closeMove}
         />
       )}
     </Box>
