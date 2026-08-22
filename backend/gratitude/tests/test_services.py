@@ -9,6 +9,7 @@ from gratitude.services import (
     create_gratitude_entry,
     get_gratitude_day,
     get_gratitude_month,
+    get_latest_gratitude_entry,
 )
 
 _DAY = date(2026, 1, 15)
@@ -153,3 +154,44 @@ def test_get_gratitude_month_is_tenant_scoped(user, other_user):
     with tenant_context(user):
         month = get_gratitude_month(user=user, month=_MONTH)
     assert month["days"] == []
+
+
+# --- 12.6: última entrada (get_latest_gratitude_entry) -------------------------
+def test_get_latest_gratitude_entry_returns_most_recent_by_date(user):
+    """12.6: retorna a entrada de maior `date` (fonte do campo genérico lastJournalEntry)."""
+    with tenant_context(user):
+        create_gratitude_entry(user=user, date=date(2026, 1, 10), text="antiga")
+        create_gratitude_entry(user=user, date=date(2026, 1, 20), text="recente")
+        latest = get_latest_gratitude_entry(user=user)
+    assert latest.text == "recente"
+
+
+def test_get_latest_gratitude_entry_breaks_tie_by_created_at(user):
+    """12.6: mesma `date` → desempata pelo `created_at` mais recente (order_by desc)."""
+    with tenant_context(user):
+        e1 = create_gratitude_entry(user=user, date=_DAY, text="mais-cedo")
+        e2 = create_gratitude_entry(user=user, date=_DAY, text="mais-tarde")
+        GratitudeEntry.objects.filter(id=e1.id).update(
+            created_at=datetime(2026, 1, 15, 8, 0, tzinfo=UTC)
+        )
+        GratitudeEntry.objects.filter(id=e2.id).update(
+            created_at=datetime(2026, 1, 15, 9, 0, tzinfo=UTC)
+        )
+        latest = get_latest_gratitude_entry(user=user)
+    assert latest.text == "mais-tarde"  # 9h vence 8h na mesma data
+
+
+def test_get_latest_gratitude_entry_none_when_empty(user):
+    """12.6: sem nenhuma entrada → None (a view renderiza lastJournalEntry: null)."""
+    with tenant_context(user):
+        assert get_latest_gratitude_entry(user=user) is None
+
+
+def test_get_latest_gratitude_entry_is_tenant_scoped(user, other_user):
+    """12.6: auto-escopado — a última do other_user (mais recente globalmente) nunca vaza."""
+    with tenant_context(other_user):
+        create_gratitude_entry(user=other_user, date=date(2026, 12, 31), text="alheia recente")
+    with tenant_context(user):
+        create_gratitude_entry(user=user, date=date(2026, 1, 1), text="minha antiga")
+        latest = get_latest_gratitude_entry(user=user)
+    assert latest.text == "minha antiga"

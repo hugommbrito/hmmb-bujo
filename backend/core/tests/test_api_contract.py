@@ -94,6 +94,99 @@ def test_health_excluido_do_schema():
     )
 
 
+@pytest.mark.django_db
+def test_swagger_ui_endpoint_retorna_200():
+    """GET /api/schema/swagger-ui/ serve a UI anônima — baseline que não existia (DW-34)."""
+    client = APIClient()
+    response = client.get("/api/schema/swagger-ui/")
+    assert response.status_code == 200
+
+
+@pytest.mark.django_db
+def test_schema_com_authorization_header_invalido_retorna_200():
+    """DW-34: espelho de test_health_com_authorization_header_invalido_retorna_200 (DW-24).
+
+    Antes de `SERVE_AUTHENTICATION: []`, `SpectacularAPIView` herdava
+    DEFAULT_AUTHENTICATION_CLASSES (`TenantAwareJWTAuthentication`) e um bearer
+    malformado era rejeitado com 401 antes de a view rodar — apesar de a rota estar
+    registrada sem gate de DEBUG e responder 200 sem header nenhum. Nenhum dos 3
+    testes de schema existentes mandava `Authorization`, então a falha era invisível.
+    """
+    client = APIClient()
+    response = client.get(
+        "/api/schema/", HTTP_ACCEPT="application/json", HTTP_AUTHORIZATION="Bearer garbage"
+    )
+
+    assert response.status_code == 200
+    data = json.loads(response.content)
+    assert "openapi" in data
+    # Não basta o 200 e o envelope: `SERVE_AUTHENTICATION` interage com
+    # `SERVE_PUBLIC`. Se `SERVE_PUBLIC` virasse False (movimento natural de
+    # hardening), o drf-spectacular geraria o schema para um usuário
+    # permanentemente anônimo e poderia emitir um documento quase vazio — com
+    # `openapi` presente e este teste verde. Pinar uma rota conhecida fecha isso.
+    assert "/api/bujo/tasks/" in data.get("paths", {}), (
+        "o schema veio sem /api/bujo/tasks/ — documento truncado; verificar "
+        "SERVE_PUBLIC/SERVE_AUTHENTICATION em SPECTACULAR_SETTINGS"
+    )
+
+
+@pytest.mark.django_db
+def test_swagger_ui_com_authorization_header_invalido_retorna_200():
+    """DW-34: a mesma chave conserta a segunda rota de schema (AUTHENTICATION_CLASSES
+    é compartilhado por todas as views `serve` do drf-spectacular)."""
+    client = APIClient()
+    response = client.get("/api/schema/swagger-ui/", HTTP_AUTHORIZATION="Bearer garbage")
+
+    assert response.status_code == 200
+    # O status sozinho não distingue "UI servida" de "200 com página quebrada", e o
+    # ledger da DW-34 registra uma alegação (não reproduzida) de 500 no render do
+    # template do swagger-ui. Afirmar o corpo é o que pegaria isso.
+    body = response.content.decode()
+    assert "<title>hmmb-bujo API</title>" in body, (
+        f"swagger-ui não renderizou o título dos SPECTACULAR_SETTINGS: {body[:200]!r}"
+    )
+    assert 'id="swagger-ui"' in body
+    assert "/api/schema/" in body
+
+
+def test_views_de_schema_resolvem_authentication_classes_vazio():
+    """Prova mecânica do conserto da DW-34, no atributo que de fato o carrega.
+
+    `drf_spectacular/views.py` resolve `AUTHENTICATION_CLASSES` no IMPORT do módulo
+    (`if spectacular_settings.SERVE_AUTHENTICATION is not None`), antes de qualquer
+    teste rodar — por isso o conserto mora em settings/base.py e não pode ser
+    exercitado por `override_settings`. Os 3 testes acima provam o comportamento via
+    HTTP; este pina o mecanismo, e falharia também se a chave virasse `None` ou
+    sumisse (aí o atributo voltaria a ser o TenantAwareJWTAuthentication global).
+    """
+    from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
+
+    # Afirmar "presente e vazio", não `== []`: o teste na lib é `is not None`, então
+    # `()` funciona idêntico e não deve ser reprovado aqui. O que importa é que a
+    # chave exista, não seja None e não carregue autenticador nenhum.
+    assert "SERVE_AUTHENTICATION" in settings.SPECTACULAR_SETTINGS, (
+        "SPECTACULAR_SETTINGS não declara SERVE_AUTHENTICATION — sem a chave a lib cai "
+        "em DEFAULT_AUTHENTICATION_CLASSES e as views de schema voltam a recusar um "
+        "Authorization inválido"
+    )
+    serve_authentication = settings.SPECTACULAR_SETTINGS["SERVE_AUTHENTICATION"]
+    assert serve_authentication is not None and len(serve_authentication) == 0, (
+        f"SERVE_AUTHENTICATION deve ser uma sequência vazia, é {serve_authentication!r}; "
+        "`None` faz a lib cair em DEFAULT_AUTHENTICATION_CLASSES (o teste é `is not None`)"
+    )
+    assert list(SpectacularAPIView.authentication_classes) == [], (
+        "SpectacularAPIView herdou autenticadores: "
+        f"{SpectacularAPIView.authentication_classes} — verificar "
+        "SPECTACULAR_SETTINGS['SERVE_AUTHENTICATION'] em settings/base.py"
+    )
+    assert list(SpectacularSwaggerView.authentication_classes) == [], (
+        "SpectacularSwaggerView herdou autenticadores: "
+        f"{SpectacularSwaggerView.authentication_classes} — verificar "
+        "SPECTACULAR_SETTINGS['SERVE_AUTHENTICATION'] em settings/base.py"
+    )
+
+
 def test_camelcase_parser_converte_para_snake_case():
     """CamelCaseJSONParser converte camelCase no body de request para snake_case (AC2)."""
     factory = APIRequestFactory()

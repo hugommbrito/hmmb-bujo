@@ -13,42 +13,94 @@ from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from bujo.models import Log, MonthlyLog, RecurringTaskTemplate, Task, WeeklyLog
+from bujo.models import MonthlyLog, RecurringTaskTemplate, Task, WeeklyLog
 from bujo.serializers import (
+    MIGRATED_TO_TASK_SELECT_RELATED,
     ArchiveEntrySerializer,
+    BlockingTaskSourceSerializer,
     CatchUpQueueSerializer,
+    DensityResponseSerializer,
+    FutureLogHorizonSerializer,
     FutureLogMonthGroupSerializer,
     LogSerializer,
     MigrationQueueSerializer,
+    MonthlyCycleActionSerializer,
+    MonthlyCycleReadinessSerializer,
+    MonthlyCycleSerializer,
+    MonthlyLogQuerySerializer,
     MonthlyLogSerializer,
+    MonthlyRecurringSourceSerializer,
     MonthlyReviewQueueSerializer,
     MonthlyTaskCreateSerializer,
+    MonthSourceQuerySerializer,
+    PendingDailiesSourceSerializer,
     RecurringTaskTemplateCreateSerializer,
     RecurringTaskTemplatePlaceSerializer,
     RecurringTaskTemplateSerializer,
     RecurringTaskTemplateUpdateSerializer,
+    RitualDecisionCreateSerializer,
+    RitualDecisionSerializer,
     TaskCreateSerializer,
     TaskDensityQuerySerializer,
     TaskDensityResponseSerializer,
     TaskMigrateSerializer,
     TaskReorderSerializer,
     TaskSerializer,
+    TaskSourceSerializer,
     TaskUpdateSerializer,
+    UnifiedMigrationQueueSerializer,
+    WeeklyCycleActionSerializer,
+    WeeklyCycleReadinessSerializer,
+    WeeklyCycleSerializer,
+    WeeklyLogQuerySerializer,
     WeeklyLogSerializer,
+    WeeklyRecurringSourceSerializer,
     WeeklyReviewQueueSerializer,
     WeeklyTaskCreateSerializer,
+    WeekSourceQuerySerializer,
 )
-from bujo.services.archive import is_container_closed, list_closed_cycles
+from bujo.services.archive import is_cycle_closed, list_closed_cycles
+from bujo.services.cycles import (
+    cancel_weekly_planning_target,
+    complete_monthly_planning,
+    complete_weekly_planning,
+    finalize_monthly,
+    finalize_weekly,
+    monthly_cycle_readiness,
+    open_monthly_planning_target,
+    open_weekly_planning_target,
+    start_monthly,
+    start_weekly,
+    weekly_cycle_readiness,
+)
+from bujo.services.density import compute_month_density, compute_week_density
+from bujo.services.future_log import future_log_horizon
 from bujo.services.logs import (
     get_or_create_daily_log,
     get_or_create_monthly_log,
     get_or_create_weekly_log,
 )
-from bujo.services.migration import migrate_task
-from bujo.services.recurring import create_template, place_template, update_template
+from bujo.services.migration import migrate_task, unified_migration_queue
+from bujo.services.recurring import (
+    create_template,
+    live_templates,
+    place_template,
+    soft_delete_template,
+    update_template,
+)
+from bujo.services.rituals import (
+    list_future_log_items,
+    list_monthly_recurring_candidates,
+    list_monthly_tasks_in_week,
+    list_pending_daily_groups,
+    list_previous_monthly_pendings,
+    list_previous_weekly_pendings,
+    list_weekly_recurring_candidates,
+    upsert_ritual_decision,
+)
 from bujo.services.state_machine import transition_task
 from bujo.services.tasks import create_task, delete_task, reorder_task, update_task
-from core.calendar import today_for, week_start_of
+from core.calendar import month_turn_week, today_for, week_start_of
 
 
 class TodayLogView(APIView):
@@ -65,7 +117,7 @@ class TodayLogView(APIView):
         else:
             log_date = today_for(request.user)
         log = get_or_create_daily_log(user=request.user, log_date=log_date)
-        return Response(LogSerializer(log).data)
+        return Response(LogSerializer(log, context={"request": request}).data)
 
 
 class TaskCreateView(APIView):
@@ -176,7 +228,9 @@ class TaskReorderView(APIView):
 class RecurringTaskTemplateListView(APIView):
     @extend_schema(responses=RecurringTaskTemplateSerializer(many=True))
     def get(self, request):
-        templates = RecurringTaskTemplate.objects.all().order_by("recurrence_text")
+        # `live_templates`: o excluído (soft delete, M09) some da biblioteca em
+        # TODA combinação de query param — os três filtros encadeiam depois.
+        templates = live_templates().order_by("recurrence_text")
         active_param = request.query_params.get("active")
         if active_param is not None:
             templates = templates.filter(active=active_param.lower() == "true")
@@ -207,6 +261,12 @@ class RecurringTaskTemplateListView(APIView):
 
 
 class RecurringTaskTemplateDetailView(APIView):
+    # `DELETE` aqui é exclusão LÓGICA (M09/UX-DR24): `soft_delete_template`
+    # carimba `deleted_at` e a linha permanece no banco, preservando a linhagem
+    # das instâncias já alocadas. Nada é apagado, em nenhum caminho desta classe.
+    # Comentário e NÃO docstring de propósito: o `drf-spectacular` promoveria o
+    # docstring da classe a `description` de TODAS as operações, e o `PATCH`
+    # passaria a carregar no contrato uma explicação sobre o `DELETE`.
     @extend_schema(
         request=RecurringTaskTemplateUpdateSerializer, responses=RecurringTaskTemplateSerializer
     )
@@ -220,6 +280,17 @@ class RecurringTaskTemplateDetailView(APIView):
         except RecurringTaskTemplate.DoesNotExist:
             raise NotFound() from None
         return Response(RecurringTaskTemplateSerializer(template).data)
+
+    @extend_schema(responses={204: None})
+    def delete(self, request, pk):
+        try:
+            soft_delete_template(user=request.user, template_id=pk)
+        except RecurringTaskTemplate.DoesNotExist:
+            raise NotFound() from None
+        # 204 sem corpo: devolver o template serializado seria devolver um objeto
+        # que nenhuma listagem volta a mostrar. Idempotente — a segunda chamada
+        # também responde 204, com o carimbo original preservado.
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class RecurringTaskTemplatePlaceView(APIView):
@@ -242,7 +313,11 @@ class RecurringTaskTemplatePlaceView(APIView):
 
 
 class WeeklyLogView(APIView):
-    @extend_schema(responses=WeeklyLogSerializer)
+    # `week_start` era omitido do OpenAPI (`query?: never` no tipo gerado) —
+    # `WeeklyLogQuerySerializer` só DECLARA o parâmetro (opcional, normalizado
+    # em silêncio); a validação/normalização real permanece manual abaixo, sem
+    # mudança de comportamento (Story 14.5, AC4).
+    @extend_schema(parameters=[WeeklyLogQuerySerializer], responses=WeeklyLogSerializer)
     def get(self, request):
         week_start_param = request.query_params.get("week_start")
         if week_start_param:
@@ -255,23 +330,31 @@ class WeeklyLogView(APIView):
         else:
             week_start = week_start_of(today_for(request.user))
         weekly_log = get_or_create_weekly_log(user=request.user, week_start=week_start)
+        # `select_related` (Story 14.10 review): evita N+1 em `migration_target`
+        # do `TaskSerializer` para toda tarefa `migrated`/`postponed` da semana.
+        base_tasks = weekly_log.tasks.filter(parent_task__isnull=True).select_related(
+            *MIGRATED_TO_TASK_SELECT_RELATED
+        )
 
         days = [
             {
                 "date": day,
-                "tasks": weekly_log.tasks.filter(scheduled_date=day, parent_task__isnull=True),
+                "tasks": base_tasks.filter(scheduled_date=day),
             }
             for day in (week_start + timedelta(days=offset) for offset in range(7))
         ]
-        unscheduled = weekly_log.tasks.filter(
-            scheduled_date__isnull=True, parent_task__isnull=True
-        )
+        unscheduled = base_tasks.filter(scheduled_date__isnull=True)
 
         data = {
             "week_start": weekly_log.week_start,
             "days": days,
             "unscheduled": unscheduled,
-            "closed": is_container_closed(weekly_log),
+            "closed": is_cycle_closed(weekly_log),
+            # Aditivos (AC8) lidos DIRETO do log: nenhum serviço de ciclo é
+            # chamado aqui e nenhum estado é atribuído — navegar não pode criar
+            # ciclo operacional (AC4).
+            "status": weekly_log.status,
+            "planning_completed_at": weekly_log.planning_completed_at,
         }
         return Response(WeeklyLogSerializer(data).data)
 
@@ -294,7 +377,10 @@ class WeeklyLogView(APIView):
 
 
 class MonthlyLogView(APIView):
-    @extend_schema(responses=MonthlyLogSerializer)
+    # `month_first` era omitido do OpenAPI — `MonthlyLogQuerySerializer` só
+    # DECLARA o parâmetro (opcional, normalizado em silêncio); a validação real
+    # permanece manual abaixo, sem mudança de comportamento (Story 14.6, AC4).
+    @extend_schema(parameters=[MonthlyLogQuerySerializer], responses=MonthlyLogSerializer)
     def get(self, request):
         month_first_param = request.query_params.get("month_first")
         if month_first_param:
@@ -307,12 +393,21 @@ class MonthlyLogView(APIView):
         else:
             month_first = today_for(request.user).replace(day=1)
         monthly_log = get_or_create_monthly_log(user=request.user, month_first=month_first)
-        tasks = monthly_log.tasks.filter(parent_task__isnull=True)
+        # `select_related` (Story 14.10 review): evita N+1 em `migration_target`
+        # do `TaskSerializer` para toda tarefa `migrated`/`postponed` do mês.
+        tasks = monthly_log.tasks.filter(parent_task__isnull=True).select_related(
+            *MIGRATED_TO_TASK_SELECT_RELATED
+        )
 
         data = {
             "month_first": monthly_log.month_first,
             "tasks": tasks,
-            "closed": is_container_closed(monthly_log),
+            "closed": is_cycle_closed(monthly_log),
+            # Aditivos (AC8), lidos direto do log — sem atribuir estado (AC4).
+            # Consultar um monthly futuro (armazenamento do Future Log) segue
+            # devolvendo `status: null`.
+            "status": monthly_log.status,
+            "planning_completed_at": monthly_log.planning_completed_at,
         }
         return Response(MonthlyLogSerializer(data).data)
 
@@ -336,6 +431,100 @@ class MonthlyLogView(APIView):
         return Response(TaskSerializer(task).data, status=status.HTTP_201_CREATED)
 
 
+# Despacho `action` → serviço, no nível do MÓDULO (não dentro da view): a view
+# fica fina de verdade — serializer valida a forma, o dict escolhe o serviço, o
+# serviço decide tudo (gates, matriz, idempotência). Zero `atomic` e zero regra
+# de transição na camada HTTP (§6.2/§6.6).
+WEEKLY_CYCLE_SERVICES = {
+    "open_planning_target": open_weekly_planning_target,
+    "complete_planning": complete_weekly_planning,
+    "start": start_weekly,
+    "finalize": finalize_weekly,
+    "cancel_planning_target": cancel_weekly_planning_target,
+}
+MONTHLY_CYCLE_SERVICES = {
+    "open_planning_target": open_monthly_planning_target,
+    "complete_planning": complete_monthly_planning,
+    "start": start_monthly,
+    "finalize": finalize_monthly,
+}
+
+
+class WeeklyCycleView(APIView):
+    """Ações do ciclo semanal (Story 14.1, AC8) — espelha `tasks/<pk>/transition/`.
+
+    Erros de gate e de matriz sobem como `InvalidTransition`/`CycleTargetConflict`
+    (ambos `DomainError`) e viram 409 pelo handler central; nada é tratado aqui.
+
+    `get` é NOVO (Story 14.5, AC4) — mesma rota, método novo, sem rota nova:
+    leitura pura e agregada de prontidão do ciclo (qual semana está `active`/
+    `planning`, quais gates de `start`/`finalize` faltam). Zero regra de
+    domínio na view: `weekly_cycle_readiness` decide tudo.
+    """
+
+    @extend_schema(responses=WeeklyCycleReadinessSerializer)
+    def get(self, request):
+        readiness = weekly_cycle_readiness(user=request.user)
+        return Response(WeeklyCycleReadinessSerializer(readiness).data)
+
+    @extend_schema(request=WeeklyCycleActionSerializer, responses=WeeklyCycleSerializer)
+    def post(self, request):
+        body = WeeklyCycleActionSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        validated = body.validated_data
+        week_start = validated.get("week_start") or week_start_of(today_for(request.user))
+
+        log = WEEKLY_CYCLE_SERVICES[validated["action"]](
+            user=request.user, week_start=week_start
+        )
+        data = {
+            "week_start": log.week_start,
+            "status": log.status,
+            "planning_completed_at": log.planning_completed_at,
+        }
+        return Response(WeeklyCycleSerializer(data).data)
+
+
+class MonthlyCycleView(APIView):
+    """Ações do ciclo mensal (Story 14.1, AC8).
+
+    `open_planning_target` não recebe alvo: ele é determinístico (mês seguinte ao
+    `active`), sem escolha nem retargeting (M07).
+
+    `get` é NOVO (Story 14.6, AC4) — mesma rota, método novo, sem rota nova:
+    espelha byte-a-byte `WeeklyCycleView.get` (Story 14.5), trocando
+    `weekly_cycle_readiness` por `monthly_cycle_readiness`.
+    """
+
+    @extend_schema(responses=MonthlyCycleReadinessSerializer)
+    def get(self, request):
+        readiness = monthly_cycle_readiness(user=request.user)
+        return Response(MonthlyCycleReadinessSerializer(readiness).data)
+
+    @extend_schema(request=MonthlyCycleActionSerializer, responses=MonthlyCycleSerializer)
+    def post(self, request):
+        body = MonthlyCycleActionSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        validated = body.validated_data
+        action = validated["action"]
+
+        service = MONTHLY_CYCLE_SERVICES[action]
+        if action == "open_planning_target":
+            log = service(user=request.user)
+        else:
+            log = service(user=request.user, month_first=validated["month_first"])
+
+        window_start, window_end = month_turn_week(log.month_first)
+        data = {
+            "month_first": log.month_first,
+            "status": log.status,
+            "planning_completed_at": log.planning_completed_at,
+            "regular_window_start": window_start,
+            "regular_window_end": window_end,
+        }
+        return Response(MonthlyCycleSerializer(data).data)
+
+
 class FutureLogView(APIView):
     @extend_schema(responses=FutureLogMonthGroupSerializer(many=True))
     def get(self, request):
@@ -352,11 +541,27 @@ class FutureLogView(APIView):
             {
                 "year": monthly_log.month_first.year,
                 "month": monthly_log.month_first.month,
-                "tasks": monthly_log.tasks.filter(parent_task__isnull=True),
+                "tasks": monthly_log.tasks.filter(parent_task__isnull=True).select_related(
+                    *MIGRATED_TO_TASK_SELECT_RELATED
+                ),
             }
             for monthly_log in monthly_logs
         ]
         return Response(FutureLogMonthGroupSerializer(groups, many=True).data)
+
+
+class FutureLogHorizonView(APIView):
+    """Trilho do Future Log do sistema novo (Story 14.7, AC2 — M08).
+
+    View NOVA ao lado de ``FutureLogView`` (que fica intocada, contrato idêntico):
+    o legado devolve só meses com item, esta devolve o horizonte fixo de 8 meses
+    **inclusive os vazios** + os meses distantes que têm item. Fina como todas as
+    outras — chama o serviço e serializa; nenhuma regra vive aqui.
+    """
+
+    @extend_schema(responses=FutureLogHorizonSerializer)
+    def get(self, request):
+        return Response(FutureLogHorizonSerializer(future_log_horizon(user=request.user)).data)
 
 
 class TaskDensityView(APIView):
@@ -419,18 +624,78 @@ class TaskDensityView(APIView):
         return Response(TaskDensityResponseSerializer({"density": density}).data)
 
 
+# --- filas de migração (Story 14.3, AD-28 itens 7-8) ---------------------------
+#
+# FONTE DE VERDADE: `UnifiedMigrationQueueView` (`/migration/unified-queue/`),
+# projeção direta de `services/migration.unified_migration_queue`.
+#
+# ALIASES: `MigrationQueueView` (`/migration/queue/`) e `CatchUpQueueView`
+# (`/catch-up/queue/`) — mesmas rotas, mesmos serializers, ZERO lógica própria de
+# query. Cada uma chama o serviço unificado UMA vez e só reagrupa em Python o que
+# recebeu. Existem para manter o Daily legado plenamente utilizável (premissa
+# blindada até o Épico 17); a remoção formal (rotas + serializers + consumidores)
+# é do Épico 18. Testes de caracterização congelam os dois contratos, e um guard
+# por `inspect.getsource` falha se alguém "otimizar" um alias reintroduzindo
+# query própria.
+
+
+def _flatten_queue_section(section, *, only_period=None, exclude_period=None):
+    """Achata os grupos de uma seção da fila unificada numa lista de tarefas.
+
+    Um helper para os DOIS aliases: eles pedem a mesma operação com parâmetros
+    diferentes (`/migration/queue/` quer SÓ o grupo de ontem; `/catch-up/queue/`
+    quer TUDO MENOS o grupo de ontem). Escrever a projeção duas vezes seria a
+    dívida de gêmeos do Épico 13 outra vez — o que diverge é o parâmetro, e é só
+    isso que fica visível no ponto de uso.
+    """
+    return [
+        task
+        for group in section["groups"]
+        if (only_period is None or group["period_start"] == only_period)
+        and (exclude_period is None or group["period_start"] != exclude_period)
+        for task in group["items"]
+    ]
+
+
+def _queue_section(queue, source_id):
+    return next(section for section in queue["sections"] if section["source_id"] == source_id)
+
+
+class UnifiedMigrationQueueView(APIView):
+    """Fila única de pendências dos três níveis, mês → semana → dia.
+
+    View fina e sem query param: a fila é sempre "tudo que ficou atrás de hoje"
+    (AD-09 item 8 — apresenta tudo, item a item, sem janela nem paginação).
+    """
+
+    @extend_schema(responses=UnifiedMigrationQueueSerializer)
+    def get(self, request):
+        queue = unified_migration_queue(user=request.user)
+        return Response(UnifiedMigrationQueueSerializer(queue).data)
+
+
 class MigrationQueueView(APIView):
+    """ALIAS FINO de `UnifiedMigrationQueueView` — contrato `{logDate, tasks}`.
+
+    `log_date` vem de `queue["yesterday"]`, pronto do serviço: o alias não
+    recalcula tempo por conta própria, o que elimina a chance de incoerência se a
+    virada do dia cair entre duas leituras — e é o que torna satisfazível o guard
+    de "zero query própria" (o nome da função de calendário nem aparece aqui).
+    """
+
     @extend_schema(responses=MigrationQueueSerializer)
     def get(self, request):
-        yesterday = today_for(request.user) - timedelta(days=1)
-        log = Log.objects.filter(log_date=yesterday).first()  # nunca materializa o log de ontem
-        if log is None:
-            tasks = Task.objects.none()
-        else:
-            tasks = log.tasks.filter(
-                status__in=[Task.Status.PENDING, Task.Status.STARTED], parent_task__isnull=True
-            )
-        data = {"log_date": yesterday, "tasks": tasks}
+        queue = unified_migration_queue(user=request.user)
+        yesterday = queue["yesterday"]
+        data = {
+            "log_date": yesterday,
+            # Só o grupo de ontem (0 ou 1 grupo) — é a diferença entre este
+            # alias e o da catch-up, e a razão pela qual a seção `day` precisa
+            # dos grupos por `period_start`.
+            "tasks": _flatten_queue_section(
+                _queue_section(queue, "day"), only_period=yesterday
+            ),
+        }
         return Response(MigrationQueueSerializer(data).data)
 
 
@@ -474,32 +739,22 @@ class MonthlyReviewQueueView(APIView):
 
 
 class CatchUpQueueView(APIView):
+    """ALIAS FINO de `UnifiedMigrationQueueView` (ver a seção de filas acima) —
+    contrato `{monthlyTasks, weeklyTasks, dailyTasks}`.
+
+    A única divergência de recorte em relação à fila unificada: `dailyTasks`
+    EXCLUI o grupo de ontem, que é território do alias `/migration/queue/`.
+    """
+
     @extend_schema(responses=CatchUpQueueSerializer)
     def get(self, request):
-        today = today_for(request.user)
-        yesterday = today - timedelta(days=1)
-        previous_week_start = week_start_of(today) - timedelta(weeks=1)
-        previous_month_first = (today.replace(day=1) - timedelta(days=1)).replace(day=1)
-
-        def undisposed_roots(queryset):
-            return queryset.filter(
-                status__in=[Task.Status.PENDING, Task.Status.STARTED], parent_task__isnull=True
-            )
-
-        monthly_tasks = undisposed_roots(
-            Task.objects.filter(monthly_log__month_first__lt=previous_month_first)
-        ).order_by("monthly_log__month_first")
-        weekly_tasks = undisposed_roots(
-            Task.objects.filter(weekly_log__week_start__lt=previous_week_start)
-        ).order_by("weekly_log__week_start")
-        daily_tasks = undisposed_roots(
-            Task.objects.filter(log__log_date__lt=yesterday)
-        ).order_by("log__log_date")
-
+        queue = unified_migration_queue(user=request.user)
         data = {
-            "monthly_tasks": monthly_tasks,
-            "weekly_tasks": weekly_tasks,
-            "daily_tasks": daily_tasks,
+            "monthly_tasks": _flatten_queue_section(_queue_section(queue, "month")),
+            "weekly_tasks": _flatten_queue_section(_queue_section(queue, "week")),
+            "daily_tasks": _flatten_queue_section(
+                _queue_section(queue, "day"), exclude_period=queue["yesterday"]
+            ),
         }
         return Response(CatchUpQueueSerializer(data).data)
 
@@ -536,3 +791,161 @@ class TaskMigrateView(APIView):
         except Task.DoesNotExist:
             raise NotFound() from None
         return Response(TaskSerializer(task).data)
+
+
+# --- Rituais (Story 14.2) ------------------------------------------------------
+# UMA view por fonte, e nenhuma view agregadora: "fontes carregam/falham
+# independentemente" (M06 L251, M07 L309) é requisito de API, não de UI, e só é
+# verdade de fato se cada fonte for uma requisição própria — um agregador com
+# `try/except` devolveria 200 com erros embutidos e acoplaria os tempos de
+# resposta. O rail soma no cliente.
+#
+# Todas finas (query serializer valida → serviço → serializer de resposta) e
+# nenhuma materializa log: os serviços usam `objects.filter(...).first()`.
+class _WeekSourceView(APIView):
+    """Base das quatro fontes semanais — só o serviço e o serializer variam."""
+
+    service = None
+    response_serializer = None
+
+    def get(self, request):
+        query = WeekSourceQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
+        source = self.service(user=request.user, week_start=query.validated_data["week_start"])
+        return Response(self.response_serializer(source).data)
+
+
+class _MonthSourceView(APIView):
+    """Base das três fontes mensais (gêmea da semanal: mecânica extraída, não
+    copiada — o que diverge é o parâmetro de período e o serviço)."""
+
+    service = None
+    response_serializer = None
+
+    def get(self, request):
+        query = MonthSourceQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
+        source = self.service(user=request.user, month_first=query.validated_data["month_first"])
+        return Response(self.response_serializer(source).data)
+
+
+class WeeklyMonthlyInWeekSourceView(_WeekSourceView):
+    service = staticmethod(list_monthly_tasks_in_week)
+    response_serializer = TaskSourceSerializer
+
+    @extend_schema(parameters=[WeekSourceQuerySerializer], responses=TaskSourceSerializer)
+    def get(self, request):
+        return super().get(request)
+
+
+class WeeklyRecurringSourceView(_WeekSourceView):
+    service = staticmethod(list_weekly_recurring_candidates)
+    response_serializer = WeeklyRecurringSourceSerializer
+
+    @extend_schema(
+        parameters=[WeekSourceQuerySerializer], responses=WeeklyRecurringSourceSerializer
+    )
+    def get(self, request):
+        return super().get(request)
+
+
+class WeeklyPreviousWeeklySourceView(_WeekSourceView):
+    service = staticmethod(list_previous_weekly_pendings)
+    response_serializer = BlockingTaskSourceSerializer
+
+    @extend_schema(parameters=[WeekSourceQuerySerializer], responses=BlockingTaskSourceSerializer)
+    def get(self, request):
+        return super().get(request)
+
+
+class WeeklyPendingDailiesSourceView(_WeekSourceView):
+    service = staticmethod(list_pending_daily_groups)
+    response_serializer = PendingDailiesSourceSerializer
+
+    @extend_schema(
+        parameters=[WeekSourceQuerySerializer], responses=PendingDailiesSourceSerializer
+    )
+    def get(self, request):
+        return super().get(request)
+
+
+class MonthlyRecurringSourceView(_MonthSourceView):
+    service = staticmethod(list_monthly_recurring_candidates)
+    response_serializer = MonthlyRecurringSourceSerializer
+
+    @extend_schema(
+        parameters=[MonthSourceQuerySerializer], responses=MonthlyRecurringSourceSerializer
+    )
+    def get(self, request):
+        return super().get(request)
+
+
+class MonthlyFutureLogSourceView(_MonthSourceView):
+    service = staticmethod(list_future_log_items)
+    response_serializer = TaskSourceSerializer
+
+    @extend_schema(parameters=[MonthSourceQuerySerializer], responses=TaskSourceSerializer)
+    def get(self, request):
+        return super().get(request)
+
+
+class MonthlyPreviousMonthlySourceView(_MonthSourceView):
+    service = staticmethod(list_previous_monthly_pendings)
+    response_serializer = BlockingTaskSourceSerializer
+
+    @extend_schema(parameters=[MonthSourceQuerySerializer], responses=BlockingTaskSourceSerializer)
+    def get(self, request):
+        return super().get(request)
+
+
+class WeeklyDensityView(APIView):
+    """Densidade real do Weekly-alvo (AC6) — endpoint NOVO.
+
+    `GET /api/bujo/task-density/` fica intocado em rota, forma e semântica: são
+    dois contratos distintos (ver docstring de `bujo/services/density.py`), não uma
+    correção do antigo.
+
+    NÃO exige alvo em planejamento: aceita qualquer log existente e devolve a
+    grade vazia quando o log não existe, para que as Stories 14.5/14.6 (boards em
+    `active`) e 14.10 (Arquivo, `finalized`) reusem o mesmo endpoint.
+    """
+
+    @extend_schema(parameters=[WeekSourceQuerySerializer], responses=DensityResponseSerializer)
+    def get(self, request):
+        query = WeekSourceQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
+        density = compute_week_density(
+            user=request.user, week_start=query.validated_data["week_start"]
+        )
+        return Response(DensityResponseSerializer(density).data)
+
+
+class MonthlyDensityView(APIView):
+    """Densidade real do Monthly-alvo (AC6) — endpoint NOVO, gêmeo do semanal."""
+
+    @extend_schema(parameters=[MonthSourceQuerySerializer], responses=DensityResponseSerializer)
+    def get(self, request):
+        query = MonthSourceQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
+        density = compute_month_density(
+            user=request.user, month_first=query.validated_data["month_first"]
+        )
+        return Response(DensityResponseSerializer(density).data)
+
+
+class RitualDecisionCreateView(APIView):
+    """`POST /api/bujo/ritual-decisions/` — persistência imediata, um POST por
+    decisão (AD-28 item 6 ponto 6): pausar ou sair do ritual não perde nada.
+
+    O serializer valida FORMA (400). A matriz de combinação legal levanta
+    `InvalidRitualDecision` e o alvo fora de `planning` levanta
+    `InvalidTransition` — ambas `DomainError`, ambas 409 pelo handler central,
+    nenhuma tratada aqui.
+    """
+
+    @extend_schema(request=RitualDecisionCreateSerializer, responses=RitualDecisionSerializer)
+    def post(self, request):
+        body = RitualDecisionCreateSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        decision = upsert_ritual_decision(user=request.user, **body.validated_data)
+        return Response(RitualDecisionSerializer(decision).data, status=status.HTTP_201_CREATED)

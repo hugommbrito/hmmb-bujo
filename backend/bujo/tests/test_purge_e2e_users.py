@@ -5,7 +5,8 @@ O comando é destrutivo e carrega dois guardrails sutis que estes testes travam:
 * **Sem cascade (AD-12):** ``user_id`` é ``UUIDField`` puro, não FK — apagar o
   ``User`` NÃO remove suas linhas tenant-scoped. O comando precisa varrer cada
   model por ``user_id`` antes de apagar os usuários. Os testes provam que Task,
-  Log, WeeklyLog, MonthlyLog e RecurringTaskTemplate somem junto com o usuário.
+  Log, WeeklyLog, MonthlyLog, RecurringTaskTemplate e RitualDecision somem junto
+  com o usuário.
 * **Escopo por sufixo de e-mail:** só ``@e2e.test`` é alvo. Um usuário real (e um
   near-miss como ``e2e-x@example.com``) precisa sobreviver intacto — inclusive
   suas linhas tenant-scoped.
@@ -21,17 +22,26 @@ import pytest
 from django.core.management import call_command
 
 from accounts.models import User
-from bujo.models import Log, MonthlyLog, RecurringTaskTemplate, Task, WeeklyLog
+from bujo.models import (
+    Log,
+    MonthlyLog,
+    RecurringTaskTemplate,
+    RitualDecision,
+    Task,
+    WeeklyLog,
+)
 from bujo.tests.factories import (
     LogFactory,
     MonthlyLogFactory,
     RecurringTaskTemplateFactory,
+    RitualDecisionFactory,
     TaskFactory,
     WeeklyLogFactory,
 )
 from core.tenant import tenant_context
 
-TENANT_MODELS = [Task, Log, WeeklyLog, MonthlyLog, RecurringTaskTemplate]
+# Espelho da lista do comando (mesma ordem folha→raiz — ver o comentário lá).
+TENANT_MODELS = [RitualDecision, Task, Log, WeeklyLog, MonthlyLog, RecurringTaskTemplate]
 
 
 def _seed_tenant_rows(user):
@@ -40,6 +50,8 @@ def _seed_tenant_rows(user):
     Precisa de ``tenant_context`` porque os factories salvam via o manager
     ``objects`` (TenantManager). ``TaskFactory`` já cria um ``Log`` próprio, mas
     criamos um ``LogFactory`` extra para garantir cobertura explícita do model.
+    ``RitualDecisionFactory`` cria o seu próprio weekly + task (as âncoras
+    exatamente-um exigem ambos).
     """
     with tenant_context(user):
         LogFactory(user=user)
@@ -47,6 +59,7 @@ def _seed_tenant_rows(user):
         WeeklyLogFactory(user=user)
         MonthlyLogFactory(user=user)
         RecurringTaskTemplateFactory(user=user)
+        RitualDecisionFactory(user=user)
 
 
 def _tenant_row_count(user):
@@ -150,3 +163,22 @@ def test_varredura_cross_tenant_sem_contexto(e2e_user):
     assert User.objects.filter(email__endswith="@e2e.test").count() == 0
     assert _tenant_row_count(e2e_user) == 0
     assert _tenant_row_count(e2e_user_2) == 0
+
+
+@pytest.mark.django_db
+def test_purge_apaga_decisoes_de_ritual(e2e_user):
+    """Story 14.2: `RitualDecision` é tenant-scoped, então PRECISA ser purgada.
+
+    O `_seed_tenant_rows` já cria uma decisão (a lista espelho ganhou o model),
+    mas este teste é explícito sobre o caso: a decisão desaparece com o usuário e
+    a purga a conta como linha própria (por isso `RitualDecision` vem ANTES de
+    `Task` na ordem — se viesse depois, o CASCADE a levaria embora e a linha do
+    relatório diria 0).
+    """
+    _seed_tenant_rows(e2e_user)
+    assert RitualDecision.all_objects.filter(user_id=e2e_user.id).count() == 1
+
+    saida = _run()
+
+    assert "RitualDecision: 1 apagadas" in saida
+    assert RitualDecision.all_objects.filter(user_id=e2e_user.id).count() == 0

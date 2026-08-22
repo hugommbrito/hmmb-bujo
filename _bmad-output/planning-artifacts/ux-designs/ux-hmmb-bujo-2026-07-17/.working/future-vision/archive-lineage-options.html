@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Arquivo — opções de navegação da linhagem</title>
+  <style>
+    /*
+      FUTURE VISION — NÃO IMPLEMENTÁVEL NO ESCOPO ATUAL.
+      Governado por EXPERIENCE.md: Task Row, navegação de linhagem,
+      readonly/archive, retorno de foco e preservação de contexto.
+      Governado por DESIGN.md: Colors, Typography, Task Row, Panel e focus-ring.
+      Os spines vencem em qualquer conflito. Mock estático: não copiar o markup.
+    */
+    :root {
+      --canvas:#f5f2ea; --surface:#fbfaf6; --subtle:#eeebe2; --strong:#e3dfd5;
+      --ink:#25231f; --muted:#666159; --line:#d6d1c7; --line2:#aaa399;
+      --primary:#315f5a; --primary-soft:#ddeae7; --info:#3d6488;
+      --info-soft:#e2ebf3; --success:#4b6f52; --focus:#166c9c;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:#e7e3da;color:var(--ink);font:14px/1.45 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+    button{font:inherit;color:inherit}
+    .page{max-width:1480px;margin:auto;padding:28px}
+    .intro{max-width:900px;margin-bottom:22px}
+    .eyebrow{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--primary)}
+    h1{font-size:28px;letter-spacing:-.03em;margin:6px 0}
+    .intro p{margin:0;color:var(--muted)}
+    .warning{margin-top:14px;border-left:3px solid var(--info);background:var(--info-soft);padding:10px 12px;font-size:12px}
+    .options{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+    .option-head{display:flex;align-items:baseline;gap:10px;margin:0 0 8px}
+    .option-head h2{font-size:18px;margin:0}
+    .option-head span{font-size:11px;color:var(--muted)}
+    .browser{background:var(--surface);border:1px solid var(--line2);border-radius:8px;overflow:hidden}
+    .bar{height:28px;background:var(--strong);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:5px;padding:0 10px}
+    .dot{width:7px;height:7px;border-radius:50%;background:var(--line2)}
+    .app{display:grid;grid-template-columns:58px 1fr;min-height:680px;background:var(--canvas)}
+    .rail{background:var(--surface);border-right:1px solid var(--line);padding:10px 6px;display:flex;flex-direction:column;gap:7px;align-items:center}
+    .nav{width:44px;height:44px;border:0;background:transparent;border-radius:5px;color:var(--muted);font-size:17px}
+    .nav.on{background:var(--primary-soft);color:var(--primary);border-left:3px solid var(--primary)}
+    .main{padding:18px;min-width:0}
+    .top{display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--line);padding-bottom:13px}
+    .top h3{font-size:22px;margin:0}
+    .tabs{display:flex;gap:2px;margin-left:18px}
+    .tab{min-height:40px;border:0;background:transparent;padding:0 12px}
+    .tab.on{background:var(--primary-soft);color:var(--primary);font-weight:700;border-bottom:2px solid var(--primary)}
+    .search{margin-left:auto;min-width:210px;height:40px;border:1px solid var(--muted);border-radius:5px;background:#fff;padding:0 10px;color:var(--muted);display:flex;align-items:center}
+    .context{display:flex;justify-content:space-between;align-items:center;margin:18px 0 10px}
+    .context h4{font-size:15px;margin:0}
+    .context small{color:var(--muted)}
+    .result{background:#fff;border:1px solid var(--line);border-left:3px solid #2bada0;border-radius:5px;padding:10px 12px}
+    .result strong{display:block}
+    .result span{font-size:12px;color:var(--muted)}
+    .dialog{margin:14px auto 0;max-width:560px;background:#fff;border:1px solid var(--line2);border-radius:7px}
+    .dialog-head{padding:14px 16px;border-bottom:1px solid var(--line)}
+    .dialog-head h4{margin:0 0 3px;font-size:16px}
+    .dialog-head p{margin:0;color:var(--muted);font-size:12px}
+    .chain{padding:15px 16px}
+    .node{position:relative;display:grid;grid-template-columns:24px 1fr auto;gap:9px;align-items:center;min-height:64px}
+    .node:not(:last-child)::after{content:"";position:absolute;left:11px;top:44px;bottom:-10px;border-left:2px solid var(--line2)}
+    .marker{width:24px;height:24px;border:2px solid var(--line2);border-radius:50%;background:#fff;display:grid;place-items:center;font-size:10px;z-index:1}
+    .node.current .marker{border-color:var(--success);background:#e2ebe1}
+    .node strong{display:block;font-size:13px}
+    .node small{color:var(--muted);font-size:11px}
+    .go{min-height:40px;border:1px solid var(--primary);background:#fff;color:var(--primary);border-radius:5px;padding:0 9px;font-weight:700;font-size:11px}
+    .go:focus{outline:2px solid var(--focus);outline-offset:2px}
+    .plain{font-size:11px;color:var(--muted);padding-right:4px}
+    .dialog-foot{border-top:1px solid var(--line);padding:11px 16px;display:flex;justify-content:space-between;align-items:center;color:var(--muted);font-size:11px}
+    .close{min-height:40px;border:1px solid var(--line2);background:#fff;border-radius:5px;padding:0 12px}
+    .tradeoffs{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:12px}
+    .note{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:12px}
+    .note strong{display:block;margin-bottom:5px}
+    .note ul{margin:0;padding-left:18px;color:var(--muted);font-size:12px}
+    @media(max-width:1000px){.options,.tradeoffs{grid-template-columns:1fr}.page{padding:14px}.app{min-height:620px}.search{min-width:150px}.tabs{display:none}}
+    @media(max-width:560px){.rail{display:none}.app{display:block}.top{flex-wrap:wrap}.search{order:3;width:100%;margin:0}.main{padding:12px}.node{grid-template-columns:24px 1fr}.go,.plain{grid-column:2;justify-self:start}.dialog-foot{align-items:flex-start;gap:8px}}
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="intro">
+      <div class="eyebrow">Story 14.0 · Future Vision · DF-002 + DF-003</div>
+      <h1>Como navegar pela linhagem de uma tarefa encontrada</h1>
+      <p>As duas versões mostram o mesmo resumo readonly. A diferença é quais pontos permitem abrir o período e destacar a tarefa.</p>
+      <div class="warning"><strong>Visão futura — não implementável no escopo atual.</strong> Busca histórica e linhagem inversa dependem de contrato upstream. Nenhum controle desta prancha integra o mock canônico da Story 14.0.</div>
+    </header>
+
+    <section class="options" aria-label="Comparação das opções">
+      <article>
+        <div class="option-head"><h2>A · Todos os pontos navegáveis</h2><span>percurso completo da cadeia</span></div>
+        <div class="browser">
+          <div class="bar"><i class="dot"></i><i class="dot"></i><i class="dot"></i></div>
+          <div class="app">
+            <nav class="rail" aria-label="Navegação principal ilustrativa"><button class="nav">◫</button><button class="nav on" aria-current="page">▣</button><button class="nav">⚙</button></nav>
+            <div class="main">
+              <header class="top"><h3>Arquivo</h3><div class="tabs"><button class="tab">Diário</button><button class="tab on">Semanal</button><button class="tab">Mensal</button></div><div class="search">⌕ Renovar seguro…</div></header>
+              <div class="context"><div><h4>1 tarefa encontrada</h4><small>Busca somente em tarefas do núcleo BuJo</small></div></div>
+              <div class="result"><strong>Renovar seguro do carro</strong><span>3 registros na linhagem · destino atual em janeiro de 2027</span></div>
+              <section class="dialog" aria-label="Resumo da linhagem — opção A">
+                <header class="dialog-head"><h4>Linagem da tarefa</h4><p>Origem, migrações e destino atual. Somente leitura.</p></header>
+                <div class="chain">
+                  <div class="node"><span class="marker">1</span><div><strong>Future Log · agosto de 2026</strong><small>Origem · sem dia definido</small></div><button class="go">Abrir e destacar</button></div>
+                  <div class="node"><span class="marker">2</span><div><strong>Monthly Log · novembro de 2026</strong><small>Migrada · 18 nov.</small></div><button class="go">Abrir e destacar</button></div>
+                  <div class="node"><span class="marker">3</span><div><strong>Weekly Log · 11–17 jan. 2027</strong><small>Migrada · terça-feira</small></div><button class="go">Abrir e destacar</button></div>
+                  <div class="node current"><span class="marker">4</span><div><strong>Daily Log · 14 jan. 2027</strong><small>Destino atual · pendente</small></div><button class="go">Abrir e destacar</button></div>
+                </div>
+                <footer class="dialog-foot"><span>Retorno preserva busca, aba e posição.</span><button class="close">Fechar</button></footer>
+              </section>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article>
+        <div class="option-head"><h2>B · Somente origem e destino</h2><span>intermediários apenas informativos</span></div>
+        <div class="browser">
+          <div class="bar"><i class="dot"></i><i class="dot"></i><i class="dot"></i></div>
+          <div class="app">
+            <nav class="rail" aria-label="Navegação principal ilustrativa"><button class="nav">◫</button><button class="nav on" aria-current="page">▣</button><button class="nav">⚙</button></nav>
+            <div class="main">
+              <header class="top"><h3>Arquivo</h3><div class="tabs"><button class="tab">Diário</button><button class="tab on">Semanal</button><button class="tab">Mensal</button></div><div class="search">⌕ Renovar seguro…</div></header>
+              <div class="context"><div><h4>1 tarefa encontrada</h4><small>Busca somente em tarefas do núcleo BuJo</small></div></div>
+              <div class="result"><strong>Renovar seguro do carro</strong><span>3 registros na linhagem · destino atual em janeiro de 2027</span></div>
+              <section class="dialog" aria-label="Resumo da linhagem — opção B">
+                <header class="dialog-head"><h4>Linagem da tarefa</h4><p>Origem, migrações e destino atual. Somente leitura.</p></header>
+                <div class="chain">
+                  <div class="node"><span class="marker">1</span><div><strong>Future Log · agosto de 2026</strong><small>Origem · sem dia definido</small></div><button class="go">Abrir origem</button></div>
+                  <div class="node"><span class="marker">2</span><div><strong>Monthly Log · novembro de 2026</strong><small>Migrada · 18 nov.</small></div><span class="plain">Etapa intermediária</span></div>
+                  <div class="node"><span class="marker">3</span><div><strong>Weekly Log · 11–17 jan. 2027</strong><small>Migrada · terça-feira</small></div><span class="plain">Etapa intermediária</span></div>
+                  <div class="node current"><span class="marker">4</span><div><strong>Daily Log · 14 jan. 2027</strong><small>Destino atual · pendente</small></div><button class="go">Abrir destino</button></div>
+                </div>
+                <footer class="dialog-foot"><span>Retorno preserva busca, aba e posição.</span><button class="close">Fechar</button></footer>
+              </section>
+            </div>
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <section class="tradeoffs" aria-label="Diferenças para decisão">
+      <div class="note"><strong>A · Todos navegáveis</strong><ul><li>Permite investigar qualquer transferência.</li><li>Repete a mesma ação em cada etapa.</li><li>Exige que todo registro intermediário seja localizável.</li></ul></div>
+      <div class="note"><strong>B · Extremidades navegáveis</strong><ul><li>Prioriza onde começou e onde está agora.</li><li>Reduz ações no resumo.</li><li>Etapas intermediárias ficam visíveis, mas não consultáveis diretamente.</li></ul></div>
+    </section>
+  </main>
+</body>
+</html>

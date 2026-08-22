@@ -14,8 +14,7 @@ import uuid
 
 from django.db import models
 
-from core.exceptions import TenantScopeViolation
-from core.tenant import TenantManager, current_user_id
+from core.tenant import TenantManager, assign_tenant_user_id
 
 
 class TenantModel(models.Model):
@@ -33,11 +32,7 @@ class TenantModel(models.Model):
         abstract = True
 
     def save(self, *args, **kwargs):
-        # Auto-fill user_id from the tenant context on create. If it was set
-        # explicitly (the all_objects/admin path), preserve it.
-        if self.user_id is None:
-            uid = current_user_id.get()
-            if uid is None:
-                raise TenantScopeViolation()  # fail-closed on writes too
-            self.user_id = uid
+        # Auto-fill/validate user_id from the tenant context (shared helper —
+        # see core/tenant.py:assign_tenant_user_id for the full contract).
+        assign_tenant_user_id(self)
         super().save(*args, **kwargs)

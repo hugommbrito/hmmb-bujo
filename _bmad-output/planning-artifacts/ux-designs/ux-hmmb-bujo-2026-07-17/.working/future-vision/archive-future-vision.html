@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Arquivo — visão futura</title>
+  <style>
+    /*
+      FUTURE VISION — NÃO IMPLEMENTÁVEL NO ESCOPO ATUAL.
+      Ilustra DF-001…DF-004 e decisões de 2026-07-24.
+      DESIGN.md governa expressão visual; EXPERIENCE.md governa comportamento.
+      Os spines vencem em conflito. Mock estático: não copiar o markup.
+    */
+    :root{
+      --canvas:#f5f2ea;--surface:#fbfaf6;--subtle:#eeebe2;--strong:#e3dfd5;
+      --ink:#25231f;--muted:#666159;--line:#d6d1c7;--line2:#aaa399;
+      --control:#666159;--primary:#315f5a;--primary2:#274d49;--primary-soft:#ddeae7;
+      --info:#3d6488;--info-soft:#e2ebf3;--success:#4b6f52;--success-soft:#e2ebe1;
+      --warn:#806020;--warn-soft:#f2e8ce;--danger:#9a493f;--danger-soft:#f3e1de;
+      --focus:#166c9c;--teal:#2bada0;--purple:#7b5ea7;--pink:#d95f78
+    }
+    *{box-sizing:border-box}
+    html{scroll-behavior:smooth}
+    body{margin:0;background:#e5e1d8;color:var(--ink);font:14px/1.45 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+    button,input,textarea{font:inherit;color:inherit}
+    button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+    .page{max-width:1600px;margin:auto;padding:28px}
+    .intro{max-width:1040px;margin-bottom:22px}
+    .eyebrow{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--primary)}
+    h1{font-size:30px;letter-spacing:-.03em;margin:6px 0}
+    .intro>p{margin:0;color:var(--muted);font-size:15px}
+    .future-note{margin-top:14px;padding:10px 12px;border-left:3px solid var(--info);background:var(--info-soft);font-size:12px}
+    .caption{display:flex;align-items:baseline;gap:12px;margin:24px 0 8px}
+    .caption h2{font-size:19px;margin:0}.caption span{font-size:11px;color:var(--muted)}
+    .browser{border:1px solid var(--line2);border-radius:9px;overflow:hidden;background:var(--surface)}
+    .browserbar{height:27px;background:#ddd9d0;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:5px;padding:0 10px}
+    .dot{width:7px;height:7px;border-radius:50%;background:#aaa49a}
+    .app{height:880px;display:grid;grid-template-columns:220px minmax(0,1fr);background:var(--canvas)}
+    .sidebar{background:var(--surface);border-right:1px solid var(--line);padding:14px 10px;display:flex;flex-direction:column}
+    .brand{font-weight:850;font-size:16px;padding:10px 11px 18px}.navgroup{font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;padding:10px}
+    .nav{min-height:44px;border:0;border-radius:5px;background:transparent;text-align:left;padding:0 11px;color:var(--muted)}
+    .nav.on{background:var(--primary-soft);color:var(--primary);font-weight:750;border-left:3px solid var(--primary)}
+    .workspace{min-width:0;overflow:auto;padding:20px 24px 48px}
+    .header{display:flex;align-items:center;gap:12px;position:sticky;top:-20px;background:var(--canvas);z-index:2;padding:12px 0;border-bottom:1px solid var(--line)}
+    .header h3{font-size:24px;margin:0;letter-spacing:-.02em}
+    .search{margin-left:auto;width:min(360px,36vw);height:44px;border:1px solid var(--control);border-radius:5px;background:#fff;padding:0 12px}
+    .ai{height:44px;border:1px solid var(--primary);border-radius:5px;background:var(--primary);color:#fff;font-weight:750;padding:0 14px}
+    .tabs{display:flex;gap:3px;margin:18px 0 12px;border-bottom:1px solid var(--line)}
+    .tab{min-height:44px;border:0;border-bottom:3px solid transparent;background:transparent;padding:0 16px;font-weight:650;color:var(--muted)}
+    .tab.on{color:var(--primary);border-bottom-color:var(--primary);background:var(--primary-soft)}
+    .toolbar{display:flex;align-items:end;gap:10px;margin-bottom:14px}
+    .field{display:grid;gap:4px}.field label{font-size:11px;font-weight:700}.input{height:42px;border:1px solid var(--control);border-radius:5px;background:#fff;padding:0 10px}
+    .ghost{height:42px;border:1px solid var(--control);border-radius:5px;background:#fff;padding:0 12px}
+    .source-note{margin-left:auto;color:var(--muted);font-size:11px;max-width:300px;text-align:right}
+    .timeline{display:grid;gap:10px}
+    .day{display:grid;grid-template-columns:130px minmax(0,1fr);background:#fff;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+    .date{padding:14px;background:var(--surface);border-right:1px solid var(--line)}
+    .date strong{display:block;font-size:15px}.date span{font-size:11px;color:var(--muted)}.date button{margin-top:10px;min-height:40px;border:1px solid var(--primary);border-radius:5px;background:#fff;color:var(--primary);font-size:11px;font-weight:700}
+    .modules{padding:11px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+    .summary{min-width:0;border-left:3px solid var(--line2);background:var(--surface);padding:9px;border-radius:4px}
+    .summary.daily{border-left-color:var(--teal)}.summary.habits{border-left-color:var(--purple)}.summary.meds{border-left-color:var(--pink)}.summary.metrics{border-left-color:var(--info)}
+    .summary h4{font-size:11px;margin:0 0 5px}.summary b{font-size:18px}.summary p{font-size:10px;color:var(--muted);margin:2px 0 0}
+    .omitted{padding:11px;background:var(--subtle);font-size:11px;color:var(--muted);border-radius:4px}
+    .ai-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(340px,.72fr);gap:16px}
+    .panel{background:#fff;border:1px solid var(--line);border-radius:7px;padding:16px}
+    .panel h3{font-size:16px;margin:0 0 4px}.panel>p{color:var(--muted);font-size:12px;margin:0 0 14px}
+    .dates{display:grid;grid-template-columns:1fr 1fr;gap:10px}.textarea{width:100%;min-height:115px;border:1px solid var(--control);border-radius:5px;background:#fff;padding:10px;resize:vertical}
+    .sources{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}.source{border:1px solid var(--line2);border-radius:4px;background:var(--primary-soft);padding:5px 7px;font-size:11px}
+    .generate{width:100%;min-height:44px;border:1px solid var(--primary);border-radius:5px;background:var(--primary);color:#fff;font-weight:750}
+    .result{border-left:3px solid var(--info);background:var(--info-soft);padding:12px}
+    .result h4{margin:0 0 6px}.result p{margin:0 0 8px;font-size:12px}.result ul{margin:0;padding-left:18px;font-size:12px}
+    .settings{display:grid;grid-template-columns:1fr 1fr;gap:8px}.setting{display:flex;gap:10px;align-items:center;border:1px solid var(--line);border-radius:5px;padding:10px}.check{width:18px;height:18px;border:1px solid var(--primary);background:var(--primary-soft);display:grid;place-items:center;color:var(--primary);font-weight:800}.setting strong{font-size:12px}.setting small{display:block;color:var(--muted);font-size:10px}
+    .search-state{display:grid;grid-template-columns:.8fr 1.2fr;gap:12px}.results{background:#fff;border:1px solid var(--line);border-radius:7px;padding:10px}.task{border-left:3px solid var(--teal);padding:10px;border-bottom:1px solid var(--line)}.task:last-child{border-bottom:0}.task.on{background:var(--primary-soft)}.task strong{display:block}.task small{color:var(--muted)}
+    .chain{background:#fff;border:1px solid var(--line);border-radius:7px;padding:14px}.chain h3{font-size:15px;margin:0 0 3px}.chain>p{color:var(--muted);font-size:11px;margin:0 0 10px}
+    .node{position:relative;display:grid;grid-template-columns:24px 1fr auto;gap:9px;align-items:center;min-height:60px}.node:not(:last-child)::after{content:"";position:absolute;left:11px;top:41px;bottom:-8px;border-left:2px solid var(--line2)}.marker{width:24px;height:24px;border:2px solid var(--line2);border-radius:50%;display:grid;place-items:center;background:#fff;z-index:1;font-size:10px}.node.current .marker{border-color:var(--success);background:var(--success-soft)}.node strong{font-size:12px}.node small{display:block;color:var(--muted);font-size:10px}.open{min-height:40px;border:1px solid var(--primary);border-radius:5px;background:#fff;color:var(--primary);font-size:10px;font-weight:700}
+    .mobile{width:390px;max-width:100%;height:760px;border:7px solid var(--ink);border-radius:28px;background:var(--canvas);overflow:hidden;margin:auto;display:flex;flex-direction:column}.mhead{padding:13px;background:var(--surface);border-bottom:1px solid var(--line)}.mhead h3{margin:0;font-size:18px}.msearch{margin-top:9px;width:100%;height:44px;border:1px solid var(--control);border-radius:5px;background:#fff;padding:0 10px}.mtabs{display:grid;grid-template-columns:repeat(3,1fr);background:var(--surface);border-bottom:1px solid var(--line)}.mtab{height:44px;border:0;background:transparent}.mtab.on{color:var(--primary);font-weight:750;border-bottom:3px solid var(--primary)}.mlist{overflow:auto;padding:10px 10px 90px}.mday{background:#fff;border:1px solid var(--line);border-radius:6px;margin-bottom:9px;padding:11px}.mday h4{margin:0 0 8px}.mstats{display:grid;grid-template-columns:1fr 1fr;gap:6px}.mstat{background:var(--surface);border-left:3px solid var(--teal);padding:8px;font-size:10px}.mstat b{display:block;font-size:15px}.mfab{position:sticky;bottom:14px;margin:-66px 14px 14px auto;width:54px;height:54px;border-radius:50%;border:1px solid var(--primary);background:var(--primary);color:#fff;font-weight:800}
+    @media(max-width:1180px){.app{grid-template-columns:64px 1fr}.sidebar{align-items:center;padding:10px 5px}.brand{font-size:0;padding:8px}.brand::after{content:"HB";font-size:13px}.navgroup{display:none}.nav{font-size:0;width:48px}.nav::first-letter{font-size:16px}.modules{grid-template-columns:1fr 1fr}.ai-grid{grid-template-columns:1fr}}
+    @media(max-width:760px){.page{padding:12px}.desktop-demo{display:none}.caption{margin-top:18px}.search-state,.settings{grid-template-columns:1fr}.dates{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+<main class="page">
+  <header class="intro">
+    <div class="eyebrow">Story 14.0 · Future Vision · DF-001—DF-004</div>
+    <h1>Arquivo como memória temporal do sistema</h1>
+    <p>Diário, Semanal e Mensal formam o núcleo. Collections compartilhadas enriquecem o panorama diário, a busca permanece exclusiva para tarefas e a IA resume um intervalo explicitamente escolhido.</p>
+    <div class="future-note"><strong>Visão futura — não implementável no escopo atual.</strong> Este artefato não integra o contrato da Story 14.0 e não será promovido para <code>mockups/</code> enquanto suas funções permanecerem deferidas.</div>
+  </header>
+
+  <section class="desktop-demo">
+    <div class="caption"><h2>A · Arquivo diário unificado</h2><span>abas temporais · resumos objetivos por módulo · apenas collections compartilhadas</span></div>
+    <div class="browser"><div class="browserbar"><i class="dot"></i><i class="dot"></i><i class="dot"></i></div>
+      <div class="app">
+        <nav class="sidebar" aria-label="Navegação principal ilustrativa"><div class="brand">hmmb-bujo</div><button class="nav">◉ Hoje</button><div class="navgroup">Planner</div><button class="nav">▦ Esta Semana</button><button class="nav">▦ Este Mês</button><button class="nav on" aria-current="page">▣ Arquivo</button><div style="flex:1"></div><button class="nav">⚙ Configurações</button></nav>
+        <div class="workspace">
+          <header class="header"><h3>Arquivo</h3><input class="search" aria-label="Buscar tarefas no Arquivo" value="Buscar tarefas…"><button class="ai">Resumir período</button></header>
+          <nav class="tabs" aria-label="Tipos do Arquivo"><button class="tab on" aria-current="page">Diário</button><button class="tab">Semanal</button><button class="tab">Mensal</button></nav>
+          <div class="toolbar"><div class="field"><label>De</label><input class="input" value="01/07/2026"></div><div class="field"><label>Até</label><input class="input" value="24/07/2026"></div><button class="ghost">Aplicar período</button><div class="source-note">Daily é sempre incluído · Hábitos, Medicamentos e Métricas estão compartilhados com o Arquivo</div></div>
+          <div class="timeline">
+            <article class="day"><div class="date"><strong>24 jul. 2026</strong><span>Sexta-feira</span><button>Abrir dia</button></div><div class="modules"><div class="summary daily"><h4>Daily Log</h4><b>8/11</b><p>concluídas · 1 migrada · 2 pendentes</p></div><div class="summary habits"><h4>Hábitos</h4><b>6/8 · 75%</b><p>completude no dia</p></div><div class="summary meds"><h4>Medicamentos</h4><b>3/3</b><p>doses confirmadas</p></div><div class="summary metrics"><h4>Métricas</h4><b>5/6</b><p>campos registrados</p></div></div></article>
+            <article class="day"><div class="date"><strong>23 jul. 2026</strong><span>Quinta-feira</span><button>Abrir dia</button></div><div class="modules"><div class="summary daily"><h4>Daily Log</h4><b>5/7</b><p>concluídas · 2 migradas</p></div><div class="summary habits"><h4>Hábitos</h4><b>7/8 · 88%</b><p>completude no dia</p></div><div class="summary meds"><h4>Medicamentos</h4><b>2/3</b><p>1 dose não confirmada</p></div><div class="summary metrics"><h4>Métricas</h4><b>6/6</b><p>campos registrados</p></div></div></article>
+            <article class="day"><div class="date"><strong>22 jul. 2026</strong><span>Quarta-feira</span><button>Abrir dia</button></div><div class="modules"><div class="summary daily"><h4>Daily Log</h4><b>6/6</b><p>concluídas</p></div><div class="summary habits"><h4>Hábitos</h4><b>5/8 · 63%</b><p>completude no dia</p></div><div class="summary meds"><h4>Medicamentos</h4><b>3/3</b><p>doses confirmadas</p></div><div class="summary metrics"><h4>Métricas</h4><b>4/6</b><p>campos registrados</p></div></div></article>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="caption"><h2>B · Resumo por IA</h2><span>intervalo personalizado · limites abertos · prompt opcional · fontes explícitas</span></div>
+  <section class="ai-grid">
+    <div class="panel"><h3>Resumir um período</h3><p>Escolha o intervalo. Se o início ficar vazio, usa o registro mais antigo; se o fim ficar vazio, usa hoje.</p><div class="dates"><div class="field"><label>Data inicial</label><input class="input" value="01/07/2026"></div><div class="field"><label>Data final</label><input class="input" value="24/07/2026"></div></div><div class="field" style="margin-top:10px"><label>O que você quer compreender? <span style="font-weight:400;color:var(--muted)">(opcional)</span></label><textarea class="textarea">Quais atividades ocuparam mais dias e quais tarefas foram migradas mais de uma vez?</textarea></div><div class="sources"><span class="source">Daily</span><span class="source">Weekly</span><span class="source">Monthly</span><span class="source">Hábitos</span><span class="source">Medicamentos</span><span class="source">Métricas</span></div><p style="font-size:11px;color:var(--muted)">Fontes definidas por “Compartilhar com o Arquivo”. Prompt vazio gera resumo factual geral.</p><button class="generate">Gerar resumo</button></div>
+    <div class="panel"><h3>Exemplo de resultado</h3><p>Resultado ilustrativo; formato, retenção e provedor ainda não estão contratados.</p><div class="result"><h4>1–24 de julho de 2026</h4><p>O período teve atividade registrada em 21 dias. Planejamento e saúde concentraram a maior parte dos registros.</p><ul><li>42 de 51 tarefas concluídas; 7 migradas.</li><li>“Renovar seguro do carro” foi migrada três vezes.</li><li>Hábitos tiveram registro em 20 dias.</li><li>Medicamentos: 4 doses sem confirmação.</li><li>Métricas: 87% dos campos esperados preenchidos.</li></ul></div></div>
+  </section>
+
+  <div class="caption"><h2>C · Busca de tarefa e linhagem</h2><span>somente tarefas · resumo primeiro · todos os pontos navegáveis</span></div>
+  <section class="search-state">
+    <div class="results"><div class="field"><label>Buscar tarefas</label><input class="input" style="width:100%" value="Renovar seguro"></div><div class="task on"><strong>Renovar seguro do carro</strong><small>4 registros · destino atual em 14 jan. 2027</small></div><div class="task"><strong>Revisar seguro residencial</strong><small>1 registro · concluída em 8 jul. 2026</small></div></div>
+    <div class="chain"><h3>Linagem de “Renovar seguro do carro”</h3><p>Somente leitura. Escolha qualquer ponto para abrir o período e destacar aquela versão.</p><div class="node"><span class="marker">1</span><div><strong>Future Log · agosto de 2026</strong><small>Origem · sem dia</small></div><button class="open">Abrir e destacar</button></div><div class="node"><span class="marker">2</span><div><strong>Monthly · novembro de 2026</strong><small>Migrada · 18 nov.</small></div><button class="open">Abrir e destacar</button></div><div class="node"><span class="marker">3</span><div><strong>Weekly · 11–17 jan. 2027</strong><small>Migrada · terça-feira</small></div><button class="open">Abrir e destacar</button></div><div class="node current"><span class="marker">4</span><div><strong>Daily · 14 jan. 2027</strong><small>Destino atual · pendente</small></div><button class="open">Abrir e destacar</button></div></div>
+  </section>
+
+  <div class="caption"><h2>D · Configuração por collection</h2><span>compartilha com todo o Arquivo ou com nada · núcleo sempre incluído</span></div>
+  <section class="panel"><h3>Compartilhar com o Arquivo</h3><p>Daily, Weekly e Monthly fazem parte do núcleo e não aparecem nesta configuração. Collections começam compartilhadas por padrão.</p><div class="settings"><div class="setting"><span class="check">✓</span><div><strong>Hábitos</strong><small>Linha do tempo · IA</small></div></div><div class="setting"><span class="check">✓</span><div><strong>Medicamentos</strong><small>Linha do tempo · IA</small></div></div><div class="setting"><span class="check">✓</span><div><strong>Métricas</strong><small>Linha do tempo · IA</small></div></div><div class="setting"><span class="check">✓</span><div><strong>Journalling</strong><small>Linha do tempo · IA</small></div></div></div></section>
+
+  <div class="caption"><h2>E · Recomposição compacta</h2><span>um dia por bloco · resumos em duas colunas · busca e IA preservadas</span></div>
+  <section class="mobile"><header class="mhead"><h3>Arquivo</h3><input class="msearch" value="Buscar tarefas…"></header><nav class="mtabs"><button class="mtab on">Diário</button><button class="mtab">Semanal</button><button class="mtab">Mensal</button></nav><div class="mlist"><article class="mday"><h4>24 jul. 2026 · Sexta</h4><div class="mstats"><div class="mstat"><b>8/11</b>Daily</div><div class="mstat" style="border-left-color:var(--purple)"><b>6/8 · 75%</b>Hábitos</div><div class="mstat" style="border-left-color:var(--pink)"><b>3/3</b>Medicamentos</div><div class="mstat" style="border-left-color:var(--info)"><b>5/6</b>Métricas</div></div></article><article class="mday"><h4>23 jul. 2026 · Quinta</h4><div class="mstats"><div class="mstat"><b>5/7</b>Daily</div><div class="mstat" style="border-left-color:var(--purple)"><b>7/8 · 88%</b>Hábitos</div><div class="mstat" style="border-left-color:var(--pink)"><b>2/3</b>Medicamentos</div><div class="mstat" style="border-left-color:var(--info)"><b>6/6</b>Métricas</div></div></article><article class="mday"><h4>22 jul. 2026 · Quarta</h4><div class="mstats"><div class="mstat"><b>6/6</b>Daily</div><div class="mstat" style="border-left-color:var(--purple)"><b>5/8 · 63%</b>Hábitos</div></div></article></div><button class="mfab" aria-label="Resumir período">IA</button></section>
+</main>
+</body>
+</html>

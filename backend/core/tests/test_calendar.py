@@ -7,6 +7,7 @@ import pytest
 
 from core.calendar import (
     is_workday,
+    month_turn_week,
     months_of_week,
     now,
     resolve_day_type,
@@ -325,3 +326,64 @@ def test_resolve_day_types_range_um_unico_dia(user):
     with tenant_context(user):
         mapa = resolve_day_types_range(user, d, d)
     assert mapa == {d: "weekend"}
+
+
+# --- month_turn_week (Story 14.1, AC3) -----------------------------------------
+@pytest.mark.parametrize(
+    "month_first,esperado",
+    [
+        # Mês que começa numa SEGUNDA: a janela começa exatamente no dia 1.
+        (date(2026, 6, 1), (date(2026, 6, 1), date(2026, 6, 7))),
+        # Mês que começa num DOMINGO: a janela começa no mês ANTERIOR (a semana
+        # seg→dom que contém a virada é a última de fevereiro).
+        (date(2026, 3, 1), (date(2026, 2, 23), date(2026, 3, 1))),
+        # Virada de ANO: a janela atravessa dezembro/janeiro.
+        (date(2026, 1, 1), (date(2025, 12, 29), date(2026, 1, 4))),
+        # Fevereiro BISSEXTO (2028): a janela do mês seguinte encosta no dia 29.
+        (date(2028, 2, 1), (date(2028, 1, 31), date(2028, 2, 6))),
+        (date(2028, 3, 1), (date(2028, 2, 28), date(2028, 3, 5))),
+    ],
+)
+def test_month_turn_week_janela_da_virada(month_first, esperado):
+    assert month_turn_week(month_first) == esperado
+
+
+@pytest.mark.parametrize(
+    "month_first", [date(2026, 1, 1), date(2026, 3, 1), date(2026, 6, 1), date(2028, 2, 1)]
+)
+def test_month_turn_week_e_sempre_segunda_a_domingo_de_7_dias(month_first):
+    start, end = month_turn_week(month_first)
+
+    assert start.isoweekday() == 1
+    assert end.isoweekday() == 7
+    assert (end - start).days == 6
+
+
+@pytest.mark.parametrize(
+    "month_first", [date(2026, 1, 1), date(2026, 3, 1), date(2026, 6, 1), date(2028, 2, 1)]
+)
+def test_month_turn_week_contem_a_virada_do_mes(month_first):
+    """A propriedade que define a janela: ela SEMPRE contém `month_first`.
+
+    Contém também o último dia do mês anterior — e portanto é simultaneamente a
+    última semana do mês anterior e a primeira do novo — EXCETO quando
+    `month_first` já é uma segunda-feira: aí a virada coincide com o início da
+    semana e a janela fica inteira dentro do mês novo.
+    """
+    start, end = month_turn_week(month_first)
+    ultimo_dia_do_mes_anterior = month_first - timedelta(days=1)
+
+    assert start <= month_first <= end
+    if month_first.isoweekday() == 1:
+        assert ultimo_dia_do_mes_anterior < start
+    else:
+        assert start <= ultimo_dia_do_mes_anterior <= end
+
+
+def test_month_turn_week_devolve_apenas_dates_puras():
+    """Regra de porta (§6.9 / import-linter): `core` não importa app de domínio, e
+    a janela sai como `date`s puras para que `bujo` faça a serialização."""
+    start, end = month_turn_week(date(2026, 6, 1))
+
+    assert type(start) is date
+    assert type(end) is date

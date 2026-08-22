@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Key screen &mdash; App Shell 13.0</title>
+<style>
+/* Governado por DESIGN.md: Brand & Style, Colors, Typography, Layout & Spacing,
+   App Shell, Workspace Surface, Elevation & Depth, Shapes.
+   Governado por EXPERIENCE.md: Foundation, Information Architecture, Component
+   Patterns/App Shell, State Patterns, Interaction Primitives, Accessibility Floor,
+   Responsive & Platform, Fluxos 1 e 3. Spines vencem em qualquer conflito. */
+:root{--canvas:#f5f2ea;--surface:#fbfaf6;--subtle:#eeebe2;--strong:#e3dfd5;--ink:#25231f;--muted:#666159;--disabled:#969087;--border:#d6d1c7;--border2:#aaa399;--primary:#315f5a;--hover:#274d49;--soft:#ddeae7;--on:#fff;--info:#3d6488;--info-soft:#e2ebf3;--warning:#806020;--warning-soft:#f2e8ce;--danger:#9a493f;--danger-soft:#f3e1de;--focus:#166c9c;--overlay:#25231f7a}
+*{box-sizing:border-box}body{margin:0;background:#dddcd7;color:var(--ink);font:14px/1.45 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}.page{max-width:1840px;margin:auto;padding:28px}.eyebrow{margin:0 0 4px;color:var(--primary);font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}h1{margin:0;font-size:30px;letter-spacing:-.03em}h2,h3,p{margin-top:0}.lede{max-width:1050px;color:var(--muted)}.rule{padding:10px 12px;background:var(--surface);border-left:3px solid var(--primary);margin:16px 0 24px}.section{margin:30px 0}.section>header{display:flex;justify-content:space-between;gap:20px;align-items:end;margin-bottom:12px}.section>header p{max-width:780px;margin:0;color:var(--muted)}.frames{display:grid;gap:18px}.two{grid-template-columns:repeat(2,minmax(0,1fr))}.three{grid-template-columns:repeat(3,minmax(0,1fr))}.frame-card{background:#f7f6f2;border:1px solid var(--border2);border-radius:8px;padding:12px;overflow:hidden}.cap{display:flex;justify-content:space-between;gap:12px;margin-bottom:8px;font-size:12px}.cap span{color:var(--muted)}.browser{height:610px;background:var(--canvas);border:1px solid var(--border2);border-radius:6px;overflow:hidden;display:grid;grid-template-columns:240px minmax(0,1fr)}.browser.medium{grid-template-columns:240px minmax(0,1fr)}.browser.rail{grid-template-columns:64px minmax(0,1fr)}.side{background:var(--surface);border-right:1px solid var(--border);padding:10px 8px;display:flex;flex-direction:column;min-width:0}.brand{font-weight:700;padding:8px 10px 14px;white-space:nowrap}.rail .brand{font-size:0;text-align:center}.rail .brand:after{content:"HB";font-size:12px}.navlist{overflow:hidden}.group,.nav{min-height:36px;width:100%;border:0;border-left:3px solid transparent;background:transparent;color:var(--muted);display:grid;grid-template-columns:20px minmax(0,1fr) auto;align-items:center;gap:8px;padding:4px 8px;text-align:left;font:500 12px inherit;border-radius:3px}.group{color:var(--ink);font-weight:650}.nav.child{padding-left:28px}.nav.active{background:var(--soft);border-left-color:var(--primary);color:var(--ink);font-weight:700}.nav.active svg{fill:currentColor;stroke:none}.nav:not(.active) svg,.action-nav svg{fill:none;stroke:currentColor;stroke-width:16;stroke-linecap:round;stroke-linejoin:round}.contains{box-shadow:inset 3px 0 var(--primary);background:var(--subtle)}.badge{min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--primary);color:var(--on);font:700 10px/18px inherit;text-align:center}.rail .label,.rail .chev{display:none}.rail .nav,.rail .group,.rail .action-nav{grid-template-columns:1fr;padding:6px;place-items:center;min-height:44px}.rail .nav.child{padding-left:6px}.spacer{flex:1}.action-nav{min-height:44px;border:1px solid var(--border2);border-radius:4px;background:var(--surface);display:grid;grid-template-columns:20px minmax(0,1fr) auto;align-items:center;gap:8px;padding:6px 9px;color:var(--ink);font:600 12px inherit}.action-nav.off{color:var(--disabled);background:var(--subtle)}svg.icon{width:20px;height:20px;display:block;fill:currentColor}.shellbody{display:grid;grid-template-rows:56px minmax(0,1fr);min-width:0}.topbar{height:56px;border-bottom:1px solid var(--border);background:var(--surface);display:flex;align-items:center;padding:0 24px}.topbar strong{font-size:16px}.workspace{padding:24px;overflow:auto}.wide .workspace{padding:32px}.surface{max-width:920px}.legacy{background:var(--info-soft);border-left:3px solid var(--info);padding:10px 12px;margin-bottom:14px;color:#294d6b;font-size:12px}.legacy strong{display:block;color:var(--ink)}.panel{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:16px}.panel h3{font-size:18px;margin-bottom:4px}.muted{color:var(--muted)}.rows{margin-top:14px;border-top:1px solid var(--border)}.row{min-height:44px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}.dot{width:18px;height:18px;border:1.5px solid var(--ink);border-radius:50%}.focus{outline:2px solid var(--focus);outline-offset:2px}.phone-grid{display:grid;grid-template-columns:390px 320px;gap:22px;justify-content:center}.phone{height:720px;background:var(--canvas);border:1px solid var(--border2);border-radius:24px;overflow:hidden;position:relative;display:grid;grid-template-rows:56px minmax(0,1fr) calc(64px + env(safe-area-inset-bottom,0px))}.phone .topbar{padding:0 16px}.phone .workspace{padding:16px 16px 110px}.bottom{background:var(--surface);border-top:1px solid var(--border);display:grid;grid-template-columns:repeat(4,1fr);padding-bottom:env(safe-area-inset-bottom,0px)}.tab{border:0;background:transparent;color:var(--muted);min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font:600 10px inherit;position:relative}.tab svg{width:22px;height:22px}.tab.active{color:var(--primary);background:var(--soft)}.fab{position:absolute;right:16px;bottom:84px;width:52px;height:52px;border:0;border-radius:50%;background:var(--primary);color:var(--on);display:grid;place-items:center}.fab svg{width:24px;height:24px}.fab.off{background:var(--strong);color:var(--disabled);border:1px solid var(--border2)}.scrim{position:absolute;inset:0;background:var(--overlay)}.sheet{position:absolute;z-index:2;left:0;right:0;bottom:64px;height:590px;background:var(--surface);border-radius:12px 12px 0 0;display:grid;grid-template-rows:20px 52px minmax(0,1fr);box-shadow:0 -10px 24px #25231f24}.grab{width:40px;height:4px;border-radius:4px;background:var(--border2);margin:8px auto}.sheethead{display:flex;align-items:center;justify-content:space-between;padding:0 14px;border-bottom:1px solid var(--border)}.close{width:44px;height:44px;border:1px solid var(--border);background:var(--surface);border-radius:4px}.sheetnav{padding:8px 10px 18px;overflow:auto}.sheetnav .nav,.sheetnav .group{min-height:44px}.sheetnav .nav.child{padding-left:34px}.sheet .active.focus{outline-offset:-2px}.stategrid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.statebox,.note{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:12px}.mini-badge{display:inline-grid;place-items:center;min-width:22px;height:20px;padding:0 6px;background:var(--primary);color:var(--on);border-radius:999px;font-weight:700}.hidden{border:1px dashed var(--border2);color:var(--muted);padding:2px 7px;border-radius:3px}.matrix{width:100%;border-collapse:collapse;background:var(--surface);font-size:12px}.matrix th,.matrix td{padding:9px 10px;border:1px solid var(--border);vertical-align:top;text-align:left}.matrix th{background:var(--subtle)}.notes{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.note strong{display:block;margin-bottom:4px}.note p{margin:0;color:var(--muted);font-size:12px}
+:root{--control-border:#666159}.action-nav,.close{border-color:var(--control-border)}.skip{position:absolute;left:12px;top:8px;transform:translateY(-160%);background:var(--surface);color:var(--ink);padding:10px;z-index:10}.skip:focus{transform:none}.mock-note{padding:10px 12px;background:var(--surface);border:1px solid var(--border2);margin:12px 0}
+/* Revis&atilde;o 2026-07-24: somente o rail icon-only (frame C) adota badge sobre o &iacute;cone.
+   A/B preservam badge trailing; D permanece como a refer&ecirc;ncia mobile original. */
+.rail .nav,.rail .action-nav{position:relative}.rail .nav>.badge,.rail .action-nav>.badge{position:absolute;z-index:1;left:calc(50% + 2px);top:3px;pointer-events:none}
+@media(max-width:1100px){.two,.three,.stategrid,.notes{grid-template-columns:1fr}.phone-grid{grid-template-columns:1fr}.phone{margin:auto}.page{padding:16px}}@media(max-width:430px){.phone{width:320px}.matrix{font-size:10px}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" aria-hidden="true" style="position:absolute">
+ <symbol id="i-calendar-dot" viewbox="0 0 256 256">
+<path d="M208 32h-16V24a8 8 0 0 0-16 0v8H80V24a8 8 0 0 0-16 0v8H48a24 24 0 0 0-24 24v152a24 24 0 0 0 24 24h160a24 24 0 0 0 24-24V56a24 24 0 0 0-24-24Zm8 176a8 8 0 0 1-8 8H48a8 8 0 0 1-8-8V96h176Zm0-128H40V56a8 8 0 0 1 8-8h16v8a8 8 0 0 0 16 0v-8h96v8a8 8 0 0 0 16 0v-8h16a8 8 0 0 1 8 8Zm-72 72a16 16 0 1 1-16-16 16 16 0 0 1 16 16Z">
+</path>
+</symbol>
+ <symbol id="i-brain" viewbox="0 0 256 256">
+<path d="M216 96a40 40 0 0 0-32-39A40 40 0 0 0 112 40v176a8 8 0 0 0 16 0v-40h20a36 36 0 0 0 36-32 40 40 0 0 0 32-48ZM96 40a40 40 0 0 0-72 25A40 40 0 0 0 40 136a36 36 0 0 0 36 40h20Z">
+</path>
+</symbol>
+ <symbol id="i-archive" viewbox="0 0 256 256">
+<path d="M216 32H40a16 16 0 0 0-16 16v32a16 16 0 0 0 16 16v112a16 16 0 0 0 16 16h144a16 16 0 0 0 16-16V96a16 16 0 0 0 16-16V48a16 16 0 0 0-16-16Zm-16 176H56V96h144Zm16-128H40V48h176Zm-56 48a8 8 0 0 1-8 8h-48a8 8 0 0 1 0-16h48a8 8 0 0 1 8 8Z">
+</path>
+</symbol>
+ <symbol id="i-calendar" viewbox="0 0 256 256">
+<path d="M208 32h-16v-8a8 8 0 0 0-16 0v8H80v-8a8 8 0 0 0-16 0v8H48a24 24 0 0 0-24 24v152a24 24 0 0 0 24 24h160a24 24 0 0 0 24-24V56a24 24 0 0 0-24-24Zm8 176a8 8 0 0 1-8 8H48a8 8 0 0 1-8-8V96h176Zm0-128H40V56a8 8 0 0 1 8-8h160a8 8 0 0 1 8 8Z">
+</path>
+</symbol>
+ <symbol id="i-list" viewbox="0 0 256 256">
+<path d="M216 56H40a8 8 0 0 0 0 16h176a8 8 0 0 0 0-16Zm0 64H40a8 8 0 0 0 0 16h176a8 8 0 0 0 0-16Zm0 64H40a8 8 0 0 0 0 16h176a8 8 0 0 0 0-16Z">
+</path>
+</symbol>
+ <symbol id="i-note" viewbox="0 0 256 256">
+<path d="m230 58-32-32a8 8 0 0 0-12 0l-96 96a8 8 0 0 0-2 6v32a8 8 0 0 0 8 8h32a8 8 0 0 0 6-2l96-96a8 8 0 0 0 0-12Zm-105 94h-21v-21l64-64 21 21Zm99-24v80a16 16 0 0 1-16 16H48a16 16 0 0 1-16-16V48a16 16 0 0 1 16-16h80a8 8 0 0 1 0 16H48v160h160v-80a8 8 0 0 1 16 0Z">
+</path>
+</symbol>
+ <symbol id="i-heart" viewbox="0 0 256 256">
+<path d="M178 40c-21 0-39 9-50 24-11-15-29-24-50-24a62 62 0 0 0-62 62c0 70 104 127 108 129a8 8 0 0 0 8 0c4-2 108-59 108-129a62 62 0 0 0-62-62Z">
+</path>
+</symbol>
+ <symbol id="i-health" viewbox="0 0 256 256">
+<path d="M216 56h-40v-8a24 24 0 0 0-24-24h-48a24 24 0 0 0-24 24v8H40a16 16 0 0 0-16 16v128a16 16 0 0 0 16 16h176a16 16 0 0 0 16-16V72a16 16 0 0 0-16-16Zm-56 88h-24v24h-16v-24H96v-16h24v-24h16Z">
+</path>
+</symbol>
+</svg>
+<a class="skip" href="#review-content">Pular para o conte&uacute;do</a>
+<main class="page" id="review-content" tabindex="-1">
+ <p class="eyebrow">Story 13.0 &middot; key screen final</p>
+<h1>App Shell responsivo e estados reais</h1>
+ <p class="lede">Composi&ccedil;&atilde;o de revis&atilde;o do shell novo: topbar B, navega&ccedil;&atilde;o derivada dos destinos dispon&iacute;veis, captura persistente e coexist&ecirc;ncia expl&iacute;cita com superf&iacute;cies legadas. Os frames s&atilde;o pr&oacute;ximos de 1:1; o HTML &eacute; est&aacute;tico e offline.</p>
+ <p class="mock-note">Mock estático: o comportamento e os estados acessíveis são regidos por EXPERIENCE.md; não copiar o markup literalmente.</p>
+ <div class="rule">
+<strong>Leitura do artefato:</strong> os SVGs inline usam o cat&aacute;logo Phosphor aprovado; destinos em repouso s&atilde;o <code>regular</code> e o destino ativo troca para <code>fill</code>, mantendo indicador lateral, fundo, label forte e estado acess&iacute;vel.</div>
+
+ <section class="section">
+<header>
+<div>
+<p class="eyebrow">Frames A&ndash;C</p>
+<h2>Wide, medium e tablet</h2>
+</div>
+<p>Wide e medium iniciam com 240 px. Tablet inicia no rail de 64 px. O estado de colapso e dos agrupadores dura somente a sess&atilde;o.</p>
+</header>
+ <div class="frames three">
+  <article class="frame-card">
+<div class="cap">
+<strong>A &middot; Wide 1440+</strong>
+<span>240 &middot; 56 &middot; gutter 32</span>
+</div>
+<div class="browser wide">
+<nav class="side" aria-label="Navegação principal">
+<div class="brand">HMMB BuJo</div>
+<div class="navlist">
+<button class="nav active" aria-current="page">
+<svg class="icon">
+<use href="#i-calendar-dot">
+</use>
+</svg>
+<span class="label">Hoje</span>
+</button>
+<button class="nav" aria-label="Brain Dump, 17 itens pendentes">
+<svg class="icon">
+<use href="#i-brain">
+</use>
+</svg>
+<span class="label">Brain Dump</span>
+<span class="badge" aria-label="17 itens pendentes">9+</span>
+</button>
+<button class="nav">
+<svg class="icon">
+<use href="#i-archive">
+</use>
+</svg>
+<span class="label">Arquivo</span>
+</button>
+<button class="group" aria-expanded="true">
+<svg class="icon">
+<use href="#i-calendar">
+</use>
+</svg>
+<span class="label">Planner</span>
+<span>&#8963;</span>
+</button>
+<button class="nav child">
+<svg class="icon">
+<use href="#i-calendar">
+</use>
+</svg>
+<span class="label">Esta Semana</span>
+</button>
+<button class="nav child">
+<svg class="icon">
+<use href="#i-calendar">
+</use>
+</svg>
+<span class="label">Este M&ecirc;s</span>
+</button>
+<button class="nav child">
+<svg class="icon">
+<use href="#i-calendar">
+</use>
+</svg>
+<span class="label">Futuro</span>
+</button>
+<button class="nav child">
+<svg class="icon">
+<use href="#i-calendar">
+</use>
+</svg>
+<span class="label">Recorrentes</span>
+</button>
+<button class="nav">
+<svg class="icon">
+<use href="#i-heart">
+</use>
+</svg>
+<span class="label">Gratid&atilde;o</span>
+</button>
+<button class="group" aria-expanded="true">
+<svg class="icon">
+<use href="#i-health">
+</use>
+</svg>
+<span class="label">Sa&uacute;de</span>
+<span>&#8963;</span>
+</button>
+<button class="nav child">
+<svg class="icon">
+<use href="#i-calendar">
+</use>
+</svg>
+<span class="label">M&eacute;tricas</span>
+</button>
+</div>
+<div class="spacer">
+</div>
+<button class="action-nav">
+<svg class="icon">
+<use href="#i-note">
+</use>
+</svg>
+<span class="label">Abrir captura r&aacute;pida</span>
+<span class="badge">3</span>
+</button>
+</nav>
+<div class="shellbody">
+<header class="topbar">
+<strong>Hoje</strong>
+</header>
+<div class="workspace" role="region" aria-label="Conteúdo da superfície">
+<div class="surface">
+<div class="legacy">
+<strong>Esta &aacute;rea ainda usa a vers&atilde;o anterior.</strong> Voc&ecirc; pode continuar trabalhando normalmente enquanto esta superf&iacute;cie &eacute; atualizada.</div>
+<section class="panel">
+<h3>Hoje</h3>
+<p class="muted">quinta-feira, 23 de julho</p>
+<div class="rows">
+<div class="row">
+<span class="dot">
+</span>Revisar planejamento da semana</div>
+<div class="row">
+<span class="dot">
+</span>Separar documentos do m&ecirc;s</div>
+<div class="row">
+<span class="dot">
+</span>Responder retorno do laborat&oacute;rio</div>
+</div>
+</section>
+</div>
+</div>
+</div>
+</div>
+</article>
+  <article class="frame-card">
+<div class="cap">
+<strong>B &middot; Medium 1180</strong>
+<span>inicial 240 &middot; gutter 24</span>
+</div>
+<div class="browser medium">
+<nav class="side" aria-label="Navegação principal">
+<div class="brand">HMMB BuJo</div>
+<button class="nav">
+<svg class="icon">
+<use href="#i-calendar-dot">
+</use>
+</svg>
+<span class="label">Hoje</span>
+</button>
+<button class="nav active" aria-current="page">
+<svg class="icon">
+<use href="#i-brain">
+</use>
+</svg>
+<span class="label">Brain Dump</span>
+<span class="badge">9</span>
+</button>
+<button class="nav">
+<svg class="icon">
+<use href="#i-archive">
+</use>
+</svg>
+<span class="label">Arquivo</span>
+</button>
+<button class="group contains" aria-expanded="false" aria-describedby="planner-active-destination">
+<svg class="icon">
+<use href="#i-calendar">
+</use>
+</svg>
+<span class="label">Planner</span>
+<span>&#8964;</span>
+</button>
+<p id="planner-active-destination" class="muted" style="padding:0 10px;font-size:11px">Cont&eacute;m a p&aacute;gina atual: Esta Semana.</p>
+<div class="spacer">
+</div>
+<button class="action-nav">
+<svg class="icon">
+<use href="#i-note">
+</use>
+</svg>
+<span class="label">Abrir captura r&aacute;pida</span>
+</button>
+</nav>
+<div class="shellbody">
+<header class="topbar">
+<strong>Esta Semana</strong>
+</header>
+<div class="workspace" role="region" aria-label="Conteúdo da superfície">
+<section class="panel">
+<h3>Esta Semana</h3>
+<p class="muted">A superf&iacute;cie &eacute; protagonista; a marca n&atilde;o se repete na topbar.</p>
+<div class="rows">
+<div class="row">Segunda-feira &middot; 3 itens</div>
+<div class="row focus">Ter&ccedil;a-feira &middot; foco vis&iacute;vel</div>
+<div class="row">Sem dia definido &middot; 2 itens</div>
+</div>
+</section>
+</div>
+</div>
+</div>
+</article>
+  <article class="frame-card">
+<div class="cap">
+<strong>C &middot; Tablet 900</strong>
+<span>rail 64 &middot; uma coluna</span>
+</div>
+<div class="browser rail">
+<nav class="side" aria-label="Navegação principal">
+<div class="brand">HMMB</div>
+<button class="nav active" aria-label="Hoje" aria-current="page">
+<svg class="icon">
+<use href="#i-calendar-dot">
+</use>
+</svg>
+</button>
+<button class="nav" aria-label="Brain Dump, 1 item pendente">
+<svg class="icon">
+<use href="#i-brain">
+</use>
+</svg>
+<span class="badge">1</span>
+</button>
+<button class="nav" aria-label="Arquivo">
+<svg class="icon">
+<use href="#i-archive">
+</use>
+</svg>
+</button>
+<button class="group" aria-label="Planner" aria-expanded="true">
+<svg class="icon">
+<use href="#i-calendar">
+</use>
+</svg>
+</button>
+<div class="spacer">
+</div>
+<button class="action-nav" aria-label="Abrir captura r&aacute;pida">
+<svg class="icon">
+<use href="#i-note">
+</use>
+</svg>
+<span class="badge">3</span>
+</button>
+</nav>
+<div class="shellbody">
+<header class="topbar">
+<strong>Hoje</strong>
+</header>
+<div class="workspace" role="region" aria-label="Conteúdo da superfície">
+<div class="legacy">
+<strong>Esta &aacute;rea ainda usa a vers&atilde;o anterior.</strong> Aviso persistente, sem dispensar.</div>
+<section class="panel">
+<h3>Hoje</h3>
+<p class="muted">Contexto lateral recomposto abaixo da superf&iacute;cie principal.</p>
+<div class="rows">
+<div class="row">
+<span class="dot">
+</span>Revisar lista de pend&ecirc;ncias</div>
+<div class="row">
+<span class="dot">
+</span>Organizar documentos</div>
+</div>
+</section>
+</div>
+</div>
+</div>
+</article>
+ </div>
+</section>
+
+ <section class="section">
+<header>
+<div>
+<p class="eyebrow">Frames D&ndash;E</p>
+<h2>Compact 390 e reflow 320</h2>
+</div>
+<p>Tr&ecirc;s atalhos din&acirc;micos + Menu fixo. Quando a rota real n&atilde;o est&aacute; nos atalhos, Menu fica selecionado. O FAB circular respeita safe-area e permanece fora da bottom nav.</p>
+</header>
+ <div class="phone-grid">
+  <article class="frame-card">
+<div class="cap">
+<strong>D &middot; Compact 390</strong>
+<span>Menu selecionado + FAB</span>
+</div>
+<div class="phone" style="width:390px">
+<header class="topbar">
+<strong>M&eacute;tricas</strong>
+</header>
+<div class="workspace" role="region" aria-label="Conteúdo da superfície">
+<div class="legacy">
+<strong>Esta &aacute;rea ainda usa a vers&atilde;o anterior.</strong> Continue trabalhando normalmente.</div>
+<section class="panel">
+<h3>M&eacute;tricas</h3>
+<p class="muted">A rota n&atilde;o est&aacute; nos tr&ecirc;s atalhos atuais.</p>
+<div class="rows">
+<div class="row">Press&atilde;o arterial</div>
+<div class="row">Peso</div>
+</div>
+</section>
+</div>
+<button class="fab" aria-label="Abrir captura r&aacute;pida">
+<svg class="icon">
+<use href="#i-note">
+</use>
+</svg>
+</button>
+<nav class="bottom" aria-label="Atalhos de navegação">
+<button class="tab">
+<svg class="icon">
+<use href="#i-calendar-dot">
+</use>
+</svg>Hoje</button>
+<button class="tab" aria-label="Brain Dump, 17 itens pendentes">
+<svg class="icon">
+<use href="#i-brain">
+</use>
+</svg>Brain<span class="badge" aria-label="17 itens pendentes" style="position:absolute;right:16px;top:6px">9+</span>
+</button>
+<button class="tab">
+<svg class="icon">
+<use href="#i-calendar">
+</use>
+</svg>Semana</button>
+<button class="tab active" aria-current="page">
+<svg class="icon">
+<use href="#i-list">
+</use>
+</svg>Menu</button>
+</nav>
+</div>
+</article>
+  <article class="frame-card">
+<div class="cap">
+<strong>E &middot; Reflow 320</strong>
+<span>sheet alto aberto</span>
+</div>
+<div class="phone" style="width:320px">
+<header class="topbar" inert>
+<strong>Esta Semana</strong>
+</header>
+<div class="workspace" role="region" aria-label="Conteúdo da superfície" inert>
+<section class="panel">
+<h3>Esta Semana</h3>
+</section>
+</div>
+<div class="scrim">
+</div>
+<section class="sheet" role="dialog" aria-modal="true" aria-label="Navega&ccedil;&atilde;o">
+<div class="grab">
+</div>
+<header class="sheethead">
+<strong>Navega&ccedil;&atilde;o</strong>
+<button class="close" aria-label="Fechar">&times;</button>
+</header>
+<nav class="sheetnav" aria-label="Navegação completa">
+<button class="nav">
+<svg class="icon">
+<use href="#i-calendar-dot">
+</use>
+</svg>
+<span>Hoje</span>
+</button>
+<button class="nav" aria-label="Brain Dump, 17 itens pendentes">
+<svg class="icon">
+<use href="#i-brain">
+</use>
+</svg>
+<span>Brain Dump</span>
+<span class="badge" aria-label="17 itens pendentes">9+</span>
+</button>
+<button class="nav">
+<svg class="icon">
+<use href="#i-archive">
+</use>
+</svg>
+<span>Arquivo</span>
+</button>
+<button class="group" aria-expanded="true">
+<svg class="icon">
+<use href="#i-calendar">
+</use>
+</svg>
+<span>Planner</span>
+<span>&#8963;</span>
+</button>
+<button class="nav child active focus" aria-current="page">
+<svg class="icon">
+<use href="#i-calendar">
+</use>
+</svg>
+<span>Esta Semana</span>
+</button>
+<button class="nav child">
+<svg class="icon">
+<use href="#i-calendar">
+</use>
+</svg>
+<span>Este M&ecirc;s</span>
+</button>
+<button class="nav child">
+<svg class="icon">
+<use href="#i-calendar">
+</use>
+</svg>
+<span>Futuro</span>
+</button>
+<button class="nav child">
+<svg class="icon">
+<use href="#i-calendar">
+</use>
+</svg>
+<span>Recorrentes</span>
+</button>
+<button class="nav">
+<svg class="icon">
+<use href="#i-heart">
+</use>
+</svg>
+<span>Gratid&atilde;o</span>
+</button>
+<button class="group" aria-expanded="true">
+<svg class="icon">
+<use href="#i-health">
+</use>
+</svg>
+<span>Sa&uacute;de</span>
+<span>&#8963;</span>
+</button>
+<button class="nav child">
+<svg class="icon">
+<use href="#i-calendar">
+</use>
+</svg>
+<span>M&eacute;tricas</span>
+</button>
+</nav>
+</section>
+<nav class="bottom" aria-label="Atalhos de navegação" aria-hidden="true" inert>
+<button class="tab">Hoje</button>
+<button class="tab">Brain</button>
+<button class="tab">Semana</button>
+<button class="tab active">Menu</button>
+</nav>
+</div>
+</article>
+ </div>
+</section>
+
+ <section class="section">
+<header>
+<div>
+<p class="eyebrow">Estados F&ndash;H</p>
+<h2>Manifest, badge e resili&ecirc;ncia</h2>
+</div>
+<p>As varia&ccedil;&otilde;es abaixo evitam duplicar shells inteiros quando apenas o manifest ou o contador muda.</p>
+</header>
+ <div class="frames three">
+<article class="statebox">
+<h3>F &middot; Zero collections</h3>
+<p>Hoje, Brain Dump, Arquivo, Configura&ccedil;&otilde;es e <strong>Planner completo</strong>: Esta Semana, Este M&ecirc;s, Futuro e Recorrentes. Sem t&iacute;tulo Collections ou Sa&uacute;de vazio.</p>
+</article>
+<article class="statebox">
+<h3>G &middot; Uma collection</h3>
+<p>Com somente M&eacute;tricas, <strong>Sa&uacute;de permanece</strong> com um &uacute;nico filho. Com collection direta, apenas o destino aparece. Nenhum item desligado &eacute; renderizado.</p>
+</article>
+<article class="statebox">
+<h3>H &middot; Todas</h3>
+<p>H&aacute;bitos, Gratid&atilde;o e Sa&uacute;de &rarr; M&eacute;tricas + Medicamentos. O menu completo repete tamb&eacute;m os tr&ecirc;s atalhos da bottom nav.</p>
+</article>
+</div>
+ <div class="stategrid" style="margin-top:10px">
+<div class="statebox">
+<strong>Badge 0</strong>
+<p>
+<span class="hidden">oculto</span>
+</p>
+</div>
+<div class="statebox">
+<strong>Badge 1 / 9 / acima</strong>
+<p>
+<span class="mini-badge">1</span> <span class="mini-badge">9</span> <span class="mini-badge" aria-label="17 itens pendentes">9+</span>
+</p>
+</div>
+<div class="statebox">
+<strong>Loading / erro</strong>
+<p>
+<span class="hidden">oculto</span> Navega&ccedil;&atilde;o e captura continuam.</p>
+</div>
+<div class="statebox">
+<strong>Offline</strong>
+<p>Captura indispon&iacute;vel com motivo acess&iacute;vel; leitura e navega&ccedil;&atilde;o permanecem.</p>
+</div>
+</div>
+ </section>
+
+ <section class="section">
+<header>
+<div>
+<p class="eyebrow">Walkthrough</p>
+<h2>Foco, safe-area e decis&atilde;o test&aacute;vel</h2>
+</div>
+</header>
+<div class="notes">
+<div class="note">
+<strong>Sheet</strong>
+<p>Abre com foco no destino ativo; Tab contido. Fecha por Fechar, backdrop, Escape ou arrastar para baixo. Ao fechar sem navegar, retorna ao item Menu.</p>
+</div>
+<div class="note">
+<strong>Shell</strong>
+<p>Atalhos <kbd>[</kbd> e <kbd>B</kbd> preservados. Mudan&ccedil;a de rota &eacute; anunciada. Conte&uacute;do focado nunca fica sob FAB/bottom nav; alvos touch &ge;44 px.</p>
+</div>
+<div class="note">
+<strong>Seam e reflow</strong>
+<p>Aviso editorial sempre vis&iacute;vel enquanto a rota for legada. Gutter compacto 16 px, sem navega&ccedil;&atilde;o horizontal em 320 CSS px.</p>
+</div>
+</div>
+</section>
+
+ <section class="section">
+<header>
+<div>
+<p class="eyebrow">Rastreabilidade</p>
+<h2>AC &rarr; frame/anota&ccedil;&atilde;o &rarr; decis&atilde;o</h2>
+</div>
+</header>
+<table class="matrix">
+<thead>
+<tr>
+<th>Crit&eacute;rio</th>
+<th>Frame/anota&ccedil;&atilde;o</th>
+<th>Decis&atilde;o can&ocirc;nica</th>
+</tr>
+</thead>
+<tbody>
+ <tr>
+<td>AC1 cat&aacute;logo e shell</td>
+<td>A&ndash;H; regular/fill, zero/uma/todas, seam</td>
+<td>Log 23/07: cat&aacute;logo Phosphor, nav m&iacute;nima, seam A</td>
+</tr>
+ <tr>
+<td>AC2 collections ausentes</td>
+<td>F&ndash;H</td>
+<td>Planner base sempre completo; Sa&uacute;de com um filho; grupos vazios somem</td>
+</tr>
+ <tr>
+<td>AC3 cobertura responsiva</td>
+<td>A&ndash;E</td>
+<td>240/64, topbar B, captura A/FAB, 3+Menu, sheet alto</td>
+</tr>
+ <tr>
+<td>AC4 acessibilidade</td>
+<td>E + walkthrough</td>
+<td>Foco inicial no destino ativo, retorno ao Menu, 44 px, safe-area, 320 px, canais al&eacute;m de cor</td>
+</tr>
+ <tr>
+<td>Badge e falhas</td>
+<td>Estado 0/1/9/9+/loading/error/offline</td>
+<td>Oculto em 0/loading/error; contagem acess&iacute;vel exata; falha n&atilde;o bloqueia</td>
+</tr>
+ <tr>
+<td>Grupo ativo recolhido</td>
+<td>B</td>
+<td>Permanece recolhido durante a sess&atilde;o e indica filho ativo sem <code>aria-current</code> no grupo</td>
+</tr>
+ </tbody>
+</table>
+</section>
+</main>
+</body>
+</html>

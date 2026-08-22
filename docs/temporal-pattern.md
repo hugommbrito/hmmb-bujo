@@ -20,6 +20,15 @@ def today_for(user) -> date:
 
 **Regra**: nenhum código de produção fora de `core/calendar.py` pode chamar `date.today()`, `timezone.now()`, `datetime.now()`, `datetime.today()` ou `datetime.utcnow()` diretamente. Um guardrail AST em `core/tests/test_guardrails.py` falha o build se essa regra for violada (§6.9 item 6).
 
+**As duas únicas fontes canônicas** (ambas em `core/calendar.py`):
+
+| Preciso de… | Use | Retorna |
+|---|---|---|
+| a "autoridade de hoje" do usuário (página do diário) | `today_for(user)` | `date` |
+| o instante de auditoria de escrita ("quando exatamente") | `now()` | `datetime` timezone-aware (UTC) |
+
+> **`now()` é o substituto de `timezone.now()` para timestamps de auditoria** — não confundir com `today_for`. O guardrail AST proíbe `timezone.now()` em **todo** módulo de produção fora de `core/calendar.py`, **sem distinguir intenção** (autoridade de "hoje" vs. carimbo de auditoria); por isso até um instante que claramente não é "hoje de negócio" (ex.: `last_used_at` de um token, `revoked_at`) deve vir de `core.calendar.now()`, não de `timezone.now()` direto. Centralizar dá um único ponto de mock nos testes e mantém o guardrail válido. Precedentes em produção: `medications/services.py` (`confirmed_at`), `automation/authentication.py` (`last_used_at`), `automation/admin.py` (revogação).
+
 Se `user.timezone` for inválido, `ZoneInfo` levanta `ZoneInfoNotFoundError` — o erro não é silenciado porque indica dado incorreto no cadastro do usuário, não um caso esperado.
 
 ---
@@ -34,6 +43,8 @@ Se `user.timezone` for inválido, `ZoneInfo` levanta `ZoneInfoNotFoundError` —
 **Por que `DATE` puro para páginas do diário**: converter um `DATE` em `TIMESTAMPTZ` exige o fuso do usuário — usar `TIMESTAMPTZ` aqui criaria dependência de fuso em toda query de leitura e quebraria a semântica de "página" (que é agnóstica a hora).
 
 **Por que `TIMESTAMPTZ` UTC para eventos**: UTC garante ordenação global correta e elimina ambiguidade de horário de verão.
+
+**Como obter o "agora" de um instante de evento**: sempre via `core.calendar.now()` (nunca `timezone.now()` direto — ver a regra e a tabela de fontes canônicas na §1). Vale para todos os exemplos da linha "Instante de evento", inclusive carimbos de auditoria que não são "hoje de negócio" (`confirmed_at`, `last_used_at`, `revoked_at`).
 
 ---
 

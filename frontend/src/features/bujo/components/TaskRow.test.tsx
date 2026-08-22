@@ -23,6 +23,7 @@ function baseTask(overrides: Partial<Task> = {}): Task {
     eisenhower: null,
     category: null,
     subtasks: [],
+    migrationTarget: null,
     ...overrides,
   }
 }
@@ -201,8 +202,8 @@ describe('TaskRow (AC2)', () => {
     renderTaskRow(
       baseTask({
         subtasks: [
-          { id: 'sub-1', title: 'Subtarefa 1', status: 'pending', subtasks: [] },
-          { id: 'sub-2', title: 'Subtarefa 2', status: 'completed', subtasks: [] },
+          { id: 'sub-1', title: 'Subtarefa 1', status: 'pending', subtasks: [], migrationTarget: null },
+          { id: 'sub-2', title: 'Subtarefa 2', status: 'completed', subtasks: [], migrationTarget: null },
         ],
       }),
     )
@@ -216,7 +217,7 @@ describe('TaskRow (AC2)', () => {
     const { onTransition } = renderTaskRow(
       baseTask({
         id: 'parent-1',
-        subtasks: [{ id: 'sub-1', title: 'Subtarefa 1', status: 'pending', subtasks: [] }],
+        subtasks: [{ id: 'sub-1', title: 'Subtarefa 1', status: 'pending', subtasks: [], migrationTarget: null }],
       }),
     )
 
@@ -291,6 +292,7 @@ describe('TaskRow — descrição (Story 11.9, AC1/AC2)', () => {
             title: 'Subtarefa 1',
             status: 'pending',
             subtasks: [],
+            migrationTarget: null,
             description: 'Detalhe da subtarefa',
           },
         ],
@@ -628,7 +630,7 @@ describe('TaskRow — Mover (Story 11.6, AC1)', () => {
   it('botão "Mover tarefa" ausente para subtarefas', () => {
     renderTaskRow(
       baseTask({
-        subtasks: [{ id: 'sub-1', title: 'Subtarefa 1', status: 'pending', subtasks: [] }],
+        subtasks: [{ id: 'sub-1', title: 'Subtarefa 1', status: 'pending', subtasks: [], migrationTarget: null }],
       }),
     )
 

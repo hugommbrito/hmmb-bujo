@@ -1,19 +1,23 @@
 import { Box } from '@mui/material'
-import { IS_PROD_DEPLOY } from '../shared/env'
+import { APP_ENV, HAS_ENV_BANNER } from '../shared/env'
 
 /**
- * Faixa fixa no topo que sinaliza o ambiente de desenvolvimento.
- * Renderiza `null` em produção. O espaço para não sobrepor o layout
- * (padding no body + offset do Drawer da sidebar) é aberto por `body.dev-env`
- * em index.css — ativado por `applyEnvBranding()`.
+ * Faixa fixa no topo que sinaliza o ambiente: AZUL para dev local
+ * (VITE_APP_ENV=local) e MARROM para deploy DEV (VITE_APP_ENV=development).
+ * Renderiza `null` no estado neutro de produção (vazio/qualquer outro valor).
+ * O espaço para não sobrepor o layout (padding no body + offset do Drawer da
+ * sidebar) é aberto por `body.dev-env` em index.css — ativado por
+ * `applyEnvBranding()` sempre que há faixa.
  */
 export function DevEnvBanner() {
-  if (IS_PROD_DEPLOY) return null
+  if (!HAS_ENV_BANNER) return null
+
+  const isLocal = APP_ENV === 'local'
 
   return (
     <Box
       role="note"
-      aria-label="Ambiente de desenvolvimento"
+      aria-label={isLocal ? 'Ambiente local' : 'Ambiente de desenvolvimento'}
       sx={{
         position: 'fixed',
         top: 0,
@@ -25,7 +29,7 @@ export function DevEnvBanner() {
         justifyContent: 'center',
         gap: 0.75,
         px: 2,
-        bgcolor: '#b45309',
+        bgcolor: isLocal ? '#1d4ed8' : '#b45309',
         color: '#fff',
         fontSize: 12,
         fontWeight: 700,
@@ -42,7 +46,7 @@ export function DevEnvBanner() {
         userSelect: 'none',
       }}
     >
-      ⚠️ Ambiente de desenvolvimento · deploy DEV
+      {isLocal ? '💻 Ambiente local · vite dev' : '⚠️ Ambiente de desenvolvimento · deploy DEV'}
     </Box>
   )
 }

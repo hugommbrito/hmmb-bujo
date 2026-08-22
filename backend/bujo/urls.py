@@ -3,13 +3,20 @@ from django.urls import path
 from bujo.views import (
     ArchiveView,
     CatchUpQueueView,
+    FutureLogHorizonView,
     FutureLogView,
     MigrationQueueView,
+    MonthlyCycleView,
+    MonthlyDensityView,
+    MonthlyFutureLogSourceView,
     MonthlyLogView,
+    MonthlyPreviousMonthlySourceView,
+    MonthlyRecurringSourceView,
     MonthlyReviewQueueView,
     RecurringTaskTemplateDetailView,
     RecurringTaskTemplateListView,
     RecurringTaskTemplatePlaceView,
+    RitualDecisionCreateView,
     SubtaskCreateView,
     TaskCreateView,
     TaskDensityView,
@@ -18,7 +25,14 @@ from bujo.views import (
     TaskReorderView,
     TaskTransitionView,
     TodayLogView,
+    UnifiedMigrationQueueView,
+    WeeklyCycleView,
+    WeeklyDensityView,
     WeeklyLogView,
+    WeeklyMonthlyInWeekSourceView,
+    WeeklyPendingDailiesSourceView,
+    WeeklyPreviousWeeklySourceView,
+    WeeklyRecurringSourceView,
     WeeklyReviewQueueView,
 )
 
@@ -26,9 +40,29 @@ urlpatterns = [
     path("logs/today/", TodayLogView.as_view(), name="bujo-today-log"),
     path("logs/weekly/", WeeklyLogView.as_view(), name="bujo-weekly-log"),
     path("logs/monthly/", MonthlyLogView.as_view(), name="bujo-monthly-log"),
+    # Ciclo operacional (Story 14.1, AC8) — um endpoint de ação por tipo.
+    path("logs/weekly/cycle/", WeeklyCycleView.as_view(), name="bujo-weekly-cycle"),
+    path("logs/monthly/cycle/", MonthlyCycleView.as_view(), name="bujo-monthly-cycle"),
     path("archive/", ArchiveView.as_view(), name="bujo-archive"),
     path("future-log/", FutureLogView.as_view(), name="bujo-future-log"),
+    # Story 14.7 (AC2): trilho do M08 — horizonte fixo de 8 meses (vazios
+    # inclusive) + meses distantes com item. Aditiva: `future-log/` acima
+    # mantém contrato idêntico.
+    path(
+        "future-log/horizon/",
+        FutureLogHorizonView.as_view(),
+        name="bujo-future-log-horizon",
+    ),
     path("migration/queue/", MigrationQueueView.as_view(), name="bujo-migration-queue"),
+    # Fila unificada (Story 14.3, AD-28 item 7) — fonte de verdade das duas filas
+    # legadas, que passaram a ser aliases finos dela. A AD escreve
+    # `GET /api/migration/unified-queue/`; a rota real leva o prefixo do app
+    # (`api/bujo/`, `config/urls.py`), como todas as rotas de `bujo`.
+    path(
+        "migration/unified-queue/",
+        UnifiedMigrationQueueView.as_view(),
+        name="bujo-unified-migration-queue",
+    ),
     path("weekly-review/queue/", WeeklyReviewQueueView.as_view(), name="bujo-weekly-review-queue"),
     path(
         "monthly-review/queue/",
@@ -52,6 +86,58 @@ urlpatterns = [
         "recurring-templates/<uuid:pk>/",
         RecurringTaskTemplateDetailView.as_view(),
         name="bujo-recurring-template-detail",
+    ),
+    # Fontes dos rituais (Story 14.2, AC3/AC4) — UMA rota por fonte, sem
+    # agregador: a independência de carga/falha é estrutural, não um try/except.
+    path(
+        "rituals/weekly/sources/monthly-in-week/",
+        WeeklyMonthlyInWeekSourceView.as_view(),
+        name="bujo-ritual-weekly-monthly-in-week",
+    ),
+    path(
+        "rituals/weekly/sources/recurring/",
+        WeeklyRecurringSourceView.as_view(),
+        name="bujo-ritual-weekly-recurring",
+    ),
+    path(
+        "rituals/weekly/sources/previous-weekly/",
+        WeeklyPreviousWeeklySourceView.as_view(),
+        name="bujo-ritual-weekly-previous-weekly",
+    ),
+    path(
+        "rituals/weekly/sources/pending-dailies/",
+        WeeklyPendingDailiesSourceView.as_view(),
+        name="bujo-ritual-weekly-pending-dailies",
+    ),
+    path(
+        "rituals/weekly/density/",
+        WeeklyDensityView.as_view(),
+        name="bujo-ritual-weekly-density",
+    ),
+    path(
+        "rituals/monthly/sources/recurring/",
+        MonthlyRecurringSourceView.as_view(),
+        name="bujo-ritual-monthly-recurring",
+    ),
+    path(
+        "rituals/monthly/sources/future-log/",
+        MonthlyFutureLogSourceView.as_view(),
+        name="bujo-ritual-monthly-future-log",
+    ),
+    path(
+        "rituals/monthly/sources/previous-monthly/",
+        MonthlyPreviousMonthlySourceView.as_view(),
+        name="bujo-ritual-monthly-previous-monthly",
+    ),
+    path(
+        "rituals/monthly/density/",
+        MonthlyDensityView.as_view(),
+        name="bujo-ritual-monthly-density",
+    ),
+    path(
+        "ritual-decisions/",
+        RitualDecisionCreateView.as_view(),
+        name="bujo-ritual-decision-create",
     ),
     path(
         "recurring-templates/<uuid:pk>/place/",

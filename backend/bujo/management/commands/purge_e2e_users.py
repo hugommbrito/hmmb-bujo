@@ -23,7 +23,14 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 
 from accounts.models import User
-from bujo.models import Log, MonthlyLog, RecurringTaskTemplate, Task, WeeklyLog
+from bujo.models import (
+    Log,
+    MonthlyLog,
+    RecurringTaskTemplate,
+    RitualDecision,
+    Task,
+    WeeklyLog,
+)
 
 # Padrão único e estável de e-mail de teste (frontend/e2e/fixtures.ts):
 # `e2e-${uuid}@e2e.test`. O e-mail real do usuário não casa este sufixo.
@@ -32,7 +39,12 @@ E2E_EMAIL_SUFFIX = "@e2e.test"
 # Todos os models tenant-scoped (subclasses de TenantModel). Enumerados
 # explicitamente — para uma operação destrutiva, explícito > descoberta
 # dinâmica. Se um novo model tenant-scoped surgir, ele PRECISA entrar aqui.
-TENANT_MODELS = [Task, Log, WeeklyLog, MonthlyLog, RecurringTaskTemplate]
+#
+# A ORDEM importa para o relatório (não para a corretude): `RitualDecision`
+# referencia Task/logs/templates por FK `CASCADE`, então apagar `Task` primeiro
+# levaria as decisões embora e a linha `RitualDecision: 0 apagadas` mentiria
+# sobre o que existia. Purgar da folha para a raiz mantém cada contagem honesta.
+TENANT_MODELS = [RitualDecision, Task, Log, WeeklyLog, MonthlyLog, RecurringTaskTemplate]
 
 
 class Command(BaseCommand):

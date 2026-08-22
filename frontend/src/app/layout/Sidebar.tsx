@@ -19,11 +19,7 @@ import DateRangeIcon from '@mui/icons-material/DateRange'
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth'
 import ScheduleIcon from '@mui/icons-material/Schedule'
 import EventRepeatIcon from '@mui/icons-material/EventRepeat'
-import RepeatIcon from '@mui/icons-material/Repeat'
 import FavoriteOutlineIcon from '@mui/icons-material/FavoriteBorder'
-import ShowChartIcon from '@mui/icons-material/ShowChart'
-import MedicationIcon from '@mui/icons-material/Medication'
-import SentimentSatisfiedAltIcon from '@mui/icons-material/SentimentSatisfiedAlt'
 import InboxIcon from '@mui/icons-material/Inbox'
 import FolderOpenIcon from '@mui/icons-material/FolderOpen'
 import SettingsIcon from '@mui/icons-material/Settings'
@@ -33,6 +29,7 @@ import MenuOpenIcon from '@mui/icons-material/MenuOpen'
 import MenuIcon from '@mui/icons-material/Menu'
 
 import { BrainDumpBadge } from '../../features/braindump'
+import { collections } from '../collections/registry'
 
 const DRAWER_WIDTH = 240
 const COLLAPSED_WIDTH = 56
@@ -48,6 +45,16 @@ interface NavItem {
   icon: React.ReactNode
 }
 
+// Lê label/ícone/path de uma collection do registro e monta o NavItem da Sidebar
+// (Story 12.3 — pixel-idêntico: só a FONTE dos dados muda; a sequência de render
+// segue explícita mais abaixo). Path de navegação = rota principal da collection.
+function collectionNavItem(id: string): NavItem {
+  const entry = collections.find((c) => c.id === id)
+  if (!entry) throw new Error(`Collection "${id}" ausente no registro de collections`)
+  const Icon = entry.icon
+  return { label: entry.nav.label, path: `/${entry.routes[0].path}`, icon: <Icon /> }
+}
+
 const topItems: NavItem[] = [
   { label: 'Hoje', path: '/today', icon: <TodayIcon /> },
 ]
@@ -59,14 +66,18 @@ const plannerItems: NavItem[] = [
   { label: 'Recorrentes', path: '/planner/recurring', icon: <EventRepeatIcon /> },
 ]
 
-const healthItems: NavItem[] = [
-  { label: 'Métricas', path: '/health/metrics', icon: <ShowChartIcon /> },
-  { label: 'Medicamentos', path: '/health/medications', icon: <MedicationIcon /> },
-]
+// Filhos do grupo Saúde: collections do grupo `saude`, em ordem estável (nav.order).
+// O cabeçalho "Saúde" (label + ícone Favorite + colapso) permanece chrome no JSX.
+const healthItems: NavItem[] = collections
+  .filter((c) => c.nav.group === 'saude')
+  .sort((a, b) => a.nav.order - b.nav.order)
+  .map((entry) => collectionNavItem(entry.id))
 
+// Hábitos e Gratidão são collections avulsas (derivadas do registro);
+// Brain Dump e Arquivo são núcleo/chrome (permanecem hardcoded).
 const bottomItems: NavItem[] = [
-  { label: 'Hábitos', path: '/habits', icon: <RepeatIcon /> },
-  { label: 'Gratidão', path: '/gratitude', icon: <SentimentSatisfiedAltIcon /> },
+  collectionNavItem('habits'),
+  collectionNavItem('gratitude'),
   { label: 'Brain Dump', path: '/brain-dump', icon: <BrainDumpBadge><InboxIcon /></BrainDumpBadge> },
   { label: 'Arquivo', path: '/archive', icon: <FolderOpenIcon /> },
 ]

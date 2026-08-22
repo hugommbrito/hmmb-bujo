@@ -3,11 +3,24 @@ import { defineConfig, devices } from '@playwright/test'
 import { DJANGO_SETTINGS_MODULE } from './e2e/backendEnv'
 
 // E2E de browser real contra `npm run dev` (5173) + backend Django real (8000,
-// config.settings.e2e — branch Neon `e2e` dedicada, isolada da branch de dev
-// onde o app é de fato usado; story 11.1). Sem mocks de rede: exercita
-// login/signup, API e UI juntos.
+// config.settings.e2e). Sem mocks de rede: exercita login/signup, API e UI
+// juntos.
+//
+// Banco: Postgres LOCAL `bujo_e2e` (mesmo container docker-compose do pytest,
+// `hmmb-test-db`) é o caminho OFICIAL desde 2026-07-28 (docs/e2e-neon-reset.md
+// §4b) — elimina cold-start/latência intermitente da branch Neon `e2e`, que
+// derrubava a suíte inteira no fixture de signup (achado da story 14.9).
+// A branch Neon `e2e` continua documentada como fallback manual para validar
+// contra Postgres gerenciado real; para usá-la, exporte DATABASE_URL com a
+// connection string da branch antes de rodar o Playwright.
 export default defineConfig({
   testDir: './e2e',
+  // `e2e/tools/` guarda COLETORES sob demanda (hoje: o inventário da
+  // SHELL-DEBT-02 — axe sem `exclude: 'main'` por faixa, Story 13.4 Task 8).
+  // Coleta não é gate: fica fora da suíte para não reprovar por dívida de
+  // conteúdo legado e para não existir teste permanentemente `skip`ado.
+  // Roda com `--config playwright.inventory.config.ts`.
+  testIgnore: ['**/tools/**'],
   fullyParallel: true,
   // Contenção da branch Neon `e2e` (locks órfãos + cold-start) tornava a suíte
   // não-determinística sob execução paralela — diagnosticada e mitigada
@@ -32,7 +45,7 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: 'npm run dev -- --port 5173 --strictPort',
+      command: 'npm run dev -- --mode e2e --port 5173 --strictPort',
       cwd: '.',
       url: 'http://localhost:5173',
       reuseExistingServer: !process.env.CI,
@@ -44,7 +57,11 @@ export default defineConfig({
       url: 'http://localhost:8000/api/health/',
       reuseExistingServer: !process.env.CI,
       timeout: 30_000,
-      env: { DJANGO_SETTINGS_MODULE },
+      // process.env.DATABASE_URL já chega default para o bujo_e2e local pelo
+      // side-effect de `./e2e/backendEnv` (import acima) — explícito aqui só
+      // pra deixar claro que o webServer nunca diverge do banco que os seeds
+      // usam, sem depender da semântica de merge do Playwright.
+      env: { DJANGO_SETTINGS_MODULE, DATABASE_URL: process.env.DATABASE_URL! },
     },
   ],
 })

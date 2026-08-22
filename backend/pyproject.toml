@@ -24,6 +24,11 @@ dev = [
     "factory-boy>=3.3",
     "ruff>=0.6",
     "import-linter>=2.0",
+    # core/tests/test_prod_settings.py parses .github/workflows/ci.yml (DW-23).
+    # Declared explicitly instead of leaning on drf-spectacular's transitive
+    # PyYAML: if that ever drops it, the whole module fails at collection and
+    # takes the DW-4 prod-hardening guards down with it.
+    "pyyaml>=6.0",
 ]
 
 [tool.ruff]
@@ -60,4 +65,19 @@ include_external_packages = true
 name = "core must not import domain apps (port rule)"
 type = "forbidden"
 source_modules = ["core"]
-forbidden_modules = ["bujo", "habits", "health", "medications", "gratitude", "braindump"]
+forbidden_modules = [
+    "bujo",
+    "habits",
+    "health",
+    "medications",
+    "gratitude",
+    "braindump",
+    # DW-33: `automation` era o único app local de INSTALLED_APPS fora do contrato,
+    # então um `core -> automation` passava o gate verde.
+    # A ausência de `accounts` aqui é uma EXCEÇÃO DELIBERADA, não um esquecimento
+    # (que é exatamente o que a DW-33 foi): `core -> accounts` é uma dependência
+    # intencional do projeto — `core/calendar.py` importa `accounts.models.UserHoliday`
+    # (import tardio, ver o docstring lá) para resolver feriados do usuário. Listar
+    # `accounts` aqui quebraria o gate por design.
+    "automation",
+]

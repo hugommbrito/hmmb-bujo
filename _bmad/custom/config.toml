@@ -5,3 +5,8 @@
 #
 # [agents.bmad-agent-pm]
 # description = "Prefers short, bulleted PRDs over narrative drafts."
+
+# Pinned: o setup foi respondido com o typo "pt-BT". Fixado aqui para que
+# um reinstall (que relembra a resposta anterior como default) não o reintroduza.
+[core]
+document_output_language = "pt-BR"

@@ -16,7 +16,19 @@ export const keys = {
     weeklyLog: (weekStart?: string) => ['bujo', 'weeklyLog', weekStart ?? 'current'] as const,
     monthlyLog: (monthFirst?: string) => ['bujo', 'monthlyLog', monthFirst ?? 'current'] as const,
     futureLog: () => ['bujo', 'futureLog', 'list'] as const,
+    // Story 14.7 (M08) — trilho do Future Log. IRMÃ de `futureLog()` sob o
+    // MESMO prefixo `['bujo','futureLog']` de propósito: é isso que faz uma
+    // única invalidação por prefixo alcançar as duas. Invalidar a chave EXATA
+    // `['bujo','futureLog','list']` NÃO alcança esta (o match do TanStack Query
+    // é por prefixo, e `list` não é prefixo de `horizon`) — ver AC9.
+    futureHorizon: () => ['bujo', 'futureLog', 'horizon'] as const,
     migrationQueue: () => ['bujo', 'migrationQueue', 'list'] as const,
+    // Story 14.9 (M10) — fila unificada de migração, consumida pelo ritual
+    // roteado (`MigrationRitualPage`) e pelo banner unificado no Hoje
+    // (`MigrationRitualBanner`). Chave IRMÃ de `migrationQueue`/`catchUpQueue`
+    // acima (mesmo endpoint que já alimenta os dois aliases legados desde a
+    // 14.3) — `useMigrateTaskMutation` invalida as três.
+    unifiedMigrationQueue: () => ['bujo', 'unifiedMigrationQueue', 'list'] as const,
     weeklyReviewQueue: () => ['bujo', 'weeklyReviewQueue', 'list'] as const,
     monthlyReviewQueue: () => ['bujo', 'monthlyReviewQueue', 'list'] as const,
     catchUpQueue: () => ['bujo', 'catchUpQueue', 'list'] as const,
@@ -28,6 +40,20 @@ export const keys = {
     taskDensity: (monthFirst?: string) =>
       ['bujo', 'taskDensity', monthFirst ?? 'current'] as const,
     archive: () => ['bujo', 'archive', 'list'] as const,
+    // Épico 14 (Story 14.5) — ciclo, fontes de ritual e densidade real. Sem
+    // userId (mesmo racional do resto de `bujo.*`).
+    weeklyCycle: () => ['bujo', 'weeklyCycle'] as const,
+    ritualWeeklySource: (sourceId: string, weekStart: string) =>
+      ['bujo', 'ritualWeeklySource', sourceId, weekStart] as const,
+    ritualWeeklyDensity: (weekStart: string) =>
+      ['bujo', 'ritualWeeklyDensity', weekStart] as const,
+    // Story 14.6 — molde direto do bloco Weekly acima, trocando week_start por
+    // month_first.
+    monthlyCycle: () => ['bujo', 'monthlyCycle'] as const,
+    ritualMonthlySource: (sourceId: string, monthFirst: string) =>
+      ['bujo', 'ritualMonthlySource', sourceId, monthFirst] as const,
+    ritualMonthlyDensity: (monthFirst: string) =>
+      ['bujo', 'ritualMonthlyDensity', monthFirst] as const,
   },
   // Sem userId (mesmo racional de bujo.*): logout limpa o cache inteiro.
   habits: {

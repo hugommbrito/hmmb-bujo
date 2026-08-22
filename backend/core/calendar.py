@@ -57,6 +57,27 @@ def weeks_of_month(year: int, month: int) -> list[date]:
     return out
 
 
+def month_turn_week(month_first: date) -> tuple[date, date]:
+    """Janela regular do ritual mensal: a semana seg→dom que CONTÉM a virada do mês.
+
+    Retorna ``(segunda, domingo)``. No caso geral essa semana é simultaneamente a
+    **última do mês anterior** e a **primeira do novo** — é justamente essa
+    sobreposição que a torna a janela natural do ritual de virada (decisão de
+    2026-07-20, "Janela regular única na virada do mês"; EXPERIENCE.md#Monthly).
+    Quando ``month_first`` já cai numa segunda a janela começa exatamente nele e
+    fica inteira dentro do mês novo (a virada coincide com o início da semana).
+
+    **A janela é INFORMATIVA, nunca um gate:** depois do fim dela o mesmo ritual
+    permanece disponível como regularização atrasada, e nenhum serviço de ciclo a
+    usa como pré-condição (só ``today_for(user)`` governa o gate de início).
+
+    Devolve apenas ``date``s puras — regra de porta: ``core`` não importa app de
+    domínio (import-linter no CI).
+    """
+    start = week_start_of(month_first)
+    return start, start + timedelta(days=6)
+
+
 def months_of_week(week_start: date) -> set[tuple[int, int]]:
     """(year, month) tuples a que a semana pertence.
 

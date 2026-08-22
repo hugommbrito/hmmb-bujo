@@ -105,7 +105,7 @@ export interface paths {
         delete: operations["brain_dump_items_destroy"];
         options?: never;
         head?: never;
-        patch?: never;
+        patch: operations["brain_dump_items_partial_update"];
         trace?: never;
     };
     "/api/brain-dump/items/{id}/process/": {
@@ -147,6 +147,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /**
+         * @description ALIAS FINO de `UnifiedMigrationQueueView` (ver a seção de filas acima) —
+         *     contrato `{monthlyTasks, weeklyTasks, dailyTasks}`.
+         *
+         *     A única divergência de recorte em relação à fila unificada: `dailyTasks`
+         *     EXCLUI o grupo de ontem, que é território do alias `/migration/queue/`.
+         */
         get: operations["bujo_catch_up_queue_retrieve"];
         put?: never;
         post?: never;
@@ -172,6 +179,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/bujo/future-log/horizon/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description Trilho do Future Log do sistema novo (Story 14.7, AC2 — M08).
+         *
+         *     View NOVA ao lado de ``FutureLogView`` (que fica intocada, contrato idêntico):
+         *     o legado devolve só meses com item, esta devolve o horizonte fixo de 8 meses
+         *     **inclusive os vazios** + os meses distantes que têm item. Fina como todas as
+         *     outras — chama o serviço e serializa; nenhuma regra vive aqui.
+         */
+        get: operations["bujo_future_log_horizon_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/bujo/logs/monthly/": {
         parameters: {
             query?: never;
@@ -182,6 +213,42 @@ export interface paths {
         get: operations["bujo_logs_monthly_retrieve"];
         put?: never;
         post: operations["bujo_logs_monthly_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bujo/logs/monthly/cycle/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description Ações do ciclo mensal (Story 14.1, AC8).
+         *
+         *     `open_planning_target` não recebe alvo: ele é determinístico (mês seguinte ao
+         *     `active`), sem escolha nem retargeting (M07).
+         *
+         *     `get` é NOVO (Story 14.6, AC4) — mesma rota, método novo, sem rota nova:
+         *     espelha byte-a-byte `WeeklyCycleView.get` (Story 14.5), trocando
+         *     `weekly_cycle_readiness` por `monthly_cycle_readiness`.
+         */
+        get: operations["bujo_logs_monthly_cycle_retrieve"];
+        put?: never;
+        /**
+         * @description Ações do ciclo mensal (Story 14.1, AC8).
+         *
+         *     `open_planning_target` não recebe alvo: ele é determinístico (mês seguinte ao
+         *     `active`), sem escolha nem retargeting (M07).
+         *
+         *     `get` é NOVO (Story 14.6, AC4) — mesma rota, método novo, sem rota nova:
+         *     espelha byte-a-byte `WeeklyCycleView.get` (Story 14.5), trocando
+         *     `weekly_cycle_readiness` por `monthly_cycle_readiness`.
+         */
+        post: operations["bujo_logs_monthly_cycle_create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -220,6 +287,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/bujo/logs/weekly/cycle/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description Ações do ciclo semanal (Story 14.1, AC8) — espelha `tasks/<pk>/transition/`.
+         *
+         *     Erros de gate e de matriz sobem como `InvalidTransition`/`CycleTargetConflict`
+         *     (ambos `DomainError`) e viram 409 pelo handler central; nada é tratado aqui.
+         *
+         *     `get` é NOVO (Story 14.5, AC4) — mesma rota, método novo, sem rota nova:
+         *     leitura pura e agregada de prontidão do ciclo (qual semana está `active`/
+         *     `planning`, quais gates de `start`/`finalize` faltam). Zero regra de
+         *     domínio na view: `weekly_cycle_readiness` decide tudo.
+         */
+        get: operations["bujo_logs_weekly_cycle_retrieve"];
+        put?: never;
+        /**
+         * @description Ações do ciclo semanal (Story 14.1, AC8) — espelha `tasks/<pk>/transition/`.
+         *
+         *     Erros de gate e de matriz sobem como `InvalidTransition`/`CycleTargetConflict`
+         *     (ambos `DomainError`) e viram 409 pelo handler central; nada é tratado aqui.
+         *
+         *     `get` é NOVO (Story 14.5, AC4) — mesma rota, método novo, sem rota nova:
+         *     leitura pura e agregada de prontidão do ciclo (qual semana está `active`/
+         *     `planning`, quais gates de `start`/`finalize` faltam). Zero regra de
+         *     domínio na view: `weekly_cycle_readiness` decide tudo.
+         */
+        post: operations["bujo_logs_weekly_cycle_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/bujo/migration/queue/": {
         parameters: {
             query?: never;
@@ -227,7 +332,37 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /**
+         * @description ALIAS FINO de `UnifiedMigrationQueueView` — contrato `{logDate, tasks}`.
+         *
+         *     `log_date` vem de `queue["yesterday"]`, pronto do serviço: o alias não
+         *     recalcula tempo por conta própria, o que elimina a chance de incoerência se a
+         *     virada do dia cair entre duas leituras — e é o que torna satisfazível o guard
+         *     de "zero query própria" (o nome da função de calendário nem aparece aqui).
+         */
         get: operations["bujo_migration_queue_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bujo/migration/unified-queue/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description Fila única de pendências dos três níveis, mês → semana → dia.
+         *
+         *     View fina e sem query param: a fila é sempre "tudo que ficou atrás de hoje"
+         *     (AD-09 item 8 — apresenta tudo, item a item, sem janela nem paginação).
+         */
+        get: operations["bujo_migration_unified_queue_retrieve"];
         put?: never;
         post?: never;
         delete?: never;
@@ -278,7 +413,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        delete?: never;
+        delete: operations["bujo_recurring_templates_destroy"];
         options?: never;
         head?: never;
         patch: operations["bujo_recurring_templates_partial_update"];
@@ -294,6 +429,203 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["bujo_recurring_templates_place_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bujo/ritual-decisions/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description `POST /api/bujo/ritual-decisions/` — persistência imediata, um POST por
+         *     decisão (AD-28 item 6 ponto 6): pausar ou sair do ritual não perde nada.
+         *
+         *     O serializer valida FORMA (400). A matriz de combinação legal levanta
+         *     `InvalidRitualDecision` e o alvo fora de `planning` levanta
+         *     `InvalidTransition` — ambas `DomainError`, ambas 409 pelo handler central,
+         *     nenhuma tratada aqui.
+         */
+        post: operations["bujo_ritual_decisions_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bujo/rituals/monthly/density/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Densidade real do Monthly-alvo (AC6) — endpoint NOVO, gêmeo do semanal. */
+        get: operations["bujo_rituals_monthly_density_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bujo/rituals/monthly/sources/future-log/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description Base das três fontes mensais (gêmea da semanal: mecânica extraída, não
+         *     copiada — o que diverge é o parâmetro de período e o serviço).
+         */
+        get: operations["bujo_rituals_monthly_sources_future_log_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bujo/rituals/monthly/sources/previous-monthly/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description Base das três fontes mensais (gêmea da semanal: mecânica extraída, não
+         *     copiada — o que diverge é o parâmetro de período e o serviço).
+         */
+        get: operations["bujo_rituals_monthly_sources_previous_monthly_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bujo/rituals/monthly/sources/recurring/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description Base das três fontes mensais (gêmea da semanal: mecânica extraída, não
+         *     copiada — o que diverge é o parâmetro de período e o serviço).
+         */
+        get: operations["bujo_rituals_monthly_sources_recurring_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bujo/rituals/weekly/density/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description Densidade real do Weekly-alvo (AC6) — endpoint NOVO.
+         *
+         *     `GET /api/bujo/task-density/` fica intocado em rota, forma e semântica: são
+         *     dois contratos distintos (ver docstring de `bujo/services/density.py`), não uma
+         *     correção do antigo.
+         *
+         *     NÃO exige alvo em planejamento: aceita qualquer log existente e devolve a
+         *     grade vazia quando o log não existe, para que as Stories 14.5/14.6 (boards em
+         *     `active`) e 14.10 (Arquivo, `finalized`) reusem o mesmo endpoint.
+         */
+        get: operations["bujo_rituals_weekly_density_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bujo/rituals/weekly/sources/monthly-in-week/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Base das quatro fontes semanais — só o serviço e o serializer variam. */
+        get: operations["bujo_rituals_weekly_sources_monthly_in_week_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bujo/rituals/weekly/sources/pending-dailies/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Base das quatro fontes semanais — só o serviço e o serializer variam. */
+        get: operations["bujo_rituals_weekly_sources_pending_dailies_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bujo/rituals/weekly/sources/previous-weekly/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Base das quatro fontes semanais — só o serviço e o serializer variam. */
+        get: operations["bujo_rituals_weekly_sources_previous_weekly_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bujo/rituals/weekly/sources/recurring/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Base das quatro fontes semanais — só o serviço e o serializer variam. */
+        get: operations["bujo_rituals_weekly_sources_recurring_retrieve"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -437,6 +769,22 @@ export interface paths {
         get: operations["bujo_weekly_review_queue_retrieve"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/capture": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["capture_create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1050,6 +1398,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/summary/today": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description Resumo do dia (`GET /api/summary/today`, AC1/AC3).
+         *
+         *     View fina (§6.2) e **somente leitura**: compõe o resumo via `build_today_summary`
+         *     (3 apps de domínio, read-only) → serializa a resposta agregada. Mesma espinha da
+         *     `CaptureView`: auth por token opt-in per-view + escopo `summary` + `ScopedRateThrottle`
+         *     (`automation-summary`) + log estruturado de auditoria. **Sem payload de entrada** →
+         *     não há caminho 400 de validação; só 200 (+ 401/403/429 antes/fora do handler).
+         */
+        get: operations["summary_today_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/time-blocks/": {
         parameters: {
             query?: never;
@@ -1086,6 +1459,22 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AccountsLoginFailedResponse: {
+            detail: string;
+        };
+        AccountsTokenErrorCode: {
+            code: string[];
+        };
+        AccountsTokenInvalidResponse: {
+            detail: string;
+            fields?: components["schemas"]["AccountsTokenErrorCode"];
+        };
+        AccountsValidationErrorResponse: {
+            detail: string;
+            fields?: {
+                [key: string]: string[];
+            };
+        };
         /**
          * @description POST de registro de avulso/PRN (AC7). ``time_block_id``/``dose`` opcionais:
          *     ``dose`` omitida herda da agenda vigente (se houver bloco), senão o serviço exige
@@ -1122,6 +1511,23 @@ export interface components {
             timeBlockId: string;
             confirmed: boolean;
         };
+        /**
+         * @description `previous-weekly`/`previous-monthly`: acrescentam `readyToFinalize` e,
+         *     aditivamente (Story 14.5, AC4), `previousPeriodStart` — a chave de período
+         *     do log anterior, nome neutro porque serve as duas fontes.
+         */
+        BlockingTaskSource: {
+            sourceId: string;
+            blocking: boolean;
+            countsTowardProgress: boolean;
+            eligibleCount: number;
+            pendingDecisionCount: number;
+            reviewed: boolean;
+            items: components["schemas"]["RitualTaskItem"][];
+            readyToFinalize: boolean;
+            /** Format: date */
+            previousPeriodStart: string | null;
+        };
         BrainDumpCount: {
             count: number;
         };
@@ -1154,6 +1560,15 @@ export interface components {
          * @enum {string}
          */
         BrainDumpItemProcessDestinationEnum: "today" | "week" | "month" | "future";
+        CaptureRequest: {
+            type: string;
+            text: string;
+            value?: string | null;
+        };
+        CaptureResponse: {
+            /** Format: uuid */
+            readonly id: string;
+        };
         CatchUpQueue: {
             monthlyTasks: components["schemas"]["Task"][];
             weeklyTasks: components["schemas"]["Task"][];
@@ -1176,6 +1591,42 @@ export interface components {
          * @enum {string}
          */
         DayTypeEnum: "weekday" | "weekend" | "holiday";
+        /**
+         * @description * `keep` - Keep
+         *     * `skip_week` - Skip Week
+         *     * `keep_undated` - Keep Undated
+         * @enum {string}
+         */
+        DecisionEnum: "keep" | "skip_week" | "keep_undated";
+        DensityCell: {
+            total: number;
+            byStatus: components["schemas"]["DensityStatusBreakdown"];
+        };
+        DensityDay: {
+            total: number;
+            byStatus: components["schemas"]["DensityStatusBreakdown"];
+            /** Format: date */
+            date: string;
+        };
+        DensityResponse: {
+            days: components["schemas"]["DensityDay"][];
+            undated: components["schemas"]["DensityCell"];
+            total: number;
+        };
+        /**
+         * @description As 6 chaves de `TaskStatus`, SEMPRE presentes (zeros inclusive).
+         *
+         *     Nenhuma tem underscore, então a camelização de saída não as altera — o que é
+         *     verificado por teste de fio, não deduzido.
+         */
+        DensityStatusBreakdown: {
+            pending: number;
+            started: number;
+            completed: number;
+            cancelled: number;
+            migrated: number;
+            postponed: number;
+        };
         Doctor: {
             /** Format: uuid */
             readonly id: string;
@@ -1194,6 +1645,17 @@ export interface components {
          * @enum {string}
          */
         EisenhowerEnum: "ui" | "u" | "i" | "none";
+        FutureLogHorizon: {
+            /** Format: date */
+            anchorMonthFirst: string;
+            horizon: components["schemas"]["FutureLogMonthCount"][];
+            distant: components["schemas"]["FutureLogMonthCount"][];
+        };
+        FutureLogMonthCount: {
+            /** Format: date */
+            monthFirst: string;
+            taskCount: number;
+        };
         FutureLogMonthGroup: {
             year: number;
             month: number;
@@ -1722,16 +2184,104 @@ export interface components {
             logDate: string;
             tasks: components["schemas"]["Task"][];
         };
+        MigrationTarget: {
+            type: components["schemas"]["MigrationTargetTypeEnum"];
+            /** Format: date */
+            weekStart?: string | null;
+            /** Format: date */
+            monthFirst?: string | null;
+            /** Format: date */
+            logDate?: string | null;
+        };
+        /**
+         * @description * `daily` - daily
+         *     * `weekly` - weekly
+         *     * `monthly` - monthly
+         * @enum {string}
+         */
+        MigrationTargetTypeEnum: "daily" | "weekly" | "monthly";
+        MonthlyCycle: {
+            status: string | null;
+            /** Format: date-time */
+            planningCompletedAt: string | null;
+            /** Format: date */
+            monthFirst: string;
+            /** Format: date */
+            regularWindowStart: string;
+            /** Format: date */
+            regularWindowEnd: string;
+        };
+        MonthlyCycleAction: {
+            action: components["schemas"]["MonthlyCycleActionActionEnum"];
+            /** Format: date */
+            monthFirst?: string;
+        };
+        /**
+         * @description * `open_planning_target` - open_planning_target
+         *     * `complete_planning` - complete_planning
+         *     * `start` - start
+         *     * `finalize` - finalize
+         * @enum {string}
+         */
+        MonthlyCycleActionActionEnum: "open_planning_target" | "complete_planning" | "start" | "finalize";
+        /**
+         * @description Resposta de `GET /api/bujo/logs/monthly/cycle/` (AC4) — os quatro blocos,
+         *     `null` nos inexistentes. Cada booleano REUSA o predicado do serviço de
+         *     transição (ver `services/cycles.monthly_cycle_readiness`); este serializer
+         *     só projeta, nunca decide.
+         */
+        MonthlyCycleReadiness: {
+            active: components["schemas"]["_MonthlyCycleSnapshot"] | null;
+            planning: components["schemas"]["_MonthlyCycleSnapshot"] | null;
+            start: components["schemas"]["MonthlyStartReadiness"] | null;
+            finalize: components["schemas"]["MonthlyFinalizeReadiness"] | null;
+        };
+        MonthlyFinalizeGates: {
+            noOpenTasks: boolean;
+            nextPlanningExists: boolean;
+        };
+        MonthlyFinalizeReadiness: {
+            allowed: boolean;
+            /** Format: date */
+            target: string;
+            gates: components["schemas"]["MonthlyFinalizeGates"];
+        };
         MonthlyLog: {
+            status: string | null;
+            /** Format: date-time */
+            planningCompletedAt: string | null;
             /** Format: date */
             monthFirst: string;
             tasks: components["schemas"]["Task"][];
             closed: boolean;
         };
+        MonthlyRecurringSource: {
+            sourceId: string;
+            blocking: boolean;
+            countsTowardProgress: boolean;
+            eligibleCount: number;
+            pendingDecisionCount: number;
+            reviewed: boolean;
+            items: components["schemas"]["RitualTemplateItem"][];
+            alreadyPlaced: components["schemas"]["_TemplateBucket"];
+            alreadyPlacedInYear: components["schemas"]["_TemplateBucket"];
+        };
         MonthlyReviewQueue: {
             /** Format: date */
             monthFirst: string;
             tasks: components["schemas"]["Task"][];
+        };
+        /** @description Os TRÊS gates de `start` — hoje indistinguíveis no `detail` do 409. */
+        MonthlyStartGates: {
+            dateReached: boolean;
+            planningCompleted: boolean;
+            previousFinalized: boolean;
+        };
+        MonthlyStartReadiness: {
+            allowed: boolean;
+            /** Format: date */
+            target: string;
+            gates: components["schemas"]["MonthlyStartGates"];
         };
         MonthlyTaskCreate: {
             /** Format: date */
@@ -1745,6 +2295,24 @@ export interface components {
         };
         /** @enum {unknown} */
         NullEnum: null;
+        /**
+         * @description Corpo do `PATCH /api/brain-dump/items/{id}/` (M11) — mesmo molde de
+         *     `bujo/serializers.py::TaskUpdateSerializer`: os três campos são opcionais
+         *     porque cada um declara `required=False` (sem `default=`), o que já basta
+         *     para o DRF pular um campo ausente do corpo (`SkipField`) e não incluí-lo
+         *     em `validated_data`. `partial=True` na view NÃO é a causa da
+         *     opcionalidade aqui — com todos os campos `required=False`, o
+         *     comportamento de ausência é idêntico com ou sem `partial=True`; um campo
+         *     NOVO que nascesse sem `required=False` continuaria obrigatório mesmo
+         *     passando `partial=True`. Sem `validate()` — nenhum dos três campos
+         *     depende do estado atual do item (diferente de `TaskUpdateSerializer`, que
+         *     valida `scheduled_date` contra o Monthly Log na VIEW, não aqui).
+         */
+        PatchedBrainDumpItemUpdate: {
+            title?: string;
+            description?: string | null;
+            targetLog?: (components["schemas"]["TargetLogEnum"] | components["schemas"]["NullEnum"]) | null;
+        };
         PatchedDoctorUpdate: {
             name?: string;
             specialty?: string | null;
@@ -1836,11 +2404,27 @@ export interface components {
             category?: (components["schemas"]["CategoryEnum"] | components["schemas"]["NullEnum"]) | null;
             /** Format: date */
             scheduledDate?: string | null;
+            waitingOn?: boolean;
         };
         PatchedTimeBlockUpdate: {
             name?: string;
             displayOrder?: number;
             active?: boolean;
+        };
+        /** @description A única fonte com `groups` em vez de `items` planos (AC3). */
+        PendingDailiesSource: {
+            sourceId: string;
+            blocking: boolean;
+            countsTowardProgress: boolean;
+            eligibleCount: number;
+            pendingDecisionCount: number;
+            reviewed: boolean;
+            groups: components["schemas"]["PendingDailyGroup"][];
+        };
+        PendingDailyGroup: {
+            /** Format: date */
+            date: string;
+            items: components["schemas"]["RitualTaskItem"][];
         };
         /**
          * @description * `before` - before
@@ -1885,6 +2469,58 @@ export interface components {
             scheduledDate?: string | null;
         };
         /**
+         * @description Resposta do `POST /api/bujo/ritual-decisions/`.
+         *
+         *     O alvo volta como a **chave de período** que o cliente enviou (`weekStart` /
+         *     `monthFirst`), não como o id do log: o id é opaco para quem endereça o ritual
+         *     por semana/mês, e devolvê-lo obrigaria o cliente a uma segunda leitura só para
+         *     saber a qual ritual a decisão que ele acabou de gravar pertence. O item volta
+         *     como `taskId`/`recurringTemplateId` — o mesmo identificador que entrou.
+         */
+        RitualDecision: {
+            /** Format: uuid */
+            id: string;
+            decision: string;
+            /** Format: date */
+            readonly weekStart: string | null;
+            /** Format: date */
+            readonly monthFirst: string | null;
+            /** Format: uuid */
+            taskId: string | null;
+            /** Format: uuid */
+            recurringTemplateId: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /**
+         * @description Corpo do `POST /api/bujo/ritual-decisions/`.
+         *
+         *     Campos no CORPO, então chegam do fio em camelCase (`weekStart`, `taskId`,
+         *     `recurringTemplateId`) e o `CamelCaseJSONParser` converte antes do serializer.
+         */
+        RitualDecisionCreate: {
+            decision: components["schemas"]["DecisionEnum"];
+            /** Format: date */
+            weekStart?: string;
+            /** Format: date */
+            monthFirst?: string;
+            /** Format: uuid */
+            taskId?: string;
+            /** Format: uuid */
+            recurringTemplateId?: string;
+        };
+        RitualTaskItem: {
+            task: components["schemas"]["Task"];
+            decision: string | null;
+        };
+        RitualTemplateItem: {
+            template: components["schemas"]["RecurringTaskTemplate"];
+            decision: string | null;
+            instancesInTargetCount: number;
+        };
+        /**
          * @description Entrada de nova versão de agenda (AC3/AC5): ``time_block_id`` + ``dose`` +
          *     ``active``. Só valida **forma** (``dose`` é uma lista quando informada); o conteúdo
          *     (amount numérico, unit não-vazia, lista não-vazia) é validado na camada de serviço
@@ -1918,6 +2554,16 @@ export interface components {
             date: string;
             isHoliday: boolean;
         };
+        Signup: {
+            /** Format: email */
+            email: string;
+            password: string;
+            /** @default America/Sao_Paulo */
+            timezone: string;
+        };
+        SignupSuccessResponse: {
+            detail: string;
+        };
         /**
          * @description * `scheduled` - Scheduled
          *     * `ad_hoc` - Ad Hoc
@@ -1944,6 +2590,34 @@ export interface components {
             /** Format: uuid */
             prescribedById?: string | null;
         };
+        SummaryHabits: {
+            readonly total: number;
+            readonly groups: components["schemas"]["SummaryHabitsGroup"][];
+        };
+        SummaryHabitsGroup: {
+            /** Format: uuid */
+            readonly id: string;
+            readonly name: string;
+            readonly completion: number;
+        };
+        SummaryJournalEntry: {
+            readonly text: string;
+            /** Format: date */
+            readonly date: string;
+        };
+        SummaryResponse: {
+            /** Format: date */
+            readonly date: string;
+            readonly pendingTasks: components["schemas"]["SummaryTask"][];
+            readonly habits: components["schemas"]["SummaryHabits"];
+            readonly lastJournalEntry: components["schemas"]["SummaryJournalEntry"] | null;
+        };
+        SummaryTask: {
+            /** Format: uuid */
+            readonly id: string;
+            readonly title: string;
+            readonly status: string;
+        };
         /**
          * @description * `today` - Today
          *     * `week` - Week
@@ -1963,11 +2637,13 @@ export interface components {
             /** Format: date */
             scheduledDate?: string | null;
             readonly subtasks: components["schemas"]["Task"][];
+            waitingOn?: boolean;
             migrationCount?: number;
             /** Format: uuid */
             migratedToTask?: string | null;
             /** Format: uuid */
             sourceTemplate?: string | null;
+            readonly migrationTarget: components["schemas"]["MigrationTarget"] | null;
         };
         TaskCreate: {
             title: string;
@@ -2003,6 +2679,16 @@ export interface components {
             /** Format: uuid */
             targetTaskId: string;
             position: components["schemas"]["PositionEnum"];
+        };
+        /** @description Fontes cujos itens são Tasks: `monthly-in-week`, `future-log`. */
+        TaskSource: {
+            sourceId: string;
+            blocking: boolean;
+            countsTowardProgress: boolean;
+            eligibleCount: number;
+            pendingDecisionCount: number;
+            reviewed: boolean;
+            items: components["schemas"]["RitualTaskItem"][];
         };
         TaskTransitionRequest: {
             toStatus: components["schemas"]["ToStatusEnum"];
@@ -2044,22 +2730,104 @@ export interface components {
          * @enum {string}
          */
         TypeEnum: "weekly" | "monthly";
+        UnifiedMigrationQueue: {
+            totalCount: number;
+            sections: components["schemas"]["UnifiedQueueSection"][];
+        };
+        UnifiedQueueGroup: {
+            /** Format: date */
+            periodStart: string;
+            items: components["schemas"]["Task"][];
+        };
+        UnifiedQueueSection: {
+            sourceId: string;
+            count: number;
+            groups: components["schemas"]["UnifiedQueueGroup"][];
+        };
+        WeeklyCycle: {
+            status: string | null;
+            /** Format: date-time */
+            planningCompletedAt: string | null;
+            /** Format: date */
+            weekStart: string;
+        };
+        WeeklyCycleAction: {
+            action: components["schemas"]["WeeklyCycleActionActionEnum"];
+            /** Format: date */
+            weekStart?: string;
+        };
+        /**
+         * @description * `open_planning_target` - open_planning_target
+         *     * `complete_planning` - complete_planning
+         *     * `start` - start
+         *     * `finalize` - finalize
+         *     * `cancel_planning_target` - cancel_planning_target
+         * @enum {string}
+         */
+        WeeklyCycleActionActionEnum: "open_planning_target" | "complete_planning" | "start" | "finalize" | "cancel_planning_target";
+        /**
+         * @description Resposta de `GET /api/bujo/logs/weekly/cycle/` (AC4) — os quatro blocos,
+         *     `null` nos inexistentes. Cada booleano REUSA o predicado do serviço de
+         *     transição (ver `services/cycles.weekly_cycle_readiness`); este serializer
+         *     só projeta, nunca decide.
+         */
+        WeeklyCycleReadiness: {
+            active: components["schemas"]["_WeeklyCycleSnapshot"] | null;
+            planning: components["schemas"]["_WeeklyCycleSnapshot"] | null;
+            start: components["schemas"]["WeeklyStartReadiness"] | null;
+            finalize: components["schemas"]["WeeklyFinalizeReadiness"] | null;
+        };
         WeeklyDay: {
             /** Format: date */
             date: string;
             tasks: components["schemas"]["Task"][];
         };
+        WeeklyFinalizeGates: {
+            noOpenTasks: boolean;
+            nextPlanningExists: boolean;
+        };
+        WeeklyFinalizeReadiness: {
+            allowed: boolean;
+            /** Format: date */
+            target: string;
+            gates: components["schemas"]["WeeklyFinalizeGates"];
+        };
         WeeklyLog: {
+            status: string | null;
+            /** Format: date-time */
+            planningCompletedAt: string | null;
             /** Format: date */
             weekStart: string;
             days: components["schemas"]["WeeklyDay"][];
             unscheduled: components["schemas"]["Task"][];
             closed: boolean;
         };
+        WeeklyRecurringSource: {
+            sourceId: string;
+            blocking: boolean;
+            countsTowardProgress: boolean;
+            eligibleCount: number;
+            pendingDecisionCount: number;
+            reviewed: boolean;
+            items: components["schemas"]["RitualTemplateItem"][];
+            alreadyPlaced: components["schemas"]["_TemplateBucket"];
+        };
         WeeklyReviewQueue: {
             /** Format: date */
             weekStart: string;
             tasks: components["schemas"]["Task"][];
+        };
+        /** @description Os TRÊS gates de `start` — hoje indistinguíveis no `detail` do 409. */
+        WeeklyStartGates: {
+            dateReached: boolean;
+            planningCompleted: boolean;
+            previousFinalized: boolean;
+        };
+        WeeklyStartReadiness: {
+            allowed: boolean;
+            /** Format: date */
+            target: string;
+            gates: components["schemas"]["WeeklyStartGates"];
         };
         WeeklyTaskCreate: {
             /** Format: date */
@@ -2070,6 +2838,30 @@ export interface components {
             description?: string | null;
             eisenhower?: (components["schemas"]["EisenhowerEnum"] | components["schemas"]["NullEnum"]) | null;
             category?: (components["schemas"]["CategoryEnum"] | components["schemas"]["NullEnum"]) | null;
+        };
+        /** @description Projeção mínima de um `MonthlyLog` operacional (`active` ou `planning`). */
+        _MonthlyCycleSnapshot: {
+            /** Format: date */
+            monthFirst: string;
+            status: string;
+            /** Format: date-time */
+            planningCompletedAt: string | null;
+        };
+        /**
+         * @description `alreadyPlaced`/`alreadyPlacedInYear` — fora do progresso e dos avisos, mas
+         *     permanentemente consultáveis (novas instâncias continuam permitidas).
+         */
+        _TemplateBucket: {
+            countsTowardProgress: boolean;
+            items: components["schemas"]["RitualTemplateItem"][];
+        };
+        /** @description Projeção mínima de um `WeeklyLog` operacional (`active` ou `planning`). */
+        _WeeklyCycleSnapshot: {
+            /** Format: date */
+            weekStart: string;
+            status: string;
+            /** Format: date-time */
+            planningCompletedAt: string | null;
         };
     };
     responses: never;
@@ -2087,14 +2879,27 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Signup"];
+            };
+        };
         responses: {
-            /** @description No response body */
-            200: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["SignupSuccessResponse"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountsValidationErrorResponse"];
+                };
             };
         };
     };
@@ -2119,6 +2924,22 @@ export interface operations {
                     "application/json": components["schemas"]["TokenObtainPair"];
                 };
             };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountsValidationErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountsLoginFailedResponse"];
+                };
+            };
         };
     };
     accounts_token_refresh_create: {
@@ -2140,6 +2961,22 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TokenRefresh"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountsValidationErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountsTokenInvalidResponse"];
                 };
             };
         };
@@ -2225,6 +3062,31 @@ export interface operations {
             };
         };
     };
+    brain_dump_items_partial_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PatchedBrainDumpItemUpdate"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrainDumpItem"];
+                };
+            };
+        };
+    };
     brain_dump_items_process_create: {
         parameters: {
             query?: never;
@@ -2307,9 +3169,30 @@ export interface operations {
             };
         };
     };
-    bujo_logs_monthly_retrieve: {
+    bujo_future_log_horizon_retrieve: {
         parameters: {
             query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FutureLogHorizon"];
+                };
+            };
+        };
+    };
+    bujo_logs_monthly_retrieve: {
+        parameters: {
+            query?: {
+                month_first?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -2349,6 +3232,48 @@ export interface operations {
             };
         };
     };
+    bujo_logs_monthly_cycle_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MonthlyCycleReadiness"];
+                };
+            };
+        };
+    };
+    bujo_logs_monthly_cycle_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MonthlyCycleAction"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MonthlyCycle"];
+                };
+            };
+        };
+    };
     bujo_logs_today_retrieve: {
         parameters: {
             query?: never;
@@ -2370,7 +3295,9 @@ export interface operations {
     };
     bujo_logs_weekly_retrieve: {
         parameters: {
-            query?: never;
+            query?: {
+                week_start?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -2410,6 +3337,48 @@ export interface operations {
             };
         };
     };
+    bujo_logs_weekly_cycle_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WeeklyCycleReadiness"];
+                };
+            };
+        };
+    };
+    bujo_logs_weekly_cycle_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WeeklyCycleAction"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WeeklyCycle"];
+                };
+            };
+        };
+    };
     bujo_migration_queue_retrieve: {
         parameters: {
             query?: never;
@@ -2425,6 +3394,25 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MigrationQueue"];
+                };
+            };
+        };
+    };
+    bujo_migration_unified_queue_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnifiedMigrationQueue"];
                 };
             };
         };
@@ -2490,6 +3478,26 @@ export interface operations {
             };
         };
     };
+    bujo_recurring_templates_destroy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     bujo_recurring_templates_partial_update: {
         parameters: {
             query?: never;
@@ -2536,6 +3544,218 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Task"];
+                };
+            };
+        };
+    };
+    bujo_ritual_decisions_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RitualDecisionCreate"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RitualDecision"];
+                };
+            };
+        };
+    };
+    bujo_rituals_monthly_density_retrieve: {
+        parameters: {
+            query: {
+                month_first: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DensityResponse"];
+                };
+            };
+        };
+    };
+    bujo_rituals_monthly_sources_future_log_retrieve: {
+        parameters: {
+            query: {
+                month_first: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskSource"];
+                };
+            };
+        };
+    };
+    bujo_rituals_monthly_sources_previous_monthly_retrieve: {
+        parameters: {
+            query: {
+                month_first: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BlockingTaskSource"];
+                };
+            };
+        };
+    };
+    bujo_rituals_monthly_sources_recurring_retrieve: {
+        parameters: {
+            query: {
+                month_first: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MonthlyRecurringSource"];
+                };
+            };
+        };
+    };
+    bujo_rituals_weekly_density_retrieve: {
+        parameters: {
+            query: {
+                week_start: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DensityResponse"];
+                };
+            };
+        };
+    };
+    bujo_rituals_weekly_sources_monthly_in_week_retrieve: {
+        parameters: {
+            query: {
+                week_start: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskSource"];
+                };
+            };
+        };
+    };
+    bujo_rituals_weekly_sources_pending_dailies_retrieve: {
+        parameters: {
+            query: {
+                week_start: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PendingDailiesSource"];
+                };
+            };
+        };
+    };
+    bujo_rituals_weekly_sources_previous_weekly_retrieve: {
+        parameters: {
+            query: {
+                week_start: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BlockingTaskSource"];
+                };
+            };
+        };
+    };
+    bujo_rituals_weekly_sources_recurring_retrieve: {
+        parameters: {
+            query: {
+                week_start: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WeeklyRecurringSource"];
                 };
             };
         };
@@ -2752,6 +3972,29 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WeeklyReviewQueue"];
+                };
+            };
+        };
+    };
+    capture_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CaptureRequest"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaptureResponse"];
                 };
             };
         };
@@ -3633,6 +4876,25 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MedicationDay"];
+                };
+            };
+        };
+    };
+    summary_today_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SummaryResponse"];
                 };
             };
         };

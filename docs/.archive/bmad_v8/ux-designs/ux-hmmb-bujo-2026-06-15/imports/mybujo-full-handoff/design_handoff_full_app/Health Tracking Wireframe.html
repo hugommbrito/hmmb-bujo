@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BuJo Digital — Health Tracking Wireframe</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Architects+Daughter&display=swap" rel="stylesheet">
+<style>
+  @font-face { font-family:'Sora'; src:url('fonts/Sora-Regular.ttf') format('truetype'); font-weight:400; font-display:swap; }
+  @font-face { font-family:'Sora'; src:url('fonts/Sora-Medium.ttf') format('truetype'); font-weight:500; font-display:swap; }
+  @font-face { font-family:'Sora'; src:url('fonts/Sora-SemiBold.ttf') format('truetype'); font-weight:600; font-display:swap; }
+  @font-face { font-family:'Sora'; src:url('fonts/Sora-Bold.ttf') format('truetype'); font-weight:700; font-display:swap; }
+
+  :root{
+    --paper:#eceae4; --box:#ffffff;
+    --ink:#2c2a26; --ink-soft:#6f6c64; --ink-faint:#a6a299;
+    --line:#9b978d; --line-soft:#cbc8c0;
+    --fill:#dedbd3; --fill-2:#e8e6df;
+    --pink:#e0559b; --purple:#8b5cf6;
+    --red:#d6453c; --orange:#e07b1a; --yellow:#dca200; --green:#3aa861;
+    --pin:#2f5fa6; --pin-bg:#eaf0fa;
+    --sketch:'Architects Daughter', cursive;
+    --ui:'Sora', system-ui, sans-serif;
+    --r:10px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      repeating-linear-gradient(0deg, transparent, transparent 27px, rgba(155,151,141,.07) 27px, rgba(155,151,141,.07) 28px),
+      var(--paper);
+    color:var(--ink); font-family:var(--ui); -webkit-font-smoothing:antialiased;
+  }
+
+  /* ===== toolbar ===== */
+  .toolbar{ position:sticky; top:0; z-index:50; display:flex; align-items:center; gap:18px; padding:11px 26px;
+    background:rgba(236,234,228,.92); backdrop-filter:blur(6px); border-bottom:1.5px solid var(--line); }
+  .toolbar .brand{ display:flex; align-items:baseline; gap:10px; }
+  .toolbar .brand b{ font-weight:700; font-size:15px; letter-spacing:.02em; }
+  .toolbar .brand span{ font-family:var(--sketch); color:var(--ink-soft); font-size:15px; }
+  .toolbar .spacer{ flex:1; }
+  .toggle{ display:flex; align-items:center; gap:8px; cursor:pointer; user-select:none; font-family:var(--sketch); font-size:15px; color:var(--ink); }
+  .toggle .sw{ width:38px; height:21px; border-radius:11px; background:var(--line); position:relative; transition:.18s; border:1.5px solid var(--line); }
+  .toggle .sw::after{ content:''; position:absolute; top:1.5px; left:1.5px; width:15px; height:15px; border-radius:50%; background:var(--box); transition:.18s; }
+  .toggle.on .sw{ background:var(--pin); }
+  .toggle.on .sw::after{ left:19px; }
+
+  /* ===== app frame ===== */
+  .stage{ padding:30px 26px 70px; display:flex; justify-content:center; }
+  .app{ width:1320px; max-width:100%; display:grid; grid-template-columns:78px 1fr; position:relative;
+    background:var(--paper); border:2.25px solid var(--ink); border-radius:16px; box-shadow:7px 9px 0 rgba(44,42,38,.13); overflow:hidden; }
+
+  .rail{ background:var(--fill-2); border-right:2px solid var(--ink); display:flex; flex-direction:column; align-items:center; gap:6px; padding:16px 8px; }
+  .rail .logo{ width:42px; height:42px; border:2px solid var(--ink); border-radius:11px; display:grid; place-items:center; font-weight:700; font-size:18px; margin-bottom:12px; background:var(--box); }
+  .navitem{ width:54px; padding:9px 4px 7px; border-radius:10px; border:1.5px solid transparent; display:flex; flex-direction:column; align-items:center; gap:5px; cursor:pointer; text-decoration:none; }
+  .navitem .ic{ width:24px; height:24px; border:1.75px solid var(--ink-soft); border-radius:6px; display:grid; place-items:center; }
+  .navitem .ic svg{ width:15px; height:15px; stroke:var(--ink-soft); fill:none; stroke-width:1.8; }
+  .navitem small{ font-size:9.5px; color:var(--ink-soft); letter-spacing:.01em; font-weight:500; }
+  .navitem.active{ background:var(--box); border-color:var(--ink); }
+  .navitem.active .ic{ border-color:var(--ink); background:var(--ink); }
+  .navitem.active .ic svg{ stroke:var(--box); }
+  .navitem.active small{ color:var(--ink); font-weight:600; }
+
+  .main{ padding:20px 22px 26px; min-width:0; position:relative; }
+
+  /* ===== region wrapper ===== */
+  .region{ position:relative; background:var(--box); border:2px solid var(--ink); border-radius:var(--r); }
+  .rtag{ position:absolute; top:-11px; left:14px; z-index:3; font-family:var(--sketch); font-size:12.5px; line-height:1; letter-spacing:.04em; background:var(--paper); color:var(--ink-soft); padding:1px 8px; text-transform:uppercase; white-space:nowrap; }
+  .pin{ position:absolute; top:-13px; right:-13px; z-index:6; width:27px; height:27px; border-radius:50%; background:var(--pin); color:#fff; border:2px solid var(--box); display:none; place-items:center; font-family:var(--sketch); font-size:14px; box-shadow:0 2px 5px rgba(47,95,166,.4); }
+  body.annotated .pin{ display:grid; }
+  .pin.lft{ right:auto; left:-13px; }
+
+  .ghost{ border:1.75px solid var(--line); background:var(--box); border-radius:8px; padding:7px 12px; font-family:var(--ui); font-size:13px; color:var(--ink); cursor:pointer; font-weight:500; display:inline-flex; align-items:center; gap:7px; text-decoration:none; }
+  .ghost.icon{ padding:7px 9px; }
+  .ghost svg{ width:15px; height:15px; stroke:var(--ink); fill:none; stroke-width:1.9; }
+  .ghost.cta{ background:var(--ink); color:var(--box); border-color:var(--ink); }
+  .ghost.cta svg{ stroke:var(--box); }
+
+  /* ===== page header ===== */
+  .phead{ display:flex; align-items:flex-end; gap:16px; margin-bottom:18px; }
+  .phead .ttl h1{ margin:0; font-size:27px; font-weight:700; letter-spacing:-.01em; }
+  .phead .ttl .sub{ font-family:var(--sketch); font-size:15px; color:var(--ink-soft); margin-top:3px; }
+  .phead .sub em{ font-style:italic; color:var(--ink-faint); }
+  .phead .spacer{ flex:1; }
+  .datenav{ display:flex; align-items:center; gap:10px; background:var(--box); border:2px solid var(--ink); border-radius:10px; padding:5px 6px; }
+  .datenav b{ width:30px; height:30px; border:1.5px solid var(--line); border-radius:7px; display:grid; place-items:center; cursor:pointer; background:var(--box); }
+  .datenav b svg{ width:14px; height:14px; stroke:var(--ink); fill:none; stroke-width:2; }
+  .datenav .lbl{ font-size:15px; font-weight:600; min-width:150px; text-align:center; display:flex; align-items:center; gap:8px; justify-content:center; }
+  .datenav .lbl svg{ width:15px; height:15px; stroke:var(--ink-soft); fill:none; stroke-width:1.9; }
+  .datenav .lbl small{ font-family:var(--sketch); font-weight:400; font-size:11px; color:var(--ink-faint); }
+  .datenav .today-btn{ font-family:var(--sketch); font-size:12px; color:var(--pin); border:1.5px solid var(--pin); background:var(--pin-bg); border-radius:7px; padding:5px 9px; cursor:pointer; }
+
+  /* ===== generic section heads inside regions ===== */
+  .sec-head{ display:flex; align-items:center; gap:10px; margin-bottom:14px; }
+  .sec-head .icb{ width:26px; height:26px; border:1.75px solid var(--ink); border-radius:7px; display:grid; place-items:center; flex:none; background:var(--fill-2); }
+  .sec-head .icb svg{ width:15px; height:15px; stroke:var(--ink); fill:none; stroke-width:1.9; }
+  .sec-head .st{ font-size:16px; font-weight:600; }
+  .sec-head .st small{ font-family:var(--sketch); font-weight:400; font-size:12px; color:var(--ink-faint); margin-left:6px; }
+  .sec-head .spacer{ flex:1; }
+
+  /* ===== daily entry: 2 column ===== */
+  .entry-grid{ display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-bottom:18px; }
+  .entry{ position:relative; padding:16px 18px 18px; }
+
+  /* time / number field generic */
+  .field{ display:flex; flex-direction:column; gap:5px; }
+  .field .flab{ font-family:var(--sketch); font-size:12px; color:var(--ink-soft); }
+  .inp{ border:1.75px solid var(--line); background:var(--box); border-radius:8px; padding:9px 11px; font-family:var(--ui); font-size:14px; color:var(--ink); display:flex; align-items:center; gap:8px; }
+  .inp svg{ width:15px; height:15px; stroke:var(--ink-soft); fill:none; stroke-width:1.8; flex:none; }
+  .inp .val{ font-weight:600; }
+  .inp .unit{ color:var(--ink-faint); font-size:12px; margin-left:auto; }
+  .inp.placeholder .val{ color:var(--ink-faint); font-weight:400; }
+  .inp.calc{ background:var(--fill-2); border-style:dashed; }
+
+  /* fasting block */
+  .protocol-row{ display:flex; align-items:center; gap:8px; margin-bottom:14px; flex-wrap:wrap; }
+  .chip{ font-family:var(--ui); font-size:12px; border:1.5px solid var(--line); border-radius:20px; padding:4px 11px; cursor:pointer; background:var(--box); color:var(--ink-soft); }
+  .chip.on{ background:var(--ink); color:var(--box); border-color:var(--ink); font-weight:600; }
+  .time-2{ display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px; }
+
+  .fast-readout{ border:2px solid var(--ink); border-radius:var(--r); padding:14px 16px; background:var(--fill-2); display:flex; align-items:center; gap:16px; margin-bottom:16px; }
+  .fast-readout .dur{ font-size:34px; font-weight:700; line-height:1; letter-spacing:-.02em; }
+  .fast-readout .dur small{ font-size:16px; color:var(--ink-faint); font-weight:600; }
+  .fast-readout .rcol{ display:flex; flex-direction:column; gap:5px; }
+  .fast-readout .cap{ font-family:var(--sketch); font-size:12px; color:var(--ink-soft); }
+  .status-badge{ display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; border-radius:20px; padding:3px 10px; border:1.5px solid; width:fit-content; }
+  .status-badge.done{ color:var(--green); border-color:var(--green); background:rgba(58,168,97,.08); }
+  .status-badge.live{ color:var(--orange); border-color:var(--orange); background:rgba(224,123,26,.08); }
+  .status-badge .pls{ width:8px; height:8px; border-radius:50%; background:currentColor; }
+
+  .donutwrap{ position:relative; width:74px; height:74px; flex:none; }
+  .donutwrap svg{ transform:rotate(-90deg); }
+  .donutwrap .mid{ position:absolute; inset:0; display:grid; place-items:center; font-size:12px; font-weight:700; }
+
+  /* 7-day sparkline */
+  .spark-head{ display:flex; align-items:baseline; justify-content:space-between; margin-bottom:9px; }
+  .spark-head .sl{ font-family:var(--sketch); font-size:12px; color:var(--ink-soft); }
+  .spark-head .sr{ font-size:11px; color:var(--ink-faint); }
+  .spark{ display:grid; grid-template-columns:repeat(7,1fr); gap:7px; align-items:end; height:62px; }
+  .spark .sb{ display:flex; flex-direction:column; align-items:center; gap:4px; height:100%; justify-content:flex-end; }
+  .spark .sb .bar{ width:100%; max-width:26px; border-radius:4px 4px 2px 2px; }
+  .spark .sb .bar.met{ background:var(--ink); }
+  .spark .sb .bar.miss{ background:var(--box); border:1.5px solid var(--line); }
+  .spark .sb .sd{ font-size:9px; color:var(--ink-faint); }
+  .spark .sb .sh{ font-size:9.5px; color:var(--ink-soft); font-weight:600; }
+
+  /* weight grid of fields */
+  .wgrid{ display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px; }
+  .wgrid .field.full{ grid-column:1 / -1; }
+  .lastentry{ display:flex; align-items:center; gap:10px; font-size:12px; color:var(--ink-soft); border:1.5px dashed var(--line-soft); border-radius:8px; padding:8px 11px; margin-bottom:14px; background:var(--fill-2); }
+  .lastentry .le-k{ font-family:var(--sketch); color:var(--ink-faint); }
+  .lastentry b{ color:var(--ink); }
+  .lastentry .sep{ color:var(--line); }
+  .logbtn{ width:100%; justify-content:center; padding:11px; font-size:14px; }
+
+  /* ===== chart region ===== */
+  .chart-region{ padding:16px 18px 16px; margin-bottom:18px; }
+  .chart-region.full{ }
+  .legend-keys{ display:flex; align-items:center; gap:16px; }
+  .lk{ display:flex; align-items:center; gap:7px; font-size:12px; color:var(--ink-soft); }
+  .lk .ln{ width:20px; height:0; border-top:2.5px solid var(--ink); }
+  .lk .ln.dash{ border-top:2.5px dashed var(--pin); }
+  .lk .ln.bar{ width:13px; height:13px; border:0; border-radius:3px; background:var(--ink); }
+  .lk .ln.bar.out{ background:var(--box); border:1.5px solid var(--line); }
+  .lk .ln.avg{ border-top:2px dashed var(--red); width:20px; height:0; }
+
+  .chart-wrap{ width:100%; }
+  .chart-wrap svg{ display:block; width:100%; height:auto; }
+  .axis-line{ stroke:var(--ink); stroke-width:1.5; }
+  .grid-line{ stroke:var(--line-soft); stroke-width:1; stroke-dasharray:2 4; }
+  .tick-lbl{ font-family:var(--ui); font-size:10px; fill:var(--ink-faint); }
+  .tick-lbl.ink{ fill:var(--ink-soft); }
+  .ax-title{ font-family:var(--sketch); font-size:11px; fill:var(--ink-soft); }
+  .series-weight{ fill:none; stroke:var(--ink); stroke-width:2.25; stroke-linejoin:round; stroke-linecap:round; }
+  .series-bf{ fill:none; stroke:var(--pin); stroke-width:2; stroke-dasharray:5 4; stroke-linejoin:round; stroke-linecap:round; }
+  .dot-w{ fill:var(--box); stroke:var(--ink); stroke-width:2; cursor:pointer; }
+  .dot-w:hover{ fill:var(--ink); }
+  .dot-bf{ fill:var(--pin); stroke:var(--box); stroke-width:1.5; cursor:pointer; }
+  .avg-line{ stroke:var(--red); stroke-width:1.75; stroke-dasharray:5 4; }
+  .fut-zone{ fill:rgba(155,151,141,.06); }
+
+  /* monthly summary stats below chart */
+  .chart-foot{ display:flex; align-items:center; gap:14px; margin-top:12px; flex-wrap:wrap; }
+  .mini-stat{ display:flex; align-items:baseline; gap:7px; border:1.5px solid var(--line-soft); border-radius:8px; padding:7px 13px; }
+  .mini-stat .mk{ font-family:var(--sketch); font-size:11px; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.03em; }
+  .mini-stat .mv{ font-size:16px; font-weight:700; }
+  .mini-stat .mv small{ font-size:11px; color:var(--ink-faint); font-weight:600; }
+  .mini-stat .mv.up{ color:var(--red); }
+  .mini-stat .mv.down{ color:var(--green); }
+
+  /* bottom 2-col row */
+  .bottom-grid{ display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-bottom:18px; }
+
+  /* ===== summary stats cards ===== */
+  .stats{ display:grid; grid-template-columns:repeat(4,1fr); gap:14px; }
+  .card{ position:relative; background:var(--box); border:2px solid var(--ink); border-radius:var(--r); padding:15px; }
+  .card .lab{ font-family:var(--sketch); font-size:12px; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.03em; }
+  .card .score{ font-size:30px; font-weight:700; line-height:1; margin-top:8px; letter-spacing:-.02em; }
+  .card .score small{ font-size:15px; color:var(--ink-faint); font-weight:600; }
+  .card .note{ font-size:11.5px; color:var(--ink-soft); margin-top:7px; line-height:1.4; }
+  .card .delta{ display:inline-flex; align-items:center; gap:4px; font-size:12px; font-weight:600; margin-top:8px; }
+  .card .delta svg{ width:13px; height:13px; stroke-width:2.2; fill:none; }
+  .card .delta.down{ color:var(--green); }
+  .card .delta.down svg{ stroke:var(--green); }
+  .card .delta.up{ color:var(--red); }
+  .card .delta.up svg{ stroke:var(--red); }
+  .card.dark{ background:var(--ink); color:var(--box); border-color:var(--ink); }
+  .card.dark .lab{ color:rgba(255,255,255,.6); }
+  .card.dark .note{ color:rgba(255,255,255,.7); }
+  .card .trendmini{ display:flex; align-items:flex-end; gap:3px; height:30px; margin-top:10px; }
+  .card .trendmini i{ flex:1; background:var(--green); border-radius:2px; opacity:.85; }
+
+  /* ===== legend ===== */
+  .legend{ position:fixed; right:18px; bottom:18px; z-index:60; width:352px; background:var(--box); border:2px solid var(--pin); border-radius:13px; box-shadow:0 14px 36px rgba(44,42,38,.24); overflow:hidden; display:none; }
+  body.annotated .legend{ display:block; }
+  .legend-h{ background:var(--pin); color:#fff; padding:9px 14px; font-family:var(--sketch); font-size:15px; display:flex; align-items:center; justify-content:space-between; }
+  .legend-h .x{ cursor:pointer; opacity:.85; font-size:18px; line-height:1; }
+  .legend-b{ padding:10px 14px 13px; max-height:54vh; overflow:auto; }
+  .lg{ display:flex; gap:10px; padding:7px 0; border-bottom:1px solid var(--line-soft); }
+  .lg:last-child{ border-bottom:none; }
+  .lg .n{ flex:none; width:21px; height:21px; border-radius:50%; background:var(--pin-bg); color:var(--pin); border:1.5px solid var(--pin); display:grid; place-items:center; font-family:var(--sketch); font-size:12px; }
+  .lg .t{ font-size:12px; color:var(--ink); line-height:1.42; }
+  .lg .t b{ font-weight:600; }
+</style>
+</head>
+<body class="annotated">
+
+  <div class="toolbar">
+    <div class="brand"><b>BuJo Digital</b><span>· Health Tracking — lo-fi wireframe</span></div>
+    <div class="spacer"></div>
+    <div class="toggle on" id="annoToggle"><span class="sw"></span>Annotations</div>
+  </div>
+
+  <div class="stage">
+    <div class="app">
+      <nav class="rail" id="rail"></nav>
+      <div class="main" id="main"></div>
+    </div>
+  </div>
+
+  <aside class="legend" id="legend">
+    <div class="legend-h">Annotations — what &amp; why <span class="x" id="legendX">×</span></div>
+    <div class="legend-b" id="legendBody"></div>
+  </aside>
+
+<script>
+const ICON = {
+  chevL:'<svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>',
+  chevR:'<svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>',
+  sun:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/></svg>',
+  week:'<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="9" y1="10" x2="9" y2="20"/></svg>',
+  cal:'<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/></svg>',
+  repeat:'<svg viewBox="0 0 24 24"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>',
+  health:'<svg viewBox="0 0 24 24"><path d="M3 12h4l2 5 4-12 2 7h6"/></svg>',
+  habits:'<svg viewBox="0 0 24 24"><polyline points="3 6 4.5 7.5 7 5"/><polyline points="3 12 4.5 13.5 7 11"/><polyline points="3 18 4.5 19.5 7 17"/><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/></svg>',
+  grat:'<svg viewBox="0 0 24 24"><path d="M12 21s-7-4.5-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 11c0 5.5-7 10-7 10z"/></svg>',
+  clock:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>',
+  scale:'<svg viewBox="0 0 24 24"><path d="M12 3v3"/><circle cx="12" cy="7" r="1.6"/><path d="M5 9h14l3 8a5 5 0 0 1-10 0"/><path d="M19 9l3 8"/><path d="M5 9l-3 8a5 5 0 0 0 10 0"/></svg>',
+  bar:'<svg viewBox="0 0 24 24"><line x1="4" y1="20" x2="4" y2="11"/><line x1="10" y1="20" x2="10" y2="4"/><line x1="16" y1="20" x2="16" y2="9"/><line x1="22" y1="20" x2="22" y2="14"/></svg>',
+  trend:'<svg viewBox="0 0 24 24"><polyline points="3 17 9 11 13 15 21 6"/><polyline points="15 6 21 6 21 12"/></svg>',
+  cake:'<svg viewBox="0 0 24 24"><line x1="12" y1="3" x2="12" y2="6"/><path d="M5 10a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v3H5z"/><path d="M4 21v-6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v6z"/></svg>',
+  flame:'<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2c1 3-1 4-2 6s0 4 0 4-2-1-2-3c-2 2-3 4-3 6a7 7 0 0 0 14 0c0-3-2-5-3-7-1.5 1-2 .5-2-1 0-2-1-4-2-5z"/></svg>',
+  arrowDown:'<svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>',
+  arrowUp:'<svg viewBox="0 0 24 24"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>',
+  plus:'<svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
+  check:'<svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>',
+};
+
+/* nav rail — Health active */
+const NAV = [
+  {ic:'sun', label:'Daily', href:'Daily Dashboard Wireframe.html'},
+  {ic:'week', label:'Weekly', href:'Weekly View Wireframe.html'},
+  {ic:'cal', label:'Monthly', href:'Monthly &amp; Future Log Wireframe.html'},
+  {ic:'repeat', label:'Recurr.'},
+  {ic:'habits', label:'Habits', href:'Habits Tracker Wireframe.html'},
+  {ic:'grat', label:'Gratitude', href:'Gratitude Journal Wireframe.html'},
+  {ic:'health', label:'Health', active:true},
+];
+document.getElementById('rail').innerHTML =
+  '<div class="logo">B</div>' +
+  NAV.map(n=>`<a class="navitem ${n.active?'active':''}" ${n.href?`href="${n.href}"`:''}>
+      <span class="ic">${ICON[n.ic]}</span><small>${n.label}</small></a>`).join('');
+
+/* ===================== DATA ===================== */
+// Today = Mon, June 8 2026 (consistent with sibling screens). June 1 = Monday, 30 days.
+const TODAY = 8, DAYS = 30;
+
+// --- monthly weight + body-fat, days 1..8 logged ---
+const MONTH = [
+  {d:1, w:75.2, bf:19.8}, {d:2, w:75.0, bf:19.7}, {d:3, w:75.3, bf:19.9},
+  {d:4, w:74.8, bf:19.6}, {d:5, w:74.9, bf:19.6}, {d:6, w:74.6, bf:19.4},
+  {d:7, w:74.4, bf:19.3}, {d:8, w:74.2, bf:19.2},
+];
+
+// --- annual: monthly averages, Jan..Jun logged (current year 2026) ---
+const YEAR = [
+  {m:'Jan', w:78.4, bf:22.1}, {m:'Feb', w:77.6, bf:21.6}, {m:'Mar', w:76.9, bf:21.0},
+  {m:'Apr', w:76.1, bf:20.6}, {m:'May', w:75.3, bf:20.0}, {m:'Jun', w:74.5, bf:19.4},
+];
+const YEAR_FULL = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+// --- fasting history: last 30 days (May 10 .. Jun 8). goal = 16h ---
+function rng(i){ const x=Math.sin((i+1)*53.7)*10000; return x-Math.floor(x); }
+const FAST_GOAL = 16;
+const FAST = [];
+for(let i=0;i<30;i++){
+  // wander around 16.8h, occasionally miss
+  let base = 16.4 + (rng(i)-0.45)*4.2;
+  base = Math.max(12.4, Math.min(20.2, base));
+  FAST.push(+base.toFixed(1));
+}
+const fastAvg = +(FAST.reduce((a,b)=>a+b,0)/FAST.length).toFixed(1);
+// longest streak of consecutive days meeting goal
+let streak=0,best=0; FAST.forEach(v=>{ if(v>=FAST_GOAL){streak++; best=Math.max(best,streak);} else streak=0; });
+const fastStreak = best;
+const metCount = FAST.filter(v=>v>=FAST_GOAL).length;
+
+// --- last 7 days fasting durations for the sparkline (Jun 2..8) ---
+const SEVEN = [16.8,15.1,17.2,16.0,18.3,16.9,18.1];
+const SEVEN_D = ['T','W','T','F','S','S','M'];
+
+/* ===================== CHART HELPERS ===================== */
+function fmtH(h){ const H=Math.floor(h), M=Math.round((h-H)*60); return `${H}:${String(M).padStart(2,'0')}`; }
+
+// dual-series line chart over a fixed number of x slots
+function lineChart(cfg){
+  const {w,h,pL,pR,pT,pB, xN, dataIdx, wVals, bfVals, xTickLabels, todayIdx,
+         yMinW,yMaxW,yStepW, yMinB,yMaxB, showFutZone} = cfg;
+  const plotW=w-pL-pR, plotH=h-pT-pB;
+  const xAt = i => pL + (xN===1?plotW/2: plotW*i/(xN-1));
+  const yW = v => pT + plotH*(1-(v-yMinW)/(yMaxW-yMinW));
+  const yB = v => pT + plotH*(1-(v-yMinB)/(yMaxB-yMinB));
+  let s='';
+
+  // future zone shading
+  if(showFutZone && todayIdx<xN-1){
+    s+=`<rect class="fut-zone" x="${xAt(todayIdx)}" y="${pT}" width="${xAt(xN-1)-xAt(todayIdx)}" height="${plotH}"/>`;
+  }
+  // horizontal gridlines + left axis labels (weight)
+  for(let v=yMinW; v<=yMaxW+0.001; v+=yStepW){
+    const y=yW(v);
+    s+=`<line class="grid-line" x1="${pL}" y1="${y}" x2="${w-pR}" y2="${y}"/>`;
+    s+=`<text class="tick-lbl ink" x="${pL-8}" y="${y+3.5}" text-anchor="end">${v.toFixed(0)}</text>`;
+  }
+  // right axis labels (body fat %): min & max only, lo-fi
+  s+=`<text class="tick-lbl" x="${w-pR+8}" y="${yB(yMaxB)+3.5}">${yMaxB}%</text>`;
+  s+=`<text class="tick-lbl" x="${w-pR+8}" y="${yB(yMinB)+3.5}">${yMinB}%</text>`;
+  // axes
+  s+=`<line class="axis-line" x1="${pL}" y1="${pT}" x2="${pL}" y2="${pT+plotH}"/>`;
+  s+=`<line class="axis-line" x1="${pL}" y1="${pT+plotH}" x2="${w-pR}" y2="${pT+plotH}"/>`;
+  // x tick labels
+  xTickLabels.forEach(t=>{
+    s+=`<text class="tick-lbl ${t.today?'ink':''}" x="${xAt(t.i)}" y="${pT+plotH+15}" text-anchor="middle" ${t.today?'font-weight="700"':''}>${t.label}</text>`;
+  });
+  // axis titles
+  s+=`<text class="ax-title" x="${pL-26}" y="${pT-8}">kg</text>`;
+  s+=`<text class="ax-title" x="${w-pR-6}" y="${pT-8}" text-anchor="start">bf%</text>`;
+
+  // body-fat line (secondary, behind)
+  const bfPts = bfVals.map((v,k)=>`${xAt(dataIdx[k])},${yB(v)}`).join(' ');
+  s+=`<polyline class="series-bf" points="${bfPts}"/>`;
+  // weight line (primary)
+  const wPts = wVals.map((v,k)=>`${xAt(dataIdx[k])},${yW(v)}`).join(' ');
+  s+=`<polyline class="series-weight" points="${wPts}"/>`;
+  // dots (bf small, weight bigger clickable)
+  bfVals.forEach((v,k)=>{ s+=`<circle class="dot-bf" cx="${xAt(dataIdx[k])}" cy="${yB(v)}" r="2.6"><title>Body fat ${v}%</title></circle>`; });
+  wVals.forEach((v,k)=>{ s+=`<circle class="dot-w" cx="${xAt(dataIdx[k])}" cy="${yW(v)}" r="3.8"><title>${v} kg</title></circle>`; });
+
+  return `<svg viewBox="0 0 ${w} ${h}" role="img">${s}</svg>`;
+}
+
+// fasting bar chart over 30 days, with average line + goal coding
+function barChart(cfg){
+  const {w,h,pL,pR,pT,pB, vals, goal, avg, yMin, yMax, yStep} = cfg;
+  const plotW=w-pL-pR, plotH=h-pT-pB, n=vals.length;
+  const slot=plotW/n, bw=Math.min(slot*0.62, 16);
+  const yAt=v=>pT+plotH*(1-(v-yMin)/(yMax-yMin));
+  let s='';
+  // gridlines + y labels (hours)
+  for(let v=yMin; v<=yMax+0.001; v+=yStep){
+    const y=yAt(v);
+    s+=`<line class="grid-line" x1="${pL}" y1="${y}" x2="${w-pR}" y2="${y}"/>`;
+    s+=`<text class="tick-lbl ink" x="${pL-7}" y="${y+3.5}" text-anchor="end">${v}h</text>`;
+  }
+  // bars
+  vals.forEach((v,i)=>{
+    const x=pL+slot*i+(slot-bw)/2;
+    const y=yAt(v), bh=pT+plotH-y;
+    const met=v>=goal;
+    s+=`<rect x="${x}" y="${y}" width="${bw}" height="${bh}" rx="2.5"
+        fill="${met?'var(--ink)':'var(--box)'}" stroke="${met?'none':'var(--line)'}" stroke-width="${met?0:1.5}"
+        style="cursor:pointer"><title>Day ${i+1}: ${fmtH(v)} ${met?'· goal met':'· short'}</title></rect>`;
+  });
+  // goal line
+  const gy=yAt(goal);
+  s+=`<line x1="${pL}" y1="${gy}" x2="${w-pR}" y2="${gy}" stroke="var(--line)" stroke-width="1.25" stroke-dasharray="1 0"/>`;
+  s+=`<text class="tick-lbl" x="${w-pR}" y="${gy-4}" text-anchor="end" style="fill:var(--ink-soft)">goal ${goal}h</text>`;
+  // average line
+  const ay=yAt(avg);
+  s+=`<line class="avg-line" x1="${pL}" y1="${ay}" x2="${w-pR}" y2="${ay}"/>`;
+  s+=`<text class="tick-lbl" x="${pL+4}" y="${ay-4}" style="fill:var(--red);font-weight:700">avg ${fmtH(avg)}</text>`;
+  // axes
+  s+=`<line class="axis-line" x1="${pL}" y1="${pT}" x2="${pL}" y2="${pT+plotH}"/>`;
+  s+=`<line class="axis-line" x1="${pL}" y1="${pT+plotH}" x2="${w-pR}" y2="${pT+plotH}"/>`;
+  // x labels: a few markers
+  [0,6,13,20,29].forEach(i=>{
+    const x=pL+slot*i+slot/2;
+    const lab = i===29?'today':`−${29-i}d`;
+    s+=`<text class="tick-lbl ${i===29?'ink':''}" x="${x}" y="${pT+plotH+15}" text-anchor="middle" ${i===29?'font-weight="700"':''}>${lab}</text>`;
+  });
+  return `<svg viewBox="0 0 ${w} ${h}" role="img">${s}</svg>`;
+}
+
+/* ===================== RENDER ===================== */
+// monthly chart config
+const monthX = MONTH.map(p=>p.d-1);           // 0-based index over 30 slots
+const monthChart = lineChart({
+  w:1180, h:250, pL:46, pR:48, pT:24, pB:24, xN:30,
+  dataIdx:monthX, wVals:MONTH.map(p=>p.w), bfVals:MONTH.map(p=>p.bf),
+  yMinW:73, yMaxW:76, yStepW:1, yMinB:18, yMaxB:21,
+  todayIdx:TODAY-1, showFutZone:true,
+  xTickLabels:[{i:0,label:'1'},{i:4,label:'5'},{i:7,label:'8',today:true},{i:9,label:'10'},{i:14,label:'15'},{i:19,label:'20'},{i:24,label:'25'},{i:29,label:'30'}],
+});
+// monthly summary
+const mW = MONTH.map(p=>p.w);
+const mMin = Math.min(...mW).toFixed(1), mMax = Math.max(...mW).toFixed(1);
+const mAvg = (mW.reduce((a,b)=>a+b,0)/mW.length).toFixed(1);
+const mChange = (mW[mW.length-1]-mW[0]).toFixed(1);
+
+// annual chart config
+const yearIdx = YEAR.map((_,i)=>i);
+const yearChart = lineChart({
+  w:560, h:215, pL:40, pR:42, pT:20, pB:24, xN:12,
+  dataIdx:yearIdx, wVals:YEAR.map(p=>p.w), bfVals:YEAR.map(p=>p.bf),
+  yMinW:74, yMaxW:79, yStepW:1, yMinB:19, yMaxB:23,
+  todayIdx:5, showFutZone:true,
+  xTickLabels:YEAR_FULL.map((m,i)=>({i,label:m[0], today:i===5})),
+});
+
+// fasting bar chart
+const fastChart = barChart({
+  w:560, h:215, pL:34, pR:14, pT:18, pB:24,
+  vals:FAST, goal:FAST_GOAL, avg:fastAvg, yMin:12, yMax:20, yStep:2,
+});
+
+function sparkBars(){
+  const max=Math.max(...SEVEN), min=12;
+  return SEVEN.map((v,i)=>{
+    const pct = (v-min)/(max-min); const hPct = 30+pct*70;
+    const met = v>=FAST_GOAL;
+    return `<div class="sb">
+      <div class="bar ${met?'met':'miss'}" style="height:${hPct}%"></div>
+      <div class="sh">${fmtH(v)}</div>
+      <div class="sd">${SEVEN_D[i]}</div>
+    </div>`;
+  }).join('');
+}
+
+function buildMain(){
+  return `
+  <!-- header -->
+  <div class="phead">
+    <div class="ttl">
+      <h1>Health</h1>
+      <div class="sub">Intermittent fasting · weight · body composition — <em>your data journal</em></div>
+    </div>
+    <div class="spacer"></div>
+    <span class="pin lft" style="position:relative;top:auto;left:auto;margin-right:2px">1</span>
+    <div class="datenav">
+      <b>${ICON.chevL}</b>
+      <span class="lbl">${ICON.cal}<span>Mon, Jun 8<small style="display:block">2026 · today</small></span></span>
+      <b>${ICON.chevR}</b>
+    </div>
+  </div>
+
+  <!-- DAILY ENTRY (primary, 2-col) -->
+  <div class="entry-grid">
+
+    <!-- A. fasting log -->
+    <section class="region entry">
+      <span class="rtag">Daily entry · fasting</span><span class="pin">2</span>
+      <div class="sec-head">
+        <span class="icb">${ICON.clock}</span>
+        <span class="st">Intermittent fasting <small>today's window</small></span>
+      </div>
+
+      <div class="protocol-row">
+        <span style="font-family:var(--sketch);font-size:12px;color:var(--ink-soft);margin-right:2px">protocol:</span>
+        <span class="chip">16:8</span>
+        <span class="chip on">18:6</span>
+        <span class="chip">20:4</span>
+        <span class="chip">custom</span>
+      </div>
+
+      <div class="time-2">
+        <div class="field">
+          <span class="flab">Fast started</span>
+          <div class="inp"><span>${ICON.clock}</span><span class="val">20:30</span><span class="unit">yest.</span></div>
+        </div>
+        <div class="field">
+          <span class="flab">Ate / window opened</span>
+          <div class="inp"><span>${ICON.clock}</span><span class="val">14:36</span><span class="unit">today</span></div>
+        </div>
+      </div>
+
+      <div class="fast-readout">
+        <div class="donutwrap">
+          <svg width="74" height="74" viewBox="0 0 74 74">
+            <circle cx="37" cy="37" r="31" fill="none" stroke="var(--fill)" stroke-width="8"/>
+            <circle cx="37" cy="37" r="31" fill="none" stroke="var(--ink)" stroke-width="8"
+              stroke-linecap="round" stroke-dasharray="${2*Math.PI*31}" stroke-dashoffset="${2*Math.PI*31*(1-0.755)}"/>
+          </svg>
+          <div class="mid">75%</div>
+        </div>
+        <div class="rcol">
+          <div class="dur">18:06<small> fast</small></div>
+          <div class="cap">auto-calculated · 18:6 target met</div>
+          <div class="status-badge done"><span class="pls"></span>Completed</div>
+        </div>
+      </div>
+
+      <div class="spark-head">
+        <span class="sl">Last 7 days</span>
+        <span class="sr">filled = met goal · outline = short</span>
+      </div>
+      <div class="spark">${sparkBars()}</div>
+    </section>
+
+    <!-- B. weight & body comp -->
+    <section class="region entry">
+      <span class="rtag">Daily entry · body</span><span class="pin">3</span>
+      <div class="sec-head">
+        <span class="icb">${ICON.scale}</span>
+        <span class="st">Weight &amp; body composition <small>log today</small></span>
+      </div>
+
+      <div class="wgrid">
+        <div class="field">
+          <span class="flab">Weight</span>
+          <div class="inp"><span class="val">74.2</span><span class="unit">kg</span></div>
+        </div>
+        <div class="field">
+          <span class="flab">Body fat</span>
+          <div class="inp"><span class="val">19.2</span><span class="unit">%</span></div>
+        </div>
+        <div class="field">
+          <span class="flab">Muscle mass <span style="color:var(--ink-faint)">· opt</span></span>
+          <div class="inp"><span class="val">42.6</span><span class="unit">%</span></div>
+        </div>
+        <div class="field">
+          <span class="flab">Visceral fat <span style="color:var(--ink-faint)">· opt</span></span>
+          <div class="inp"><span class="val">7</span><span class="unit">lvl</span></div>
+        </div>
+        <div class="field full">
+          <span class="flab">BMI <span style="color:var(--ink-faint)">· auto from weight + height</span></span>
+          <div class="inp calc"><span>${ICON.check}</span><span class="val">22.4</span><span class="unit">auto · normal</span></div>
+        </div>
+      </div>
+
+      <div class="lastentry">
+        <span class="le-k">last entry</span>
+        <b>Jun 7</b><span class="sep">·</span>
+        <b>74.4 kg</b><span class="sep">·</span>
+        <b>19.3 %</b><span class="sep">·</span>
+        <span style="color:var(--green);font-weight:600">−0.2 kg</span>
+      </div>
+
+      <button class="ghost cta logbtn">${ICON.plus} Log today's data</button>
+    </section>
+  </div>
+
+  <!-- MONTHLY TREND (full width) -->
+  <section class="region chart-region full">
+    <span class="rtag">Monthly trend</span><span class="pin">4</span>
+    <div class="sec-head">
+      <span class="icb">${ICON.trend}</span>
+      <span class="st">Weight this month <small>June 2026 · click a point for entry</small></span>
+      <span class="spacer"></span>
+      <div class="legend-keys">
+        <span class="lk"><span class="ln"></span>Weight (kg)</span>
+        <span class="lk"><span class="ln dash"></span>Body fat (%)</span>
+      </div>
+      <div class="datenav" style="padding:3px 4px;margin-left:8px">
+        <b>${ICON.chevL}</b>
+        <span class="lbl" style="min-width:96px;font-size:13px">June 2026</span>
+        <b>${ICON.chevR}</b>
+      </div>
+    </div>
+    <span class="pin" style="top:96px;left:-13px">5</span>
+    <div class="chart-wrap">${monthChart}</div>
+    <div class="chart-foot">
+      <span class="pin" style="bottom:-13px;left:120px;top:auto">6</span>
+      <div class="mini-stat"><span class="mk">min</span><span class="mv">${mMin}<small> kg</small></span></div>
+      <div class="mini-stat"><span class="mk">max</span><span class="mv">${mMax}<small> kg</small></span></div>
+      <div class="mini-stat"><span class="mk">avg</span><span class="mv">${mAvg}<small> kg</small></span></div>
+      <div class="mini-stat"><span class="mk">change</span><span class="mv down">${mChange}<small> kg</small></span></div>
+      <div class="mini-stat"><span class="mk">body fat</span><span class="mv down">−0.6<small> pts</small></span></div>
+    </div>
+  </section>
+
+  <!-- ANNUAL + FASTING HISTORY (50 / 50) -->
+  <div class="bottom-grid">
+    <section class="region chart-region">
+      <span class="rtag">Annual trend</span><span class="pin">7</span>
+      <div class="sec-head">
+        <span class="icb">${ICON.cal}</span>
+        <span class="st">Weight this year <small>2026 · monthly avg</small></span>
+        <span class="spacer"></span>
+        <div class="datenav" style="padding:3px 4px">
+          <b>${ICON.chevL}</b>
+          <span class="lbl" style="min-width:54px;font-size:13px">2026</span>
+          <b>${ICON.chevR}</b>
+        </div>
+      </div>
+      <div class="chart-wrap">${yearChart}</div>
+      <div class="chart-foot">
+        <div class="mini-stat"><span class="mk">Jan → now</span><span class="mv down">−4.2<small> kg</small></span></div>
+        <div class="mini-stat"><span class="mk">body fat</span><span class="mv down">−2.9<small> pts</small></span></div>
+      </div>
+    </section>
+
+    <section class="region chart-region">
+      <span class="rtag">Fasting history</span><span class="pin">8</span>
+      <div class="sec-head">
+        <span class="icb">${ICON.bar}</span>
+        <span class="st">Daily fast — last 30 days <small>hours per day</small></span>
+        <span class="spacer"></span>
+        <div class="legend-keys">
+          <span class="lk"><span class="ln bar"></span>met</span>
+          <span class="lk"><span class="ln bar out"></span>short</span>
+          <span class="lk"><span class="ln avg"></span>avg</span>
+        </div>
+      </div>
+      <span class="pin" style="top:96px;right:-13px">9</span>
+      <div class="chart-wrap">${fastChart}</div>
+      <div class="chart-foot">
+        <div class="mini-stat"><span class="mk">met goal</span><span class="mv">${metCount}<small> / 30 days</small></span></div>
+        <div class="mini-stat"><span class="mk">30-day avg</span><span class="mv">${fmtH(fastAvg)}<small> h</small></span></div>
+      </div>
+    </section>
+  </div>
+
+  <!-- SUMMARY STATS -->
+  <div class="stats">
+    <span class="pin lft" style="top:-13px;left:-13px">10</span>
+    <div class="card dark">
+      <div class="lab">Weight vs. start of year</div>
+      <div class="score" style="color:#fff">74.2<small style="color:rgba(255,255,255,.55)"> kg</small></div>
+      <div class="delta down" style="color:#7ee0a3"><span style="display:inline-flex;width:13px;height:13px">${ICON.arrowDown}</span>−4.2 kg since Jan 1</div>
+    </div>
+
+    <div class="card">
+      <div class="lab">Longest fasting streak</div>
+      <div class="score" style="color:var(--orange)">${fastStreak}<small> days</small></div>
+      <div class="note">consecutive days hitting the 16h goal — current 30-day window.</div>
+    </div>
+
+    <div class="card">
+      <div class="lab">Avg fasting (30-day)</div>
+      <div class="score">${fmtH(fastAvg)}<small> h</small></div>
+      <div class="note">${metCount} of 30 days met the goal · ${Math.round(metCount/30*100)}% hit rate.</div>
+    </div>
+
+    <div class="card">
+      <div class="lab">Body fat trend</div>
+      <div class="score" style="font-size:24px;color:var(--green)">Improving</div>
+      <div class="trendmini">
+        <i style="height:100%"></i><i style="height:88%"></i><i style="height:80%"></i>
+        <i style="height:74%"></i><i style="height:62%"></i><i style="height:54%"></i>
+      </div>
+      <div class="note" style="margin-top:7px">−2.9 pts YTD · steady decline 6 months.</div>
+    </div>
+  </div>`;
+}
+document.getElementById('main').innerHTML = buildMain();
+
+/* ===================== legend ===================== */
+const LEGEND = [
+  ['Header + date selector','Screen title with the “data journal” framing. The date stepper defaults to today (Mon Jun 8); daily-entry panels write to whichever date is selected.'],
+  ['Fasting log — PRIMARY','Pick a protocol (16:8 / 18:6 / 20:4 / custom), then set fast-start and eating-window times. Duration is auto-calculated into a big readout with a completed / ongoing status badge.'],
+  ['Weight &amp; body composition','Weight (kg, decimal) + body-fat % are the core fields; muscle %, visceral fat, and auto-BMI are optional. Yesterday’s entry shows for reference; one button commits the day.'],
+  ['Monthly trend — review','Line chart of weight across the current month, with body-fat % as a dashed secondary series on the right axis. Points are clickable to open that day’s entry. Future days are shaded.'],
+  ['Dual axis','Left axis = kg, right axis = body-fat %, so two different units share one chart without re-scaling either series.'],
+  ['Month summary','Min / max / average weight for the visible month plus net change — the numbers a reviewer scans after reading the curve.'],
+  ['Annual trend','Compact full-year line (monthly averages), same dual-series treatment. Smaller than the monthly chart since it’s for big-picture review, not daily reading. Year stepper at top-right.'],
+  ['Fasting history','Bar chart of daily fast length over the past 30 days. Filled bars met the 16h goal, outlined bars fell short — a fast read of consistency. Dashed red line = 30-day average.'],
+  ['Goal &amp; average overlays','The faint line marks the goal threshold; the red dashed line marks the rolling average, so streaks and slumps are obvious at a glance.'],
+  ['Stats summary','Four at-a-glance metrics: weight vs. start of year, longest fasting streak, 30-day average fast, and overall body-fat trend (improving / stable / worsening).'],
+];
+document.getElementById('legendBody').innerHTML = LEGEND.map((l,i)=>`
+  <div class="lg"><span class="n">${i+1}</span><span class="t"><b>${l[0]}.</b> ${l[1]}</span></div>`).join('');
+
+/* ===================== controls ===================== */
+// protocol chips
+document.querySelectorAll('.protocol-row .chip').forEach(c=>{
+  c.addEventListener('click', ()=>{
+    document.querySelectorAll('.protocol-row .chip').forEach(x=>x.classList.remove('on'));
+    c.classList.add('on');
+  });
+});
+const annoT = document.getElementById('annoToggle');
+annoT.addEventListener('click', ()=>{
+  annoT.classList.toggle('on');
+  document.body.classList.toggle('annotated', annoT.classList.contains('on'));
+});
+document.getElementById('legendX').addEventListener('click', ()=>{
+  annoT.classList.remove('on'); document.body.classList.remove('annotated');
+});
+</script>
+</body>
+</html>

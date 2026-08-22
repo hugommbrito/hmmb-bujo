@@ -1,0 +1,515 @@
+import { describe, it, expect, vi, afterEach } from 'vitest'
+import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { axe } from 'jest-axe'
+import { MemoryRouter } from 'react-router-dom'
+// `?raw` (suportado por vite/client) traz o código-fonte como string, sem
+// precisar de tipos de node — grep de import do catálogo fechado (AC4).
+import shellSidebarSource from './ShellSidebar.tsx?raw'
+import navIconsSource from './navIcons.tsx?raw'
+
+// Mesmo padrão dos testes de chrome: o barrel `features/braindump` é mockado
+// SEM Query, então NÃO há QueryClientProvider na árvore e nenhum mock NOVO de
+// Query é preciso (AC1). A contagem/oculto/`9+` do badge é coberta em
+// BrainDumpBadge.test.tsx (com QueryClientProvider); aqui o mock expõe as props
+// recebidas em data-attrs para provar que o SHELL passa `max={9}` + o estilo
+// `app-shell-badge` (a integração não seria verificada por um passthrough puro).
+vi.mock('../../../features/braindump', () => ({
+  BrainDumpBadge: ({
+    children,
+    max,
+    badgeSx,
+  }: {
+    children: React.ReactNode
+    max?: number
+    badgeSx?: Record<string, string>
+  }) => (
+    <span data-testid="brain-dump-badge" data-max={max} data-badge-sx={JSON.stringify(badgeSx)}>
+      {children}
+    </span>
+  ),
+  // Stub contratado pela Story 13.3 (o barrel inteiro é substituído pelo mock;
+  // qualquer import futuro do sheet no chrome viraria `undefined` sem ele).
+  BrainDumpCaptureSheet: ({ open }: { open: boolean }) =>
+    open ? <div>capture sheet aberto</div> : null,
+}))
+
+import { ShellSidebar } from './ShellSidebar'
+import { collections as registry } from '../../collections/registry'
+import type { CollectionManifestEntry } from '../../collections/registry'
+
+function renderSidebar(
+  props: {
+    collapsed?: boolean
+    onToggle?: () => void
+    initialPath?: string
+    collections?: CollectionManifestEntry[]
+  } = {},
+) {
+  const { collapsed = false, onToggle = vi.fn(), initialPath = '/today', collections } = props
+  return render(
+    <MemoryRouter initialEntries={[initialPath]}>
+      <ShellSidebar
+        collapsed={collapsed}
+        onToggle={onToggle}
+        {...(collections ? { collections } : {})}
+      />
+    </MemoryRouter>,
+  )
+}
+
+/** a aparece ANTES de b no DOM? */
+function precedes(a: Element, b: Element) {
+  return Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING)
+}
+
+describe('ShellSidebar — derivação (AC2)', () => {
+  it('renderiza núcleo + collections do registro na ordem do inventário SB-01…SB-10', () => {
+    renderSidebar({ initialPath: '/today' })
+
+    // Núcleo/chrome e collections presentes.
+    for (const label of [
+      'Hoje',
+      'Planner',
+      'Esta Semana',
+      'Este Mês',
+      'Futuro',
+      'Recorrentes',
+      'Hábitos',
+      'Saúde',
+      'Métricas',
+      'Medicamentos',
+      'Gratidão',
+      'Brain Dump',
+      'Arquivo',
+      'Configurações',
+    ]) {
+      expect(screen.getByText(label)).toBeInTheDocument()
+    }
+
+    // Ordem canônica (idêntica à Sidebar legada).
+    expect(precedes(screen.getByText('Hoje'), screen.getByText('Planner'))).toBe(true)
+    expect(precedes(screen.getByText('Planner'), screen.getByText('Esta Semana'))).toBe(true)
+    expect(precedes(screen.getByText('Esta Semana'), screen.getByText('Hábitos'))).toBe(true)
+    expect(precedes(screen.getByText('Hábitos'), screen.getByText('Saúde'))).toBe(true)
+    expect(precedes(screen.getByText('Saúde'), screen.getByText('Métricas'))).toBe(true)
+    expect(precedes(screen.getByText('Métricas'), screen.getByText('Medicamentos'))).toBe(true)
+    expect(precedes(screen.getByText('Medicamentos'), screen.getByText('Gratidão'))).toBe(true)
+    expect(precedes(screen.getByText('Gratidão'), screen.getByText('Brain Dump'))).toBe(true)
+    expect(precedes(screen.getByText('Brain Dump'), screen.getByText('Arquivo'))).toBe(true)
+    expect(precedes(screen.getByText('Arquivo'), screen.getByText('Configurações'))).toBe(true)
+  })
+
+  it('deriva label/grupo/ordem do registro (Métricas antes de Medicamentos por nav.order)', () => {
+    renderSidebar({ initialPath: '/today' })
+    // health-metrics (order 0) antes de medications (order 1), ambos no grupo Saúde.
+    expect(precedes(screen.getByText('Métricas'), screen.getByText('Medicamentos'))).toBe(true)
+  })
+
+  it('collection nova sem ícone no catálogo fechado degrada sem crash (label preservado)', () => {
+    // O `id` do registro é string aberta; o catálogo Phosphor é FECHADO por
+    // design. Uma collection futura ainda não curada não pode derrubar o shell:
+    // renderiza sem ícone, com o label navegável (FR-1.3/AR-23).
+    const gratitude = registry.find((c) => c.id === 'gratitude')!
+    const nova: CollectionManifestEntry = {
+      ...gratitude,
+      id: 'nova-collection',
+      name: 'Nova Collection',
+      nav: { label: 'Nova', group: 'saude', order: 9 },
+    }
+    renderSidebar({ initialPath: '/today', collections: [...registry, nova] })
+    expect(screen.getByText('Nova')).toBeInTheDocument()
+  })
+})
+
+describe('ShellSidebar — nav mínima (AC3)', () => {
+  it('zero collections: núcleo + Planner completo, sem Saúde/avulsas e sem heading "Collections"', () => {
+    renderSidebar({ initialPath: '/today', collections: [] })
+
+    // Planner sempre completo.
+    for (const label of ['Hoje', 'Planner', 'Esta Semana', 'Este Mês', 'Futuro', 'Recorrentes', 'Brain Dump', 'Arquivo', 'Configurações']) {
+      expect(screen.getByText(label)).toBeInTheDocument()
+    }
+    // Sem collections nem grupo Saúde vazio.
+    expect(screen.queryByText('Saúde')).not.toBeInTheDocument()
+    expect(screen.queryByText('Hábitos')).not.toBeInTheDocument()
+    expect(screen.queryByText('Gratidão')).not.toBeInTheDocument()
+    expect(screen.queryByText('Métricas')).not.toBeInTheDocument()
+    // Nunca há heading "Collections".
+    expect(screen.queryByText('Collections')).not.toBeInTheDocument()
+  })
+
+  it('uma collection avulsa: só ela aparece, sem grupo Saúde', () => {
+    const onlyHabits = registry.filter((c) => c.id === 'habits')
+    renderSidebar({ initialPath: '/today', collections: onlyHabits })
+
+    expect(screen.getByText('Hábitos')).toBeInTheDocument()
+    expect(screen.queryByText('Gratidão')).not.toBeInTheDocument()
+    expect(screen.queryByText('Saúde')).not.toBeInTheDocument()
+    expect(screen.queryByText('Métricas')).not.toBeInTheDocument()
+  })
+
+  it('grupo Saúde permanece com um único filho e some por completo sem filhos', () => {
+    // Com um único filho do grupo: Saúde aparece só com Métricas.
+    const onlyMetrics = registry.filter((c) => c.id === 'health-metrics')
+    const { unmount } = renderSidebar({ initialPath: '/today', collections: onlyMetrics })
+    expect(screen.getByText('Saúde')).toBeInTheDocument()
+    expect(screen.getByText('Métricas')).toBeInTheDocument()
+    expect(screen.queryByText('Medicamentos')).not.toBeInTheDocument()
+    unmount()
+
+    // Sem nenhum filho do grupo: Saúde desaparece.
+    const noHealth = registry.filter((c) => c.nav.group !== 'saude')
+    renderSidebar({ initialPath: '/today', collections: noHealth })
+    expect(screen.queryByText('Saúde')).not.toBeInTheDocument()
+  })
+})
+
+describe('ShellSidebar — estado ativo e agrupadores (AC5)', () => {
+  it('destino ativo tem aria-current="page" e label em peso forte (canal além da cor)', () => {
+    renderSidebar({ initialPath: '/today' })
+
+    const hoje = screen.getByRole('button', { name: /hoje/i })
+    expect(hoje).toHaveAttribute('aria-current', 'page')
+    // AC1/AC5: cor nunca é o único canal — label ativo também fica em peso forte.
+    expect(screen.getByText('Hoje')).toHaveStyle({ fontWeight: '700' })
+    expect(screen.getByText('Hábitos')).toHaveStyle({ fontWeight: '500' })
+  })
+
+  it('destino inativo não tem aria-current', () => {
+    renderSidebar({ initialPath: '/today' })
+    const habitos = screen.getByRole('button', { name: /hábitos/i })
+    expect(habitos).not.toHaveAttribute('aria-current')
+  })
+
+  it('agrupador expõe aria-expanded e NUNCA aria-current', () => {
+    renderSidebar({ initialPath: '/today' })
+    const planner = screen.getByRole('button', { name: /planner/i })
+    expect(planner).toHaveAttribute('aria-expanded', 'true')
+    expect(planner).not.toHaveAttribute('aria-current')
+  })
+
+  it('agrupador recolhido contendo a rota ativa mostra .contains + descrição acessível, sem aria-current', () => {
+    // Rail (recolhido) com a rota ativa dentro do Planner.
+    renderSidebar({ collapsed: true, initialPath: '/planner/week' })
+
+    const planner = screen.getByRole('button', { name: 'Planner' })
+    expect(planner).not.toHaveAttribute('aria-current')
+    expect(planner).toHaveAttribute('aria-expanded', 'false')
+
+    const describedBy = planner.getAttribute('aria-describedby')
+    expect(describedBy).toBeTruthy()
+    expect(document.getElementById(describedBy as string)).toHaveTextContent(
+      'Contém a página atual: Esta Semana.',
+    )
+  })
+})
+
+// ─── Story 13.4 AC1 — predicado de ativo unificado (SHELL-DEBT-03 fechada) ────
+// A sidebar usava match EXATO: nas rotas profundas reais (histórico das
+// collections, sub-rotas de Configurações, arquivo parametrizado) NENHUM destino
+// ficava ativo, enquanto a bottom nav e o sheet já marcavam o pai. Estes casos
+// são a mudança de comportamento INTENCIONAL da story — os asserts de rota exata
+// acima continuam intocados.
+describe('ShellSidebar — destino ativo por prefixo (Story 13.4 AC1)', () => {
+  const rotasProfundas: Array<{ path: string; destino: string }> = [
+    { path: '/habits/history', destino: 'Hábitos' },
+    { path: '/gratitude/history', destino: 'Gratidão' },
+    { path: '/health/metrics/history', destino: 'Métricas' },
+    { path: '/health/medications/history', destino: 'Medicamentos' },
+    { path: '/settings/habits', destino: 'Configurações' },
+    { path: '/settings/health-metrics', destino: 'Configurações' },
+    { path: '/settings/medications', destino: 'Configurações' },
+    { path: '/archive/weekly/2026-07-20', destino: 'Arquivo' },
+    { path: '/archive/monthly/2026-07-01', destino: 'Arquivo' },
+  ]
+
+  for (const { path, destino } of rotasProfundas) {
+    it(`${path} marca "${destino}" com aria-current e mantém exatamente UM ativo`, () => {
+      const { unmount } = renderSidebar({ initialPath: path })
+
+      expect(screen.getByRole('button', { name: destino })).toHaveAttribute(
+        'aria-current',
+        'page',
+      )
+      // Todos os canais visuais do ativo, não só o atributo (SB-11).
+      expect(screen.getByText(destino)).toHaveStyle({ fontWeight: '700' })
+      // O agrupador NUNCA recebe aria-current (SB-05/SB-13).
+      expect(document.querySelectorAll('[aria-current="page"]')).toHaveLength(1)
+      unmount()
+    })
+  }
+
+  it('/daily/:date não ativa nenhum destino (contrato registrado, não bug)', () => {
+    // `/daily/:date` não tem destino próprio na nav — o atalho do dia é "Hoje"
+    // (`/today`). No compact é o item Menu que aparece selecionado.
+    renderSidebar({ initialPath: '/daily/2026-07-01' })
+    expect(document.querySelectorAll('[aria-current="page"]')).toHaveLength(0)
+  })
+
+  it('agrupador com a rota profunda de um filho dentro segue só com aria-expanded', () => {
+    renderSidebar({ initialPath: '/health/metrics/history' })
+
+    const saude = screen.getByRole('button', { name: 'Saúde' })
+    expect(saude).toHaveAttribute('aria-expanded', 'true')
+    expect(saude).not.toHaveAttribute('aria-current')
+  })
+})
+
+// ─── Story 13.4 AC2 — derivação genérica + guard do ícone de agrupador ────────
+describe('ShellSidebar — collection e grupo inéditos (Story 13.4 AC2)', () => {
+  /** Avulsa INÉDITA: `id` fora do catálogo `navIcons`, sem `nav.group`. */
+  const novaAvulsa: CollectionManifestEntry = {
+    ...registry[0],
+    id: 'journalling',
+    name: 'Journalling',
+    nav: { label: 'Journalling', order: 2 },
+    routes: [{ ...registry[0].routes[0], path: 'journalling', title: 'Journalling' }],
+  }
+
+  it('collection avulsa inédita aparece na sidebar, sem ícone e sem crash (DoD do AD-17)', () => {
+    renderSidebar({ initialPath: '/today', collections: [...registry, novaAvulsa] })
+
+    const item = screen.getByRole('button', { name: 'Journalling' })
+    expect(item).toBeInTheDocument()
+    // Degrada SEM ícone (o catálogo Phosphor é fechado), mas segue navegável.
+    expect(item.querySelector('svg')).toBeNull()
+    // Posição ditada pelo `nav.order` (2 ⇒ depois de Gratidão, order 1).
+    expect(precedes(screen.getByText('Gratidão'), screen.getByText('Journalling'))).toBe(true)
+    expect(precedes(screen.getByText('Journalling'), screen.getByText('Brain Dump'))).toBe(true)
+  })
+
+  it('avulsa inédita fica ativa na própria rota, sem segundo aria-current', () => {
+    renderSidebar({ initialPath: '/journalling', collections: [...registry, novaAvulsa] })
+
+    expect(screen.getByRole('button', { name: 'Journalling' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+    expect(document.querySelectorAll('[aria-current="page"]')).toHaveLength(1)
+  })
+
+  it('cabeçalho de grupo com chave fora do catálogo degrada sem ícone em vez de derrubar o chrome', () => {
+    // Antes da 13.4, `navIcons[group.key]` era lido SEM guard no cabeçalho de
+    // grupo (`ShellSidebar.tsx:174`): uma `nav.group` nova no registro derrubava
+    // o chrome inteiro com "GroupIcon is not a function".
+    const grupoNovo: CollectionManifestEntry = {
+      ...registry[0],
+      id: 'reading',
+      name: 'Leitura',
+      nav: { label: 'Livros', group: 'biblioteca', order: 5 },
+      routes: [{ ...registry[0].routes[0], path: 'reading', title: 'Leitura' }],
+    }
+    renderSidebar({ initialPath: '/today', collections: [...registry, grupoNovo] })
+
+    const header = screen.getByRole('button', { name: 'biblioteca' })
+    expect(header).toHaveAttribute('aria-expanded', 'true')
+    expect(header.querySelector('svg')).toBeNull()
+    // O filho do grupo novo é navegável mesmo sem ícone de agrupador.
+    expect(screen.getByRole('button', { name: 'Livros' })).toBeInTheDocument()
+    // E o resto do chrome continua inteiro.
+    expect(screen.getByRole('button', { name: 'Configurações' })).toBeInTheDocument()
+  })
+})
+
+describe('ShellSidebar — rail 64px e toggle (AC6)', () => {
+  it('rail oculta labels e chevrons mas preserva o nome acessível (aria-label)', () => {
+    renderSidebar({ collapsed: true, initialPath: '/today' })
+
+    // Labels de texto ocultos.
+    expect(screen.queryByText('Hoje')).not.toBeInTheDocument()
+    expect(screen.queryByText('Planner')).not.toBeInTheDocument()
+    expect(screen.queryByText('Hábitos')).not.toBeInTheDocument()
+    // Chevron (glyph) oculto no rail.
+    expect(screen.queryByText('⌄')).not.toBeInTheDocument()
+    expect(screen.queryByText('⌃')).not.toBeInTheDocument()
+    // Nome acessível preservado via aria-label.
+    expect(screen.getByRole('button', { name: 'Hoje' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Planner' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Hábitos' })).toBeInTheDocument()
+  })
+
+  it('toggle usa aria-label alternando e dispara onToggle', async () => {
+    const user = userEvent.setup()
+    const onToggle = vi.fn()
+    const { unmount } = renderSidebar({ collapsed: false, onToggle })
+
+    const collapseBtn = screen.getByRole('button', { name: 'Colapsar sidebar' })
+    await user.click(collapseBtn)
+    expect(onToggle).toHaveBeenCalledTimes(1)
+    unmount()
+
+    renderSidebar({ collapsed: true, onToggle: vi.fn() })
+    expect(screen.getByRole('button', { name: 'Expandir sidebar' })).toBeInTheDocument()
+  })
+
+  it('grupos fecham ao colapsar (subitens somem)', () => {
+    const { rerender } = render(
+      <MemoryRouter initialEntries={['/today']}>
+        <ShellSidebar collapsed={false} onToggle={vi.fn()} />
+      </MemoryRouter>,
+    )
+    expect(screen.getByText('Esta Semana')).toBeInTheDocument()
+
+    rerender(
+      <MemoryRouter initialEntries={['/today']}>
+        <ShellSidebar collapsed={true} onToggle={vi.fn()} />
+      </MemoryRouter>,
+    )
+    expect(screen.queryByText('Esta Semana')).not.toBeInTheDocument()
+  })
+})
+
+describe('ShellSidebar — Brain Dump (AC7)', () => {
+  it('destino Brain Dump tem nome acessível no expandido e no rail', () => {
+    const { unmount } = renderSidebar({ initialPath: '/today' })
+    expect(screen.getByRole('button', { name: /brain dump/i })).toBeInTheDocument()
+    unmount()
+
+    renderSidebar({ collapsed: true, initialPath: '/today' })
+    expect(screen.getByRole('button', { name: 'Brain Dump' })).toBeInTheDocument()
+  })
+
+  it('passa o cap max={9} e o estilo app-shell-badge ao BrainDumpBadge (integração do shell)', () => {
+    renderSidebar({ initialPath: '/today' })
+
+    // Desde a Story 13.3 a sidebar carrega DOIS badges (AC5): o do destino
+    // Brain Dump e o da âncora de captura — ambos com o mesmo contrato
+    // `max={9}` + tokens `{components.app-shell-badge}` via `badgeSx`
+    // (o comportamento visual `9+`/oculto fica em BrainDumpBadge.test.tsx).
+    const badges = screen.getAllByTestId('brain-dump-badge')
+    expect(badges).toHaveLength(2)
+    for (const badge of badges) {
+      expect(badge).toHaveAttribute('data-max', '9')
+      expect(JSON.parse(badge.getAttribute('data-badge-sx') as string)).toEqual({
+        backgroundColor: 'var(--ds-primary)',
+        color: 'var(--ds-on-primary)',
+        minHeight: 'var(--ds-badge-min-height)',
+        borderRadius: 'var(--ds-radius-full)',
+      })
+    }
+  })
+})
+
+describe('ShellSidebar — âncora de captura rápida (Story 13.3, AC5/AC6)', () => {
+  function setNavigatorOnLine(value: boolean) {
+    Object.defineProperty(navigator, 'onLine', {
+      configurable: true,
+      get: () => value,
+    })
+  }
+
+  afterEach(() => {
+    // Restaura o default de jsdom (online) — useOnlineStatus lê navigator.onLine
+    // na montagem, e um teste offline não pode vazar para os demais.
+    setNavigatorOnLine(true)
+  })
+
+  it('âncora nominal na sidebar expandida, ao fim da navegação', () => {
+    renderSidebar({ initialPath: '/today' })
+
+    const anchor = screen.getByRole('button', { name: 'Abrir captura rápida' })
+    expect(anchor).toBeInTheDocument()
+    // Nominal: o label é visível quando expandida.
+    expect(screen.getByText('Abrir captura rápida')).toBeInTheDocument()
+    // Ao fim da navegação: depois de Configurações no DOM.
+    expect(precedes(screen.getByText('Configurações'), anchor)).toBe(true)
+  })
+
+  it('âncora icon-only no rail preserva o nome acessível e o badge', () => {
+    renderSidebar({ collapsed: true, initialPath: '/today' })
+
+    const anchor = screen.getByRole('button', { name: 'Abrir captura rápida' })
+    expect(anchor).toBeInTheDocument()
+    // Icon-only: sem o label de texto no rail.
+    expect(screen.queryByText('Abrir captura rápida')).not.toBeInTheDocument()
+    // Badge ligado ao ícone (um badge no destino Brain Dump + um na âncora).
+    expect(screen.getAllByTestId('brain-dump-badge')).toHaveLength(2)
+  })
+
+  it('click chama onOpenCapture quando online', async () => {
+    const user = userEvent.setup()
+    const onOpenCapture = vi.fn()
+    render(
+      <MemoryRouter initialEntries={['/today']}>
+        <ShellSidebar collapsed={false} onToggle={vi.fn()} onOpenCapture={onOpenCapture} />
+      </MemoryRouter>,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Abrir captura rápida' }))
+    expect(onOpenCapture).toHaveBeenCalledTimes(1)
+  })
+
+  it('offline: aria-disabled + motivo acessível, continua focável e NÃO chama onOpenCapture', async () => {
+    setNavigatorOnLine(false)
+    const user = userEvent.setup()
+    const onOpenCapture = vi.fn()
+    render(
+      <MemoryRouter initialEntries={['/today']}>
+        <ShellSidebar collapsed={false} onToggle={vi.fn()} onOpenCapture={onOpenCapture} />
+      </MemoryRouter>,
+    )
+
+    // Divergência contratada vs `disabled` nativo do legado (FAB-03 → AC6):
+    // aria-disabled preserva foco e identidade, com motivo no nome acessível.
+    const anchor = screen.getByRole('button', { name: 'Abrir captura rápida (sem conexão)' })
+    expect(anchor).toHaveAttribute('aria-disabled', 'true')
+
+    anchor.focus()
+    expect(anchor).toHaveFocus()
+
+    await user.click(anchor)
+    expect(onOpenCapture).not.toHaveBeenCalled()
+  })
+})
+
+describe('ShellSidebar — acessibilidade (AC4/AC5)', () => {
+  it('sem violações de acessibilidade (expandido)', async () => {
+    const { container } = renderSidebar({ initialPath: '/today' })
+    expect(await axe(container)).toHaveNoViolations()
+  })
+
+  it('sem violações de acessibilidade (rail)', async () => {
+    const { container } = renderSidebar({ collapsed: true, initialPath: '/today' })
+    expect(await axe(container)).toHaveNoViolations()
+  })
+
+  it('não importa nenhum ícone @mui/icons-material (catálogo Phosphor fechado)', () => {
+    // Checa o IMPORT (não menções em comentário).
+    expect(shellSidebarSource).not.toMatch(/from\s+['"]@mui\/icons-material/)
+    expect(navIconsSource).not.toMatch(/from\s+['"]@mui\/icons-material/)
+    // Os ícones vêm do catálogo Phosphor.
+    expect(navIconsSource).toMatch(/from\s+['"]@phosphor-icons\/react['"]/)
+  })
+
+  it('larguras vêm dos tokens (AC6: zero literais estruturais 56/240)', () => {
+    // As larguras usam exclusivamente os tokens do rail (240/64), nunca literais.
+    expect(shellSidebarSource).toContain('var(--ds-sidebar-expanded)')
+    expect(shellSidebarSource).toContain('var(--ds-sidebar-collapsed)')
+    // Sem os literais do legado (DIV-1: 56→64).
+    expect(shellSidebarSource).not.toContain('COLLAPSED_WIDTH')
+    expect(shellSidebarSource).not.toContain('DRAWER_WIDTH')
+  })
+
+  // ── Story 13.4 AC3 — os dois guards `?raw` que NÃO existiam para a sidebar ──
+  // O tripé completo (mui-icons + literais estruturais + Query) morava só em
+  // `ShellBottomNav.test.tsx`, cobrindo apenas `ShellBottomNav.tsx`/
+  // `ShellNavigationSheet.tsx`. A `ShellSidebar` tinha SÓ o grep de
+  // `@mui/icons-material` (acima) e um teste de tokens que não grepa literais.
+  // Os dois `it` abaixo são novos; nenhum assert existente foi tocado. (O tripé
+  // do arquivo NOVO da linha compartilhada fica no lugar onde o tripé já mora —
+  // `ShellBottomNav.test.tsx` — para não espalhar as guardas em três arquivos.)
+
+  it('sem TanStack Query direto na sidebar (contagem só pelo BrainDumpBadge)', () => {
+    // Um hook de Query aqui obrigaria `QueryClientProvider` nos três testes
+    // compartilhados do chrome (AppLayout/router/RouteAnnouncer) — lição recorrente.
+    expect(shellSidebarSource).not.toMatch(/@tanstack\/react-query/)
+  })
+
+  it('zero literais estruturais (56/64/240/52/48) na sidebar', () => {
+    // Toda geometria vem de `var(--ds-*)`; um literal aqui é a regressão que o
+    // token existe para impedir. Verificado no HEAD 2fca13f: 0 hits — o grep
+    // nasce verde, sem refactor de geometria embutido nesta task.
+    expect(shellSidebarSource).not.toMatch(/\b(56|64|240|52|48)\b/)
+  })
+})

@@ -12,6 +12,7 @@ from braindump.serializers import (
     BrainDumpItemCreateSerializer,
     BrainDumpItemProcessSerializer,
     BrainDumpItemSerializer,
+    BrainDumpItemUpdateSerializer,
 )
 from braindump.services import (
     count_brain_dump_items,
@@ -19,6 +20,7 @@ from braindump.services import (
     discard_brain_dump_item,
     list_brain_dump_items,
     process_brain_dump_item,
+    update_brain_dump_item,
 )
 from bujo.serializers import TaskSerializer
 from core.calendar import today_for
@@ -39,6 +41,20 @@ class BrainDumpItemListCreateView(APIView):
 
 
 class BrainDumpItemDetailView(APIView):
+    # M11 (Story 15.1): espelha `bujo/views.py::TaskDetailView.patch` — serializer
+    # partial → `is_valid(raise_exception=True)` → `except DoesNotExist: raise
+    # NotFound()` → devolve o item serializado. Sem checagem de container/ciclo
+    # (Brain Dump não tem log/ciclo) — mais fino que o irmão de `Task`.
+    @extend_schema(request=BrainDumpItemUpdateSerializer, responses=BrainDumpItemSerializer)
+    def patch(self, request, pk):
+        body = BrainDumpItemUpdateSerializer(data=request.data, partial=True)
+        body.is_valid(raise_exception=True)
+        try:
+            item = update_brain_dump_item(user=request.user, item_id=pk, **body.validated_data)
+        except BrainDumpItem.DoesNotExist:
+            raise NotFound() from None
+        return Response(BrainDumpItemSerializer(item).data)
+
     @extend_schema(responses={204: None})
     def delete(self, request, pk):
         try:

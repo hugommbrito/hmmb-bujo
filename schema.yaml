@@ -9,12 +9,31 @@ paths:
       operationId: accounts_signup_create
       tags:
       - accounts
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Signup'
+        required: true
       security:
-      - jwtAuth: []
       - {}
       responses:
-        '200':
-          description: No response body
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignupSuccessResponse'
+              examples:
+                Sucesso:
+                  value:
+                    detail: Conta criada com sucesso.
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountsValidationErrorResponse'
+          description: ''
   /api/accounts/token/:
     post:
       operationId: accounts_token_create
@@ -36,6 +55,18 @@ paths:
               schema:
                 $ref: '#/components/schemas/TokenObtainPair'
           description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountsValidationErrorResponse'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountsLoginFailedResponse'
+          description: ''
   /api/accounts/token/refresh/:
     post:
       operationId: accounts_token_refresh_create
@@ -56,6 +87,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TokenRefresh'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountsValidationErrorResponse'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountsTokenInvalidResponse'
           description: ''
   /api/brain-dump/count/:
     get:
@@ -107,6 +150,31 @@ paths:
                 $ref: '#/components/schemas/BrainDumpItem'
           description: ''
   /api/brain-dump/items/{id}/:
+    patch:
+      operationId: brain_dump_items_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - brain-dump
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedBrainDumpItemUpdate'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BrainDumpItem'
+          description: ''
     delete:
       operationId: brain_dump_items_destroy
       parameters:
@@ -169,6 +237,12 @@ paths:
   /api/bujo/catch-up/queue/:
     get:
       operationId: bujo_catch_up_queue_retrieve
+      description: |-
+        ALIAS FINO de `UnifiedMigrationQueueView` (ver a seção de filas acima) —
+        contrato `{monthlyTasks, weeklyTasks, dailyTasks}`.
+
+        A única divergência de recorte em relação à fila unificada: `dailyTasks`
+        EXCLUI o grupo de ontem, que é território do alias `/migration/queue/`.
       tags:
       - bujo
       security:
@@ -196,9 +270,36 @@ paths:
                 items:
                   $ref: '#/components/schemas/FutureLogMonthGroup'
           description: ''
+  /api/bujo/future-log/horizon/:
+    get:
+      operationId: bujo_future_log_horizon_retrieve
+      description: |-
+        Trilho do Future Log do sistema novo (Story 14.7, AC2 — M08).
+
+        View NOVA ao lado de ``FutureLogView`` (que fica intocada, contrato idêntico):
+        o legado devolve só meses com item, esta devolve o horizonte fixo de 8 meses
+        **inclusive os vazios** + os meses distantes que têm item. Fina como todas as
+        outras — chama o serviço e serializa; nenhuma regra vive aqui.
+      tags:
+      - bujo
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FutureLogHorizon'
+          description: ''
   /api/bujo/logs/monthly/:
     get:
       operationId: bujo_logs_monthly_retrieve
+      parameters:
+      - in: query
+        name: month_first
+        schema:
+          type: string
+          format: date
       tags:
       - bujo
       security:
@@ -229,6 +330,57 @@ paths:
               schema:
                 $ref: '#/components/schemas/Task'
           description: ''
+  /api/bujo/logs/monthly/cycle/:
+    get:
+      operationId: bujo_logs_monthly_cycle_retrieve
+      description: |-
+        Ações do ciclo mensal (Story 14.1, AC8).
+
+        `open_planning_target` não recebe alvo: ele é determinístico (mês seguinte ao
+        `active`), sem escolha nem retargeting (M07).
+
+        `get` é NOVO (Story 14.6, AC4) — mesma rota, método novo, sem rota nova:
+        espelha byte-a-byte `WeeklyCycleView.get` (Story 14.5), trocando
+        `weekly_cycle_readiness` por `monthly_cycle_readiness`.
+      tags:
+      - bujo
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MonthlyCycleReadiness'
+          description: ''
+    post:
+      operationId: bujo_logs_monthly_cycle_create
+      description: |-
+        Ações do ciclo mensal (Story 14.1, AC8).
+
+        `open_planning_target` não recebe alvo: ele é determinístico (mês seguinte ao
+        `active`), sem escolha nem retargeting (M07).
+
+        `get` é NOVO (Story 14.6, AC4) — mesma rota, método novo, sem rota nova:
+        espelha byte-a-byte `WeeklyCycleView.get` (Story 14.5), trocando
+        `weekly_cycle_readiness` por `monthly_cycle_readiness`.
+      tags:
+      - bujo
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MonthlyCycleAction'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MonthlyCycle'
+          description: ''
   /api/bujo/logs/today/:
     get:
       operationId: bujo_logs_today_retrieve
@@ -246,6 +398,12 @@ paths:
   /api/bujo/logs/weekly/:
     get:
       operationId: bujo_logs_weekly_retrieve
+      parameters:
+      - in: query
+        name: week_start
+        schema:
+          type: string
+          format: date
       tags:
       - bujo
       security:
@@ -276,9 +434,69 @@ paths:
               schema:
                 $ref: '#/components/schemas/Task'
           description: ''
+  /api/bujo/logs/weekly/cycle/:
+    get:
+      operationId: bujo_logs_weekly_cycle_retrieve
+      description: |-
+        Ações do ciclo semanal (Story 14.1, AC8) — espelha `tasks/<pk>/transition/`.
+
+        Erros de gate e de matriz sobem como `InvalidTransition`/`CycleTargetConflict`
+        (ambos `DomainError`) e viram 409 pelo handler central; nada é tratado aqui.
+
+        `get` é NOVO (Story 14.5, AC4) — mesma rota, método novo, sem rota nova:
+        leitura pura e agregada de prontidão do ciclo (qual semana está `active`/
+        `planning`, quais gates de `start`/`finalize` faltam). Zero regra de
+        domínio na view: `weekly_cycle_readiness` decide tudo.
+      tags:
+      - bujo
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeeklyCycleReadiness'
+          description: ''
+    post:
+      operationId: bujo_logs_weekly_cycle_create
+      description: |-
+        Ações do ciclo semanal (Story 14.1, AC8) — espelha `tasks/<pk>/transition/`.
+
+        Erros de gate e de matriz sobem como `InvalidTransition`/`CycleTargetConflict`
+        (ambos `DomainError`) e viram 409 pelo handler central; nada é tratado aqui.
+
+        `get` é NOVO (Story 14.5, AC4) — mesma rota, método novo, sem rota nova:
+        leitura pura e agregada de prontidão do ciclo (qual semana está `active`/
+        `planning`, quais gates de `start`/`finalize` faltam). Zero regra de
+        domínio na view: `weekly_cycle_readiness` decide tudo.
+      tags:
+      - bujo
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WeeklyCycleAction'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeeklyCycle'
+          description: ''
   /api/bujo/migration/queue/:
     get:
       operationId: bujo_migration_queue_retrieve
+      description: |-
+        ALIAS FINO de `UnifiedMigrationQueueView` — contrato `{logDate, tasks}`.
+
+        `log_date` vem de `queue["yesterday"]`, pronto do serviço: o alias não
+        recalcula tempo por conta própria, o que elimina a chance de incoerência se a
+        virada do dia cair entre duas leituras — e é o que torna satisfazível o guard
+        de "zero query própria" (o nome da função de calendário nem aparece aqui).
       tags:
       - bujo
       security:
@@ -289,6 +507,25 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/MigrationQueue'
+          description: ''
+  /api/bujo/migration/unified-queue/:
+    get:
+      operationId: bujo_migration_unified_queue_retrieve
+      description: |-
+        Fila única de pendências dos três níveis, mês → semana → dia.
+
+        View fina e sem query param: a fila é sempre "tudo que ficou atrás de hoje"
+        (AD-09 item 8 — apresenta tudo, item a item, sem janela nem paginação).
+      tags:
+      - bujo
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnifiedMigrationQueue'
           description: ''
   /api/bujo/monthly-review/queue/:
     get:
@@ -365,6 +602,22 @@ paths:
               schema:
                 $ref: '#/components/schemas/RecurringTaskTemplate'
           description: ''
+    delete:
+      operationId: bujo_recurring_templates_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - bujo
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
   /api/bujo/recurring-templates/{id}/place/:
     post:
       operationId: bujo_recurring_templates_place_create
@@ -390,6 +643,248 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Task'
+          description: ''
+  /api/bujo/ritual-decisions/:
+    post:
+      operationId: bujo_ritual_decisions_create
+      description: |-
+        `POST /api/bujo/ritual-decisions/` — persistência imediata, um POST por
+        decisão (AD-28 item 6 ponto 6): pausar ou sair do ritual não perde nada.
+
+        O serializer valida FORMA (400). A matriz de combinação legal levanta
+        `InvalidRitualDecision` e o alvo fora de `planning` levanta
+        `InvalidTransition` — ambas `DomainError`, ambas 409 pelo handler central,
+        nenhuma tratada aqui.
+      tags:
+      - bujo
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RitualDecisionCreate'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RitualDecision'
+          description: ''
+  /api/bujo/rituals/monthly/density/:
+    get:
+      operationId: bujo_rituals_monthly_density_retrieve
+      description: Densidade real do Monthly-alvo (AC6) — endpoint NOVO, gêmeo do
+        semanal.
+      parameters:
+      - in: query
+        name: month_first
+        schema:
+          type: string
+          format: date
+        required: true
+      tags:
+      - bujo
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DensityResponse'
+          description: ''
+  /api/bujo/rituals/monthly/sources/future-log/:
+    get:
+      operationId: bujo_rituals_monthly_sources_future_log_retrieve
+      description: |-
+        Base das três fontes mensais (gêmea da semanal: mecânica extraída, não
+        copiada — o que diverge é o parâmetro de período e o serviço).
+      parameters:
+      - in: query
+        name: month_first
+        schema:
+          type: string
+          format: date
+        required: true
+      tags:
+      - bujo
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskSource'
+          description: ''
+  /api/bujo/rituals/monthly/sources/previous-monthly/:
+    get:
+      operationId: bujo_rituals_monthly_sources_previous_monthly_retrieve
+      description: |-
+        Base das três fontes mensais (gêmea da semanal: mecânica extraída, não
+        copiada — o que diverge é o parâmetro de período e o serviço).
+      parameters:
+      - in: query
+        name: month_first
+        schema:
+          type: string
+          format: date
+        required: true
+      tags:
+      - bujo
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BlockingTaskSource'
+          description: ''
+  /api/bujo/rituals/monthly/sources/recurring/:
+    get:
+      operationId: bujo_rituals_monthly_sources_recurring_retrieve
+      description: |-
+        Base das três fontes mensais (gêmea da semanal: mecânica extraída, não
+        copiada — o que diverge é o parâmetro de período e o serviço).
+      parameters:
+      - in: query
+        name: month_first
+        schema:
+          type: string
+          format: date
+        required: true
+      tags:
+      - bujo
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MonthlyRecurringSource'
+          description: ''
+  /api/bujo/rituals/weekly/density/:
+    get:
+      operationId: bujo_rituals_weekly_density_retrieve
+      description: |-
+        Densidade real do Weekly-alvo (AC6) — endpoint NOVO.
+
+        `GET /api/bujo/task-density/` fica intocado em rota, forma e semântica: são
+        dois contratos distintos (ver docstring de `bujo/services/density.py`), não uma
+        correção do antigo.
+
+        NÃO exige alvo em planejamento: aceita qualquer log existente e devolve a
+        grade vazia quando o log não existe, para que as Stories 14.5/14.6 (boards em
+        `active`) e 14.10 (Arquivo, `finalized`) reusem o mesmo endpoint.
+      parameters:
+      - in: query
+        name: week_start
+        schema:
+          type: string
+          format: date
+        required: true
+      tags:
+      - bujo
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DensityResponse'
+          description: ''
+  /api/bujo/rituals/weekly/sources/monthly-in-week/:
+    get:
+      operationId: bujo_rituals_weekly_sources_monthly_in_week_retrieve
+      description: Base das quatro fontes semanais — só o serviço e o serializer variam.
+      parameters:
+      - in: query
+        name: week_start
+        schema:
+          type: string
+          format: date
+        required: true
+      tags:
+      - bujo
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskSource'
+          description: ''
+  /api/bujo/rituals/weekly/sources/pending-dailies/:
+    get:
+      operationId: bujo_rituals_weekly_sources_pending_dailies_retrieve
+      description: Base das quatro fontes semanais — só o serviço e o serializer variam.
+      parameters:
+      - in: query
+        name: week_start
+        schema:
+          type: string
+          format: date
+        required: true
+      tags:
+      - bujo
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PendingDailiesSource'
+          description: ''
+  /api/bujo/rituals/weekly/sources/previous-weekly/:
+    get:
+      operationId: bujo_rituals_weekly_sources_previous_weekly_retrieve
+      description: Base das quatro fontes semanais — só o serviço e o serializer variam.
+      parameters:
+      - in: query
+        name: week_start
+        schema:
+          type: string
+          format: date
+        required: true
+      tags:
+      - bujo
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BlockingTaskSource'
+          description: ''
+  /api/bujo/rituals/weekly/sources/recurring/:
+    get:
+      operationId: bujo_rituals_weekly_sources_recurring_retrieve
+      description: Base das quatro fontes semanais — só o serviço e o serializer variam.
+      parameters:
+      - in: query
+        name: week_start
+        schema:
+          type: string
+          format: date
+        required: true
+      tags:
+      - bujo
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeeklyRecurringSource'
           description: ''
   /api/bujo/task-density/:
     get:
@@ -615,6 +1110,24 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/WeeklyReviewQueue'
+          description: ''
+  /api/capture:
+    post:
+      operationId: capture_create
+      tags:
+      - capture
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CaptureRequest'
+        required: true
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CaptureResponse'
           description: ''
   /api/doctors/:
     get:
@@ -1568,6 +2081,26 @@ paths:
               schema:
                 $ref: '#/components/schemas/MedicationDay'
           description: ''
+  /api/summary/today:
+    get:
+      operationId: summary_today_retrieve
+      description: |-
+        Resumo do dia (`GET /api/summary/today`, AC1/AC3).
+
+        View fina (§6.2) e **somente leitura**: compõe o resumo via `build_today_summary`
+        (3 apps de domínio, read-only) → serializa a resposta agregada. Mesma espinha da
+        `CaptureView`: auth por token opt-in per-view + escopo `summary` + `ScopedRateThrottle`
+        (`automation-summary`) + log estruturado de auditoria. **Sem payload de entrada** →
+        não há caminho 400 de validação; só 200 (+ 401/403/429 antes/fora do handler).
+      tags:
+      - summary
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SummaryResponse'
+          description: ''
   /api/time-blocks/:
     get:
       operationId: time_blocks_list
@@ -1637,6 +2170,44 @@ paths:
           description: ''
 components:
   schemas:
+    AccountsLoginFailedResponse:
+      type: object
+      properties:
+        detail:
+          type: string
+      required:
+      - detail
+    AccountsTokenErrorCode:
+      type: object
+      properties:
+        code:
+          type: array
+          items:
+            type: string
+      required:
+      - code
+    AccountsTokenInvalidResponse:
+      type: object
+      properties:
+        detail:
+          type: string
+        fields:
+          $ref: '#/components/schemas/AccountsTokenErrorCode'
+      required:
+      - detail
+    AccountsValidationErrorResponse:
+      type: object
+      properties:
+        detail:
+          type: string
+        fields:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+      required:
+      - detail
     AdHocCreate:
       type: object
       description: |-
@@ -1703,6 +2274,45 @@ components:
       - confirmed
       - date
       - timeBlockId
+    BlockingTaskSource:
+      type: object
+      description: |-
+        `previous-weekly`/`previous-monthly`: acrescentam `readyToFinalize` e,
+        aditivamente (Story 14.5, AC4), `previousPeriodStart` — a chave de período
+        do log anterior, nome neutro porque serve as duas fontes.
+      properties:
+        sourceId:
+          type: string
+        blocking:
+          type: boolean
+        countsTowardProgress:
+          type: boolean
+        eligibleCount:
+          type: integer
+        pendingDecisionCount:
+          type: integer
+        reviewed:
+          type: boolean
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RitualTaskItem'
+        readyToFinalize:
+          type: boolean
+        previousPeriodStart:
+          type: string
+          format: date
+          nullable: true
+      required:
+      - blocking
+      - countsTowardProgress
+      - eligibleCount
+      - items
+      - pendingDecisionCount
+      - previousPeriodStart
+      - readyToFinalize
+      - reviewed
+      - sourceId
     BrainDumpCount:
       type: object
       properties:
@@ -1779,6 +2389,29 @@ components:
         * `week` - week
         * `month` - month
         * `future` - future
+    CaptureRequest:
+      type: object
+      properties:
+        type:
+          type: string
+        text:
+          type: string
+          maxLength: 500
+        value:
+          type: string
+          nullable: true
+      required:
+      - text
+      - type
+    CaptureResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+      required:
+      - id
     CatchUpQueue:
       type: object
       properties:
@@ -1824,6 +2457,82 @@ components:
         * `weekday` - Weekday
         * `weekend` - Weekend
         * `holiday` - Holiday
+    DecisionEnum:
+      enum:
+      - keep
+      - skip_week
+      - keep_undated
+      type: string
+      description: |-
+        * `keep` - Keep
+        * `skip_week` - Skip Week
+        * `keep_undated` - Keep Undated
+    DensityCell:
+      type: object
+      properties:
+        total:
+          type: integer
+        byStatus:
+          $ref: '#/components/schemas/DensityStatusBreakdown'
+      required:
+      - byStatus
+      - total
+    DensityDay:
+      type: object
+      properties:
+        total:
+          type: integer
+        byStatus:
+          $ref: '#/components/schemas/DensityStatusBreakdown'
+        date:
+          type: string
+          format: date
+      required:
+      - byStatus
+      - date
+      - total
+    DensityResponse:
+      type: object
+      properties:
+        days:
+          type: array
+          items:
+            $ref: '#/components/schemas/DensityDay'
+        undated:
+          $ref: '#/components/schemas/DensityCell'
+        total:
+          type: integer
+      required:
+      - days
+      - total
+      - undated
+    DensityStatusBreakdown:
+      type: object
+      description: |-
+        As 6 chaves de `TaskStatus`, SEMPRE presentes (zeros inclusive).
+
+        Nenhuma tem underscore, então a camelização de saída não as altera — o que é
+        verificado por teste de fio, não deduzido.
+      properties:
+        pending:
+          type: integer
+        started:
+          type: integer
+        completed:
+          type: integer
+        cancelled:
+          type: integer
+        migrated:
+          type: integer
+        postponed:
+          type: integer
+      required:
+      - cancelled
+      - completed
+      - migrated
+      - pending
+      - postponed
+      - started
     Doctor:
       type: object
       properties:
@@ -1865,6 +2574,35 @@ components:
         * `u` - Urgent
         * `i` - Important
         * `none` - None
+    FutureLogHorizon:
+      type: object
+      properties:
+        anchorMonthFirst:
+          type: string
+          format: date
+        horizon:
+          type: array
+          items:
+            $ref: '#/components/schemas/FutureLogMonthCount'
+        distant:
+          type: array
+          items:
+            $ref: '#/components/schemas/FutureLogMonthCount'
+      required:
+      - anchorMonthFirst
+      - distant
+      - horizon
+    FutureLogMonthCount:
+      type: object
+      properties:
+        monthFirst:
+          type: string
+          format: date
+        taskCount:
+          type: integer
+      required:
+      - monthFirst
+      - taskCount
     FutureLogMonthGroup:
       type: object
       properties:
@@ -2987,9 +3725,145 @@ components:
       required:
       - logDate
       - tasks
+    MigrationTarget:
+      type: object
+      properties:
+        type:
+          $ref: '#/components/schemas/MigrationTargetTypeEnum'
+        weekStart:
+          type: string
+          format: date
+          nullable: true
+        monthFirst:
+          type: string
+          format: date
+          nullable: true
+        logDate:
+          type: string
+          format: date
+          nullable: true
+      required:
+      - type
+    MigrationTargetTypeEnum:
+      enum:
+      - daily
+      - weekly
+      - monthly
+      type: string
+      description: |-
+        * `daily` - daily
+        * `weekly` - weekly
+        * `monthly` - monthly
+    MonthlyCycle:
+      type: object
+      properties:
+        status:
+          type: string
+          nullable: true
+        planningCompletedAt:
+          type: string
+          format: date-time
+          nullable: true
+        monthFirst:
+          type: string
+          format: date
+        regularWindowStart:
+          type: string
+          format: date
+        regularWindowEnd:
+          type: string
+          format: date
+      required:
+      - monthFirst
+      - planningCompletedAt
+      - regularWindowEnd
+      - regularWindowStart
+      - status
+    MonthlyCycleAction:
+      type: object
+      properties:
+        action:
+          $ref: '#/components/schemas/MonthlyCycleActionActionEnum'
+        monthFirst:
+          type: string
+          format: date
+      required:
+      - action
+    MonthlyCycleActionActionEnum:
+      enum:
+      - open_planning_target
+      - complete_planning
+      - start
+      - finalize
+      type: string
+      description: |-
+        * `open_planning_target` - open_planning_target
+        * `complete_planning` - complete_planning
+        * `start` - start
+        * `finalize` - finalize
+    MonthlyCycleReadiness:
+      type: object
+      description: |-
+        Resposta de `GET /api/bujo/logs/monthly/cycle/` (AC4) — os quatro blocos,
+        `null` nos inexistentes. Cada booleano REUSA o predicado do serviço de
+        transição (ver `services/cycles.monthly_cycle_readiness`); este serializer
+        só projeta, nunca decide.
+      properties:
+        active:
+          allOf:
+          - $ref: '#/components/schemas/_MonthlyCycleSnapshot'
+          nullable: true
+        planning:
+          allOf:
+          - $ref: '#/components/schemas/_MonthlyCycleSnapshot'
+          nullable: true
+        start:
+          allOf:
+          - $ref: '#/components/schemas/MonthlyStartReadiness'
+          nullable: true
+        finalize:
+          allOf:
+          - $ref: '#/components/schemas/MonthlyFinalizeReadiness'
+          nullable: true
+      required:
+      - active
+      - finalize
+      - planning
+      - start
+    MonthlyFinalizeGates:
+      type: object
+      properties:
+        noOpenTasks:
+          type: boolean
+        nextPlanningExists:
+          type: boolean
+      required:
+      - nextPlanningExists
+      - noOpenTasks
+    MonthlyFinalizeReadiness:
+      type: object
+      properties:
+        allowed:
+          type: boolean
+        target:
+          type: string
+          format: date
+        gates:
+          $ref: '#/components/schemas/MonthlyFinalizeGates'
+      required:
+      - allowed
+      - gates
+      - target
     MonthlyLog:
       type: object
       properties:
+        status:
+          type: string
+          nullable: true
+        planningCompletedAt:
+          type: string
+          format: date-time
+          nullable: true
         monthFirst:
           type: string
           format: date
@@ -3002,7 +3876,42 @@ components:
       required:
       - closed
       - monthFirst
+      - planningCompletedAt
+      - status
       - tasks
+    MonthlyRecurringSource:
+      type: object
+      properties:
+        sourceId:
+          type: string
+        blocking:
+          type: boolean
+        countsTowardProgress:
+          type: boolean
+        eligibleCount:
+          type: integer
+        pendingDecisionCount:
+          type: integer
+        reviewed:
+          type: boolean
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RitualTemplateItem'
+        alreadyPlaced:
+          $ref: '#/components/schemas/_TemplateBucket'
+        alreadyPlacedInYear:
+          $ref: '#/components/schemas/_TemplateBucket'
+      required:
+      - alreadyPlaced
+      - alreadyPlacedInYear
+      - blocking
+      - countsTowardProgress
+      - eligibleCount
+      - items
+      - pendingDecisionCount
+      - reviewed
+      - sourceId
     MonthlyReviewQueue:
       type: object
       properties:
@@ -3016,6 +3925,35 @@ components:
       required:
       - monthFirst
       - tasks
+    MonthlyStartGates:
+      type: object
+      description: Os TRÊS gates de `start` — hoje indistinguíveis no `detail` do
+        409.
+      properties:
+        dateReached:
+          type: boolean
+        planningCompleted:
+          type: boolean
+        previousFinalized:
+          type: boolean
+      required:
+      - dateReached
+      - planningCompleted
+      - previousFinalized
+    MonthlyStartReadiness:
+      type: object
+      properties:
+        allowed:
+          type: boolean
+        target:
+          type: string
+          format: date
+        gates:
+          $ref: '#/components/schemas/MonthlyStartGates'
+      required:
+      - allowed
+      - gates
+      - target
     MonthlyTaskCreate:
       type: object
       properties:
@@ -3048,6 +3986,32 @@ components:
     NullEnum:
       enum:
       - null
+    PatchedBrainDumpItemUpdate:
+      type: object
+      description: |-
+        Corpo do `PATCH /api/brain-dump/items/{id}/` (M11) — mesmo molde de
+        `bujo/serializers.py::TaskUpdateSerializer`: os três campos são opcionais
+        porque cada um declara `required=False` (sem `default=`), o que já basta
+        para o DRF pular um campo ausente do corpo (`SkipField`) e não incluí-lo
+        em `validated_data`. `partial=True` na view NÃO é a causa da
+        opcionalidade aqui — com todos os campos `required=False`, o
+        comportamento de ausência é idêntico com ou sem `partial=True`; um campo
+        NOVO que nascesse sem `required=False` continuaria obrigatório mesmo
+        passando `partial=True`. Sem `validate()` — nenhum dos três campos
+        depende do estado atual do item (diferente de `TaskUpdateSerializer`, que
+        valida `scheduled_date` contra o Monthly Log na VIEW, não aqui).
+      properties:
+        title:
+          type: string
+          maxLength: 500
+        description:
+          type: string
+          nullable: true
+        targetLog:
+          nullable: true
+          oneOf:
+          - $ref: '#/components/schemas/TargetLogEnum'
+          - $ref: '#/components/schemas/NullEnum'
     PatchedDoctorUpdate:
       type: object
       properties:
@@ -3226,6 +4190,8 @@ components:
           type: string
           format: date
           nullable: true
+        waitingOn:
+          type: boolean
     PatchedTimeBlockUpdate:
       type: object
       properties:
@@ -3238,6 +4204,47 @@ components:
           minimum: 0
         active:
           type: boolean
+    PendingDailiesSource:
+      type: object
+      description: A única fonte com `groups` em vez de `items` planos (AC3).
+      properties:
+        sourceId:
+          type: string
+        blocking:
+          type: boolean
+        countsTowardProgress:
+          type: boolean
+        eligibleCount:
+          type: integer
+        pendingDecisionCount:
+          type: integer
+        reviewed:
+          type: boolean
+        groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/PendingDailyGroup'
+      required:
+      - blocking
+      - countsTowardProgress
+      - eligibleCount
+      - groups
+      - pendingDecisionCount
+      - reviewed
+      - sourceId
+    PendingDailyGroup:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RitualTaskItem'
+      required:
+      - date
+      - items
     PositionEnum:
       enum:
       - before
@@ -3335,6 +4342,104 @@ components:
           type: string
           format: date
           nullable: true
+    RitualDecision:
+      type: object
+      description: |-
+        Resposta do `POST /api/bujo/ritual-decisions/`.
+
+        O alvo volta como a **chave de período** que o cliente enviou (`weekStart` /
+        `monthFirst`), não como o id do log: o id é opaco para quem endereça o ritual
+        por semana/mês, e devolvê-lo obrigaria o cliente a uma segunda leitura só para
+        saber a qual ritual a decisão que ele acabou de gravar pertence. O item volta
+        como `taskId`/`recurringTemplateId` — o mesmo identificador que entrou.
+      properties:
+        id:
+          type: string
+          format: uuid
+        decision:
+          type: string
+        weekStart:
+          type: string
+          format: date
+          nullable: true
+          readOnly: true
+        monthFirst:
+          type: string
+          format: date
+          nullable: true
+          readOnly: true
+        taskId:
+          type: string
+          format: uuid
+          nullable: true
+        recurringTemplateId:
+          type: string
+          format: uuid
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+      - createdAt
+      - decision
+      - id
+      - monthFirst
+      - recurringTemplateId
+      - taskId
+      - updatedAt
+      - weekStart
+    RitualDecisionCreate:
+      type: object
+      description: |-
+        Corpo do `POST /api/bujo/ritual-decisions/`.
+
+        Campos no CORPO, então chegam do fio em camelCase (`weekStart`, `taskId`,
+        `recurringTemplateId`) e o `CamelCaseJSONParser` converte antes do serializer.
+      properties:
+        decision:
+          $ref: '#/components/schemas/DecisionEnum'
+        weekStart:
+          type: string
+          format: date
+        monthFirst:
+          type: string
+          format: date
+        taskId:
+          type: string
+          format: uuid
+        recurringTemplateId:
+          type: string
+          format: uuid
+      required:
+      - decision
+    RitualTaskItem:
+      type: object
+      properties:
+        task:
+          $ref: '#/components/schemas/Task'
+        decision:
+          type: string
+          nullable: true
+      required:
+      - decision
+      - task
+    RitualTemplateItem:
+      type: object
+      properties:
+        template:
+          $ref: '#/components/schemas/RecurringTaskTemplate'
+        decision:
+          type: string
+          nullable: true
+        instancesInTargetCount:
+          type: integer
+      required:
+      - decision
+      - instancesInTargetCount
+      - template
     ScheduleVersionCreate:
       type: object
       description: |-
@@ -3391,6 +4496,30 @@ components:
       required:
       - date
       - isHoliday
+    Signup:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          writeOnly: true
+          minLength: 8
+        timezone:
+          type: string
+          default: America/Sao_Paulo
+          maxLength: 64
+      required:
+      - email
+      - password
+    SignupSuccessResponse:
+      type: object
+      properties:
+        detail:
+          type: string
+      required:
+      - detail
     SourceEnum:
       enum:
       - scheduled
@@ -3432,6 +4561,93 @@ components:
           type: string
           format: uuid
           nullable: true
+    SummaryHabits:
+      type: object
+      properties:
+        total:
+          type: integer
+          readOnly: true
+        groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/SummaryHabitsGroup'
+          readOnly: true
+      required:
+      - groups
+      - total
+    SummaryHabitsGroup:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          readOnly: true
+        completion:
+          type: integer
+          readOnly: true
+      required:
+      - completion
+      - id
+      - name
+    SummaryJournalEntry:
+      type: object
+      properties:
+        text:
+          type: string
+          readOnly: true
+        date:
+          type: string
+          format: date
+          readOnly: true
+      required:
+      - date
+      - text
+    SummaryResponse:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+          readOnly: true
+        pendingTasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/SummaryTask'
+          readOnly: true
+        habits:
+          allOf:
+          - $ref: '#/components/schemas/SummaryHabits'
+          readOnly: true
+        lastJournalEntry:
+          allOf:
+          - $ref: '#/components/schemas/SummaryJournalEntry'
+          readOnly: true
+          nullable: true
+      required:
+      - date
+      - habits
+      - lastJournalEntry
+      - pendingTasks
+    SummaryTask:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        title:
+          type: string
+          readOnly: true
+        status:
+          type: string
+          readOnly: true
+      required:
+      - id
+      - status
+      - title
     TargetLogEnum:
       enum:
       - today
@@ -3480,6 +4696,8 @@ components:
           items:
             $ref: '#/components/schemas/Task'
           readOnly: true
+        waitingOn:
+          type: boolean
         migrationCount:
           type: integer
           maximum: 2147483647
@@ -3492,8 +4710,14 @@ components:
           type: string
           format: uuid
           nullable: true
+        migrationTarget:
+          allOf:
+          - $ref: '#/components/schemas/MigrationTarget'
+          nullable: true
+          readOnly: true
       required:
       - id
+      - migrationTarget
       - subtasks
       - title
     TaskCreate:
@@ -3576,6 +4800,34 @@ components:
       required:
       - position
       - targetTaskId
+    TaskSource:
+      type: object
+      description: 'Fontes cujos itens são Tasks: `monthly-in-week`, `future-log`.'
+      properties:
+        sourceId:
+          type: string
+        blocking:
+          type: boolean
+        countsTowardProgress:
+          type: boolean
+        eligibleCount:
+          type: integer
+        pendingDecisionCount:
+          type: integer
+        reviewed:
+          type: boolean
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RitualTaskItem'
+      required:
+      - blocking
+      - countsTowardProgress
+      - eligibleCount
+      - items
+      - pendingDecisionCount
+      - reviewed
+      - sourceId
     TaskTransitionRequest:
       type: object
       properties:
@@ -3669,6 +4921,116 @@ components:
       description: |-
         * `weekly` - weekly
         * `monthly` - monthly
+    UnifiedMigrationQueue:
+      type: object
+      properties:
+        totalCount:
+          type: integer
+        sections:
+          type: array
+          items:
+            $ref: '#/components/schemas/UnifiedQueueSection'
+      required:
+      - sections
+      - totalCount
+    UnifiedQueueGroup:
+      type: object
+      properties:
+        periodStart:
+          type: string
+          format: date
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Task'
+      required:
+      - items
+      - periodStart
+    UnifiedQueueSection:
+      type: object
+      properties:
+        sourceId:
+          type: string
+        count:
+          type: integer
+        groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/UnifiedQueueGroup'
+      required:
+      - count
+      - groups
+      - sourceId
+    WeeklyCycle:
+      type: object
+      properties:
+        status:
+          type: string
+          nullable: true
+        planningCompletedAt:
+          type: string
+          format: date-time
+          nullable: true
+        weekStart:
+          type: string
+          format: date
+      required:
+      - planningCompletedAt
+      - status
+      - weekStart
+    WeeklyCycleAction:
+      type: object
+      properties:
+        action:
+          $ref: '#/components/schemas/WeeklyCycleActionActionEnum'
+        weekStart:
+          type: string
+          format: date
+      required:
+      - action
+    WeeklyCycleActionActionEnum:
+      enum:
+      - open_planning_target
+      - complete_planning
+      - start
+      - finalize
+      - cancel_planning_target
+      type: string
+      description: |-
+        * `open_planning_target` - open_planning_target
+        * `complete_planning` - complete_planning
+        * `start` - start
+        * `finalize` - finalize
+        * `cancel_planning_target` - cancel_planning_target
+    WeeklyCycleReadiness:
+      type: object
+      description: |-
+        Resposta de `GET /api/bujo/logs/weekly/cycle/` (AC4) — os quatro blocos,
+        `null` nos inexistentes. Cada booleano REUSA o predicado do serviço de
+        transição (ver `services/cycles.weekly_cycle_readiness`); este serializer
+        só projeta, nunca decide.
+      properties:
+        active:
+          allOf:
+          - $ref: '#/components/schemas/_WeeklyCycleSnapshot'
+          nullable: true
+        planning:
+          allOf:
+          - $ref: '#/components/schemas/_WeeklyCycleSnapshot'
+          nullable: true
+        start:
+          allOf:
+          - $ref: '#/components/schemas/WeeklyStartReadiness'
+          nullable: true
+        finalize:
+          allOf:
+          - $ref: '#/components/schemas/WeeklyFinalizeReadiness'
+          nullable: true
+      required:
+      - active
+      - finalize
+      - planning
+      - start
     WeeklyDay:
       type: object
       properties:
@@ -3682,9 +5044,40 @@ components:
       required:
       - date
       - tasks
+    WeeklyFinalizeGates:
+      type: object
+      properties:
+        noOpenTasks:
+          type: boolean
+        nextPlanningExists:
+          type: boolean
+      required:
+      - nextPlanningExists
+      - noOpenTasks
+    WeeklyFinalizeReadiness:
+      type: object
+      properties:
+        allowed:
+          type: boolean
+        target:
+          type: string
+          format: date
+        gates:
+          $ref: '#/components/schemas/WeeklyFinalizeGates'
+      required:
+      - allowed
+      - gates
+      - target
     WeeklyLog:
       type: object
       properties:
+        status:
+          type: string
+          nullable: true
+        planningCompletedAt:
+          type: string
+          format: date-time
+          nullable: true
         weekStart:
           type: string
           format: date
@@ -3701,8 +5094,40 @@ components:
       required:
       - closed
       - days
+      - planningCompletedAt
+      - status
       - unscheduled
       - weekStart
+    WeeklyRecurringSource:
+      type: object
+      properties:
+        sourceId:
+          type: string
+        blocking:
+          type: boolean
+        countsTowardProgress:
+          type: boolean
+        eligibleCount:
+          type: integer
+        pendingDecisionCount:
+          type: integer
+        reviewed:
+          type: boolean
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RitualTemplateItem'
+        alreadyPlaced:
+          $ref: '#/components/schemas/_TemplateBucket'
+      required:
+      - alreadyPlaced
+      - blocking
+      - countsTowardProgress
+      - eligibleCount
+      - items
+      - pendingDecisionCount
+      - reviewed
+      - sourceId
     WeeklyReviewQueue:
       type: object
       properties:
@@ -3716,6 +5141,35 @@ components:
       required:
       - tasks
       - weekStart
+    WeeklyStartGates:
+      type: object
+      description: Os TRÊS gates de `start` — hoje indistinguíveis no `detail` do
+        409.
+      properties:
+        dateReached:
+          type: boolean
+        planningCompleted:
+          type: boolean
+        previousFinalized:
+          type: boolean
+      required:
+      - dateReached
+      - planningCompleted
+      - previousFinalized
+    WeeklyStartReadiness:
+      type: object
+      properties:
+        allowed:
+          type: boolean
+        target:
+          type: string
+          format: date
+        gates:
+          $ref: '#/components/schemas/WeeklyStartGates'
+      required:
+      - allowed
+      - gates
+      - target
     WeeklyTaskCreate:
       type: object
       properties:
@@ -3744,6 +5198,55 @@ components:
           - $ref: '#/components/schemas/NullEnum'
       required:
       - title
+      - weekStart
+    _MonthlyCycleSnapshot:
+      type: object
+      description: Projeção mínima de um `MonthlyLog` operacional (`active` ou `planning`).
+      properties:
+        monthFirst:
+          type: string
+          format: date
+        status:
+          type: string
+        planningCompletedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - monthFirst
+      - planningCompletedAt
+      - status
+    _TemplateBucket:
+      type: object
+      description: |-
+        `alreadyPlaced`/`alreadyPlacedInYear` — fora do progresso e dos avisos, mas
+        permanentemente consultáveis (novas instâncias continuam permitidas).
+      properties:
+        countsTowardProgress:
+          type: boolean
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RitualTemplateItem'
+      required:
+      - countsTowardProgress
+      - items
+    _WeeklyCycleSnapshot:
+      type: object
+      description: Projeção mínima de um `WeeklyLog` operacional (`active` ou `planning`).
+      properties:
+        weekStart:
+          type: string
+          format: date
+        status:
+          type: string
+        planningCompletedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - planningCompletedAt
+      - status
       - weekStart
   securitySchemes:
     jwtAuth:

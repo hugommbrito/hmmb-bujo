@@ -113,7 +113,7 @@ export function RecurringPlacementSection({
               onClick={() => onPlace(template)}
               sx={{ flexShrink: 0 }}
             >
-              Definir placement
+              Alocar
             </Button>
           </Box>
         )

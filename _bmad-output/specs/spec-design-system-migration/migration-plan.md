@@ -8,7 +8,7 @@
 |---|---|---|
 | 0 — Inventário ✅ | tokens, componentes e estilos atuais; rotas e estados implementados; divergências entre UX anterior, código e handoff | concluída — baseline do bmad-ux |
 | 1 — Fundação ✅ | tokens, tema, app shell, workspace, headers, cards/panels, chips, linhas, feedback e overlays responsivos | **GATE FECHADO em 2026-07-21** |
-| 2a — App Shell | shell (sidebar, bottom-nav, FAB, layout) no sistema novo, consumindo o manifest de collections (fatia 1) | destrava as ondas de superfície; paridade de navegação e acessibilidade; manifest = dados puros (sem server state) |
+| 2a — App Shell ✅ | shell (sidebar, bottom-nav, FAB, layout) no sistema novo, consumindo o manifest de collections (fatia 1) | **GATE FECHADO em 2026-07-24** (Épico 13, Stories 13.0–13.4). Paridade **comprovada**, não estimada: `13-shell-parity-checklist.md` com coluna Evidência (`arquivo::nome do teste`) por item, matriz axe em 17 células (wide/medium/tablet/compact × rota × estado), coexistência por rota com rollback de 1 linha (AD-29). Piso WCAG 2.2 AA fechado **exceto `prefers-reduced-motion`** — waiver consciente do dono (`A11Y-07`). Manifest permanece dados puros (sem server state no chrome) |
 | 3 — Núcleo BuJo (**novo gate vertical**) | Weekly, Monthly, Future, Migração/Catch-Up, Recorrentes e Arquivo | assume a prova vertical de implementação (Daily deslocado para 2b); paridade de estados, ações, teclado e WCAG 2.2 AA sem alterar regras do Épico 4/11 |
 | 4 — Captura | Brain Dump, badge, processamento, FAB e Capture Sheet | prova padrão de inbox e captura mobile mantendo server state e conectividade existentes |
 | 5 — Módulos: migração + refinos | Hábitos; Saúde-Métricas com C3 (#16 reordenar → #17 editar / #18 percentual+enum multi / #22 grupos, sob regra de edição segura × destrutiva); Medicamentos (Saúde e Medicamentos = 2 collections + grupo visual "Saúde"; verificar campo "médico prescritor"); **Journalling substitui a migração da Gratidão** (campo seed "Gratidões" + migração das entradas do Épico 9 + aposentadoria da superfície na mesma onda, sem período de duas verdades) | cada módulo migra para a fundação nova já com seus refinos; não cria versão visual legada nova |
@@ -24,6 +24,8 @@
 - Não avançar quando a onda exige alterar regra de produto; registrar a divergência para o artefato upstream adequado.
 - Não duplicar um padrão compartilhado já aprovado; extensões precisam declarar a variação de domínio que as justifica.
 - Conservar uma rota segura de rollback por superfície enquanto o sistema legado ainda existir.
+
+> **Estratégia de promoção a prod (decisão Hugo 2026-07-23, registrada no epics.md; reconciliação registrada no [IR] 2026-07-23, §Step 4):** durante as ondas, **prod permanece no sistema atual** — todo o trabalho de migração roda na branch `dev` (homologação, fluxo vigente desde 2026-07-22). A coexistência por rota e a "rota segura de rollback por superfície" (critério acima) são mecanismos do ambiente de dev/homologação, não de prod; **o rollback de prod é não promover**. A promoção é única, quando o design system antigo puder ser abandonado (≈ Épico 18 — consolidação); a troca global de tema ao final é aceitável, sem exigência de namespace à prova de troca irreversível.
 
 ## Riscos de desenvolvimento paralelo
 

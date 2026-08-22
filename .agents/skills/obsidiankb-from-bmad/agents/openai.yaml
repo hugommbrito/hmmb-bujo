@@ -1,0 +1,4 @@
+interface:
+  display_name: "Obsidian KB from BMad"
+  short_description: "Transform BMad artifacts into an Obsidian vault"
+  default_prompt: "Use $obsidiankb-from-bmad to build or update the structured Obsidian knowledge base from _bmad-output/."

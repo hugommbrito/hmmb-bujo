@@ -1,0 +1,277 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Catálogo Phosphor · App Shell 13.0</title><style>
+:root{--bg:#f4f2ed;--surface:#fffefa;--subtle:#eeece6;--ink:#272723;--muted:#6d6b64;--border:#d8d5cc;--primary:#315a62;--soft:#dfeaed;--focus:#167188;--danger:#9a3f3f}
+*{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 Inter,ui-sans-serif,system-ui,sans-serif} .page{max-width:1440px;margin:auto;padding:48px 32px 80px}
+.eyebrow,.section-head p{margin:0;color:var(--primary);font-size:11px;font-weight:800;letter-spacing:.14em} h1{font:700 clamp(34px,5vw,64px)/1.02 Georgia,serif;max-width:880px;margin:12px 0 16px} .lede{max-width:850px;color:var(--muted);font-size:18px}
+.rule{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border);border:1px solid var(--border);margin:32px 0} .rule div{background:var(--surface);padding:18px} .rule strong{display:block;margin-bottom:5px} section{margin-top:52px}
+.section-head{border-top:2px solid var(--ink);padding-top:14px;margin-bottom:18px} .section-head h2{font:700 28px/1.2 Georgia,serif;margin:4px 0} .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:20px;box-shadow:0 2px 8px #35322b0a} .card header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:1px solid var(--border);padding-bottom:14px}
+h3{font:700 21px/1.25 Georgia,serif;margin:6px 0 0} .kind,.decision{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase} .kind{color:var(--muted)} .kind.ação{color:#8b522f} .kind.agrupador{color:#665089} .decision{color:var(--primary);border:1px solid var(--border);padding:4px 7px;border-radius:3px}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px} .state{min-height:82px;display:flex;gap:10px;align-items:center;padding:14px;border:1px solid var(--border);border-radius:5px;color:var(--muted)} .state.selected{background:var(--soft);border-left:4px solid var(--primary);color:var(--ink);font-weight:700} .icon{display:block;flex:none;color:currentColor}
+.state:focus-within{outline:2px solid var(--focus);outline-offset:2px} .icon-name{display:flex;justify-content:space-between;color:var(--muted);font-size:12px;margin:7px 2px 15px} code{font-family:ui-monospace,SFMono-Regular,monospace;color:var(--primary)}
+dl{margin:0} dl>div{display:grid;grid-template-columns:125px 1fr;padding:7px 0;border-top:1px solid var(--subtle)} dt{font-size:12px;font-weight:700;color:var(--muted)} dd{margin:0} .alternatives{margin-top:16px;background:var(--subtle);padding:14px;border-radius:5px} .alternatives h4{margin:0 0 8px} .alt-grid{display:grid;grid-template-columns:1fr;gap:8px} .alternatives ul{margin:9px 0 0;padding-left:20px;color:var(--muted);font-size:13px}
+.scope{border-left:4px solid var(--primary);background:var(--surface);padding:18px 20px;margin-top:42px} .scope h2,.questions h2{font:700 27px Georgia,serif;margin:0 0 10px} .questions{margin-top:52px;background:#272723;color:#fffefa;padding:28px;border-radius:8px} .questions ol{margin:0;padding-left:22px} .questions li{padding:9px 0} .questions em{color:#c8dfe3} footer{margin-top:32px;color:var(--muted);font-size:12px}
+@media(max-width:820px){.page{padding:28px 16px 60px}.grid{grid-template-columns:1fr}.rule{grid-template-columns:1fr 1fr}} @media(max-width:430px){.pair,.rule{grid-template-columns:1fr} dl>div{grid-template-columns:1fr}}
+</style></head><body><main class="page"><p class="eyebrow">STORY 13.0 · REVISÃO HUMAN-IN-THE-LOOP</p><h1>Catálogo semântico do App Shell</h1>
+<p class="lede">Propostas Phosphor para o chrome atual. Cada par usa o <strong>mesmo pictograma</strong>: <code>regular</code> quando inativo e <code>fill</code> quando selecionado. Este artefato não equivale a aprovação; DESIGN.md e EXPERIENCE.md vencem em qualquer conflito.</p>
+<div class="rule"><div><strong>20px</strong>Rail, sidebar e listas densas</div><div><strong>24px</strong>Bottom nav e alvo selecionado</div><div><strong>currentColor</strong>Sem cor própria por ícone</div><div><strong>Estado redundante</strong>Fill + indicador + fundo + label + semântica</div></div>
+<section><div class="section-head"><p>GRUPO</p><h2>Núcleo BuJo</h2></div><div class="grid"><article class="card">
+          <header><div><span class="kind navegação">navegação</span><h3>Hoje</h3></div><span class="decision">PROPOSTA</span></header>
+          <div class="specimen">
+      <div class="pair">
+        <div class="state"><svg class="icon" width="20" height="20" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M219.31,108.68l-80-80a16,16,0,0,0-22.62,0l-80,80A15.87,15.87,0,0,0,32,120v96a8,8,0,0,0,8,8h64a8,8,0,0,0,8-8V160h32v56a8,8,0,0,0,8,8h64a8,8,0,0,0,8-8V120A15.87,15.87,0,0,0,219.31,108.68ZM208,208H160V152a8,8,0,0,0-8-8H104a8,8,0,0,0-8,8v56H48V120l80-80,80,80Z"/></svg><span>Inativo · 20</span></div>
+        <div class="state selected"><svg class="icon" width="24" height="24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M224,120v96a8,8,0,0,1-8,8H160a8,8,0,0,1-8-8V164a4,4,0,0,0-4-4H108a4,4,0,0,0-4,4v52a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8V120a16,16,0,0,1,4.69-11.31l80-80a16,16,0,0,1,22.62,0l80,80A16,16,0,0,1,224,120Z"/></svg><span>Selecionado · 24</span></div>
+      </div>
+      <div class="icon-name"><code>house</code><span>Principal</span></div>
+    </div>
+          <dl><div><dt>Arquivo oficial</dt><dd><code>house.svg</code> / <code>house-fill.svg</code></dd></div>
+          <div><dt>Label visual</dt><dd>Hoje</dd></div><div><dt>Nome acessível</dt><dd>Abrir Hoje</dd></div>
+          <div><dt>Função</dt><dd>Entrada do núcleo BuJo; não fixa a home pós-login.</dd></div></dl><div class="alternatives"><h4>Ambiguidade real</h4><div class="alt-grid"><div class="specimen">
+      <div class="pair">
+        <div class="state"><svg class="icon" width="20" height="20" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M208,32H184V24a8,8,0,0,0-16,0v8H88V24a8,8,0,0,0-16,0v8H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32ZM72,48v8a8,8,0,0,0,16,0V48h80v8a8,8,0,0,0,16,0V48h24V80H48V48ZM208,208H48V96H208V208Zm-64-56a16,16,0,1,1-16-16A16,16,0,0,1,144,152Z"/></svg><span>Inativo · 20</span></div>
+        <div class="state selected"><svg class="icon" width="24" height="24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M208,32H184V24a8,8,0,0,0-16,0v8H88V24a8,8,0,0,0-16,0v8H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32ZM128,168a16,16,0,1,1,16-16A16,16,0,0,1,128,168Zm80-88H48V48H72v8a8,8,0,0,0,16,0V48h80v8a8,8,0,0,0,16,0V48h24Z"/></svg><span>Selecionado · 24</span></div>
+      </div>
+      <div class="icon-name"><code>calendar-dot</code><span>Alternativa</span></div>
+    </div></div><ul><li><code>calendar-dot</code> — Enfatiza o dia corrente, não a superfície inicial.</li></ul></div>
+        </article><article class="card">
+          <header><div><span class="kind navegação">navegação</span><h3>Brain Dump</h3></div><span class="decision">PROPOSTA</span></header>
+          <div class="specimen">
+      <div class="pair">
+        <div class="state"><svg class="icon" width="20" height="20" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M248,124a56.11,56.11,0,0,0-32-50.61V72a48,48,0,0,0-88-26.49A48,48,0,0,0,40,72v1.39a56,56,0,0,0,0,101.2V176a48,48,0,0,0,88,26.49A48,48,0,0,0,216,176v-1.41A56.09,56.09,0,0,0,248,124ZM88,208a32,32,0,0,1-31.81-28.56A55.87,55.87,0,0,0,64,180h8a8,8,0,0,0,0-16H64A40,40,0,0,1,50.67,86.27,8,8,0,0,0,56,78.73V72a32,32,0,0,1,64,0v68.26A47.8,47.8,0,0,0,88,128a8,8,0,0,0,0,16,32,32,0,0,1,0,64Zm104-44h-8a8,8,0,0,0,0,16h8a55.87,55.87,0,0,0,7.81-.56A32,32,0,1,1,168,144a8,8,0,0,0,0-16,47.8,47.8,0,0,0-32,12.26V72a32,32,0,0,1,64,0v6.73a8,8,0,0,0,5.33,7.54A40,40,0,0,1,192,164Zm16-52a8,8,0,0,1-8,8h-4a36,36,0,0,1-36-36V80a8,8,0,0,1,16,0v4a20,20,0,0,0,20,20h4A8,8,0,0,1,208,112ZM60,120H56a8,8,0,0,1,0-16h4A20,20,0,0,0,80,84V80a8,8,0,0,1,16,0v4A36,36,0,0,1,60,120Z"/></svg><span>Inativo · 20</span></div>
+        <div class="state selected"><svg class="icon" width="24" height="24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M212,76V72a44,44,0,0,0-74.86-31.31,3.93,3.93,0,0,0-1.14,2.8v88.72a4,4,0,0,0,6.2,3.33A47.67,47.67,0,0,1,167.68,128a8.18,8.18,0,0,1,8.31,7.58,8,8,0,0,1-8,8.42,32,32,0,0,0-32,32v33.88a4,4,0,0,0,1.49,3.12,47.92,47.92,0,0,0,74.21-17.16,4,4,0,0,0-4.49-5.56A68.06,68.06,0,0,1,192,192h-7.73a8.18,8.18,0,0,1-8.25-7.47,8,8,0,0,1,8-8.53h8a51.6,51.6,0,0,0,24-5.88v0A52,52,0,0,0,212,76Zm-12,36h-4a36,36,0,0,1-36-36V72a8,8,0,0,1,16,0v4a20,20,0,0,0,20,20h4a8,8,0,0,1,0,16ZM88,28A44.05,44.05,0,0,0,44,72v4a52,52,0,0,0-4,94.12h0A51.6,51.6,0,0,0,64,176h7.73A8.18,8.18,0,0,1,80,183.47,8,8,0,0,1,72,192H64a67.48,67.48,0,0,1-15.21-1.73,4,4,0,0,0-4.5,5.55A47.93,47.93,0,0,0,118.51,213a4,4,0,0,0,1.49-3.12V176a32,32,0,0,0-32-32,8,8,0,0,1-8-8.42A8.18,8.18,0,0,1,88.32,128a47.67,47.67,0,0,1,25.48,7.54,4,4,0,0,0,6.2-3.33V43.49a4,4,0,0,0-1.14-2.81A43.85,43.85,0,0,0,88,28Zm8,48a36,36,0,0,1-36,36H56a8,8,0,0,1,0-16h4A20,20,0,0,0,80,76V72a8,8,0,0,1,16,0Z"/></svg><span>Selecionado · 24</span></div>
+      </div>
+      <div class="icon-name"><code>brain</code><span>Principal</span></div>
+    </div>
+          <dl><div><dt>Arquivo oficial</dt><dd><code>brain.svg</code> / <code>brain-fill.svg</code></dd></div>
+          <div><dt>Label visual</dt><dd>Brain Dump</dd></div><div><dt>Nome acessível</dt><dd>Abrir Brain Dump</dd></div>
+          <div><dt>Função</dt><dd>Destino de captura e organização mental.</dd></div></dl><div class="alternatives"><h4>Ambiguidade real</h4><div class="alt-grid"><div class="specimen">
+      <div class="pair">
+        <div class="state"><svg class="icon" width="20" height="20" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M208,32H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32Zm0,16V152h-28.7A15.86,15.86,0,0,0,168,156.69L148.69,176H107.31L88,156.69A15.86,15.86,0,0,0,76.69,152H48V48Zm0,160H48V168H76.69L96,187.31A15.86,15.86,0,0,0,107.31,192h41.38A15.86,15.86,0,0,0,160,187.31L179.31,168H208v40Z"/></svg><span>Inativo · 20</span></div>
+        <div class="state selected"><svg class="icon" width="24" height="24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M208,32H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32Zm0,176H48V168H76.69L96,187.32A15.89,15.89,0,0,0,107.31,192h41.38A15.86,15.86,0,0,0,160,187.31L179.31,168H208v40Z"/></svg><span>Selecionado · 24</span></div>
+      </div>
+      <div class="icon-name"><code>tray</code><span>Alternativa</span></div>
+    </div></div><ul><li><code>tray</code> — Enfatiza caixa de entrada/captura, com menor associação ao nome Brain Dump.</li></ul></div>
+        </article><article class="card">
+          <header><div><span class="kind navegação">navegação</span><h3>Arquivo</h3></div><span class="decision">PROPOSTA</span></header>
+          <div class="specimen">
+      <div class="pair">
+        <div class="state"><svg class="icon" width="20" height="20" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M224,48H32A16,16,0,0,0,16,64V88a16,16,0,0,0,16,16v88a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V104a16,16,0,0,0,16-16V64A16,16,0,0,0,224,48ZM208,192H48V104H208ZM224,88H32V64H224V88ZM96,136a8,8,0,0,1,8-8h48a8,8,0,0,1,0,16H104A8,8,0,0,1,96,136Z"/></svg><span>Inativo · 20</span></div>
+        <div class="state selected"><svg class="icon" width="24" height="24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M224,48H32A16,16,0,0,0,16,64V88a16,16,0,0,0,16,16v88a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V104a16,16,0,0,0,16-16V64A16,16,0,0,0,224,48Zm-72,96H104a8,8,0,0,1,0-16h48a8,8,0,0,1,0,16Zm72-56H32V64H224V88Z"/></svg><span>Selecionado · 24</span></div>
+      </div>
+      <div class="icon-name"><code>archive</code><span>Principal</span></div>
+    </div>
+          <dl><div><dt>Arquivo oficial</dt><dd><code>archive.svg</code> / <code>archive-fill.svg</code></dd></div>
+          <div><dt>Label visual</dt><dd>Arquivo</dd></div><div><dt>Nome acessível</dt><dd>Abrir Arquivo</dd></div>
+          <div><dt>Função</dt><dd>Consulta de ciclos e registros fechados.</dd></div></dl>
+        </article><article class="card">
+          <header><div><span class="kind navegação">navegação</span><h3>Configurações</h3></div><span class="decision">PROPOSTA</span></header>
+          <div class="specimen">
+      <div class="pair">
+        <div class="state"><svg class="icon" width="20" height="20" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm88-29.84q.06-2.16,0-4.32l14.92-18.64a8,8,0,0,0,1.48-7.06,107.21,107.21,0,0,0-10.88-26.25,8,8,0,0,0-6-3.93l-23.72-2.64q-1.48-1.56-3-3L186,40.54a8,8,0,0,0-3.94-6,107.71,107.71,0,0,0-26.25-10.87,8,8,0,0,0-7.06,1.49L130.16,40Q128,40,125.84,40L107.2,25.11a8,8,0,0,0-7.06-1.48A107.6,107.6,0,0,0,73.89,34.51a8,8,0,0,0-3.93,6L67.32,64.27q-1.56,1.49-3,3L40.54,70a8,8,0,0,0-6,3.94,107.71,107.71,0,0,0-10.87,26.25,8,8,0,0,0,1.49,7.06L40,125.84Q40,128,40,130.16L25.11,148.8a8,8,0,0,0-1.48,7.06,107.21,107.21,0,0,0,10.88,26.25,8,8,0,0,0,6,3.93l23.72,2.64q1.49,1.56,3,3L70,215.46a8,8,0,0,0,3.94,6,107.71,107.71,0,0,0,26.25,10.87,8,8,0,0,0,7.06-1.49L125.84,216q2.16.06,4.32,0l18.64,14.92a8,8,0,0,0,7.06,1.48,107.21,107.21,0,0,0,26.25-10.88,8,8,0,0,0,3.93-6l2.64-23.72q1.56-1.48,3-3L215.46,186a8,8,0,0,0,6-3.94,107.71,107.71,0,0,0,10.87-26.25,8,8,0,0,0-1.49-7.06Zm-16.1-6.5a73.93,73.93,0,0,1,0,8.68,8,8,0,0,0,1.74,5.48l14.19,17.73a91.57,91.57,0,0,1-6.23,15L187,173.11a8,8,0,0,0-5.1,2.64,74.11,74.11,0,0,1-6.14,6.14,8,8,0,0,0-2.64,5.1l-2.51,22.58a91.32,91.32,0,0,1-15,6.23l-17.74-14.19a8,8,0,0,0-5-1.75h-.48a73.93,73.93,0,0,1-8.68,0,8,8,0,0,0-5.48,1.74L100.45,215.8a91.57,91.57,0,0,1-15-6.23L82.89,187a8,8,0,0,0-2.64-5.1,74.11,74.11,0,0,1-6.14-6.14,8,8,0,0,0-5.1-2.64L46.43,170.6a91.32,91.32,0,0,1-6.23-15l14.19-17.74a8,8,0,0,0,1.74-5.48,73.93,73.93,0,0,1,0-8.68,8,8,0,0,0-1.74-5.48L40.2,100.45a91.57,91.57,0,0,1,6.23-15L69,82.89a8,8,0,0,0,5.1-2.64,74.11,74.11,0,0,1,6.14-6.14A8,8,0,0,0,82.89,69L85.4,46.43a91.32,91.32,0,0,1,15-6.23l17.74,14.19a8,8,0,0,0,5.48,1.74,73.93,73.93,0,0,1,8.68,0,8,8,0,0,0,5.48-1.74L155.55,40.2a91.57,91.57,0,0,1,15,6.23L173.11,69a8,8,0,0,0,2.64,5.1,74.11,74.11,0,0,1,6.14,6.14,8,8,0,0,0,5.1,2.64l22.58,2.51a91.32,91.32,0,0,1,6.23,15l-14.19,17.74A8,8,0,0,0,199.87,123.66Z"/></svg><span>Inativo · 20</span></div>
+        <div class="state selected"><svg class="icon" width="24" height="24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M216,130.16q.06-2.16,0-4.32l14.92-18.64a8,8,0,0,0,1.48-7.06,107.6,107.6,0,0,0-10.88-26.25,8,8,0,0,0-6-3.93l-23.72-2.64q-1.48-1.56-3-3L186,40.54a8,8,0,0,0-3.94-6,107.29,107.29,0,0,0-26.25-10.86,8,8,0,0,0-7.06,1.48L130.16,40Q128,40,125.84,40L107.2,25.11a8,8,0,0,0-7.06-1.48A107.6,107.6,0,0,0,73.89,34.51a8,8,0,0,0-3.93,6L67.32,64.27q-1.56,1.49-3,3L40.54,70a8,8,0,0,0-6,3.94,107.71,107.71,0,0,0-10.87,26.25,8,8,0,0,0,1.49,7.06L40,125.84Q40,128,40,130.16L25.11,148.8a8,8,0,0,0-1.48,7.06,107.6,107.6,0,0,0,10.88,26.25,8,8,0,0,0,6,3.93l23.72,2.64q1.49,1.56,3,3L70,215.46a8,8,0,0,0,3.94,6,107.71,107.71,0,0,0,26.25,10.87,8,8,0,0,0,7.06-1.49L125.84,216q2.16.06,4.32,0l18.64,14.92a8,8,0,0,0,7.06,1.48,107.21,107.21,0,0,0,26.25-10.88,8,8,0,0,0,3.93-6l2.64-23.72q1.56-1.48,3-3L215.46,186a8,8,0,0,0,6-3.94,107.71,107.71,0,0,0,10.87-26.25,8,8,0,0,0-1.49-7.06ZM128,168a40,40,0,1,1,40-40A40,40,0,0,1,128,168Z"/></svg><span>Selecionado · 24</span></div>
+      </div>
+      <div class="icon-name"><code>gear</code><span>Principal</span></div>
+    </div>
+          <dl><div><dt>Arquivo oficial</dt><dd><code>gear.svg</code> / <code>gear-fill.svg</code></dd></div>
+          <div><dt>Label visual</dt><dd>Configurações</dd></div><div><dt>Nome acessível</dt><dd>Abrir Configurações</dd></div>
+          <div><dt>Função</dt><dd>Preferências da conta, inclusive aparência e atalhos mobile.</dd></div></dl>
+        </article></div></section><section><div class="section-head"><p>GRUPO</p><h2>Planner</h2></div><div class="grid"><article class="card">
+          <header><div><span class="kind navegação">navegação</span><h3>Esta Semana</h3></div><span class="decision">PROPOSTA</span></header>
+          <div class="specimen">
+      <div class="pair">
+        <div class="state"><svg class="icon" width="20" height="20" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M208,32H184V24a8,8,0,0,0-16,0v8H88V24a8,8,0,0,0-16,0v8H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32ZM72,48v8a8,8,0,0,0,16,0V48h80v8a8,8,0,0,0,16,0V48h24V80H48V48ZM208,208H48V96H208V208Zm-68-76a12,12,0,1,1-12-12A12,12,0,0,1,140,132Zm44,0a12,12,0,1,1-12-12A12,12,0,0,1,184,132ZM96,172a12,12,0,1,1-12-12A12,12,0,0,1,96,172Zm44,0a12,12,0,1,1-12-12A12,12,0,0,1,140,172Zm44,0a12,12,0,1,1-12-12A12,12,0,0,1,184,172Z"/></svg><span>Inativo · 20</span></div>
+        <div class="state selected"><svg class="icon" width="24" height="24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M208,32H184V24a8,8,0,0,0-16,0v8H88V24a8,8,0,0,0-16,0v8H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32ZM84,184a12,12,0,1,1,12-12A12,12,0,0,1,84,184Zm44,0a12,12,0,1,1,12-12A12,12,0,0,1,128,184Zm0-40a12,12,0,1,1,12-12A12,12,0,0,1,128,144Zm44,40a12,12,0,1,1,12-12A12,12,0,0,1,172,184Zm0-40a12,12,0,1,1,12-12A12,12,0,0,1,172,144Zm36-64H48V48H72v8a8,8,0,0,0,16,0V48h80v8a8,8,0,0,0,16,0V48h24Z"/></svg><span>Selecionado · 24</span></div>
+      </div>
+      <div class="icon-name"><code>calendar-dots</code><span>Principal</span></div>
+    </div>
+          <dl><div><dt>Arquivo oficial</dt><dd><code>calendar-dots.svg</code> / <code>calendar-dots-fill.svg</code></dd></div>
+          <div><dt>Label visual</dt><dd>Esta Semana</dd></div><div><dt>Nome acessível</dt><dd>Abrir Esta Semana</dd></div>
+          <div><dt>Função</dt><dd>Weekly Log e seu ciclo operacional.</dd></div></dl><div class="alternatives"><h4>Ambiguidade real</h4><div class="alt-grid"><div class="specimen">
+      <div class="pair">
+        <div class="state"><svg class="icon" width="20" height="20" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M208,32H184V24a8,8,0,0,0-16,0v8H88V24a8,8,0,0,0-16,0v8H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32ZM72,48v8a8,8,0,0,0,16,0V48h80v8a8,8,0,0,0,16,0V48h24V80H48V48ZM208,208H48V96H208V208Z"/></svg><span>Inativo · 20</span></div>
+        <div class="state selected"><svg class="icon" width="24" height="24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M208,32H184V24a8,8,0,0,0-16,0v8H88V24a8,8,0,0,0-16,0v8H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32Zm0,48H48V48H72v8a8,8,0,0,0,16,0V48h80v8a8,8,0,0,0,16,0V48h24Z"/></svg><span>Selecionado · 24</span></div>
+      </div>
+      <div class="icon-name"><code>calendar-blank</code><span>Alternativa</span></div>
+    </div></div><ul><li><code>calendar-blank</code> — Mais neutro; diferencia menos semana de mês.</li></ul></div>
+        </article><article class="card">
+          <header><div><span class="kind navegação">navegação</span><h3>Este Mês</h3></div><span class="decision">PROPOSTA</span></header>
+          <div class="specimen">
+      <div class="pair">
+        <div class="state"><svg class="icon" width="20" height="20" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M208,32H184V24a8,8,0,0,0-16,0v8H88V24a8,8,0,0,0-16,0v8H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32ZM72,48v8a8,8,0,0,0,16,0V48h80v8a8,8,0,0,0,16,0V48h24V80H48V48ZM208,208H48V96H208V208Zm-96-88v64a8,8,0,0,1-16,0V132.94l-4.42,2.22a8,8,0,0,1-7.16-14.32l16-8A8,8,0,0,1,112,120Zm59.16,30.45L152,176h16a8,8,0,0,1,0,16H136a8,8,0,0,1-6.4-12.8l28.78-38.37A8,8,0,1,0,145.07,132a8,8,0,1,1-13.85-8A24,24,0,0,1,176,136,23.76,23.76,0,0,1,171.16,150.45Z"/></svg><span>Inativo · 20</span></div>
+        <div class="state selected"><svg class="icon" width="24" height="24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M208,32H184V24a8,8,0,0,0-16,0v8H88V24a8,8,0,0,0-16,0v8H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32ZM112,184a8,8,0,0,1-16,0V132.94l-4.42,2.22a8,8,0,0,1-7.16-14.32l16-8A8,8,0,0,1,112,120Zm56-8a8,8,0,0,1,0,16H136a8,8,0,0,1-6.4-12.8l28.78-38.37A8,8,0,1,0,145.07,132a8,8,0,1,1-13.85-8A24,24,0,0,1,176,136a23.76,23.76,0,0,1-4.84,14.45L152,176ZM48,80V48H72v8a8,8,0,0,0,16,0V48h80v8a8,8,0,0,0,16,0V48h24V80Z"/></svg><span>Selecionado · 24</span></div>
+      </div>
+      <div class="icon-name"><code>calendar</code><span>Principal</span></div>
+    </div>
+          <dl><div><dt>Arquivo oficial</dt><dd><code>calendar.svg</code> / <code>calendar-fill.svg</code></dd></div>
+          <div><dt>Label visual</dt><dd>Este Mês</dd></div><div><dt>Nome acessível</dt><dd>Abrir Este Mês</dd></div>
+          <div><dt>Função</dt><dd>Monthly Log do ciclo operacional.</dd></div></dl>
+        </article><article class="card">
+          <header><div><span class="kind navegação">navegação</span><h3>Futuro</h3></div><span class="decision">PROPOSTA</span></header>
+          <div class="specimen">
+      <div class="pair">
+        <div class="state"><svg class="icon" width="20" height="20" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M208,32H184V24a8,8,0,0,0-16,0v8H88V24a8,8,0,0,0-16,0v8H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32ZM72,48v8a8,8,0,0,0,16,0V48h80v8a8,8,0,0,0,16,0V48h24V80H48V48ZM208,208H48V96H208V208Zm-48-56a8,8,0,0,1-8,8H136v16a8,8,0,0,1-16,0V160H104a8,8,0,0,1,0-16h16V128a8,8,0,0,1,16,0v16h16A8,8,0,0,1,160,152Z"/></svg><span>Inativo · 20</span></div>
+        <div class="state selected"><svg class="icon" width="24" height="24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M208,32H184V24a8,8,0,0,0-16,0v8H88V24a8,8,0,0,0-16,0v8H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32ZM152,160H136v16a8,8,0,0,1-16,0V160H104a8,8,0,0,1,0-16h16V128a8,8,0,0,1,16,0v16h16a8,8,0,0,1,0,16ZM48,80V48H72v8a8,8,0,0,0,16,0V48h80v8a8,8,0,0,0,16,0V48h24V80Z"/></svg><span>Selecionado · 24</span></div>
+      </div>
+      <div class="icon-name"><code>calendar-plus</code><span>Principal</span></div>
+    </div>
+          <dl><div><dt>Arquivo oficial</dt><dd><code>calendar-plus.svg</code> / <code>calendar-plus-fill.svg</code></dd></div>
+          <div><dt>Label visual</dt><dd>Futuro</dd></div><div><dt>Nome acessível</dt><dd>Abrir Futuro</dd></div>
+          <div><dt>Função</dt><dd>Future Log e horizontes posteriores.</dd></div></dl><div class="alternatives"><h4>Ambiguidade real</h4><div class="alt-grid"><div class="specimen">
+      <div class="pair">
+        <div class="state"><svg class="icon" width="20" height="20" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M248.67,114.66,160.48,58.5A15.91,15.91,0,0,0,136,71.84v37.3L56.48,58.5A15.91,15.91,0,0,0,32,71.84V184.16A15.92,15.92,0,0,0,56.48,197.5L136,146.86v37.3a15.92,15.92,0,0,0,24.48,13.34l88.19-56.16a15.8,15.8,0,0,0,0-26.68ZM48,183.94V72.07L135.82,128Zm104,0V72.07L239.82,128Z"/></svg><span>Inativo · 20</span></div>
+        <div class="state selected"><svg class="icon" width="24" height="24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M256,128a15.76,15.76,0,0,1-7.33,13.34L160.48,197.5A15.91,15.91,0,0,1,136,184.16v-37.3L56.48,197.5A15.91,15.91,0,0,1,32,184.16V71.84A15.91,15.91,0,0,1,56.48,58.5L136,109.14V71.84A15.91,15.91,0,0,1,160.48,58.5l88.19,56.16A15.76,15.76,0,0,1,256,128Z"/></svg><span>Selecionado · 24</span></div>
+      </div>
+      <div class="icon-name"><code>fast-forward</code><span>Alternativa</span></div>
+    </div></div><ul><li><code>fast-forward</code> — Comunica futuro, mas perde a semântica de calendário.</li></ul></div>
+        </article><article class="card">
+          <header><div><span class="kind navegação">navegação</span><h3>Recorrentes</h3></div><span class="decision">PROPOSTA</span></header>
+          <div class="specimen">
+      <div class="pair">
+        <div class="state"><svg class="icon" width="20" height="20" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M24,128A72.08,72.08,0,0,1,96,56H204.69L194.34,45.66a8,8,0,0,1,11.32-11.32l24,24a8,8,0,0,1,0,11.32l-24,24a8,8,0,0,1-11.32-11.32L204.69,72H96a56.06,56.06,0,0,0-56,56,8,8,0,0,1-16,0Zm200-8a8,8,0,0,0-8,8,56.06,56.06,0,0,1-56,56H51.31l10.35-10.34a8,8,0,0,0-11.32-11.32l-24,24a8,8,0,0,0,0,11.32l24,24a8,8,0,0,0,11.32-11.32L51.31,200H160a72.08,72.08,0,0,0,72-72A8,8,0,0,0,224,120Z"/></svg><span>Inativo · 20</span></div>
+        <div class="state selected"><svg class="icon" width="24" height="24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M24,128A72.08,72.08,0,0,1,96,56h96V40a8,8,0,0,1,13.66-5.66l24,24a8,8,0,0,1,0,11.32l-24,24A8,8,0,0,1,192,88V72H96a56.06,56.06,0,0,0-56,56,8,8,0,0,1-16,0Zm200-8a8,8,0,0,0-8,8,56.06,56.06,0,0,1-56,56H64V168a8,8,0,0,0-13.66-5.66l-24,24a8,8,0,0,0,0,11.32l24,24A8,8,0,0,0,64,216V200h96a72.08,72.08,0,0,0,72-72A8,8,0,0,0,224,120Z"/></svg><span>Selecionado · 24</span></div>
+      </div>
+      <div class="icon-name"><code>repeat</code><span>Principal</span></div>
+    </div>
+          <dl><div><dt>Arquivo oficial</dt><dd><code>repeat.svg</code> / <code>repeat-fill.svg</code></dd></div>
+          <div><dt>Label visual</dt><dd>Recorrentes</dd></div><div><dt>Nome acessível</dt><dd>Abrir Recorrentes</dd></div>
+          <div><dt>Função</dt><dd>Biblioteca de templates recorrentes; não comunica estado.</dd></div></dl>
+        </article></div></section><section><div class="section-head"><p>GRUPO</p><h2>Collections</h2></div><div class="grid"><article class="card">
+          <header><div><span class="kind navegação">navegação</span><h3>Hábitos</h3></div><span class="decision">PROPOSTA</span></header>
+          <div class="specimen">
+      <div class="pair">
+        <div class="state"><svg class="icon" width="20" height="20" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M173.66,98.34a8,8,0,0,1,0,11.32l-56,56a8,8,0,0,1-11.32,0l-24-24a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35A8,8,0,0,1,173.66,98.34ZM224,48V208a16,16,0,0,1-16,16H48a16,16,0,0,1-16-16V48A16,16,0,0,1,48,32H208A16,16,0,0,1,224,48ZM208,208V48H48V208H208Z"/></svg><span>Inativo · 20</span></div>
+        <div class="state selected"><svg class="icon" width="24" height="24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M208,32H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32Zm-34.34,77.66-56,56a8,8,0,0,1-11.32,0l-24-24a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35a8,8,0,0,1,11.32,11.32Z"/></svg><span>Selecionado · 24</span></div>
+      </div>
+      <div class="icon-name"><code>check-square</code><span>Principal</span></div>
+    </div>
+          <dl><div><dt>Arquivo oficial</dt><dd><code>check-square.svg</code> / <code>check-square-fill.svg</code></dd></div>
+          <div><dt>Label visual</dt><dd>Hábitos</dd></div><div><dt>Nome acessível</dt><dd>Abrir Hábitos</dd></div>
+          <div><dt>Função</dt><dd>Coleção de hábitos; o check identifica o domínio, não conclusão.</dd></div></dl><div class="alternatives"><h4>Ambiguidade real</h4><div class="alt-grid"><div class="specimen">
+      <div class="pair">
+        <div class="state"><svg class="icon" width="20" height="20" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M224,128a8,8,0,0,1-8,8H128a8,8,0,0,1,0-16h88A8,8,0,0,1,224,128ZM128,72h88a8,8,0,0,0,0-16H128a8,8,0,0,0,0,16Zm88,112H128a8,8,0,0,0,0,16h88a8,8,0,0,0,0-16ZM82.34,42.34,56,68.69,45.66,58.34A8,8,0,0,0,34.34,69.66l16,16a8,8,0,0,0,11.32,0l32-32A8,8,0,0,0,82.34,42.34Zm0,64L56,132.69,45.66,122.34a8,8,0,0,0-11.32,11.32l16,16a8,8,0,0,0,11.32,0l32-32a8,8,0,0,0-11.32-11.32Zm0,64L56,196.69,45.66,186.34a8,8,0,0,0-11.32,11.32l16,16a8,8,0,0,0,11.32,0l32-32a8,8,0,0,0-11.32-11.32Z"/></svg><span>Inativo · 20</span></div>
+        <div class="state selected"><svg class="icon" width="24" height="24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M208,32H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32ZM117.66,149.66l-32,32a8,8,0,0,1-11.32,0l-16-16a8,8,0,0,1,11.32-11.32L80,164.69l26.34-26.35a8,8,0,0,1,11.32,11.32Zm0-64-32,32a8,8,0,0,1-11.32,0l-16-16A8,8,0,0,1,69.66,90.34L80,100.69l26.34-26.35a8,8,0,0,1,11.32,11.32ZM192,168H144a8,8,0,0,1,0-16h48a8,8,0,0,1,0,16Zm0-64H144a8,8,0,0,1,0-16h48a8,8,0,0,1,0,16Z"/></svg><span>Selecionado · 24</span></div>
+      </div>
+      <div class="icon-name"><code>list-checks</code><span>Alternativa</span></div>
+    </div></div><ul><li><code>list-checks</code> — Enfatiza lista de hábitos, porém se aproxima do vocabulário de estado.</li></ul></div>
+        </article><article class="card">
+          <header><div><span class="kind navegação">navegação</span><h3>Gratidão</h3></div><span class="decision">PROPOSTA</span></header>
+          <div class="specimen">
+      <div class="pair">
+        <div class="state"><svg class="icon" width="20" height="20" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M178,40c-20.65,0-38.73,8.88-50,23.89C116.73,48.88,98.65,40,78,40a62.07,62.07,0,0,0-62,62c0,70,103.79,126.66,108.21,129a8,8,0,0,0,7.58,0C136.21,228.66,240,172,240,102A62.07,62.07,0,0,0,178,40ZM128,214.8C109.74,204.16,32,155.69,32,102A46.06,46.06,0,0,1,78,56c19.45,0,35.78,10.36,42.6,27a8,8,0,0,0,14.8,0c6.82-16.67,23.15-27,42.6-27a46.06,46.06,0,0,1,46,46C224,155.61,146.24,204.15,128,214.8Z"/></svg><span>Inativo · 20</span></div>
+        <div class="state selected"><svg class="icon" width="24" height="24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M240,102c0,70-103.79,126.66-108.21,129a8,8,0,0,1-7.58,0C119.79,228.66,16,172,16,102A62.07,62.07,0,0,1,78,40c20.65,0,38.73,8.88,50,23.89C139.27,48.88,157.35,40,178,40A62.07,62.07,0,0,1,240,102Z"/></svg><span>Selecionado · 24</span></div>
+      </div>
+      <div class="icon-name"><code>heart</code><span>Principal</span></div>
+    </div>
+          <dl><div><dt>Arquivo oficial</dt><dd><code>heart.svg</code> / <code>heart-fill.svg</code></dd></div>
+          <div><dt>Label visual</dt><dd>Gratidão</dd></div><div><dt>Nome acessível</dt><dd>Abrir Gratidão</dd></div>
+          <div><dt>Função</dt><dd>Coleção de registros de gratidão.</dd></div></dl>
+        </article></div></section><section><div class="section-head"><p>GRUPO</p><h2>Saúde</h2></div><div class="grid"><article class="card">
+          <header><div><span class="kind agrupador">agrupador/domínio</span><h3>Saúde</h3></div><span class="decision">PROPOSTA</span></header>
+          <div class="specimen">
+      <div class="pair">
+        <div class="state"><svg class="icon" width="20" height="20" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M216,56H176V48a24,24,0,0,0-24-24H104A24,24,0,0,0,80,48v8H40A16,16,0,0,0,24,72V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V72A16,16,0,0,0,216,56ZM96,48a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8v8H96ZM216,200H40V72H216V200Zm-56-64a8,8,0,0,1-8,8H136v16a8,8,0,0,1-16,0V144H104a8,8,0,0,1,0-16h16V112a8,8,0,0,1,16,0v16h16A8,8,0,0,1,160,136Z"/></svg><span>Inativo · 20</span></div>
+        <div class="state selected"><svg class="icon" width="24" height="24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M216,56H176V48a24,24,0,0,0-24-24H104A24,24,0,0,0,80,48v8H40A16,16,0,0,0,24,72V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V72A16,16,0,0,0,216,56Zm-64,88H136v16a8,8,0,0,1-16,0V144H104a8,8,0,0,1,0-16h16V112a8,8,0,0,1,16,0v16h16a8,8,0,0,1,0,16Zm8-88H96V48a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8Z"/></svg><span>Selecionado · 24</span></div>
+      </div>
+      <div class="icon-name"><code>first-aid-kit</code><span>Principal</span></div>
+    </div>
+          <dl><div><dt>Arquivo oficial</dt><dd><code>first-aid-kit.svg</code> / <code>first-aid-kit-fill.svg</code></dd></div>
+          <div><dt>Label visual</dt><dd>Saúde</dd></div><div><dt>Nome acessível</dt><dd>Grupo Saúde</dd></div>
+          <div><dt>Função</dt><dd>Cabeçalho não navegável que reúne collections de saúde.</dd></div></dl><div class="alternatives"><h4>Ambiguidade real</h4><div class="alt-grid"><div class="specimen">
+      <div class="pair">
+        <div class="state"><svg class="icon" width="20" height="20" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M72,144H32a8,8,0,0,1,0-16H67.72l13.62-20.44a8,8,0,0,1,13.32,0l25.34,38,9.34-14A8,8,0,0,1,136,128h24a8,8,0,0,1,0,16H140.28l-13.62,20.44a8,8,0,0,1-13.32,0L88,126.42l-9.34,14A8,8,0,0,1,72,144ZM178,40c-20.65,0-38.73,8.88-50,23.89C116.73,48.88,98.65,40,78,40a62.07,62.07,0,0,0-62,62c0,.75,0,1.5,0,2.25a8,8,0,1,0,16-.5c0-.58,0-1.17,0-1.75A46.06,46.06,0,0,1,78,56c19.45,0,35.78,10.36,42.6,27a8,8,0,0,0,14.8,0c6.82-16.67,23.15-27,42.6-27a46.06,46.06,0,0,1,46,46c0,53.61-77.76,102.15-96,112.8-10.83-6.31-42.63-26-66.68-52.21a8,8,0,1,0-11.8,10.82c31.17,34,72.93,56.68,74.69,57.63a8,8,0,0,0,7.58,0C136.21,228.66,240,172,240,102A62.07,62.07,0,0,0,178,40Z"/></svg><span>Inativo · 20</span></div>
+        <div class="state selected"><svg class="icon" width="24" height="24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M240,102c0,70-103.79,126.66-108.21,129a8,8,0,0,1-7.58,0c-3.35-1.8-63.55-34.69-92.68-80.89A4,4,0,0,1,34.92,144H72a8,8,0,0,0,6.66-3.56l9.34-14,25.34,38a8,8,0,0,0,9.16,3.16,8.23,8.23,0,0,0,4.28-3.34L140.28,144H160a8,8,0,0,0,8-8.53,8.18,8.18,0,0,0-8.25-7.47H136a8,8,0,0,0-6.66,3.56l-9.34,14-25.34-38a8,8,0,0,0-9.17-3.16,8.25,8.25,0,0,0-4.27,3.34L67.72,128H23.53a4,4,0,0,1-3.83-2.81A76.93,76.93,0,0,1,16,102,62.07,62.07,0,0,1,78,40c20.65,0,38.73,8.88,50,23.89C139.27,48.88,157.35,40,178,40A62.07,62.07,0,0,1,240,102Z"/></svg><span>Selecionado · 24</span></div>
+      </div>
+      <div class="icon-name"><code>heartbeat</code><span>Alternativa</span></div>
+    </div></div><ul><li><code>heartbeat</code> — Enfatiza sinais vitais e pode estreitar demais o domínio.</li></ul></div>
+        </article><article class="card">
+          <header><div><span class="kind navegação">navegação</span><h3>Métricas</h3></div><span class="decision">PROPOSTA</span></header>
+          <div class="specimen">
+      <div class="pair">
+        <div class="state"><svg class="icon" width="20" height="20" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M232,208a8,8,0,0,1-8,8H32a8,8,0,0,1-8-8V48a8,8,0,0,1,16,0v94.37L90.73,98a8,8,0,0,1,10.07-.38l58.81,44.11L218.73,90a8,8,0,1,1,10.54,12l-64,56a8,8,0,0,1-10.07.38L96.39,114.29,40,163.63V200H224A8,8,0,0,1,232,208Z"/></svg><span>Inativo · 20</span></div>
+        <div class="state selected"><svg class="icon" width="24" height="24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40ZM200,176a8,8,0,0,1,0,16H56a8,8,0,0,1-8-8V72a8,8,0,0,1,16,0v62.92l34.88-29.07a8,8,0,0,1,9.56-.51l43,28.69,43.41-36.18a8,8,0,0,1,10.24,12.3l-48,40a8,8,0,0,1-9.56.51l-43-28.69L64,155.75V176Z"/></svg><span>Selecionado · 24</span></div>
+      </div>
+      <div class="icon-name"><code>chart-line</code><span>Principal</span></div>
+    </div>
+          <dl><div><dt>Arquivo oficial</dt><dd><code>chart-line.svg</code> / <code>chart-line-fill.svg</code></dd></div>
+          <div><dt>Label visual</dt><dd>Métricas</dd></div><div><dt>Nome acessível</dt><dd>Abrir Métricas</dd></div>
+          <div><dt>Função</dt><dd>Registros e evolução de métricas de saúde.</dd></div></dl><div class="alternatives"><h4>Ambiguidade real</h4><div class="alt-grid"><div class="specimen">
+      <div class="pair">
+        <div class="state"><svg class="icon" width="20" height="20" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M240,128a8,8,0,0,1-8,8H204.94l-37.78,75.58A8,8,0,0,1,160,216h-.4a8,8,0,0,1-7.08-5.14L95.35,60.76,63.28,131.31A8,8,0,0,1,56,136H24a8,8,0,0,1,0-16H50.85L88.72,36.69a8,8,0,0,1,14.76.46l57.51,151,31.85-63.71A8,8,0,0,1,200,120h32A8,8,0,0,1,240,128Z"/></svg><span>Inativo · 20</span></div>
+        <div class="state selected"><svg class="icon" width="24" height="24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm-8,96H188.64L159,188a8,8,0,0,1-6.95,4h-.46a8,8,0,0,1-6.89-4.84L103,89.92,79,132a8,8,0,0,1-7,4H48a8,8,0,0,1,0-16H67.36L97.05,68a8,8,0,0,1,14.3.82L153,166.08l24-42.05a8,8,0,0,1,6.95-4h24a8,8,0,0,1,0,16Z"/></svg><span>Selecionado · 24</span></div>
+      </div>
+      <div class="icon-name"><code>pulse</code><span>Alternativa</span></div>
+    </div></div><ul><li><code>pulse</code> — Mais clínico, porém pode ser confundido com frequência cardíaca.</li></ul></div>
+        </article><article class="card">
+          <header><div><span class="kind navegação">navegação</span><h3>Medicamentos</h3></div><span class="decision">PROPOSTA</span></header>
+          <div class="specimen">
+      <div class="pair">
+        <div class="state"><svg class="icon" width="20" height="20" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M216.42,39.6a53.26,53.26,0,0,0-75.32,0L39.6,141.09a53.26,53.26,0,0,0,75.32,75.31h0L216.43,114.91A53.31,53.31,0,0,0,216.42,39.6ZM103.61,205.09h0a37.26,37.26,0,0,1-52.7-52.69L96,107.31,148.7,160ZM205.11,103.6,160,148.69,107.32,96l45.1-45.09a37.26,37.26,0,0,1,52.69,52.69ZM189.68,82.34a8,8,0,0,1,0,11.32l-24,24a8,8,0,1,1-11.31-11.32l24-24A8,8,0,0,1,189.68,82.34Z"/></svg><span>Inativo · 20</span></div>
+        <div class="state selected"><svg class="icon" width="24" height="24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M216.43,39.6a53.27,53.27,0,0,0-75.33,0L39.6,141.09a53.26,53.26,0,0,0,75.32,75.31L216.43,114.91A53.32,53.32,0,0,0,216.43,39.6Zm-11.32,64-50.75,50.74-52.69-52.68,50.75-50.75a37.26,37.26,0,0,1,52.69,52.69ZM189.68,82.34a8,8,0,0,1,0,11.32l-24,24a8,8,0,1,1-11.31-11.32l24-24A8,8,0,0,1,189.68,82.34Z"/></svg><span>Selecionado · 24</span></div>
+      </div>
+      <div class="icon-name"><code>pill</code><span>Principal</span></div>
+    </div>
+          <dl><div><dt>Arquivo oficial</dt><dd><code>pill.svg</code> / <code>pill-fill.svg</code></dd></div>
+          <div><dt>Label visual</dt><dd>Medicamentos</dd></div><div><dt>Nome acessível</dt><dd>Abrir Medicamentos</dd></div>
+          <div><dt>Função</dt><dd>Coleção de medicamentos.</dd></div></dl>
+        </article></div></section><section><div class="section-head"><p>GRUPO</p><h2>Chrome</h2></div><div class="grid"><article class="card">
+          <header><div><span class="kind ação">ação</span><h3>Colapsar / expandir</h3></div><span class="decision">PROPOSTA</span></header>
+          <div class="specimen">
+      <div class="pair">
+        <div class="state"><svg class="icon" width="20" height="20" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40ZM40,56H80V200H40ZM216,200H96V56H216V200Z"/></svg><span>Inativo · 20</span></div>
+        <div class="state selected"><svg class="icon" width="24" height="24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,160H88V56H216V200Z"/></svg><span>Selecionado · 24</span></div>
+      </div>
+      <div class="icon-name"><code>sidebar-simple</code><span>Principal</span></div>
+    </div>
+          <dl><div><dt>Arquivo oficial</dt><dd><code>sidebar-simple.svg</code> / <code>sidebar-simple-fill.svg</code></dd></div>
+          <div><dt>Label visual</dt><dd>Colapsar / expandir</dd></div><div><dt>Nome acessível</dt><dd>Colapsar navegação</dd></div>
+          <div><dt>Função</dt><dd>Controle alterna o rail; o nome muda para “Expandir navegação”.</dd></div></dl><div class="alternatives"><h4>Ambiguidade real</h4><div class="alt-grid"><div class="specimen">
+      <div class="pair">
+        <div class="state"><svg class="icon" width="20" height="20" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40ZM40,152H56a8,8,0,0,0,0-16H40V120H56a8,8,0,0,0,0-16H40V88H56a8,8,0,0,0,0-16H40V56H80V200H40Zm176,48H96V56H216V200Z"/></svg><span>Inativo · 20</span></div>
+        <div class="state selected"><svg class="icon" width="24" height="24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40ZM64,152H48a8,8,0,0,1,0-16H64a8,8,0,0,1,0,16Zm0-32H48a8,8,0,0,1,0-16H64a8,8,0,0,1,0,16Zm0-32H48a8,8,0,0,1,0-16H64a8,8,0,0,1,0,16ZM216,200H88V56H216V200Z"/></svg><span>Selecionado · 24</span></div>
+      </div>
+      <div class="icon-name"><code>sidebar</code><span>Alternativa</span></div>
+    </div></div><ul><li><code>sidebar</code> — Representa estrutura mais detalhada, com maior peso visual.</li></ul></div>
+        </article><article class="card">
+          <header><div><span class="kind ação">ação</span><h3>Captura persistente</h3></div><span class="decision">PROPOSTA</span></header>
+          <div class="specimen">
+      <div class="pair">
+        <div class="state"><svg class="icon" width="20" height="20" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M229.66,58.34l-32-32a8,8,0,0,0-11.32,0l-96,96A8,8,0,0,0,88,128v32a8,8,0,0,0,8,8h32a8,8,0,0,0,5.66-2.34l96-96A8,8,0,0,0,229.66,58.34ZM124.69,152H104V131.31l64-64L188.69,88ZM200,76.69,179.31,56,192,43.31,212.69,64ZM224,128v80a16,16,0,0,1-16,16H48a16,16,0,0,1-16-16V48A16,16,0,0,1,48,32h80a8,8,0,0,1,0,16H48V208H208V128a8,8,0,0,1,16,0Z"/></svg><span>Inativo · 20</span></div>
+        <div class="state selected"><svg class="icon" width="24" height="24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M224,128v80a16,16,0,0,1-16,16H48a16,16,0,0,1-16-16V48A16,16,0,0,1,48,32h80a8,8,0,0,1,0,16H48V208H208V128a8,8,0,0,1,16,0Zm5.66-58.34-96,96A8,8,0,0,1,128,168H96a8,8,0,0,1-8-8V128a8,8,0,0,1,2.34-5.66l96-96a8,8,0,0,1,11.32,0l32,32A8,8,0,0,1,229.66,69.66Zm-17-5.66L192,43.31,179.31,56,200,76.69Z"/></svg><span>Selecionado · 24</span></div>
+      </div>
+      <div class="icon-name"><code>note-pencil</code><span>Principal</span></div>
+    </div>
+          <dl><div><dt>Arquivo oficial</dt><dd><code>note-pencil.svg</code> / <code>note-pencil-fill.svg</code></dd></div>
+          <div><dt>Label visual</dt><dd>Captura persistente</dd></div><div><dt>Nome acessível</dt><dd>Abrir captura rápida</dd></div>
+          <div><dt>Função</dt><dd>Abre a captura persistente; badge e indisponibilidade são estados separados.</dd></div></dl><div class="alternatives"><h4>Ambiguidade real</h4><div class="alt-grid"><div class="specimen">
+      <div class="pair">
+        <div class="state"><svg class="icon" width="20" height="20" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M224,128a8,8,0,0,1-8,8H136v80a8,8,0,0,1-16,0V136H40a8,8,0,0,1,0-16h80V40a8,8,0,0,1,16,0v80h80A8,8,0,0,1,224,128Z"/></svg><span>Inativo · 20</span></div>
+        <div class="state selected"><svg class="icon" width="24" height="24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M208,32H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32ZM184,136H136v48a8,8,0,0,1-16,0V136H72a8,8,0,0,1,0-16h48V72a8,8,0,0,1,16,0v48h48a8,8,0,0,1,0,16Z"/></svg><span>Selecionado · 24</span></div>
+      </div>
+      <div class="icon-name"><code>plus</code><span>Alternativa</span></div>
+    </div></div><ul><li><code>plus</code> — É genérico e não nomeia o objeto capturado.</li></ul></div>
+        </article><article class="card">
+          <header><div><span class="kind ação">ação</span><h3>Menu mobile completo</h3></div><span class="decision">PROPOSTA</span></header>
+          <div class="specimen">
+      <div class="pair">
+        <div class="state"><svg class="icon" width="20" height="20" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M224,128a8,8,0,0,1-8,8H40a8,8,0,0,1,0-16H216A8,8,0,0,1,224,128ZM40,72H216a8,8,0,0,0,0-16H40a8,8,0,0,0,0,16ZM216,184H40a8,8,0,0,0,0,16H216a8,8,0,0,0,0-16Z"/></svg><span>Inativo · 20</span></div>
+        <div class="state selected"><svg class="icon" width="24" height="24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M208,32H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32ZM192,184H64a8,8,0,0,1,0-16H192a8,8,0,0,1,0,16Zm0-48H64a8,8,0,0,1,0-16H192a8,8,0,0,1,0,16Zm0-48H64a8,8,0,0,1,0-16H192a8,8,0,0,1,0,16Z"/></svg><span>Selecionado · 24</span></div>
+      </div>
+      <div class="icon-name"><code>list</code><span>Principal</span></div>
+    </div>
+          <dl><div><dt>Arquivo oficial</dt><dd><code>list.svg</code> / <code>list-fill.svg</code></dd></div>
+          <div><dt>Label visual</dt><dd>Menu mobile completo</dd></div><div><dt>Nome acessível</dt><dd>Abrir menu de navegação</dd></div>
+          <div><dt>Função</dt><dd>Quarto item fixo da bottom nav; abre todos os destinos disponíveis.</dd></div></dl><div class="alternatives"><h4>Ambiguidade real</h4><div class="alt-grid"><div class="specimen">
+      <div class="pair">
+        <div class="state"><svg class="icon" width="20" height="20" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M80,64a8,8,0,0,1,8-8H216a8,8,0,0,1,0,16H88A8,8,0,0,1,80,64Zm136,56H88a8,8,0,0,0,0,16H216a8,8,0,0,0,0-16Zm0,64H88a8,8,0,0,0,0,16H216a8,8,0,0,0,0-16ZM44,52A12,12,0,1,0,56,64,12,12,0,0,0,44,52Zm0,64a12,12,0,1,0,12,12A12,12,0,0,0,44,116Zm0,64a12,12,0,1,0,12,12A12,12,0,0,0,44,180Z"/></svg><span>Inativo · 20</span></div>
+        <div class="state selected"><svg class="icon" width="24" height="24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M208,32H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32ZM68,188a12,12,0,1,1,12-12A12,12,0,0,1,68,188Zm0-48a12,12,0,1,1,12-12A12,12,0,0,1,68,140Zm0-48A12,12,0,1,1,80,80,12,12,0,0,1,68,92Zm124,92H104a8,8,0,0,1,0-16h88a8,8,0,0,1,0,16Zm0-48H104a8,8,0,0,1,0-16h88a8,8,0,0,1,0,16Zm0-48H104a8,8,0,0,1,0-16h88a8,8,0,0,1,0,16Z"/></svg><span>Selecionado · 24</span></div>
+      </div>
+      <div class="icon-name"><code>list-bullets</code><span>Alternativa</span></div>
+    </div></div><ul><li><code>list-bullets</code> — Visualmente semelhante; reforça lista em vez de navegação.</li></ul></div>
+        </article></div></section>
+<aside class="scope"><h2>Fora do chrome</h2><p>Rotas secundárias, detalhes e históricos permanecem acessíveis a partir de suas superfícies de origem e <strong>não viram destinos da navegação principal</strong>. A Story 13.0 nomeia históricos de Hábitos, Métricas/estado de saúde, Medicamentos e Gratidão como superfícies relacionadas, não como novos itens do shell. Nenhum item futuro ou collection desligada aparece desabilitado.</p></aside>
+<section class="questions"><h2>Decisões para Hugo</h2><ol>
+<li>Aprovar ou trocar cada proposta principal. Onde há bloco <em>Ambiguidade real</em>, escolher principal ou alternativa.</li>
+<li>Confirmar se <strong>Saúde</strong> é apenas agrupador visual não acionável, como apresentado, ou se abre alguma superfície. A documentação consultada não autoriza inferir esse fluxo.</li>
+<li>Confirmar se <strong>Hoje</strong> deve usar <code>house</code> ou <code>calendar-dot</code>; a Story 17.0 ainda decidirá a home pós-login.</li>
+<li>Confirmar o nome acessível da captura: <strong>“Abrir captura rápida”</strong> ou outro termo já usado por você.</li>
+</ol></section><footer>Fonte iconográfica: SVGs oficiais locais de Phosphor, embutidos inline. Sem rede, JavaScript ou dependências externas.</footer></main></body></html>

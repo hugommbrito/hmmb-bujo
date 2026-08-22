@@ -1,6 +1,6 @@
 ---
 name: bmad-create-story
-description: 'Creates a dedicated story file with all the context the agent will need to implement it later. Use when the user says "create the next story" or "create story [story identifier]"'
+description: "Deprecated: `bmad-build` is now the official implementation method. Only use this when explicitly invoked by name."
 ---
 
 # Create Story Workflow
@@ -15,6 +15,9 @@ description: 'Creates a dedicated story file with all the context the agent will
 - UTILIZE SUBPROCESSES AND SUBAGENTS: Use research subagents, subprocesses or parallel processing if available to thoroughly analyze different artifacts simultaneously and thoroughly
 - SAVE QUESTIONS: If you think of questions or clarifications during analysis, save them for the end after the complete story is written
 - ZERO USER INTERVENTION: Process should be fully automated except for initial epic/story selection or missing documents
+
+Subagents, when the capability is available, are an important part of this workflow. Use them as directed by the workflow steps.
+If you need an explicit user instruction to run them, ask once now for the whole workflow run.
 
 ## Conventions
 
@@ -58,6 +61,8 @@ Load config from `{project-root}/_bmad/bmm/config.yaml` and resolve:
 ### Step 5: Greet the User
 
 Greet `{user_name}`, speaking in `{communication_language}`.
+
+<output>Deprecated: `bmad-build` is now the official implementation method. Only use this when explicitly invoked by name.</output>
 
 ### Step 6: Execute Append Steps
 

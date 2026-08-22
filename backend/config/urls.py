@@ -23,6 +23,11 @@ urlpatterns = [
     path("api/time-blocks/", include("medications.urls_time_blocks")),
     # Diário de Gratidão (Épico 9): log plano por data (days GET + entries POST).
     path("api/gratitude/", include("gratitude.urls")),
+    # Plataforma de Automação (Épico 12): endpoints externos com caminhos LITERAIS
+    # da AD-19 (`/api/capture`, e futuramente `/api/summary/today`) — por isso
+    # entra sob `api/` puro, sem prefixo de app compartilhado (diferente dos
+    # domínios acima). Rotas sem barra final (atalho iOS chama URL fixa).
+    path("api/", include("automation.urls")),
     # Schema endpoints (drf-spectacular)
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     path(

@@ -8,11 +8,47 @@ from datetime import timedelta
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-from bujo.models import Log, RecurringTaskTemplate, Task
+from bujo.filters import TaskFilter
+from bujo.models import (
+    Log,
+    RecurringTaskTemplate,
+    RitualDecision,
+    RitualDecisionKind,
+    Task,
+)
+
+
+# Localização do sucessor de uma migração (Story 14.10, AC2): habilita o
+# Arquivo a navegar origem → sucessor MESMO quando o sucessor está fora do
+# período carregado (ex.: Weekly → Monthly, Monthly → Daily) — sem endpoint de
+# detalhe novo, só a CHAVE de período que a rota de destino já aceita.
+# `type` decide qual dos três campos (mutuamente exclusivos) vem preenchido.
+class MigrationTargetSerializer(serializers.Serializer):
+    type = serializers.ChoiceField(choices=["daily", "weekly", "monthly"])
+    week_start = serializers.DateField(required=False, allow_null=True)
+    month_first = serializers.DateField(required=False, allow_null=True)
+    log_date = serializers.DateField(required=False, allow_null=True)
+
+
+# `get_migration_target` (abaixo) percorre `migrated_to_task.weekly_log`/
+# `monthly_log`/`log` — sem isto, todo queryset que serializa uma LISTA de
+# Tasks contendo pelo menos uma `migrated`/`postponed` paga 1 query extra POR
+# TAREFA migrada (N+1: uma para buscar `migrated_to_task`, mais uma para o
+# container do sucessor). Tarefas nunca migradas (`migrated_to_task_id IS
+# NULL`, a maioria) não pagam nada — o FK nulo nunca dispara uma query. Usar
+# em todo queryset de Task RAIZ que alimenta `TaskSerializer`/`LogSerializer`
+# (Daily/Weekly/Monthly Log) — os únicos containers onde uma tarefa migrada
+# permanece visível na origem.
+MIGRATED_TO_TASK_SELECT_RELATED = (
+    "migrated_to_task__weekly_log",
+    "migrated_to_task__monthly_log",
+    "migrated_to_task__log",
+)
 
 
 class TaskSerializer(serializers.ModelSerializer):
     subtasks = serializers.SerializerMethodField()
+    migration_target = serializers.SerializerMethodField()
 
     class Meta:
         model = Task
@@ -25,6 +61,11 @@ class TaskSerializer(serializers.ModelSerializer):
             "category",
             "scheduled_date",
             "subtasks",
+            # Flag "Aguardando Terceiro" (Story 12.2, AD-18): read-only aqui,
+            # sai como `waitingOn` via `CamelCaseJSONRenderer`. A escrita é pelo
+            # `TaskUpdateSerializer` (PATCH); criar tarefa já com a flag não é
+            # requisito (nasce `false` pelo default do model).
+            "waiting_on",
             "migration_count",
             "migrated_to_task",
             # Story 11.3 (AC1): habilita o dedup client-side. Revoga a decisão
@@ -34,16 +75,40 @@ class TaskSerializer(serializers.ModelSerializer):
             # service; nenhum write path de tarefa a aceita). Subtarefas
             # carregam `null` (nascem sem template, AD-08 item 8).
             "source_template",
+            # Story 14.10 (Arquivo): campo ADITIVO, `null` quando não há
+            # sucessor (`migrated_to_task` vazio) — ver `get_migration_target`.
+            "migration_target",
         ]
 
     def get_subtasks(self, obj):
-        return TaskSerializer(obj.subtasks.all(), many=True).data
+        subtasks = obj.subtasks.select_related(*MIGRATED_TO_TASK_SELECT_RELATED)
+        return TaskSerializer(subtasks, many=True).data
+
+    def get_migration_target(self, obj):
+        successor = obj.migrated_to_task
+        if successor is None:
+            return None
+        if successor.weekly_log_id:
+            payload = {"type": "weekly", "week_start": successor.weekly_log.week_start}
+        elif successor.monthly_log_id:
+            payload = {"type": "monthly", "month_first": successor.monthly_log.month_first}
+        elif successor.log_id:
+            payload = {"type": "daily", "log_date": successor.log.log_date}
+        else:
+            # Não deveria acontecer (`task_exactly_one_log` exige exatamente um
+            # container) — defensivo, nunca visto em teste.
+            return None
+        return MigrationTargetSerializer(payload).data
 
 
-# `get_subtasks` referencia `TaskSerializer` recursivamente — o decorador só
-# pode ser aplicado depois que a classe termina de ser definida (dentro do
-# corpo da classe o nome `TaskSerializer` ainda não existe no módulo).
+# `get_subtasks`/`get_migration_target` referenciam `TaskSerializer`
+# recursivamente ou usam a classe irmã acima — os decoradores só podem ser
+# aplicados depois que a classe termina de ser definida (dentro do corpo da
+# classe o nome `TaskSerializer` ainda não existe no módulo).
 extend_schema_field(TaskSerializer(many=True))(TaskSerializer.get_subtasks)
+extend_schema_field(MigrationTargetSerializer(allow_null=True))(
+    TaskSerializer.get_migration_target
+)
 
 
 class LogSerializer(serializers.ModelSerializer):
@@ -55,7 +120,16 @@ class LogSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(TaskSerializer(many=True))
     def get_tasks(self, obj):
-        roots = obj.tasks.filter(parent_task__isnull=True)
+        roots = obj.tasks.filter(parent_task__isnull=True).select_related(
+            *MIGRATED_TO_TASK_SELECT_RELATED
+        )
+        # Filtro `?waitingOn=` (Story 12.2, AC3) só quando há `request` no
+        # contexto — o endpoint o injeta; `LogSerializer(log).data` sem contexto
+        # (ex.: test_serializers) não filtra nada. `.qs` preserva a ordenação
+        # `Meta.ordering = ["order_index"]` do model.
+        request = self.context.get("request")
+        if request is not None:
+            roots = TaskFilter(request.query_params, queryset=roots, request=request).qs
         return TaskSerializer(roots, many=True).data
 
 
@@ -80,6 +154,11 @@ class TaskUpdateSerializer(serializers.Serializer):
         choices=Task.Category.choices, required=False, allow_null=True
     )
     scheduled_date = serializers.DateField(required=False, allow_null=True)
+    # Alterna "Aguardando Terceiro" (Story 12.2, AC2): o corpo chega como
+    # `waitingOn` e o `CamelCaseJSONParser` converte para `waiting_on` antes do
+    # serializer. `update_task` já repassa o campo genéricamente (setattr +
+    # save escopado), então a ortogonalidade com o `status` é automática.
+    waiting_on = serializers.BooleanField(required=False)
 
 
 class TaskReorderSerializer(serializers.Serializer):
@@ -92,17 +171,209 @@ class WeeklyDaySerializer(serializers.Serializer):
     tasks = TaskSerializer(many=True)
 
 
-class WeeklyLogSerializer(serializers.Serializer):
+# Campos ADITIVOS de ciclo (Story 14.1, AC8) nas duas respostas de log. `closed`
+# permanece com o mesmo nome e tipo — o contrato do Daily legado não muda (AC5).
+# Ambos nuláveis: `null` = ciclo fora do regime operacional / planejamento nunca
+# declarado, que é o estado de todo log materializado sob demanda (AC4).
+class _CycleFieldsMixin(metaclass=serializers.SerializerMetaclass):
+    status = serializers.CharField(allow_null=True)
+    planning_completed_at = serializers.DateTimeField(allow_null=True)
+
+
+class WeeklyLogSerializer(_CycleFieldsMixin, serializers.Serializer):
     week_start = serializers.DateField()
     days = WeeklyDaySerializer(many=True)
     unscheduled = TaskSerializer(many=True)
     closed = serializers.BooleanField()
 
 
-class MonthlyLogSerializer(serializers.Serializer):
+class MonthlyLogSerializer(_CycleFieldsMixin, serializers.Serializer):
     month_first = serializers.DateField()
     tasks = TaskSerializer(many=True)
     closed = serializers.BooleanField()
+
+
+# --- Ciclo operacional (Story 14.1, AC8) ---------------------------------------
+# Um endpoint de ação por tipo, com campo `action`, espelhando
+# `tasks/<pk>/transition/` (que já recebe `to_status`): mantém a superfície de URL
+# e o diff de OpenAPI mínimos. O serializer valida FORMA; toda regra de transição
+# vive em `services/cycles.py` (§6.6 — nunca `validate_status()` em serializer).
+WEEKLY_CYCLE_ACTIONS = [
+    "open_planning_target",
+    "complete_planning",
+    "start",
+    "finalize",
+    "cancel_planning_target",
+]
+# Sem `cancel_planning_target`: "O Monthly não herda a ação Cancelar planejamento
+# vazio do Weekly" (M07). A ausência é regra de produto, não omissão.
+MONTHLY_CYCLE_ACTIONS = [
+    "open_planning_target",
+    "complete_planning",
+    "start",
+    "finalize",
+]
+
+
+class WeeklyCycleActionSerializer(serializers.Serializer):
+    action = serializers.ChoiceField(choices=WEEKLY_CYCLE_ACTIONS)
+    # Opcional: `open_planning_target` aceita omitir para mirar a semana corrente.
+    week_start = serializers.DateField(required=False)
+
+    def validate(self, attrs):
+        week_start = attrs.get("week_start")
+        if week_start is not None and week_start.isoweekday() != 1:
+            raise serializers.ValidationError({"week_start": "Deve ser uma segunda-feira."})
+        if attrs["action"] != "open_planning_target" and week_start is None:
+            raise serializers.ValidationError(
+                {"week_start": "Obrigatório para esta ação."}
+            )
+        return attrs
+
+
+class MonthlyCycleActionSerializer(serializers.Serializer):
+    action = serializers.ChoiceField(choices=MONTHLY_CYCLE_ACTIONS)
+    # `open_planning_target` IGNORA este campo: o alvo mensal é determinístico
+    # (mês seguinte ao `active`), sem escolha nem retargeting (M07).
+    month_first = serializers.DateField(required=False)
+
+    def validate(self, attrs):
+        month_first = attrs.get("month_first")
+        if month_first is not None and month_first.day != 1:
+            raise serializers.ValidationError(
+                {"month_first": "Deve ser o primeiro dia do mês."}
+            )
+        if attrs["action"] != "open_planning_target" and month_first is None:
+            raise serializers.ValidationError(
+                {"month_first": "Obrigatório para esta ação."}
+            )
+        return attrs
+
+
+class WeeklyCycleSerializer(_CycleFieldsMixin, serializers.Serializer):
+    week_start = serializers.DateField()
+
+
+# --- Prontidão do ciclo semanal (Story 14.5, AC4) — GET novo, leitura pura -----
+class _WeeklyCycleSnapshotSerializer(serializers.Serializer):
+    """Projeção mínima de um `WeeklyLog` operacional (`active` ou `planning`)."""
+
+    week_start = serializers.DateField()
+    status = serializers.CharField()
+    planning_completed_at = serializers.DateTimeField(allow_null=True)
+
+
+class WeeklyStartGatesSerializer(serializers.Serializer):
+    """Os TRÊS gates de `start` — hoje indistinguíveis no `detail` do 409."""
+
+    date_reached = serializers.BooleanField()
+    planning_completed = serializers.BooleanField()
+    previous_finalized = serializers.BooleanField()
+
+
+class WeeklyStartReadinessSerializer(serializers.Serializer):
+    allowed = serializers.BooleanField()
+    target = serializers.DateField()
+    gates = WeeklyStartGatesSerializer()
+
+
+class WeeklyFinalizeGatesSerializer(serializers.Serializer):
+    no_open_tasks = serializers.BooleanField()
+    next_planning_exists = serializers.BooleanField()
+
+
+class WeeklyFinalizeReadinessSerializer(serializers.Serializer):
+    allowed = serializers.BooleanField()
+    target = serializers.DateField()
+    gates = WeeklyFinalizeGatesSerializer()
+
+
+class WeeklyCycleReadinessSerializer(serializers.Serializer):
+    """Resposta de `GET /api/bujo/logs/weekly/cycle/` (AC4) — os quatro blocos,
+    `null` nos inexistentes. Cada booleano REUSA o predicado do serviço de
+    transição (ver `services/cycles.weekly_cycle_readiness`); este serializer
+    só projeta, nunca decide."""
+
+    active = _WeeklyCycleSnapshotSerializer(allow_null=True)
+    planning = _WeeklyCycleSnapshotSerializer(allow_null=True)
+    start = WeeklyStartReadinessSerializer(allow_null=True)
+    finalize = WeeklyFinalizeReadinessSerializer(allow_null=True)
+
+
+# `week_start` é OPCIONAL aqui (default = semana corrente, normalizado em
+# silêncio) — ao contrário de `WeekSourceQuerySerializer`, que o exige. Serve
+# só para a declaração de OpenAPI de `WeeklyLogView.get` (AC4): a validação
+# real continua manual na view, que já normaliza e devolve 400 com mensagem
+# própria — duplicá-la aqui mudaria comportamento existente sem necessidade.
+class WeeklyLogQuerySerializer(serializers.Serializer):
+    week_start = serializers.DateField(required=False)
+
+
+class MonthlyCycleSerializer(_CycleFieldsMixin, serializers.Serializer):
+    month_first = serializers.DateField()
+    # Janela regular da virada (`core.calendar.month_turn_week`) — leitura
+    # INFORMATIVA: fora dela o mesmo ritual segue disponível como regularização
+    # atrasada, e nenhum serviço a usa como pré-condição (AC3).
+    regular_window_start = serializers.DateField()
+    regular_window_end = serializers.DateField()
+
+
+# --- Prontidão do ciclo mensal (Story 14.6, AC4) — GET novo, leitura pura ------
+# Espelha byte-a-byte o bloco `Weekly*` acima (linhas 203-246), trocando
+# `week_start`→`month_first`. Mesmos nomes de campo (`date_reached`/
+# `planning_completed`/`previous_finalized`, `no_open_tasks`/
+# `next_planning_exists`).
+class _MonthlyCycleSnapshotSerializer(serializers.Serializer):
+    """Projeção mínima de um `MonthlyLog` operacional (`active` ou `planning`)."""
+
+    month_first = serializers.DateField()
+    status = serializers.CharField()
+    planning_completed_at = serializers.DateTimeField(allow_null=True)
+
+
+class MonthlyStartGatesSerializer(serializers.Serializer):
+    """Os TRÊS gates de `start` — hoje indistinguíveis no `detail` do 409."""
+
+    date_reached = serializers.BooleanField()
+    planning_completed = serializers.BooleanField()
+    previous_finalized = serializers.BooleanField()
+
+
+class MonthlyStartReadinessSerializer(serializers.Serializer):
+    allowed = serializers.BooleanField()
+    target = serializers.DateField()
+    gates = MonthlyStartGatesSerializer()
+
+
+class MonthlyFinalizeGatesSerializer(serializers.Serializer):
+    no_open_tasks = serializers.BooleanField()
+    next_planning_exists = serializers.BooleanField()
+
+
+class MonthlyFinalizeReadinessSerializer(serializers.Serializer):
+    allowed = serializers.BooleanField()
+    target = serializers.DateField()
+    gates = MonthlyFinalizeGatesSerializer()
+
+
+class MonthlyCycleReadinessSerializer(serializers.Serializer):
+    """Resposta de `GET /api/bujo/logs/monthly/cycle/` (AC4) — os quatro blocos,
+    `null` nos inexistentes. Cada booleano REUSA o predicado do serviço de
+    transição (ver `services/cycles.monthly_cycle_readiness`); este serializer
+    só projeta, nunca decide."""
+
+    active = _MonthlyCycleSnapshotSerializer(allow_null=True)
+    planning = _MonthlyCycleSnapshotSerializer(allow_null=True)
+    start = MonthlyStartReadinessSerializer(allow_null=True)
+    finalize = MonthlyFinalizeReadinessSerializer(allow_null=True)
+
+
+# `month_first` é OPCIONAL aqui (default = mês corrente, normalizado em
+# silêncio) — serve só para a declaração de OpenAPI de `MonthlyLogView.get`
+# (AC4): a validação real continua manual na view, sem mudança de
+# comportamento (molde de `WeeklyLogQuerySerializer`).
+class MonthlyLogQuerySerializer(serializers.Serializer):
+    month_first = serializers.DateField(required=False)
 
 
 class ArchiveEntrySerializer(serializers.Serializer):
@@ -115,6 +386,23 @@ class FutureLogMonthGroupSerializer(serializers.Serializer):
     year = serializers.IntegerField()
     month = serializers.IntegerField()
     tasks = TaskSerializer(many=True)
+
+
+# --- horizonte do Future Log (Story 14.7, AC2 — M08) --------------------------
+# `Serializer` puros (projeção do dict de `services/future_log.future_log_horizon`),
+# molde dos serializers de fila da 14.3. Aditivos: `FutureLogMonthGroupSerializer`
+# acima e o contrato de `GET /api/bujo/future-log/` seguem IDÊNTICOS.
+
+
+class FutureLogMonthCountSerializer(serializers.Serializer):
+    month_first = serializers.DateField()
+    task_count = serializers.IntegerField()
+
+
+class FutureLogHorizonSerializer(serializers.Serializer):
+    anchor_month_first = serializers.DateField()
+    horizon = FutureLogMonthCountSerializer(many=True)
+    distant = FutureLogMonthCountSerializer(many=True)
 
 
 class MigrationQueueSerializer(serializers.Serializer):
@@ -136,6 +424,38 @@ class CatchUpQueueSerializer(serializers.Serializer):
     monthly_tasks = TaskSerializer(many=True)
     weekly_tasks = TaskSerializer(many=True)
     daily_tasks = TaskSerializer(many=True)
+
+
+# --- fila unificada de migração (Story 14.3, AD-28 item 7) ---------------------
+# `Serializer` puros (não `ModelSerializer`): é projeção do dict devolvido por
+# `services/migration.unified_migration_queue`, exatamente como os quatro
+# serializers de fila acima. Os itens são `TaskSerializer` PURO — acrescentar
+# campo a ele quebraria ~10 respostas legadas que o compartilham.
+
+
+class UnifiedQueueGroupSerializer(serializers.Serializer):
+    # Chave UNIFORME do período de origem: `month_first` na seção `month`,
+    # `week_start` na `week`, `log_date` na `day`. Uma chave só, um serializer só
+    # — e é dela que a Task Row deriva a "origem" do item (M10). Ids de container
+    # (`logId`/`weeklyLogId`) não são contrato de API neste domínio (achado M1 da
+    # review da 14.2).
+    period_start = serializers.DateField()
+    items = TaskSerializer(many=True)
+
+
+class UnifiedQueueSectionSerializer(serializers.Serializer):
+    # `CharField`, não `ChoiceField`: um `*Enum` novo no schema seria ruído de
+    # contrato para três valores que o backend sempre emite e o cliente nunca
+    # envia. O "rótulo por fonte" é servido por `source_id` + `period_start` — a
+    # cópia pt-BR fica no UI (DESIGN/EXPERIENCE são a autoridade de wording).
+    source_id = serializers.CharField()
+    count = serializers.IntegerField()
+    groups = UnifiedQueueGroupSerializer(many=True)
+
+
+class UnifiedMigrationQueueSerializer(serializers.Serializer):
+    total_count = serializers.IntegerField()
+    sections = UnifiedQueueSectionSerializer(many=True)
 
 
 class TaskMigrateSerializer(serializers.Serializer):
@@ -297,3 +617,192 @@ class RecurringTaskTemplatePlaceSerializer(serializers.Serializer):
     week_start = serializers.DateField(required=False)
     month_first = serializers.DateField(required=False)
     scheduled_date = serializers.DateField(required=False, allow_null=True)
+
+
+# --- Rituais: decisões-snapshot e fontes (Story 14.2) --------------------------
+# Distinção deliberada de responsabilidade (§6.6): o serializer valida **forma**
+# (400) — exatamente um alvo, exatamente um item, `week_start` numa segunda,
+# `month_first` no dia 1. A **matriz** de combinação legal `(alvo, item, decisão)`
+# é regra de produto e vive no serviço, devolvendo 409. Forma é validação;
+# combinação é regra.
+class RitualDecisionCreateSerializer(serializers.Serializer):
+    """Corpo do `POST /api/bujo/ritual-decisions/`.
+
+    Campos no CORPO, então chegam do fio em camelCase (`weekStart`, `taskId`,
+    `recurringTemplateId`) e o `CamelCaseJSONParser` converte antes do serializer.
+    """
+
+    decision = serializers.ChoiceField(choices=RitualDecisionKind.choices)
+    week_start = serializers.DateField(required=False)
+    month_first = serializers.DateField(required=False)
+    task_id = serializers.UUIDField(required=False)
+    recurring_template_id = serializers.UUIDField(required=False)
+
+    def validate(self, attrs):
+        week_start = attrs.get("week_start")
+        month_first = attrs.get("month_first")
+        if (week_start is None) == (month_first is None):
+            raise serializers.ValidationError(
+                "Informe exatamente um alvo: weekStart (ritual semanal) ou monthFirst (mensal)."
+            )
+        if (attrs.get("task_id") is None) == (attrs.get("recurring_template_id") is None):
+            raise serializers.ValidationError(
+                "Informe exatamente um item: taskId ou recurringTemplateId."
+            )
+        if week_start is not None and week_start.isoweekday() != 1:
+            raise serializers.ValidationError({"week_start": "Deve ser uma segunda-feira."})
+        if month_first is not None and month_first.day != 1:
+            raise serializers.ValidationError({"month_first": "Deve ser o primeiro dia do mês."})
+        return attrs
+
+
+class RitualDecisionSerializer(serializers.Serializer):
+    """Resposta do `POST /api/bujo/ritual-decisions/`.
+
+    O alvo volta como a **chave de período** que o cliente enviou (`weekStart` /
+    `monthFirst`), não como o id do log: o id é opaco para quem endereça o ritual
+    por semana/mês, e devolvê-lo obrigaria o cliente a uma segunda leitura só para
+    saber a qual ritual a decisão que ele acabou de gravar pertence. O item volta
+    como `taskId`/`recurringTemplateId` — o mesmo identificador que entrou.
+    """
+
+    id = serializers.UUIDField()
+    decision = serializers.CharField()
+    week_start = serializers.SerializerMethodField()
+    month_first = serializers.SerializerMethodField()
+    task_id = serializers.UUIDField(allow_null=True)
+    recurring_template_id = serializers.UUIDField(allow_null=True)
+    created_at = serializers.DateTimeField()
+    updated_at = serializers.DateTimeField()
+
+    @extend_schema_field(serializers.DateField(allow_null=True))
+    def get_week_start(self, decisao: RitualDecision):
+        return decisao.weekly_log.week_start if decisao.weekly_log_id else None
+
+    @extend_schema_field(serializers.DateField(allow_null=True))
+    def get_month_first(self, decisao: RitualDecision):
+        return decisao.monthly_log.month_first if decisao.monthly_log_id else None
+
+
+# Envelope UNIFORME das sete fontes. **Sem campo `label`** de propósito: a cópia
+# pt-BR das fontes é do UI (DESIGN/EXPERIENCE são a autoridade de wording) e uma
+# cópia em duas camadas é dívida garantida. O backend expõe `sourceId` estável.
+class _SourceEnvelopeSerializer(serializers.Serializer):
+    source_id = serializers.CharField()
+    blocking = serializers.BooleanField()
+    counts_toward_progress = serializers.BooleanField()
+    eligible_count = serializers.IntegerField()
+    pending_decision_count = serializers.IntegerField()
+    reviewed = serializers.BooleanField()
+
+
+# `decision` fica no ITEM da fonte, nunca no `TaskSerializer`: uma decisão é
+# relativa a um alvo de ritual, e o `TaskSerializer` é compartilhado por ~10
+# respostas legadas — acrescentá-lo lá mudaria contrato (AC8).
+class RitualTaskItemSerializer(serializers.Serializer):
+    task = TaskSerializer()
+    decision = serializers.CharField(allow_null=True)
+
+
+class RitualTemplateItemSerializer(serializers.Serializer):
+    template = RecurringTaskTemplateSerializer()
+    decision = serializers.CharField(allow_null=True)
+    instances_in_target_count = serializers.IntegerField()
+
+
+class _TemplateBucketSerializer(serializers.Serializer):
+    """`alreadyPlaced`/`alreadyPlacedInYear` — fora do progresso e dos avisos, mas
+    permanentemente consultáveis (novas instâncias continuam permitidas)."""
+
+    counts_toward_progress = serializers.BooleanField()
+    items = RitualTemplateItemSerializer(many=True)
+
+
+class TaskSourceSerializer(_SourceEnvelopeSerializer):
+    """Fontes cujos itens são Tasks: `monthly-in-week`, `future-log`."""
+
+    items = RitualTaskItemSerializer(many=True)
+
+
+class BlockingTaskSourceSerializer(TaskSourceSerializer):
+    """`previous-weekly`/`previous-monthly`: acrescentam `readyToFinalize` e,
+    aditivamente (Story 14.5, AC4), `previousPeriodStart` — a chave de período
+    do log anterior, nome neutro porque serve as duas fontes."""
+
+    ready_to_finalize = serializers.BooleanField()
+    previous_period_start = serializers.DateField(allow_null=True)
+
+
+class WeeklyRecurringSourceSerializer(_SourceEnvelopeSerializer):
+    items = RitualTemplateItemSerializer(many=True)
+    already_placed = _TemplateBucketSerializer()
+
+
+class MonthlyRecurringSourceSerializer(WeeklyRecurringSourceSerializer):
+    already_placed_in_year = _TemplateBucketSerializer()
+
+
+class PendingDailyGroupSerializer(serializers.Serializer):
+    date = serializers.DateField()
+    items = RitualTaskItemSerializer(many=True)
+
+
+class PendingDailiesSourceSerializer(_SourceEnvelopeSerializer):
+    """A única fonte com `groups` em vez de `items` planos (AC3)."""
+
+    groups = PendingDailyGroupSerializer(many=True)
+
+
+class WeekSourceQuerySerializer(serializers.Serializer):
+    """`?week_start=` em **snake_case**: a camelização do
+    `djangorestframework-camel-case` cobre corpo (parser/renderer), NÃO query
+    string, e é a convenção vigente do repo (`TaskDensityQuerySerializer`, e o
+    cliente em `frontend/src/features/bujo/api.ts`)."""
+
+    week_start = serializers.DateField()
+
+    def validate_week_start(self, value):
+        if value.isoweekday() != 1:
+            raise serializers.ValidationError("Deve ser uma segunda-feira.")
+        return value
+
+
+class MonthSourceQuerySerializer(serializers.Serializer):
+    month_first = serializers.DateField()
+
+    def validate_month_first(self, value):
+        if value.day != 1:
+            raise serializers.ValidationError("Deve ser o primeiro dia do mês.")
+        return value
+
+
+# --- Densidade real (Story 14.2, AC6) ------------------------------------------
+# Endpoints NOVOS: `TaskDensity*Serializer` (Story 11.3) fica intocado.
+class DensityStatusBreakdownSerializer(serializers.Serializer):
+    """As 6 chaves de `TaskStatus`, SEMPRE presentes (zeros inclusive).
+
+    Nenhuma tem underscore, então a camelização de saída não as altera — o que é
+    verificado por teste de fio, não deduzido.
+    """
+
+    pending = serializers.IntegerField()
+    started = serializers.IntegerField()
+    completed = serializers.IntegerField()
+    cancelled = serializers.IntegerField()
+    migrated = serializers.IntegerField()
+    postponed = serializers.IntegerField()
+
+
+class DensityCellSerializer(serializers.Serializer):
+    total = serializers.IntegerField()
+    by_status = DensityStatusBreakdownSerializer()
+
+
+class DensityDaySerializer(DensityCellSerializer):
+    date = serializers.DateField()
+
+
+class DensityResponseSerializer(serializers.Serializer):
+    days = DensityDaySerializer(many=True)
+    undated = DensityCellSerializer()
+    total = serializers.IntegerField()

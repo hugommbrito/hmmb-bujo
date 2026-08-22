@@ -4,6 +4,9 @@
 .env.prod
 .env.e2e
 .env.*.local
+# Exceção: o .env.e2e do frontend não tem secrets (só isola o modo e2e do Vite)
+# e é versionado; o backend/.env.e2e (credenciais Neon) segue ignorado acima.
+!frontend/.env.e2e
 
 # Python / Django
 __pycache__/
@@ -32,9 +35,12 @@ frontend/playwright/.cache/
 *.swp
 .idea/
 .vscode/
+.obsidian/
 
 # Build / logs
 *.log
 .claude/.story-automator-active
-
-CIandDeploymentLogs.md
+.bmad-loop/runs/
+.bmad-loop/cache/
+.bmad-loop/policy.toml
+_bmad/render/

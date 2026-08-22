@@ -83,6 +83,34 @@ export function useProcessBrainDumpItemMutation() {
   })
 }
 
+interface UpdateBrainDumpItemVariables {
+  itemId: string
+  title?: string
+  description?: string | null
+  targetLog?: BrainDumpTargetLog | null
+}
+
+async function updateBrainDumpItem({
+  itemId,
+  ...patch
+}: UpdateBrainDumpItemVariables): Promise<BrainDumpItem> {
+  const response = await client.patch<BrainDumpItem>(`/api/brain-dump/items/${itemId}/`, patch)
+  return response.data
+}
+
+// M11 (Story 15.1) — não-otimista (a linha só atualiza após confirmação do
+// servidor, diferente da captura): mesmo molde de
+// `features/bujo/api.ts::useUpdateRecurringTemplateMutation`. Só invalida
+// `list()` — editar título/descrição/destino não muda a CONTAGEM de itens
+// pendentes, então `count` fica de fora (diferente de processar/descartar).
+export function useUpdateBrainDumpItemMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: updateBrainDumpItem,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.brainDump.list() }),
+  })
+}
+
 interface DiscardBrainDumpItemVariables {
   itemId: string
 }

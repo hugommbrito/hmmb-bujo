@@ -16,7 +16,8 @@ hmmb-bujo/
 ## Pré-requisitos
 
 - Python 3.12+ e [`uv`](https://docs.astral.sh/uv/) (gerenciador do backend)
-- Node.js LTS (≥20) e npm
+- Node.js **`^20.19` ou `>=22.12`** e npm (exigência do Vite 8; **22.15.1** é a
+  versão usada no fluxo de E2E — `nvm use 22.15.1` antes de comandos de frontend)
 
 ## Backend
 
@@ -44,8 +45,10 @@ A configuração é lida via `django-environ`. Crie `.env.dev`, `.env.prod` e
 
 - `.env.dev` → branch **dev** do Neon
 - `.env.prod` → branch **main** do Neon
-- `.env.e2e` → branch **e2e** do Neon (usada pela suíte E2E do Playwright; ver
-  [runbook de reset](docs/e2e-neon-reset.md))
+- `.env.e2e` → settings da suíte E2E do Playwright (`config.settings.e2e`). O
+  banco é o Postgres LOCAL `bujo_e2e` por padrão desde 2026-07-28 (mesmo
+  container do pytest) — a branch **e2e** do Neon vira fallback opcional via
+  `DATABASE_URL`; ver [runbook](docs/e2e-neon-reset.md)
 
 `DJANGO_SETTINGS_MODULE` seleciona o settings (`config.settings.dev`,
 `config.settings.prod` ou `config.settings.e2e`). CORS e base-URL da API são
@@ -69,7 +72,15 @@ npm run lint
 npx tsc --noEmit
 npm run test:run   # vitest (inclui regressão de acessibilidade via jest-axe)
 npm run build      # gera estáticos em frontend/dist/
+npm run test:e2e   # Playwright: sobe frontend (5173, --mode e2e) + backend (8000)
 ```
+
+O E2E inclui o gate de acessibilidade em browser real (`@axe-core/playwright`,
+WCAG 2.2 AA). Ele precisa de um banco próprio — Postgres LOCAL `bujo_e2e` por
+padrão (zero setup extra além do `docker compose up -d db` do pytest); veja o
+[runbook](docs/e2e-neon-reset.md) para criar o banco na 1ª vez e para o fallback
+opcional contra a branch `e2e` do Neon. Nem o Vitest nem o Playwright rodam no
+CI (decisão registrada em `architecture.md` §7.4).
 
 ## CI
 

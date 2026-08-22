@@ -24,6 +24,7 @@ const TASK: Task = {
   eisenhower: null,
   category: null,
   subtasks: [],
+  migrationTarget: null,
 }
 
 function renderBanner() {

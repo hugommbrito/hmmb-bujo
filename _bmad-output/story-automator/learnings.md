@@ -138,3 +138,48 @@
 - **Push pendente:** 2 commits (d7c885c, 706db13) ahead — rodar `git push` em sessão interativa com 1Password destravado (SSH agent indisponível na automação).
 - Atualizar mental model: unit/backend rápidos (Postgres local); só e2e/dev usam Neon. Não deferir mais lote cross-app por "lentidão do Neon" em unit.
 - Antes do Épico 10 (multiusuário, mais usuários): AR-22 (observabilidade — Sentry/Better Stack) fica ANTES do Épico 10 (per memória `deploy-ar21-done-ar22-observability-pending`).
+
+## Run: 2026-07-24T01:55:46Z
+
+**Epic:** 12 — Tier 0: Plataforma e Quick Wins (sem UI)
+**Stories:** 12.1–12.6 (6/6 done)
+
+### Patterns Observed
+- Sessão `claude` headless de dev escreve o grosso do código num turno e SAI antes de finalizar testes+bookkeeping (checkboxes/Dev Agent Record/sprint-status). Ocorreu em 12.1, 12.2 e 12.6. `monitor-session`/`tmux-status-check` reporta `completed`/`idle` mesmo assim. Recuperação confiável: re-spawnar dev "continue and FINISH" → completou na 2ª (ou 3ª) passada. Orçar ~2 sessões de dev por story.
+- Verificar SEMPRE a fonte da verdade (checkboxes marcadas, sprint-status=review/done, Dev Agent Record preenchido) — nunca confiar só no estado do monitor.
+- Parsear/grep o log ANTES do `tmux-wrapper kill` (o kill remove o output temporário).
+- `monitor-session` em foreground estoura o timeout de 10min do bash em sessões longas → usar espera ativa com poll de `tmux-status-check` (bounded ~8min) ou run_in_background.
+
+### Code Review Insights
+- 0 CRITICAL/HIGH em todas as stories revisadas; achados foram LOW (cobertura de ordem/edge) e MEDIUM (doc do File List), auto-corrigidos.
+- Média de ciclos de review: 1 (limpo na 1ª passada).
+
+### Timing Estimates
+- create-story (HIGH): ~13 min
+- dev-story (HIGH): 20–35 min (2 passadas)
+- code-review: ~5–8 min por ciclo
+- retrospectiva: ~30 min
+
+### Escalations
+- 1 escalação REAL: limite de gasto mensal atingido durante a dev da 12.6 (bloqueio de conta, não recuperável por retry) → escalado ao usuário, que ajustou o limite; dev retomada e concluída.
+
+### Recommendations for Future Runs
+- Para épicos com stories HIGH, esperar 2 passadas de dev por padrão (não tratar corte como falha).
+- Aplicar migration à branch Neon e2e continua sendo requisito (12.2 fez sozinha pois a story codificou a lição nas ACs).
+- Monitorar limite de gasto antes de runs longos.
+
+## Epic 13 (App Shell novo) — 2026-07-24
+
+**Resultado:** 4/4 stories (13.1–13.4) done + commitadas; chore de infra e2e à parte (e9cba41); retrospectiva done. 0 CRITICAL/HIGH nas 4 reviews. Frontend tests 828→981 (+153), 7 specs E2E do shell novos (95 passed). Épico 100% frontend.
+
+**O que funcionou:**
+- **Full-suite E2E como gate real de regressão:** a 13.1 passou nos specs do shell mas o full-suite pegou uma colisão de locator (topbar × RouteAnnouncer em gratitude-history). Specs escopados à story NÃO bastam para AC "sem regressão" — rodar o full-suite (ou baseline-diff) pega o que o dev não vê.
+- **Baseline-diff para separar regressão de pré-existente:** `git stash` do gatilho (router.tsx / mudanças da story) + rodar as specs suspeitas no baseline prova o que a story causou. Fez isso na 13.1 (só gratitude era regressão; archive/recurring/task-reorder pré-existentes).
+- **Commits escopados pela File List da story:** com trabalho paralelo do usuário (Épico 14) na árvore, `git add -A` teria contaminado. Usar a File List da story como fonte de verdade + guard-check `git diff --cached --name-only | grep -v <padrões do outro épico>`.
+
+**Armadilhas (custaram tempo):**
+- **Diagnóstico precipitado de "Neon degradou":** 270 falhas de signup no full-suite da 13.2 foram lidas como colapso da branch Neon. ERRADO — o backend e2e estava 100% saudável (54× 201, zero 5xx). Causa real: edit local não-commitado `VITE_API_BASE_URL=http://localhost:8001` em .env.development vazando p/ o e2e (client.ts usa a base). LIÇÃO: falha em massa no fixture de signup com backend saudável = roteamento cliente errado, não infra. Checar `git diff .env*` + `lsof :5173/:8000` ANTES de culpar Neon.
+- **Codex configurado mas não instalado:** o preset "Suggested" roteava medium→codex; `which codex` falhava. Checar disponibilidade do agente ANTES de aceitar config complexity-based; all-claude é o default seguro deste projeto.
+- **Credencial da branch Neon e2e stale:** sessions contornaram com Postgres local (bujo_e2e). Pendência ops do dono (runbook e2e-neon-reset.md §2). A 14.1 tem migration → precisa resolver antes do Playwright.
+
+**Cadência:** dev-story da 13.4 (capstone paridade+a11y) levou 1h+; várias sessions >30min. O padrão de bloqueio em foreground (monitor-session / tail -f | grep) por janelas de 10min manteve o stop-hook satisfeito sem abandonar a orquestração.

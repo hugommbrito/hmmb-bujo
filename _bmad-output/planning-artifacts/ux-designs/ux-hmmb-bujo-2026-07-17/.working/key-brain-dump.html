@@ -1,0 +1,491 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>M11 — Brain Dump (Inbox) canônico</title>
+<style>
+/* Governado por DESIGN.md: Brand & Style; Colors; Typography; Layout & Spacing;
+   Components/App Shell, App Shell Badge; Page/Period Header; Panel; Section Header;
+   Item Row; Chip; Dialog/Sheet — ver seção "Brain Dump (Inbox)".
+   Governado por EXPERIENCE.md: Foundation; Information Architecture (padrão de página Inbox:
+   captura → pendências → processamento); Voice and Tone; Component Patterns (Item Row,
+   Dialog/Sheet) — ver seção "Brain Dump e captura"; State Patterns (Badge Brain Dump 0/1–9/9+,
+   Brain Dump erro parcial, Descartar rascunho do Brain Dump, Captura offline); Interaction
+   Primitives; Accessibility Floor.
+   Composição de referência: imports/story-15-0-brain-dump-handoff/story-15.0-brain-dump.md —
+   frames F1–F3, overlays O1–O6, §5.2 textos verbatim, §9 nota de decisão Q1 (edição do item).
+   Estrutura visual reusa key-weekly.html (rail/phone/state/notes), key-migracao.html
+   (seletor de destino) e key-recorrentes.html (Item Row, campos de formulário).
+   Spines vencem em conflito. */
+:root{--canvas:#f5f2ea;--surface:#fbfaf6;--raised:#fff;--subtle:#eeebe2;--strong:#e3dfd5;--ink:#25231f;--muted:#666159;--disabled:#969087;--line:#d6d1c7;--line2:#aaa399;--primary:#315f5a;--primary-hover:#274d49;--primary-soft:#ddeae7;--on-primary:#fff;--info:#3d6488;--info-soft:#e2ebf3;--success:#4b6f52;--success-soft:#e2ebe1;--warn:#8a6826;--warn-soft:#f2e8ce;--danger:#9a493f;--danger-soft:#f3e1de;--focus:#166c9c;--teal:#2bada0;--purple:#7b5ea7;--pink:#d95f78;--yellow:#c89b00;--green:#4a8c5c;--blue:#3d72b4;--ui:#c0392b;--u:#d4660a;--i:#b8920a}
+*{box-sizing:border-box}html{background:#e7e3da}
+body{margin:0;color:var(--ink);font:14px/1.42 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+button,input,select,textarea{font:inherit;color:inherit}button{cursor:default}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.board{max-width:1780px;margin:auto;padding:28px}
+.intro{max-width:1100px;margin-bottom:26px}
+.eyebrow{font-size:11px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--primary)}
+h1{margin:6px 0;font-size:30px;letter-spacing:-.03em}
+.intro p{margin:0;color:var(--muted);font-size:15px}
+.caption{display:flex;align-items:baseline;gap:16px;margin:0 0 9px}
+.caption h2{margin:0;font-size:19px}
+.caption span{font-size:12px;color:var(--muted)}
+.spec{margin-bottom:34px}
+
+/* browser chrome */
+.browser{border:1px solid var(--line2);border-radius:11px;overflow:hidden;background:var(--surface);box-shadow:0 14px 36px rgba(37,35,31,.08)}
+.browserbar{height:25px;background:#ddd9d0;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:5px;padding:0 10px}
+.dot{width:7px;height:7px;border-radius:50%;background:#aaa49a}
+.app{display:grid;grid-template-columns:64px minmax(0,1fr);height:900px;background:var(--canvas)}
+.rail{border-right:1px solid var(--line);background:var(--surface);padding:10px 5px;display:flex;flex-direction:column;align-items:center;gap:6px}
+.brand{width:38px;height:38px;border:2px solid var(--ink);border-radius:7px;display:grid;place-items:center;font-weight:850;margin-bottom:8px}
+.nav{position:relative;width:52px;min-height:44px;border:0;border-radius:6px;background:transparent;color:var(--muted);font-size:8px;display:grid;place-items:center;gap:1px}
+.nav b{font-size:16px;font-weight:500}
+.nav.active{background:#fff;outline:1px solid var(--line2);color:var(--ink);font-weight:750}
+.navbadge{position:absolute;top:1px;right:3px;min-width:12px;height:12px;border-radius:99px;background:var(--primary);color:#fff;font-size:7px;font-weight:800;display:grid;place-items:center;padding:0 2px}
+.grow{flex:1}
+
+/* workspace / reading width */
+.workspace{min-width:0;overflow:auto;padding:20px 28px 24px;display:flex;flex-direction:column}
+.reading{max-width:800px;width:100%;margin:0 auto}
+.bdhead{display:flex;align-items:baseline;gap:10px;padding-bottom:12px;border-bottom:1px solid var(--line);margin-bottom:18px}
+.bdhead h1{font-size:24px;line-height:1.25;letter-spacing:-.02em;margin:0}
+.bdhead p{margin:0;color:var(--muted);font-size:13px}
+
+/* panel + fields (reusa key-recorrentes) */
+.panel{background:#fff;border:1px solid var(--line2);border-radius:8px}
+.captureform{padding:16px 18px 18px}
+.panelhead{display:flex;align-items:baseline;gap:5px;border-bottom:1px solid var(--line);padding-bottom:9px;margin-bottom:13px}
+.panelhead h2{margin:0;font-size:15px}
+.field{display:grid;gap:5px;margin-bottom:12px}
+.field:last-of-type{margin-bottom:0}
+.field label{font-size:11px;font-weight:760;letter-spacing:.01em}
+.input,.textarea{width:100%;border:1px solid var(--line2);border-radius:7px;background:#fff;padding:10px 11px;font-size:14px}
+.input{min-height:44px}
+.textarea{min-height:54px;resize:vertical;line-height:1.4}
+.input.focused{outline:2px solid var(--focus);outline-offset:2px;border-color:var(--focus)}
+.hint{font-size:11px;color:var(--muted)}
+.primary{min-height:44px;border:1px solid var(--primary);background:var(--primary);color:#fff;border-radius:7px;font-size:14px;font-weight:800;padding:0 18px;margin-top:6px}
+.primary[disabled]{opacity:.5}
+.btn-sec{min-height:40px;border:1px solid var(--line2);background:#fff;border-radius:6px;font-size:13px;font-weight:600;color:var(--ink);padding:0 14px}
+.close{width:34px;height:34px;flex:none;border:1px solid var(--line);background:#fff;border-radius:7px;font-size:18px;color:var(--muted);line-height:1}
+
+/* section header + list */
+.sectionhead{display:flex;align-items:baseline;gap:8px;margin:22px 0 8px}
+.sectionhead h2{margin:0;font-size:16px}
+.sectionhead .count{margin-left:auto;color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}
+.bd-list{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
+.bd-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:14px;align-items:center;min-height:36px;border-bottom:1px solid var(--line);border-left:3px solid var(--line);padding:10px 10px 10px 12px;background:#fff}
+.bd-row .t1{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.bd-row strong{font-size:14px;font-weight:600}
+.bd-row p{margin:2px 0 0;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:480px}
+.bd-row .meta{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.bd-row .acts{display:flex;gap:6px}
+.chip{display:inline-block;font-size:9px;font-weight:700;color:var(--info);background:var(--info-soft);border:1px solid #bcd0e0;border-radius:4px;padding:2px 6px;white-space:nowrap}
+.btn-move{min-height:32px;border:1px solid var(--primary);color:var(--primary);background:#fff;border-radius:5px;font-size:11px;font-weight:700;padding:0 10px}
+.btn-discard{min-height:32px;border:1px solid var(--danger);color:var(--danger);background:#fff;border-radius:5px;font-size:11px;font-weight:700;padding:0 10px}
+
+/* ==== overlays (B) — dialog cards com backdrop ==== */
+.overlay-demo{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+.ov-label{font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px}
+.scrimbg{background:linear-gradient(rgba(37,35,31,.48),rgba(37,35,31,.48)),var(--canvas);border-radius:12px;padding:40px 22px;display:flex;justify-content:center}
+.destsel{width:400px;background:#fff;border:1px solid var(--line2);border-radius:10px;overflow:hidden;box-shadow:0 16px 40px rgba(37,35,31,.22)}
+.destsel .dh{display:flex;align-items:flex-start;gap:10px;padding:13px 15px;border-bottom:1px solid var(--line)}
+.destsel .dh .dhtext{flex:1;min-width:0}
+.destsel .dh h4{margin:0;font-size:15px}
+.destsel .dh p{margin:3px 0 0;font-size:11px;color:var(--muted)}
+.dsbody{padding:15px 15px 4px}
+.dsfoot{padding:13px 15px;border-top:1px solid var(--line);display:flex;gap:8px;align-items:center}
+
+/* seletor de log (radiogroup — 4 destinos) */
+.logsel{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;padding:13px 15px}
+.logsel button{min-height:52px;border:1px solid var(--line2);background:#fff;border-radius:7px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:10px;color:var(--muted)}
+.logsel button b{font-size:16px;font-weight:500;color:var(--ink)}
+.logsel button.on{border:2px solid var(--primary);background:var(--primary-soft);color:var(--primary);font-weight:800}
+.logsel button.on b{color:var(--primary)}
+.logsel.compact button{min-height:44px}
+
+/* densidade semanal (Esta Semana) */
+.weekdensity{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;padding:4px 15px 13px}
+.weekdensity button{min-width:0;min-height:54px;border:1px solid var(--line);background:#fff;border-radius:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:9px;color:var(--muted)}
+.weekdensity button b{font-size:14px;color:var(--ink);font-variant-numeric:tabular-nums;font-weight:700}
+.weekdensity button .den{font-size:8px;color:var(--primary);font-variant-numeric:tabular-nums}
+.weekdensity .today{border-color:var(--info);box-shadow:inset 0 0 0 1px var(--info)}
+.weekdensity .sel{border:2px solid var(--primary);background:var(--primary-soft)}
+.weekdensity .sel b{color:var(--primary)}
+.weekdensity.compact button{min-height:44px}
+
+.dfoot{padding:11px 15px;border-top:1px solid var(--line)}
+.dfoot .quick{display:flex;gap:6px;margin-bottom:9px}
+.dfoot .quick button{flex:1;min-height:36px;border:1px solid var(--line2);background:#fff;border-radius:5px;font-size:11px;font-weight:700}
+.dfoot .confirm{width:100%;min-height:44px;border:1px solid var(--primary);background:var(--primary);color:#fff;border-radius:7px;font-size:13px;font-weight:800}
+.dfoot .shortcut{font-size:10px;color:var(--disabled);margin-top:8px;text-align:center}
+
+/* ==== mobile (C) — reusa key-weekly.html ==== */
+.mobile-zone{display:grid;grid-template-columns:repeat(4,390px);gap:18px;align-items:start;overflow:auto;padding-bottom:8px}
+.phonecase h3{font-size:13px;margin:0 0 6px}
+.phone{width:390px;height:800px;background:var(--canvas);border:7px solid var(--ink);border-radius:30px;overflow:hidden;display:flex;flex-direction:column;position:relative}
+.phone.relative{position:relative}
+.statusbar{height:24px;padding:5px 13px 0;display:flex;justify-content:space-between;font-size:9px;background:var(--surface);flex:none}
+.mobile-head{background:var(--surface);border-bottom:1px solid var(--line);padding:9px 11px;flex:none}
+.mobile-head .topline{display:flex;align-items:center;gap:7px}
+.mobile-head h4{font-size:15px;margin:0}
+.mobile-badge{display:inline-block;margin-top:4px;border:1px solid var(--primary);border-radius:4px;padding:2px 6px;color:var(--primary);font-size:9px;font-weight:750}
+.mobile-capture{padding:10px 11px;border-bottom:1px solid var(--line);background:#fff;flex:none}
+.mobile-capture .field{margin-bottom:8px}
+.mobile-capture .hint{display:block;margin:2px 0 8px}
+.sectionhead.compact{margin:11px 11px 5px;flex:none}
+.mobile-list{min-height:0;flex:1;overflow:auto;padding:0 0 90px}
+.bd-mobile-list{border-top:1px solid var(--line)}
+.bd-taprow{width:100%;min-height:48px;border:0;border-bottom:1px solid var(--line);border-left:3px solid var(--line);background:#fff;padding:6px 11px;display:flex;align-items:center;justify-content:space-between;gap:10px;text-align:left}
+.bd-taprow .body{min-width:0}
+.bd-taprow .body strong{display:block;font-size:12px;font-weight:600}
+.bd-taprow .body p{display:block;margin:2px 0 0;font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:190px}
+.bd-taprow .meta{font-size:9px;color:var(--muted);flex:none}
+.fab{position:absolute;right:14px;bottom:70px;width:52px;height:52px;border-radius:50%;border:1px solid var(--primary);background:var(--primary);color:#fff;font-size:19px;box-shadow:0 6px 16px rgba(49,95,90,.35);z-index:1}
+.bottom-nav{position:absolute;left:0;right:0;bottom:0;height:58px;background:rgba(251,250,246,.97);border-top:1px solid var(--line2);display:grid;grid-template-columns:repeat(4,1fr)}
+.bottom-nav button{border:0;background:transparent;font-size:9px;color:var(--muted)}
+.bottom-nav button.on{color:var(--primary);font-weight:800}
+.navbadge.sm{position:static;display:inline-grid;place-items:center;margin-left:3px;width:12px;height:12px;font-size:7px;background:var(--primary);color:#fff;border-radius:99px;vertical-align:middle}
+
+.scrim{position:absolute;inset:0;background:rgba(37,35,31,.42)}
+.dest-sheet{position:absolute;left:0;right:0;bottom:0;background:var(--surface);border-radius:16px 16px 0 0;padding:8px 12px 16px;z-index:2;max-height:88%;overflow:auto}
+.handle{display:block;width:38px;height:4px;border-radius:2px;background:var(--line2);margin:0 auto 10px}
+.sheet-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+.sheet-head h4{font-size:15px;margin:0}
+.dest-sheet .field{margin-bottom:10px}
+.itemsheet-acts{display:grid;gap:8px;margin-top:8px}
+.confirm{width:100%;min-height:48px;border:1px solid var(--primary);background:var(--primary);color:#fff;border-radius:7px;font-weight:800;font-size:13px}
+.btn-discard-full{width:100%;min-height:48px;border:1px solid var(--danger);color:var(--danger);background:#fff;border-radius:7px;font-weight:800;font-size:13px}
+
+/* ==== states (D) — reusa key-weekly.html ==== */
+.state-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.statecard{background:var(--surface);border:1px solid var(--line2);border-radius:8px;padding:13px}
+.statecard h3{font-size:13px;margin:0 0 5px}
+.statecard p{font-size:10px;color:var(--muted);margin:0 0 10px}
+.banner{padding:9px;border-left:3px solid var(--info);background:var(--info-soft);font-size:11px;border-radius:0 4px 4px 0}
+.banner.error{border-color:var(--danger);background:var(--danger-soft)}
+.banner.offline{border-color:var(--warn);background:var(--warn-soft)}
+.statecard button{width:100%;height:38px;margin-top:9px;border:1px solid var(--line2);border-radius:5px;background:#fff;font-size:11px;font-weight:750}
+.mini-panel{border:1px solid var(--line);border-radius:6px;padding:9px;background:#fff;margin-bottom:10px}
+.mini-panel .field{margin-bottom:0}
+.mini-empty{text-align:center;padding:10px 4px;color:var(--muted);font-size:12px}
+
+/* ==== notes ==== */
+.notes{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.note{background:var(--surface);border:1px solid var(--line);border-radius:7px;padding:12px;font-size:11px;color:var(--muted)}
+.note b{display:block;color:var(--ink);margin-bottom:4px;font-size:12px}
+
+@media(max-width:1650px){.mobile-zone{grid-template-columns:repeat(2,390px)}}
+@media(max-width:1150px){.board{padding:14px}.overlay-demo,.state-grid,.notes{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body><main class="board">
+
+<header class="intro">
+  <div class="eyebrow">M11 · mockup canônico para aprovação — Story 15.0</div>
+  <h1>Brain Dump: captura sem fricção, processamento manual</h1>
+  <p>Superfície de padrão Inbox — sem data, vazio é o estado normal e saudável. A ordem de leitura é fixa: Panel <b>Capturar</b> → Section Header <b>Pendências</b> com contagem → lista de Item Rows. Cada item tem duas ações nomeadas, <b>Mover</b> e <b>Descartar</b>; nada é automático, sugerido ou movido sem confirmação.</p>
+</header>
+
+<!-- ============ A · DESKTOP 1440 — POPULADO ============ -->
+<section class="spec">
+  <div class="caption"><h2>A · Brain Dump — wide 1440, populado</h2><span>sem stepper/status/período · Capturar → Pendências → processamento · borda neutra na Item Row</span></div>
+  <div class="browser"><div class="browserbar"><i class="dot"></i><i class="dot"></i><i class="dot"></i></div>
+  <div class="app">
+    <nav class="rail" aria-label="Navegação principal"><div class="brand">B</div>
+      <button class="nav"><b aria-hidden="true">◉</b>Hoje</button>
+      <button class="nav"><b aria-hidden="true">▤</b>Semana</button>
+      <button class="nav"><b aria-hidden="true">▦</b>Mês</button>
+      <button class="nav"><b aria-hidden="true">⇱</b>Futuro</button>
+      <button class="nav"><b aria-hidden="true">⟳</b>Recorr.</button>
+      <button class="nav active" aria-current="page" aria-label="Brain Dump, 7 itens pendentes"><b aria-hidden="true">▣</b><span aria-hidden="true">Brain Dump</span><span class="navbadge" aria-hidden="true">7</span></button>
+      <button class="nav"><b aria-hidden="true">▥</b>Arquivo</button>
+      <span class="grow"></span>
+      <button class="nav"><b aria-hidden="true">⚙</b>Config.</button>
+    </nav>
+    <div class="workspace"><div class="reading">
+      <header class="bdhead"><h1>Brain Dump</h1><p>Caixa de entrada sem data</p></header>
+
+      <section class="panel captureform">
+        <div class="panelhead"><h2>Capturar</h2></div>
+        <div class="field"><label for="a-t">Título</label><input class="input" id="a-t" placeholder="O que você precisa lembrar?"></div>
+        <div class="field"><label for="a-d">Descrição</label><textarea class="textarea" id="a-d" placeholder="Detalhes opcionais, em até duas linhas…"></textarea></div>
+        <div class="field"><label for="a-dest">Destino</label>
+          <select class="input" id="a-dest">
+            <option selected>Brain Dump</option>
+            <option>Hoje</option>
+            <option>Esta Semana</option>
+            <option>Este Mês</option>
+            <option>Futuro</option>
+          </select>
+        </div>
+        <button class="primary">Capturar</button>
+      </section>
+
+      <div class="sectionhead"><h2>Pendências</h2><span class="count">7 itens</span></div>
+      <ul class="bd-list">
+        <li class="bd-row">
+          <div class="body"><div class="t1"><strong>Renovar seguro do carro</strong><span class="chip">Dica: Esta Semana</span></div><p>Comparar cotações antes de decidir.</p></div>
+          <span class="meta">23 jul.</span>
+          <div class="acts"><button class="btn-move">Mover</button><button class="btn-discard">Descartar</button></div>
+        </li>
+        <li class="bd-row">
+          <div class="body"><div class="t1"><strong>Responder o e-mail da contadora</strong></div><p>Confirmar documentos do trimestre.</p></div>
+          <span class="meta">24 jul.</span>
+          <div class="acts"><button class="btn-move">Mover</button><button class="btn-discard">Descartar</button></div>
+        </li>
+        <li class="bd-row">
+          <div class="body"><div class="t1"><strong>Confirmar a consulta do dentista</strong><span class="chip">Dica: Hoje</span></div><p>Ligar para remarcar se não der quinta.</p></div>
+          <span class="meta">24 jul.</span>
+          <div class="acts"><button class="btn-move">Mover</button><button class="btn-discard">Descartar</button></div>
+        </li>
+        <li class="bd-row">
+          <div class="body"><div class="t1"><strong>Comprar filtro de água</strong></div><p>Trocar o antigo, já passou da validade.</p></div>
+          <span class="meta">25 jul.</span>
+          <div class="acts"><button class="btn-move">Mover</button><button class="btn-discard">Descartar</button></div>
+        </li>
+        <li class="bd-row">
+          <div class="body"><div class="t1"><strong>Rever o orçamento de agosto</strong><span class="chip">Dica: Este Mês</span></div><p>Separar o que pode esperar setembro.</p></div>
+          <span class="meta">26 jul.</span>
+          <div class="acts"><button class="btn-move">Mover</button><button class="btn-discard">Descartar</button></div>
+        </li>
+        <li class="bd-row">
+          <div class="body"><div class="t1"><strong>Ligar para o síndico sobre a reforma</strong></div><p>Perguntar prazo da obra da fachada.</p></div>
+          <span class="meta">27 jul.</span>
+          <div class="acts"><button class="btn-move">Mover</button><button class="btn-discard">Descartar</button></div>
+        </li>
+        <li class="bd-row">
+          <div class="body"><div class="t1"><strong>Decidir o presente da Marina</strong><span class="chip">Dica: Futuro</span></div><p>Ver se ela ainda quer aquele livro.</p></div>
+          <span class="meta">28 jul.</span>
+          <div class="acts"><button class="btn-move">Mover</button><button class="btn-discard">Descartar</button></div>
+        </li>
+      </ul>
+    </div></div>
+  </div></div>
+  <p style="font-size:11px;color:var(--muted);margin-top:8px">Leitura limitada a 800px (<code>{workspace.reading-width}</code>); nenhum Panel aninhado. A Item Row usa a variante Brain Dump: título, descrição truncada em uma linha, borda esquerda <b>neutra</b> — sem categoria, sem Eisenhower, sem ícone de status — chip textual opcional para a dica de <code>target_log</code> e meta tabular com a data de captura.</p>
+</section>
+
+<!-- ============ B · OVERLAYS ============ -->
+<section class="spec">
+  <div class="caption"><h2>B · Overlays — dialog (wide/medium/tablet)</h2><span>uma só camada · Capture Sheet e Seletor de destino nunca empilham entre si</span></div>
+  <div class="overlay-demo">
+    <div>
+      <div class="ov-label">B1 · Capture Sheet</div>
+      <div class="scrimbg">
+        <div class="destsel">
+          <div class="dh"><div class="dhtext"><h4>Captura rápida</h4></div><button class="close" aria-label="Fechar">×</button></div>
+          <div class="dsbody">
+            <div class="field"><label for="b1-t">Título</label><input class="input focused" id="b1-t" placeholder="O que você precisa lembrar?"></div>
+            <div class="field"><label for="b1-d">Descrição</label><textarea class="textarea" id="b1-d" placeholder="Detalhes opcionais…"></textarea></div>
+            <div class="field"><label for="b1-dest">Destino</label>
+              <select class="input" id="b1-dest">
+                <option selected>Brain Dump</option>
+                <option>Hoje</option>
+                <option>Esta Semana</option>
+                <option>Este Mês</option>
+                <option>Futuro</option>
+              </select>
+              <span class="hint">Fica no Brain Dump até ser processado.</span>
+            </div>
+          </div>
+          <div class="dsfoot"><button class="primary" style="margin-top:0">Salvar no Brain Dump</button><button class="btn-sec">Cancelar</button></div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="ov-label">B2 · Seletor de destino</div>
+      <div class="scrimbg">
+        <div class="destsel">
+          <div class="dh"><div class="dhtext"><h4>Para onde mover este item?</h4><p>Renovar seguro do carro</p></div><button class="close" aria-label="Fechar">×</button></div>
+          <div class="logsel" role="radiogroup" aria-label="Selecionar log de destino">
+            <button role="radio" aria-checked="false"><b aria-hidden="true">◉</b>Hoje</button>
+            <button role="radio" aria-checked="true" class="on"><b aria-hidden="true">▤</b>Esta Semana</button>
+            <button role="radio" aria-checked="false"><b aria-hidden="true">▦</b>Este Mês</button>
+            <button role="radio" aria-checked="false"><b aria-hidden="true">⇱</b>Futuro</button>
+          </div>
+          <div class="weekdensity" role="radiogroup" aria-label="Dias de 27 de julho a 2 de agosto de 2026">
+            <button aria-label="Segunda, 27 de julho, 3 registros">Seg<b>27</b><span class="den">3</span></button>
+            <button aria-label="Terça, 28 de julho, 1 registro">Ter<b>28</b><span class="den">1</span></button>
+            <button class="today" aria-label="Quarta, 29 de julho, hoje, 2 registros">Qua<b>29</b><span class="den">2</span></button>
+            <button class="sel" aria-checked="true" aria-label="Quinta, 30 de julho, selecionada, 0 registros">Qui<b>30</b><span class="den">0</span></button>
+            <button aria-label="Sexta, 31 de julho, 4 registros">Sex<b>31</b><span class="den">4</span></button>
+            <button aria-label="Sábado, 1 de agosto, sem registros">Sáb<b>1</b></button>
+            <button aria-label="Domingo, 2 de agosto, sem registros">Dom<b>2</b></button>
+          </div>
+          <div class="dfoot">
+            <div class="quick"><button>Hoje</button><button>Sem dia definido</button></div>
+            <button class="confirm">Mover para quinta, 30 de julho</button>
+            <div class="shortcut">1–7 escolhem o dia · 0 = sem dia · Enter confirma</div>
+          </div>
+          <div class="dsfoot"><button class="btn-sec">Cancelar</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p style="font-size:11px;color:var(--muted);margin-top:8px">O seletor de destino reusa integralmente a anatomia do ritual de migração (M10 · C), trocando as abas por um <code>radiogroup</code> de log com os quatro destinos do contrato — <b>Hoje</b>, <b>Esta Semana</b>, <b>Este Mês</b>, <b>Futuro</b> — com os mesmos ícones/rótulos da navegação lateral. <b>Sem dia definido</b> é sempre alcançável e nunca o resultado silencioso de não escolher.</p>
+</section>
+
+<!-- ============ C · COMPACT 390 ============ -->
+<section class="spec">
+  <div class="caption"><h2>C · Compact 390 — recomposição</h2><span>linha vira alvo único de 48px · ações migram para o sheet do item · captura inline reduzida</span></div>
+  <div class="mobile-zone">
+
+    <article class="phonecase"><h3>C1 · Brain Dump — lista</h3>
+      <div class="phone relative">
+        <div class="statusbar"><span>09:42</span><span>● ●</span></div>
+        <header class="mobile-head"><div class="topline"><h4>Brain Dump</h4></div><span class="mobile-badge">7 itens pendentes</span></header>
+        <div class="mobile-capture">
+          <div class="field"><label for="c1-t">Título</label><input class="input" id="c1-t" placeholder="O que você precisa lembrar?"></div>
+          <div class="field"><label for="c1-dest">Destino</label>
+            <select class="input" id="c1-dest"><option selected>Brain Dump</option><option>Hoje</option><option>Esta Semana</option><option>Este Mês</option><option>Futuro</option></select>
+          </div>
+          <span class="hint">Descrição fica disponível no Capture Sheet e no item.</span>
+          <button class="primary" style="width:100%">Capturar</button>
+        </div>
+        <div class="sectionhead compact"><h2 style="font-size:13px">Pendências</h2><span class="count">7 itens</span></div>
+        <div class="mobile-list bd-mobile-list">
+          <button class="bd-taprow" aria-label="Renovar seguro do carro. Comparar cotações antes de decidir. Dica: Esta Semana. Abrir ações do item"><div class="body"><strong>Renovar seguro do carro</strong><p>Comparar cotações antes de decidir.</p></div><span class="meta">23 jul.</span></button>
+          <button class="bd-taprow" aria-label="Responder o e-mail da contadora. Confirmar documentos do trimestre. Abrir ações do item"><div class="body"><strong>Responder o e-mail da contadora</strong><p>Confirmar documentos do trimestre.</p></div><span class="meta">24 jul.</span></button>
+          <button class="bd-taprow" aria-label="Confirmar a consulta do dentista. Ligar para remarcar se não der quinta. Dica: Hoje. Abrir ações do item"><div class="body"><strong>Confirmar a consulta do dentista</strong><p>Ligar para remarcar se não der quinta.</p></div><span class="meta">24 jul.</span></button>
+          <button class="bd-taprow" aria-label="Comprar filtro de água. Trocar o antigo, já passou da validade. Abrir ações do item"><div class="body"><strong>Comprar filtro de água</strong><p>Trocar o antigo, já passou da validade.</p></div><span class="meta">25 jul.</span></button>
+          <button class="bd-taprow" aria-label="Rever o orçamento de agosto. Separar o que pode esperar setembro. Dica: Este Mês. Abrir ações do item"><div class="body"><strong>Rever o orçamento de agosto</strong><p>Separar o que pode esperar setembro.</p></div><span class="meta">26 jul.</span></button>
+        </div>
+        <button class="fab" aria-label="Abrir captura rápida">✎</button>
+        <nav class="bottom-nav" aria-label="Atalhos de navegação">
+          <button>Hoje</button>
+          <button class="on">Brain Dump <span class="navbadge sm" aria-hidden="true">7</span></button>
+          <button>Semana</button>
+          <button>Menu</button>
+        </nav>
+      </div>
+    </article>
+
+    <article class="phonecase"><h3>C2 · Capture Sheet</h3>
+      <div class="phone relative">
+        <div class="statusbar"><span>09:42</span><span>● ●</span></div>
+        <header class="mobile-head"><h4>Brain Dump</h4></header>
+        <div class="mobile-list" style="opacity:.35;padding-top:8px">
+          <div class="bd-taprow"><div class="body"><strong>Renovar seguro do carro</strong><p>Comparar cotações antes de decidir.</p></div><span class="meta">23 jul.</span></div>
+          <div class="bd-taprow"><div class="body"><strong>Responder o e-mail da contadora</strong></div><span class="meta">24 jul.</span></div>
+        </div>
+        <div class="scrim"></div>
+        <aside class="dest-sheet">
+          <span class="handle"></span>
+          <div class="sheet-head"><h4>Captura rápida</h4><button class="close" aria-label="Fechar">×</button></div>
+          <div class="field"><label for="c2-t">Título</label><input class="input focused" id="c2-t" placeholder="O que você precisa lembrar?"></div>
+          <div class="field"><label for="c2-d">Descrição</label><textarea class="textarea" id="c2-d" placeholder="Detalhes opcionais…"></textarea></div>
+          <div class="field"><label for="c2-dest">Destino</label>
+            <select class="input" id="c2-dest"><option selected>Brain Dump</option><option>Hoje</option><option>Esta Semana</option><option>Este Mês</option><option>Futuro</option></select>
+            <span class="hint">Fica no Brain Dump até ser processado.</span>
+          </div>
+          <button class="confirm">Salvar no Brain Dump</button>
+        </aside>
+      </div>
+    </article>
+
+    <article class="phonecase"><h3>C3 · Seletor de destino</h3>
+      <div class="phone relative">
+        <div class="statusbar"><span>09:42</span><span>● ●</span></div>
+        <header class="mobile-head"><h4>Brain Dump</h4></header>
+        <div class="mobile-list" style="opacity:.35;padding-top:8px">
+          <div class="bd-taprow"><div class="body"><strong>Renovar seguro do carro</strong></div><span class="meta">23 jul.</span></div>
+        </div>
+        <div class="scrim"></div>
+        <aside class="dest-sheet">
+          <span class="handle"></span>
+          <div class="sheet-head"><h4>Para onde mover este item?</h4><button class="close" aria-label="Fechar" style="min-width:44px;min-height:44px">×</button></div>
+          <p class="hint" style="margin:-2px 0 10px">Renovar seguro do carro</p>
+          <div class="logsel compact" role="radiogroup" aria-label="Selecionar log de destino" style="padding:0 0 10px">
+            <button role="radio" aria-checked="false"><b aria-hidden="true">◉</b>Hoje</button>
+            <button role="radio" aria-checked="true" class="on"><b aria-hidden="true">▤</b>Esta Semana</button>
+            <button role="radio" aria-checked="false"><b aria-hidden="true">▦</b>Este Mês</button>
+            <button role="radio" aria-checked="false"><b aria-hidden="true">⇱</b>Futuro</button>
+          </div>
+          <div class="weekdensity compact" role="radiogroup" aria-label="Dias de 27 de julho a 2 de agosto" style="padding:0 0 10px">
+            <button>Seg<b>27</b><span class="den">3</span></button>
+            <button>Ter<b>28</b><span class="den">1</span></button>
+            <button class="today">Qua<b>29</b><span class="den">2</span></button>
+            <button class="sel" aria-checked="true">Qui<b>30</b><span class="den">0</span></button>
+            <button>Sex<b>31</b><span class="den">4</span></button>
+            <button>Sáb<b>1</b></button>
+            <button>Dom<b>2</b></button>
+          </div>
+          <div class="quick" style="display:flex;gap:6px;margin-bottom:9px"><button style="flex:1;min-height:44px;border:1px solid var(--line2);background:#fff;border-radius:6px;font-size:12px;font-weight:700">Hoje</button><button style="flex:1;min-height:44px;border:1px solid var(--line2);background:#fff;border-radius:6px;font-size:12px;font-weight:700">Sem dia definido</button></div>
+          <button class="confirm">Mover para quinta, 30 de julho</button>
+        </aside>
+      </div>
+    </article>
+
+    <article class="phonecase"><h3>C4 · Item do Brain Dump</h3>
+      <div class="phone relative">
+        <div class="statusbar"><span>09:42</span><span>● ●</span></div>
+        <header class="mobile-head"><h4>Brain Dump</h4></header>
+        <div class="mobile-list" style="opacity:.35;padding-top:8px">
+          <div class="bd-taprow"><div class="body"><strong>Renovar seguro do carro</strong></div><span class="meta">23 jul.</span></div>
+        </div>
+        <div class="scrim"></div>
+        <aside class="dest-sheet">
+          <span class="handle"></span>
+          <div class="sheet-head"><h4>Item do Brain Dump</h4><button class="close" aria-label="Fechar" style="min-width:44px;min-height:44px">×</button></div>
+          <p class="hint" style="margin:-2px 0 10px">Capturado em 23 jul. · Dica: Esta Semana</p>
+          <div class="field"><label for="c4-t">Título</label><input class="input" id="c4-t" value="Renovar seguro do carro"></div>
+          <div class="field"><label for="c4-d">Descrição</label><textarea class="textarea" id="c4-d">Comparar cotações antes de decidir.</textarea></div>
+          <div class="field"><label for="c4-dest">Destino</label>
+            <select class="input" id="c4-dest"><option>Brain Dump</option><option>Hoje</option><option selected>Esta Semana</option><option>Este Mês</option><option>Futuro</option></select>
+          </div>
+          <div class="itemsheet-acts">
+            <button class="confirm">Mover para um log</button>
+            <button class="btn-discard-full">Descartar item</button>
+          </div>
+        </aside>
+      </div>
+    </article>
+
+  </div>
+  <p style="font-size:11px;color:var(--muted);margin-top:8px">No compact, a linha inteira é o alvo único de 48px (<code>{task-row.min-height-touch}</code>) e as ações migram para o sheet de item, que ganhou paridade de edição com a captura (Título, Descrição, Destino) por decisão da nota Q1 — endpoint de atualização é obrigação downstream de arquitetura.</p>
+</section>
+
+<!-- ============ D · ESTADOS ============ -->
+<section class="spec">
+  <div class="caption"><h2>D · Estados</h2><span>vazio saudável · rede · leitura · escrita</span></div>
+  <div class="state-grid">
+    <article class="statecard">
+      <h3>Vazio</h3>
+      <p>Panel Capturar permanece visível; vazio não incentiva conteúdo.</p>
+      <div class="mini-panel">
+        <div class="field"><label style="font-size:9px">Título</label><input class="input" style="min-height:34px" placeholder="O que você precisa lembrar?"></div>
+      </div>
+      <div class="mini-empty">Brain Dump vazio.</div>
+    </article>
+    <article class="statecard">
+      <h3>Offline</h3>
+      <p>Leitura preservada; captura e ações de item indisponíveis com motivo.</p>
+      <div class="banner offline">Sem conexão. Esta ação exige rede.</div>
+      <button disabled style="opacity:.5">Capturar (indisponível)</button>
+    </article>
+    <article class="statecard">
+      <h3>Erro de leitura</h3>
+      <p>Mensagem local junto à lista; captura permanece operante.</p>
+      <div class="banner error">Não foi possível carregar as pendências.</div>
+      <button>Tentar novamente</button>
+    </article>
+    <article class="statecard">
+      <h3>Salvando</h3>
+      <p role="status" aria-live="polite">Região recebe <code>aria-busy="true"</code>; envio duplicado bloqueado.</p>
+      <div class="banner">Salvando…</div>
+      <button disabled style="opacity:.5">Capturar (salvando…)</button>
+    </article>
+  </div>
+</section>
+
+<section class="notes">
+  <div class="note"><b>Badge Brain Dump</b>0/loading/erro fica oculto; 1–9 mostra o valor literal; acima disso, <code>9+</code>. O nome acessível sempre conserva a contagem exata, mesmo em <code>9+</code>. Falha do contador não bloqueia navegação nem captura.</div>
+  <div class="note"><b>Foco</b>Ao abrir qualquer camada (Capture Sheet, seletor de destino, sheet de item), o foco vai ao Título/heading inicial e fica contido. Ao fechar sem navegar, retorna ao acionador — mesmo quando a rota já é o próprio Brain Dump.</div>
+  <div class="note"><b>Sem toast</b>Sucesso é a linha entrando ou saindo, a contagem e o badge mudando juntos, anunciados em <code>aria-live="polite"</code>. Nenhum toast, nenhuma celebração, em nenhuma mutação.</div>
+  <div class="note"><b>Edição do item (Q1)</b>Decisão da promoção 15.0: o sheet de item ganhou os três campos editáveis (Título, Descrição, Destino) sobre um endpoint de atualização novo, superando o handoff original que previa só leitura.</div>
+</section>
+
+</main></body>
+</html>

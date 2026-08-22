@@ -6,10 +6,13 @@ import pytest
 
 from bujo.models import RecurringTaskTemplate, Task
 from bujo.serializers import (
+    DensityResponseSerializer,
     LogSerializer,
     RecurringTaskTemplateCreateSerializer,
     RecurringTaskTemplateUpdateSerializer,
+    RitualDecisionCreateSerializer,
     TaskSerializer,
+    TaskSourceSerializer,
 )
 from bujo.services.migration import migrate_task
 from bujo.services.recurring import place_template
@@ -49,10 +52,26 @@ def test_task_serializer_expoe_exatamente_os_campos_esperados():
         "category",
         "scheduled_date",
         "subtasks",
+        "waiting_on",
         "migration_count",
         "migrated_to_task",
         "source_template",
+        "migration_target",
     }
+
+
+@pytest.mark.django_db
+def test_task_serializer_waiting_on_e_false_para_tarefa_comum(user):
+    """Story 12.2 (AC2): `waiting_on` sai no read e nasce `False` por default.
+    Chaves de `.data` são snake_case — a camelização (`waitingOn`) só ocorre no
+    render do corpo HTTP, que `.data` não passa."""
+    with tenant_context(user):
+        task = TaskFactory(user=user)
+
+        data = TaskSerializer(task).data
+
+        assert "waiting_on" in data
+        assert data["waiting_on"] is False
 
 
 @pytest.mark.django_db
@@ -168,6 +187,89 @@ def test_task_serializer_migrated_to_task_e_o_id_da_tarefa_de_destino_apos_migra
         assert TaskSerializer(new_task).data["migration_count"] == 1
 
 
+# --- Story 14.10 (Arquivo): migration_target -----------------------------------
+
+
+@pytest.mark.django_db
+def test_task_serializer_migration_target_e_null_sem_sucessor(user):
+    with tenant_context(user):
+        task = TaskFactory(user=user)
+
+        data = TaskSerializer(task).data
+
+        assert data["migration_target"] is None
+
+
+@pytest.mark.django_db
+def test_task_serializer_migration_target_aponta_para_daily_apos_migrar_para_hoje(user):
+    with tenant_context(user):
+        task = TaskFactory(user=user, status=Task.Status.PENDING)
+
+        migrated_source = migrate_task(user=user, task_id=task.id, destination="today")
+        data = TaskSerializer(migrated_source).data
+
+        assert data["migration_target"] == {
+            "type": "daily",
+            "week_start": None,
+            "month_first": None,
+            "log_date": migrated_source.migrated_to_task.log.log_date.isoformat(),
+        }
+
+
+@pytest.mark.django_db
+def test_task_serializer_migration_target_aponta_para_weekly_apos_migrar_para_semana(user):
+    with tenant_context(user):
+        task = TaskFactory(user=user, status=Task.Status.PENDING)
+
+        migrated_source = migrate_task(user=user, task_id=task.id, destination="week")
+        data = TaskSerializer(migrated_source).data
+
+        successor = migrated_source.migrated_to_task
+        assert data["migration_target"] == {
+            "type": "weekly",
+            "week_start": successor.weekly_log.week_start.isoformat(),
+            "month_first": None,
+            "log_date": None,
+        }
+
+
+@pytest.mark.django_db
+def test_task_serializer_migration_target_aponta_para_monthly_apos_adiar(user):
+    with tenant_context(user):
+        MonthlyLogFactory(user=user, month_first=date(2026, 8, 1))
+        task = TaskFactory(user=user, status=Task.Status.PENDING)
+
+        migrated_source = migrate_task(
+            user=user, task_id=task.id, destination="future", month_first=date(2026, 8, 1)
+        )
+        data = TaskSerializer(migrated_source).data
+
+        assert data["migration_target"] == {
+            "type": "monthly",
+            "week_start": None,
+            "month_first": "2026-08-01",
+            "log_date": None,
+        }
+
+
+@pytest.mark.django_db
+def test_task_serializer_migration_target_e_null_quando_sucessor_sem_container_valido(user):
+    """Ramo defensivo de `get_migration_target`: `task_exactly_one_log`
+    (CheckConstraint de banco) proíbe UM sucessor persistido sem nenhum
+    container, mas o serializer precisa sobreviver, sem lançar exceção, a uma
+    inconsistência de dados real (ex.: migração incompleta) — daí o objeto
+    (não persistido) montado à mão em vez de `TaskFactory`, que sempre atribui
+    exatamente um container."""
+    with tenant_context(user):
+        task = TaskFactory(user=user, status=Task.Status.MIGRATED)
+        sucessor_invalido = Task(user_id=user.id, title="Sucessor sem container", order_index=1.0)
+        task.migrated_to_task = sucessor_invalido
+
+        data = TaskSerializer(task).data
+
+        assert data["migration_target"] is None
+
+
 @pytest.mark.django_db
 def test_log_serializer_tasks_nao_inclui_subtarefas_na_raiz(user):
     """Gap fechado nesta story: subtarefas compartilham `log_id` do pai
@@ -230,3 +332,76 @@ def test_update_serializer_todos_os_campos_sao_opcionais():
 
     assert serializer.is_valid(), serializer.errors
     assert serializer.validated_data == {}
+
+
+# --- Story 14.2: envelope de fonte e densidade ---------------------------------
+def test_ritual_decision_create_serializer_exige_exatamente_um_alvo_e_um_item():
+    """Forma inválida é 400 no serializer; a MATRIZ de combinação é 409 no serviço.
+    A distinção é deliberada (§6.6: regra de produto nunca em serializer)."""
+    base = {"decision": "keep", "taskId": "b1f0c2d4-0000-4000-8000-000000000001"}
+    formas = [
+        base,  # nenhum alvo
+        {**base, "weekStart": "2026-03-02", "monthFirst": "2026-03-01"},  # dois alvos
+        {"decision": "keep", "weekStart": "2026-03-02"},  # nenhum item
+        {
+            **base,
+            "weekStart": "2026-03-02",
+            "recurringTemplateId": "b1f0c2d4-0000-4000-8000-000000000002",
+        },  # dois itens
+        {**base, "weekStart": "2026-03-03"},  # não é segunda
+        {**base, "monthFirst": "2026-03-15"},  # não é dia 1
+    ]
+    # O parser camelCase roda ANTES do serializer no ciclo real; aqui alimentamos
+    # snake_case direto, que é o que o serializer recebe de fato.
+    def snake(corpo):
+        mapa = {
+            "weekStart": "week_start",
+            "monthFirst": "month_first",
+            "taskId": "task_id",
+            "recurringTemplateId": "recurring_template_id",
+        }
+        return {mapa.get(k, k): v for k, v in corpo.items()}
+
+    for corpo in formas:
+        assert not RitualDecisionCreateSerializer(data=snake(corpo)).is_valid(), corpo
+
+    valido = RitualDecisionCreateSerializer(data=snake({**base, "weekStart": "2026-03-02"}))
+    assert valido.is_valid(), valido.errors
+
+
+def test_envelope_de_fonte_serializa_sem_label_e_com_os_seis_campos():
+    """AC5 + decisão registrada nas Dev Notes: **sem campo `label`** — a cópia pt-BR
+    das fontes é do UI (DESIGN/EXPERIENCE são a autoridade de wording)."""
+    dados = TaskSourceSerializer(
+        {
+            "source_id": "monthly-in-week",
+            "blocking": False,
+            "counts_toward_progress": True,
+            "eligible_count": 0,
+            "pending_decision_count": 0,
+            "reviewed": True,
+            "items": [],
+        }
+    ).data
+    assert set(dados) == {
+        "source_id",
+        "blocking",
+        "counts_toward_progress",
+        "eligible_count",
+        "pending_decision_count",
+        "reviewed",
+        "items",
+    }
+    assert "label" not in dados
+
+
+def test_densidade_serializa_as_seis_chaves_de_status_sem_underscore():
+    """AC6: as 6 chaves de `TaskStatus` não têm underscore, então a camelização de
+    saída não as altera — e todas são obrigatórias no serializer, então uma chave
+    faltando levantaria em vez de sair como `undefined` no cliente."""
+    celula = {"total": 0, "by_status": {status: 0 for status in Task.Status.values}}
+    dados = DensityResponseSerializer(
+        {"days": [{"date": date(2026, 3, 2), **celula}], "undated": celula, "total": 0}
+    ).data
+    assert set(dados["days"][0]["by_status"]) == set(Task.Status.values)
+    assert not any("_" in chave for chave in dados["days"][0]["by_status"])

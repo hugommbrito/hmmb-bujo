@@ -52,6 +52,7 @@ INSTALLED_APPS = [
     "health",
     "medications",
     "gratitude",
+    "automation",
 ]
 
 MIDDLEWARE = [
@@ -158,6 +159,16 @@ REST_FRAMEWORK = {
     ],
     # Schema (drf-spectacular)
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    # Rate limiting — SÓ as taxas nomeadas; NÃO setar DEFAULT_THROTTLE_CLASSES
+    # global (throttlaria toda a API). O ScopedRateThrottle é aplicado per-view:
+    #   - "automation-capture" → automation.views.CaptureView (POST /api/capture)
+    #   - "automation-summary" → automation.views.SummaryView (GET /api/summary/today)
+    # Cada taxa é configurável por ambiente (AUTOMATION_CAPTURE_THROTTLE /
+    # AUTOMATION_SUMMARY_THROTTLE), default 60/min.
+    "DEFAULT_THROTTLE_RATES": {
+        "automation-capture": env("AUTOMATION_CAPTURE_THROTTLE", default="60/min"),
+        "automation-summary": env("AUTOMATION_SUMMARY_THROTTLE", default="60/min"),
+    },
 }
 
 # --- drf-spectacular -----------------------------------------------------------
@@ -167,6 +178,27 @@ SPECTACULAR_SETTINGS = {
     "VERSION": "0.1.0",
     "SERVE_INCLUDE_SCHEMA": False,
     "COMPONENT_SPLIT_REQUEST": False,
+    # DW-34: sem esta chave, `drf_spectacular/views.py` cai em
+    # `api_settings.DEFAULT_AUTHENTICATION_CLASSES` — ou seja, as views de schema
+    # herdam o `TenantAwareJWTAuthentication` global e devolvem 401 diante de um
+    # `Authorization` inválido, mesmo devolvendo 200 sem header nenhum. As rotas
+    # `/api/schema/` e `/api/schema/swagger-ui/` estão registradas SEM gate de
+    # DEBUG (config/urls.py), então isso valia em produção: uma aba antiga do
+    # Swagger, um proxy que reencaminha header velho ou um token expirado viravam
+    # "unauthorized" numa superfície que é pública por design.
+    # `[]` (e não `None`, nem a chave ausente) é o que zera: o teste na lib é
+    # `if spectacular_settings.SERVE_AUTHENTICATION is not None`, não truthiness.
+    # `AUTHENTICATION_CLASSES` é um global do módulo, resolvido no IMPORT dele e
+    # usado por TODA view `serve` do drf-spectacular: `SpectacularAPIView`,
+    # `SpectacularSwaggerView` e `SpectacularRedocView` o leem diretamente, e
+    # `SpectacularYAMLAPIView`/`SpectacularJSONAPIView`/`SpectacularSwaggerSplitView`
+    # o herdam. Ou seja, esta chave cobre a superfície de schema inteira — mais
+    # larga que as 2 rotas registradas hoje, e já cobrindo a redoc/yaml/json que
+    # alguém venha a registrar depois. Por ser congelado no import, o conserto tem
+    # de morar aqui (`override_settings` não alcançaria). Os defaults globais de DRF
+    # (`DEFAULT_AUTHENTICATION_CLASSES`/`DEFAULT_PERMISSION_CLASSES`) ficam
+    # intocados: o escopo é só a superfície de schema.
+    "SERVE_AUTHENTICATION": [],
     # Sem este hook, o schema (e portanto types.gen.ts) documenta os nomes de
     # campo em snake_case (como declarados no serializer), mas o corpo real
     # trafega em camelCase via CamelCase{JSON}Renderer/Parser (§6.3) — um

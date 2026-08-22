@@ -1,50 +1,49 @@
 installation:
-  version: 6.8.0
-  installDate: 2026-06-15T15:46:50.559Z
-  lastUpdated: 2026-06-15T15:46:50.559Z
+  version: 6.10.1-next.49
+  installDate: 2026-08-04T09:59:02.498Z
+  lastUpdated: 2026-08-04T09:59:02.498Z
 modules:
   - name: core
-    version: 6.8.0
-    installDate: 2026-06-15T15:46:50.448Z
-    lastUpdated: 2026-06-15T15:46:50.557Z
+    version: 6.10.1-next.49
+    installDate: 2026-08-04T09:59:02.179Z
+    lastUpdated: 2026-08-04T09:59:02.491Z
     source: built-in
     npmPackage: null
     repoUrl: null
   - name: bmm
-    version: 6.8.0
-    installDate: 2026-06-15T15:46:50.434Z
-    lastUpdated: 2026-06-15T15:46:50.557Z
+    version: 6.10.1-next.49
+    installDate: 2026-08-04T09:59:02.306Z
+    lastUpdated: 2026-08-04T09:59:02.492Z
     source: built-in
     npmPackage: null
     repoUrl: null
   - name: bmb
-    version: v2.0.0
-    installDate: 2026-06-15T15:46:50.493Z
-    lastUpdated: 2026-06-15T15:46:50.558Z
+    version: main
+    installDate: 2026-08-04T09:59:02.387Z
+    lastUpdated: 2026-08-04T09:59:02.493Z
     source: external
     npmPackage: bmad-builder
     repoUrl: https://github.com/bmad-code-org/bmad-builder
-    channel: stable
-    sha: 41569013c018c100aeabdeb802855e3459e8b9d6
-  - name: automator
-    version: main
-    installDate: 2026-06-15T15:46:50.519Z
-    lastUpdated: 2026-06-15T15:46:50.558Z
-    source: external
-    npmPackage: bmad-story-automator
-    repoUrl: https://github.com/bmad-code-org/bmad-automator
     channel: next
-    sha: f332173a692ffbabb24734c31dedadfcf78b9ed1
+    sha: e6935f2776c34ffd9b18f4ef1e334584ef10a50f
   - name: cis
-    version: v0.2.1
-    installDate: 2026-06-15T15:46:50.528Z
-    lastUpdated: 2026-06-15T15:46:50.559Z
+    version: main
+    installDate: 2026-08-04T09:59:02.417Z
+    lastUpdated: 2026-08-04T09:59:02.495Z
     source: external
     npmPackage: bmad-creative-intelligence-suite
     repoUrl: https://github.com/bmad-code-org/bmad-module-creative-intelligence-suite
-    channel: stable
+    channel: next
     sha: 07a8dd03d196a762f21c241d985293fe5b0f90e7
+  - name: bmad-loop
+    version: main
+    installDate: 2026-08-04T09:59:02.431Z
+    lastUpdated: 2026-08-04T09:59:02.498Z
+    source: external
+    npmPackage: null
+    repoUrl: https://github.com/bmad-code-org/bmad-loop
+    channel: next
+    sha: dfeead201e45dbe52f0a41d33a86742450cef5ff
 ides:
   - claude-code
   - codex
-  - github-copilot

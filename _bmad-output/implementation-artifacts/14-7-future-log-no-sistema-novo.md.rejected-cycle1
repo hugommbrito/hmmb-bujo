@@ -1,0 +1,328 @@
+# Story 14.7: Future Log no sistema novo (M08)
+
+Status: ready-for-dev
+
+<!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
+
+## Story
+
+Como Hugo,
+Quero o Futuro como trilho de 8 meses + coluna de foco, com captura e datear/mover no lugar,
+Para que nada lançado à frente se perca (UX-DR23; mockup `key-future-log.html`).
+
+## Contexto de herança (leia antes de tudo)
+
+Esta é a **terceira superfície** do Épico 14 no sistema novo, depois da 14.5 (Weekly Board, commit `ecffe40`) e da 14.6 (Monthly Board, commit `0fc9ce6`). A fundação está pronta e é para ser **REUSADA, nunca recriada**: `TaskRowBase`, `TaskDetailCard`, `taskStatusIcons.tsx`, `MonthlyDestinationPicker`, `WeeklyTaskPanel`, os tokens `taskRow`/`panel`/`chip`/`monthlyBoard`, `shared/date/index.ts` e `features/bujo/monthNames.ts`.
+
+Três diferenças estruturais em relação às duas anteriores, que mudam o formato do trabalho:
+
+1. **Não existe ritual.** O Future Log não é um ciclo operacional — é leitura + captura sobre `monthly_log` futuros. Não há `planning`/`active`/`finalized`, não há rail de fontes, não há decisões-snapshot, não há densidade. Abrir o Futuro ou consultar qualquer mês dele **não cria nem inicia** um Monthly em regime operacional (M08; AD-28 item 1: `status IS NULL` = fora do regime).
+2. **Concluir e cancelar não existem nesta superfície.** É regra de produto explícita, confirmada por Hugo na aprovação do M08. Isso **colide** com o default de `TaskRowBase`/`TaskDetailCard`, que hoje oferecem os dois — ver AC5, que é o ponto mais fácil de errar desta story.
+3. **A 14.6 não deixou lacuna de backend simétrica.** O que falta é diferente: o endpoint `GET /api/bujo/future-log/` atual **só devolve meses que têm itens** e não conhece horizonte nem meses distantes. A AC2 fecha essa lacuna com um endpoint aditivo de leitura pura.
+
+Esta story **não** toca `MonthlyPage.tsx`, `WeeklyPage.tsx`, `DailyPage.tsx`, `TaskRow.tsx` nem os banners/aliases legados (premissa blindada do Daily até o Épico 17).
+
+## Acceptance Criteria
+
+### AC1 — Superfície híbrida: trilho de 8 meses + coluna de foco em `/planner/future`
+
+**Dado que** o spine M08 e o mockup `mockups/key-future-log.html` (frame A),
+**Quando** a superfície nova é implementada em `/planner/future`,
+**Então** o desktop mostra composição de duas colunas — **trilho** (`--ds-future-board-trail-width`) com o **horizonte rolante fixo de 8 meses**, todos sempre visíveis **inclusive os vazios** (contagem `0` renderizada, nunca linha omitida), cada linha com nome do mês por extenso + ano + contagem de itens; e **coluna de foco** com o mês selecionado em Task Rows **integrais** (`TaskRowBase` variant `full`, ver AC5),
+**E** o mês em foco começa sempre no **primeiro mês do horizonte**; selecionar outra linha do trilho troca o foco sem recarregar a superfície inteira (o trilho não pisca),
+**E** o cabeçalho da coluna de foco nomeia o mês ("Agosto de 2026") e traz a contagem derivada da própria lista carregada — "N itens · N com dia · N sem dia" — nunca uma contagem de outra origem que possa divergir da lista renderizada,
+**E** o pé do trilho traz **Ir para mês…**, que abre um seletor listando **somente os meses além do horizonte que têm itens**, agrupados por ano e com a contagem de cada um; escolher um leva o foco àquele mês **sem que o trilho cresça**; sem nenhum mês distante com item, o seletor mostra o estado vazio orientando à captura por data (texto do mockup: "Nada capturado além de {último mês do horizonte}." + "Use o campo de captura com uma data para registrar mais adiante."),
+**E** quando o foco está num mês **distante** (fora do horizonte), nenhuma linha do trilho fica selecionada/`aria-current` e o cabeçalho de foco continua nomeando o mês corretamente — voltar é selecionar qualquer linha do trilho,
+**E** em **compact** o trilho vira uma **barra de meses rolável horizontalmente** com contagem, e **Ir para mês…** e o seletor de destino abrem em **sheet**; a coluna de foco ocupa a largura total; **sem scroll horizontal** no conteúdo,
+**E** `shellRouting.ts` passa `planner/future` para `surfaceMigrated: true` (fazendo o `LegacySeamNotice` desaparecer só nessa rota) e o landmark permanece `<main aria-label="Futuro">` — três specs E2E navegam por esse nome exato (ver AC9).
+
+### AC2 — Backend aditivo: horizonte + meses distantes, leitura 100% pura
+
+**Dado que** `FutureLogView` (`backend/bujo/views.py:518`) devolve só `monthly_log` com `root_task_count > 0` (`.filter(root_task_count__gt=0)`) e **não conhece** horizonte fixo, meses vazios nem separação horizonte/distante — sem esses dados a AC1 é inimplementável,
+**Quando** esta story fecha a lacuna,
+**Então** `GET /api/bujo/future-log/horizon/` (rota nova, view nova, **sem alterar `GET /api/bujo/future-log/`**) devolve **200** com:
+```json
+{ "anchorMonthFirst": "2026-07-01",
+  "horizon": [ { "monthFirst": "2026-08-01", "taskCount": 3 },
+               { "monthFirst": "2026-09-01", "taskCount": 0 } ],
+  "distant": [ { "monthFirst": "2027-06-01", "taskCount": 2 },
+               { "monthFirst": "2028-01-01", "taskCount": 4 } ] }
+```
+**E** `horizon` tem **exatamente 8 entradas**, consecutivas e ascendentes, começando em `anchorMonthFirst + 1 mês` — sempre presentes, inclusive as de `taskCount: 0` (o horizonte é scaffolding, não resultado de query),
+**E** o **âncora** é `max(monthly_log ACTIVE .month_first, today_for(user).replace(day=1))`, caindo em `today_for(user).replace(day=1)` quando não existe nenhum `active` — a regra é `max(...)`, **não** simplesmente o `active`, porque `next_monthly_target` não tem piso e o `active` pode ficar ESTRITAMENTE ANTES do mês corrente durante regularização de meses pulados (prova existente: `test_ciclo_monthly_dois_meses_pulados_exigem_materializacao_sequencial`); o piso garante a invariante da AC4 de que **todo mês desta superfície é estritamente maior que o mês corrente**, que é exatamente a condição que `TaskMigrateView` exige para `destination: 'future'` (`views.py:748-755`) — sem o piso, esta story herdaria o mesmo bug CRÍTICO que o code-review da 14.6 encontrou em `destinationForTarget()`,
+**E** `distant` lista **todo** `monthly_log` com `month_first > último mês do horizonte` **e** `taskCount > 0`, em ordem ascendente (o cliente agrupa por ano — ver AC1); nada pode escapar entre o mês corrente e o início do horizonte, porque o âncora nunca é menor que o mês corrente,
+**E** `taskCount` conta **tarefas raiz** (`parent_task__isnull=True`), de **qualquer status** — mesma regra que `FutureLogView` já usa hoje (`Count("tasks", filter=Q(tasks__parent_task__isnull=True))`), para que a contagem do trilho não divirja do número de linhas da coluna de foco depois de um datear (que deixa origem terminal **e** sucessor no mesmo mês, ver AC4),
+**E** a leitura é **pura**: zero `get_or_create`, zero escrita, zero materialização — provado por teste com `CaptureQueriesContext` (nenhum `INSERT`) **e** por `MonthlyLog.objects.count()` inalterado ao consultar um horizonte inteiro de meses inexistentes, no mesmo molde `_sem_escrita` que a 14.3/14.4 já usam,
+**E** o serviço vive em `backend/bujo/services/future_log.py` (módulo novo, no molde de `services/density.py` — projeção de leitura, não materialização), com `future_log_horizon(*, user) -> dict`, reusando `add_months` de `services/cycles.py`; **nenhuma regra nova de ciclo, nenhum predicado novo**,
+**E** `schema.yaml`/`frontend/src/api/types.gen.ts` são regenerados e commitados juntos, com **zero deleção** de componente pré-existente; `makemigrations --check --dry-run` não acusa nada (esta story **não** altera schema).
+
+### AC3 — Captura no header, data completa vs. parcial e ordenação dia → sem-dia
+
+**Dado que** a captura no molde do `FutureLogItemForm` e a regra FR-1.2 de data parcial,
+**Quando** a captura do sistema novo é implementada no header da superfície,
+**Então** ela aceita **título + mês (obrigatório) + dia (opcional)** e escreve por `POST /api/bujo/logs/monthly/` (`useCreateMonthlyTaskMutation`, já existente — **nenhum endpoint de escrita novo nesta story**), com os mesmos rótulos já estabelecidos (`Título`, `Mês`, `Dia (opcional)`, botão `Adicionar`),
+**E** o campo **Mês** nasce preenchido com o **mês em foco** (delta deliberado vs. o `FutureLogItemForm` legado, que nasce vazio): captura no mês visível vira um campo só, e capturar num mês distante vazio continua possível digitando a data — que é exatamente como o M08 manda um mês distante passar a existir no seletor "Ir para mês…",
+**E** a captura **rejeita, no cliente e antes do POST, mês ≤ `anchorMonthFirst`** com mensagem inline explicando o motivo — `MonthlyTaskCreateSerializer` aceita qualquer `month_first` (só valida `day == 1` e `scheduled_date` dentro do mês), então sem essa validação o item seria criado num mês do passado/corrente e **desapareceria da superfície sem erro nenhum**; a mensagem nomeia a saída ("Este mês não pertence ao Futuro. Use o Mês ou a Semana para datas de agora."),
+**E** item **com dia** exibe o prefixo `(14)` e item **só com mês** exibe `— ago` (abreviação de 3 letras em minúsculas, `--ds-*` + números tabulares), com o rótulo acessível diferenciando os dois casos sem depender da forma,
+**E** dentro do mês em foco os itens **datados vêm ordenados por dia e os sem dia depois deles** — ordenação no cliente, espelhando `_by_day_then_undated` (`services/rituals.py:254`, cujo docstring já cita "(M08)"): `scheduled_date` asc com nulos por último, desempate por `order_index`; a ordenação **não** pode ser deixada ao default do backend, que é `Meta.ordering = ["order_index"]` (`models.py`) e não conhece dia,
+**E** existe teste unitário cobrindo mês com só datados, só sem-dia, misto, e empate de `order_index` na mesma data.
+
+### AC4 — Datear e mover no lugar, com linhagem preservada — e a divergência `migrated` × `postponed`
+
+**Dado que** o M08 permite atribuir dia ou mover um item **na própria tela**, fora dos rituais, e que essa é a única mutação de posição desta superfície,
+**Quando** Hugo aciona **Definir dia** (item sem dia) ou **Mover** (qualquer item),
+**Então** abre o **seletor de destino do ritual** — `MonthlyDestinationPicker` (14.6), estendido por props opcionais aditivas, **nunca forkado/copiado** (ver AC5) — com os dias reais do mês em foco (28–31, incl. bissexto), **Manter sem dia definido** como opção explícita e a aba **Outro mês**,
+**E** a aba **Outro mês** lista os 8 meses do horizonte + os meses distantes com item (mesmos dados do trilho e do "Ir para mês…"); escolher um mês **retarga a grade de dias** para ele, permitindo confirmar com ou sem dia,
+**E** a confirmação é **nomeada** conforme o ato: "Datar em 14 de agosto", "Mover para setembro de 2026", "Manter sem dia definido" — nunca um "Confirmar" genérico,
+**E** a escrita usa `POST /api/bujo/tasks/{id}/migrate/` com `destination: 'future'` + `monthFirst` do destino + `scheduledDate` opcional (`useMigrateTaskMutation`, já existente) — a invariante da AC2 (todo mês desta superfície > mês corrente) garante que o serializer **nunca** responde o 400 `"Use 'month' para o mês corrente"`; um teste prova a invariante em vez de confiar nela,
+**E** **atenção ao vocabulário**: o spine escreve "a origem fica terminal `migrated`", mas o contrato real e **intocado** do backend produz `POSTPONED` para `destination in ('month','future')` (`services/migration.py:162-165`); "terminal `migrated`" no texto do M08 significa **terminal com linhagem**, não o literal `status == 'migrated'`. A implementação usa o que o backend devolve — `postponed`, rótulo "Adiada", ícone `ArrowLineRight` (`taskStatusIcons.tsx`) — e **não** inventa transição nem renomeia status. A seta navegável ao sucessor e o destaque temporário de 2000ms do `TaskRowBase` já funcionam para `postponed` (`TERMINAL_OPACITY_STATUSES` inclui os dois),
+**E** origem e sucessor convivem no mesmo mês depois de um "Definir dia" (é o que o frame C do mockup mostra), a origem readonly com a seta e o sucessor entrando com o destaque temporário — nenhuma linha some da lista,
+**E** falha de escrita **preserva o seletor aberto com o destino armado**, mostra o motivo (`role="alert"`, anunciado uma única vez) e oferece nova tentativa; sucesso **não** mostra toast — atualiza lista, contagens do trilho e cabeçalho de foco.
+
+### AC5 — Reuso obrigatório dos canônicos + as **duas** props aditivas que "concluir/cancelar fora" exige
+
+**Dado que** `TaskRowBase`/`TaskDetailCard` nasceram na 14.5 explicitamente "desenhados para reuso por este épico em diante" e que o próprio cabeçalho de `TaskRowBase.tsx` prevê que superfícies futuras variem **"o conjunto de ações permitidas por superfície"** sem alterar a anatomia,
+**Quando** o Future Log consome os dois,
+**Então** a coluna de foco usa `TaskRowBase` variant **`full`** e o detalhe é o `TaskDetailCard` — **sem fork, sem cópia, sem componente paralelo de linha**,
+**E** como **concluir e cancelar não existem nesta superfície** (regra de produto do M08, confirmada na aprovação), cada componente ganha **uma única prop booleana opcional aditiva** cujo default reproduz **byte-a-byte** o comportamento atual:
+ - `TaskRowBase`: quando desligada, o ícone de status renderiza pelo ramo `role="img"` que **já existe** (`TaskRowBase.tsx:263-277`) em vez do ramo botão — implementação = uma condição a mais em `isStatusCycleControl`, zero mudança de layout, `trailingSlot` **preservado** (é por isso que `variant='readonly'` **não serve**: ele suprime a coluna 5 em `TaskRowBase.tsx:392`, e é justamente nela que vivem "definir dia"/"Mover" desta superfície),
+ - `TaskDetailCard`: quando desligada, o rodapé omite **`Cancelar tarefa`** e mantém `Salvar`/`Mover tarefa`/`Excluir tarefa` — `readonly` também **não serve** aqui, porque zera o rodapé inteiro e proíbe editar título/categoria, que o Future Log permite,
+**E** a **não-regressão é provada mecanicamente**: `TaskRowBase.test.tsx` e `TaskDetailCard.test.tsx` (14.5) passam **sem uma única alteração**, e cada prop nova ganha um teste próprio (ligada e desligada),
+**E** `MonthlyDestinationPicker` é estendido **no lugar** com props opcionais (lista de meses + rótulo de confirmação, AC4) — `MonthlyDestinationPicker.test.tsx` (14.6) passa **sem alteração**; se o dev preferir extrair uma base compartilhada, é aceitável, mas **fork/cópia não é**,
+**E** `taskStatusIcons.tsx`/`STATUS_LABEL`/`TASK_STATUS_ICON_SIZE` são importados como estão — **nenhum ícone novo, nenhuma cor nova de status**,
+**E** qualquer necessidade adicional de anatomia descoberta durante a implementação vira **Questão aberta**, nunca duplicação.
+
+### AC6 — Anuais pendentes: mesmo comportamento, termo canônico **Alocar**
+
+**Dado que** a seção "Anuais pendentes de {ano}" já existe e funciona (`FuturePage.tsx:109-137`, Story 11.4) e que o termo padrão do ato é **Alocar** (mockup `key-future-log.html` frame A; decision-log 2026-07-21: "`key-future-log.html`: 'Definir placement' → **'Alocar'** (3 ocorrências; 0 restantes)"; Story 14.8 registra a mesma padronização),
+**Quando** a seção é reimplementada na superfície nova,
+**Então** ela lista os templates `annual` **ativos e sem instância no ano** (`useRecurringTemplatesQuery({ active: true, recurrenceGroup: 'annual', unplacedYear })`, já existente — **não** reimplementar elegibilidade no cliente, **nunca** parsear `recurrence_text`),
+**E** o botão do item diz **"Alocar"** (não "Definir placement") e abre o `RecurringPlacementDialog` **intocado** — o título do dialog continua "Definir placement" até a Story 14.8, que é a dona da padronização na biblioteca; renomeá-lo aqui espalharia a mudança por `RecurringPlacementSection` e por specs de outra story (blast radius desnecessário, decisão registrada nas Questões abertas),
+**E** o molde **"banner vazio = sem DOM"** é preservado: sem nenhum anual pendente, a seção **não renderiza** — sem placeholder, sem heading órfão,
+**E** a seção é exposta como `role="region"` com `aria-label="Anuais pendentes de {ano}"`, para que os dois specs E2E que hoje a localizam por `getByText(...).locator('xpath=..')` (frágil ao DOM) passem a escopar por papel + nome (ver AC9),
+**E** alocar um anual numa data futura faz o item aparecer no mês correspondente **e** atualiza a contagem do trilho — o que só acontece se a invalidação de cache da AC9 estiver correta.
+
+### AC7 — Estados obrigatórios e piso de acessibilidade nas 5 faixas
+
+**Dado que** `EXPERIENCE.md#State Patterns` (incl. as duas linhas próprias do M08: "Future vazio" e "Future além do horizonte") e `#Accessibility Floor`,
+**Quando** a superfície é auditada,
+**Então** existem e são testados: `initial loading` (skeleton **preservando a geometria trilho + foco**, não uma barra genérica), `local loading` (troca de mês afeta só a coluna de foco — o trilho não some), `empty inicial` do mês em foco, `empty global` (horizonte inteiro sem itens: convida a capturar, **os 8 meses seguem visíveis no trilho**), `read error` local com retry **sem trocar o mês em foco**, `write error` (`role="alert"` uma única vez, seletor preservado — AC4), `offline` (consulta pelo cache; **capturar, datar e mover indisponíveis com motivo, sem fila local**) e o vazio do seletor "Ir para mês…",
+**E** a **cópia dos estados vem do mockup, não é inventada**: vazio global = "Nada no futuro ainda" + "Capture algo que ainda não tem data certa e ele espera aqui até você decidir o dia."; erro de leitura = "Não foi possível carregar os itens do futuro." + "Tentar de novo"; offline = "Você está offline. Consulta disponível; capturar, datar e mover ficam indisponíveis até reconectar."; seletor vazio = "Nada capturado além de {último mês do horizonte}." + "Use o campo de captura com uma data para registrar mais adiante." (`key-future-log.html`, frames B e E),
+**E** `@axe-core/playwright` (`wcag2a/2aa/21a/21aa/22aa`, **sem `disableRules`**, **sem `exclude: 'main'`**) passa em `/planner/future` nas **5 faixas desde o primeiro commit** — wide, medium, tablet, compact e **reflow 320** (a 14.5 precisou de correção ALTA por cobrir só 2 faixas e a 14.6 já nasceu com as 5; **não repetir a lacuna**),
+**E** o trilho é `nav` (ou `list`) com nome acessível ("Meses do horizonte"), cada linha anuncia mês + ano + contagem em texto (contagem **nunca** só por chip colorido), e o mês em foco recebe `aria-current`,
+**E** a coluna de foco tem heading próprio nomeando o mês; a lista rola internamente (`--ds-future-board-focus-scroll: internal`) sem alterar a geometria, é alcançável por teclado e preserva foco visível,
+**E** sheets (compact) contêm foco e **devolvem o foco ao acionador** ao fechar sem navegar; alvos ≥44×44px (atenção ao mesmo achado `target-size` que a 14.6 encontrou em controles dentro de containers estreitos — a barra de meses compact é o candidato natural),
+**E** os pares cromáticos usados no trilho (selecionado, vazio/de-ênfase) são checados em Mineral light **e** dark; **mês vazio usa `--ds-ink-muted`, não `--ds-ink-disabled`** — a 14.6 provou por axe que `--ds-ink-disabled` sobre `--ds-surface-subtle` mede ~2,6:1 e reprova AA, e o `DESIGN.md` (L629) descreve o mês vazio com `{colors.ink-disabled}`: **o piso de acessibilidade vence o token de estilo**, divergência registrada no código.
+
+### AC8 — Tokens `futureBoard`, zero literal estrutural
+
+**Dado que** `DESIGN.md` já especifica `{components.future-board}` (`trail-width: '230px'`, `horizon-months: '8'`, `focus-scroll: 'internal'`, `terminal-opacity: '0.58'` — L383-387) e que `tokens.ts` ainda **não** o implementa,
+**Quando** a story entrega,
+**Então** `frontend/src/shared/design/tokens.ts` exporta `futureBoard` com esses valores literais, no mesmo molde de dados puros de `weeklyBoard`/`monthlyBoard` (`tokens.ts:195-244`), e `shellCssVariables()` emite **`--ds-future-board-trail-width`**,
+**E** `horizonMonths`/`focusScroll` permanecem **dados puros sem CSS var** (não são estilo — mesmo racional já documentado para `dayScroll` em `monthlyBoard`) e `terminalOpacity` **reusa** `--ds-task-row-terminal-opacity`, compartilhada entre Weekly/Monthly/Future por design — **não recriar**,
+**E** `horizonMonths` é a **única fonte** do número 8 no cliente: o componente que valida/renderiza o horizonte lê o token, nunca escreve `8`,
+**E** `tokens.test.ts` ganha os casos equivalentes (valores batem com `DESIGN.md`; cada token emitido aparece em `shellCssVariables()`),
+**E** nenhum componente/página novo escreve `230px`, `0.58`, `8` (horizonte) ou cor hexadecimal literal — guardrail por `?raw` em `features/bujo/components/future/noLiteralTokens.test.ts` (novo, molde de `weekly/`+`monthly/`) e entrada nova em `pages/planner/noLiteralTokens.test.ts` para `FutureBoardPage.tsx`; o guard de `8` usa regex **específica** (ex.: `/\b8\b/` só sobre linhas de `sx`/`style`, ou o padrão de uso concreto) e **não** um `\b8\b` global — a 14.6 registrou que um literal numérico genérico colide com prosa legítima nos comentários (foi o achado ALTO do literal `7`).
+
+### AC9 — Regressão: invalidação de cache correta, legado intocado, specs acopladas atualizadas sem virar vacuosas
+
+**Dado que** três mutações hoje invalidam o Future Log pela **chave exata** `keys.bujo.futureLog()` = `['bujo','futureLog','list']` (`api.ts:331`, `api.ts:539`) e que `invalidateRitualQueries` (`api.ts:604-614`) **não invalida o Future Log de forma nenhuma**,
+**Quando** esta story entrega,
+**Então** a chave nova é `keys.bujo.futureHorizon() = ['bujo','futureLog','horizon']` e **todas** as invalidações de Future Log passam a usar o **prefixo** `['bujo','futureLog']` — invalidar `['bujo','futureLog','list']` **não** alcança `['bujo','futureLog','horizon']` (o match do TanStack Query é por prefixo, e `list` não é prefixo de `horizon`): é a **terceira ocorrência** da mesma classe de bug que a 14.5 e a 14.6 já corrigiram, e sem a correção capturar/alocar num mês distante não atualiza o trilho,
+**E** `invalidateRitualQueries` passa a invalidar `['bujo','futureLog']` — sem isso, **toda decisão do ritual mensal que adia um item ao Future Log** (`useRitualDecisionMutation`/`useMigrateTaskMutation`/`usePlaceRecurringTemplateMutation`, compartilhadas) deixa esta superfície com trilho e contagens desatualizados,
+**E** cada uma dessas correções tem teste que **falha antes da correção** (não-vacuidade provada por mutação cirúrgica, mesmo protocolo das 3 stories anteriores),
+**E** `FuturePage.tsx`/`FuturePage.test.tsx` **permanecem no repositório, apenas desmontados da rota** (a remoção do legado é o Épico 18, junto com `TaskRow.tsx` e as demais páginas legadas); `FutureLogItemForm.tsx`, `RecurringPlacementDialog.tsx`, `RecurringPlacementSection.tsx`, `MonthlyPage.tsx`, `WeeklyPage.tsx`, `DailyPage.tsx`, `TaskRow.tsx`, `theme.ts`, os banners legados e os aliases `/migration/queue/`+`/catch-up/queue/` **não são alterados**; `GET /api/bujo/future-log/` mantém contrato **idêntico**,
+**E** `frontend/e2e/future-log-annual.spec.ts` é atualizado no mesmo commit — hoje ele depende de (a) `getByRole('button', { name: 'Definir placement' })`, que vira **"Alocar"** (AC6); (b) `getByText('Anuais pendentes de {ano}').locator('xpath=..')` como container, que passa a `getByRole('region', { name: ... })`; (c) `page.getByText(futureGroupHeading)` + `getByTestId('task-row')` para provar que a instância alocada apareceu — na superfície nova **só o mês em foco renderiza tarefas**, então o spec precisa **selecionar o mês no trilho** antes de assertar a Task Row (o heading do mês sozinho vira falso positivo: os 8 meses aparecem no trilho o tempo todo); o assert final "sem anual pendente, a seção some" e a checagem em "Este Mês" **não mudam**,
+**E** `frontend/e2e/recurring-soft-delete.spec.ts` (linhas ~236-247) recebe a **mesma** atualização de container (`getByRole('region', …)`) — a tese do teste (excluído sai da elegibilidade sem levar a seção embora) é preservada literalmente,
+**E** `frontend/e2e/move-task.spec.ts` (teste "move de Este Mês para Futuro", assert final em `page.getByRole('button', {name:'Futuro'})` + `task-row`) é conferido: o destino é o **mês seguinte**, que é o **primeiro do horizonte** e portanto o foco default — o assert continua válido, mas ganha a seleção explícita do mês para não depender do default; esse teste **já falha antes** no passo "Mover tarefa" por causa-raiz pré-existente da 14.5 documentada no próprio arquivo — **não** é escopo desta story consertá-lo, e **não** pode ser deletado (a 14.6 levou achado ALTO no code-review por deletar exatamente este teste),
+**E** `frontend/e2e/weekly-monthly-cycle.spec.ts` (`navigate(page,'Futuro')` nas linhas 81 e 106) e `frontend/e2e/shell-*.spec.ts` só dependem do **nome do destino e do landmark** — continuam passando desde que `<main aria-label="Futuro">` seja preservado (AC1); confirmar, não reescrever,
+**E** a disciplina de não-vacuidade vale para todo assert de ausência: toda asserção "não aparece" tem irmã "aparece quando deveria",
+**E** os gates fecham com números **re-executados após o último commit de código**: `npx tsc -b --noEmit`, `npm run lint`, `npx vitest run`, `uv run pytest` full-suite, `uv run ruff check .`, `uv run lint-imports`, `uv run python manage.py makemigrations --check --dry-run` (sem mudanças), `schema.yaml`/`types.gen.ts` regenerados sem deleção de componente, e Playwright escopado aos specs afetados **depois** de `migrate --check` limpo na branch Neon `e2e`.
+
+## Tasks / Subtasks
+
+> **Sequenciamento: Fase A (backend + fundação de dados/props) → Fase B (superfície) → Fase C (datear/mover + anuais) → Fase D (a11y, regressão, E2E)**. Cada fase é um checkpoint de commit natural.
+
+### Fase A — Backend aditivo + fundação de dados
+
+- [ ] **Task 1 — `future_log_horizon` (AC2)**
+  - [ ] Criar `backend/bujo/services/future_log.py` com `future_log_horizon(*, user) -> dict`: âncora = `max(MonthlyLog.objects.filter(status=CycleStatus.ACTIVE).first().month_first, today_for(user).replace(day=1))` (ou só `today_for(...)` sem `active`); horizonte = `add_months(anchor, 1..8)`; contagens por `Count("tasks", filter=Q(tasks__parent_task__isnull=True))` numa **única** query agregada sobre `MonthlyLog`, projetada em Python sobre os 8 slots; `distant` = meses `> anchor+8` com contagem `> 0`, ascendente. Docstring explicando por que o piso `max(...)` existe (regularização atrasada + contrato de `TaskMigrateView`).
+  - [ ] Em `backend/bujo/serializers.py`: `FutureLogMonthCountSerializer` (`month_first`, `task_count`) e `FutureLogHorizonSerializer` (`anchor_month_first`, `horizon` many, `distant` many). `Serializer` puros (projeção de dict), molde dos serializers de fila da 14.3.
+  - [ ] Em `backend/bujo/views.py`: `FutureLogHorizonView(APIView)` com `@extend_schema(responses=FutureLogHorizonSerializer)`; em `backend/bujo/urls.py`: `path("future-log/horizon/", ...)` **imediatamente** abaixo de `future-log/` (nome `bujo-future-log-horizon`).
+  - [ ] Testes em `test_services.py`/`test_views.py` (nomes em pt-BR): 8 slots sempre presentes com zeros; âncora sem `active`; âncora com `active` = mês corrente; **âncora com `active` ANTERIOR ao corrente** (regularização — o piso entra em ação, prova que nenhum mês do horizonte é ≤ corrente); `distant` só com itens; ordenação; **leitura pura** (`CaptureQueriesContext` sem `INSERT` + `MonthlyLog.objects.count()` inalterado); isolamento por tenant.
+  - [ ] Regenerar `schema.yaml` (`cd backend && uv run python manage.py spectacular --file ../schema.yaml`) e `types.gen.ts` (`cd frontend && npm run generate-types`). Conferir zero deleção de componente pré-existente.
+
+- [ ] **Task 2 — Tokens `futureBoard` (AC8)**
+  - [ ] Em `frontend/src/shared/design/tokens.ts`, adicionar o bloco `futureBoard` com os 4 valores do `DESIGN.md`; emitir **só** `--ds-future-board-trail-width` em `shellCssVariables()`; comentar por que `horizonMonths`/`focusScroll` não viram var e por que `terminalOpacity` reusa a var da Task Row.
+  - [ ] Estender `tokens.test.ts`.
+
+- [ ] **Task 3 — Camada de API: chave, hook e as 4 invalidações (AC9)**
+  - [ ] `frontend/src/api/keys.ts`: `futureHorizon: () => ['bujo', 'futureLog', 'horizon'] as const` (+ `keys.test.ts`).
+  - [ ] `frontend/src/features/bujo/api.ts`: `useFutureHorizonQuery()` (GET `/api/bujo/future-log/horizon/`); **trocar por prefixo** `['bujo','futureLog']` as invalidações de `useCreateMonthlyTaskMutation` (`api.ts:331`) e `usePlaceRecurringTemplateMutation` (`api.ts:539`); **acrescentar** `['bujo','futureLog']` a `invalidateRitualQueries` (`api.ts:604`). `useMigrateTaskMutation` (`api.ts:417`) já usa o prefixo — conferir, não mexer.
+  - [ ] `frontend/src/features/bujo/types.ts` + barrel `index.ts`: re-exportar o hook e os tipos novos (`FutureLogHorizon`, `FutureLogMonthCount`) — a 14.6 perdeu tempo com um barrel incompleto bloqueando a fase seguinte; fechar aqui.
+  - [ ] `api.test.tsx`: hook novo + **um teste por invalidação corrigida que falha antes da correção**.
+
+- [ ] **Task 4 — Props aditivas nos canônicos (AC5)**
+  - [ ] `TaskRowBase.tsx`: prop booleana opcional (default = comportamento atual) que faz o ícone de status cair no ramo `role="img"` já existente. Uma condição em `isStatusCycleControl`; **nada mais muda** — `trailingSlot`, ordem, subtarefas, linhagem, opacidade terminal, todos intocados.
+  - [ ] `TaskDetailCard.tsx`: prop booleana opcional (default = comportamento atual) que omite **só** `Cancelar tarefa` do rodapé.
+  - [ ] `MonthlyDestinationPicker.tsx`: props opcionais para (a) lista de meses selecionáveis (aba "Outro mês", retargeting da grade) e (b) rótulo de confirmação nomeado por ato. Documentar no cabeçalho que a 14.9 provavelmente estende de novo (abas "Esta semana · Dia no mês · Outro mês").
+  - [ ] Rodar `TaskRowBase.test.tsx`, `TaskDetailCard.test.tsx` e `MonthlyDestinationPicker.test.tsx` **sem alterá-los** — verde é o aceite de não-regressão. Acrescentar os testes das props novas (ligada/desligada) nos mesmos arquivos.
+
+### Fase B — Superfície
+
+- [ ] **Task 5 — `futureHorizon.ts` (lógica pura)**
+  - [ ] Criar `frontend/src/features/bujo/components/future/futureHorizon.ts`: ordenação dia → sem-dia (espelho de `_by_day_then_undated`); formatação `(14)` / `— ago` + rótulos acessíveis; agrupamento dos `distant` por ano (com contagem por mês); derivação de "N itens · N com dia · N sem dia"; validação de captura (`monthFirst > anchorMonthFirst`).
+  - [ ] Acrescentar `MONTH_ABBREV_PT` a `frontend/src/features/bujo/monthNames.ts` (hoje só existe `MONTH_NAMES_PT`; a abreviação vive duplicada dentro de `FuturePage.tsx` legado — **não** importar de lá).
+  - [ ] Acrescentar `addMonthsIso(monthFirst, delta)` a `frontend/src/shared/date/index.ts` — a função existe **copiada** em 4 lugares (`MonthlyPage`, `MonthlyBoardPage`, `MonthlyPlanningPage`, `GratitudeHistorySurface`); esta story **não** refatora os 4 consumidores existentes (fora de escopo), só para de criar o 5º.
+  - [ ] Testes cobrindo os casos da AC3 + virada dez/jan no agrupamento por ano.
+
+- [ ] **Task 6 — Componentes de `future/` (AC1, AC5, AC7)**
+  - [ ] Criar em `frontend/src/features/bujo/components/future/`: trilho do horizonte (desktop) + barra de meses rolável (compact), seletor **Ir para mês…** (popover/sheet, agrupado por ano, com estado vazio) e a captura do header. Nomes e granularidade a critério do dev, **co-locados com teste**.
+  - [ ] `future/noLiteralTokens.test.ts` (guardrail, molde de `weekly/`+`monthly/`).
+
+- [ ] **Task 7 — `FutureBoardPage` + router/shell (AC1, AC9)**
+  - [ ] Criar `frontend/src/pages/planner/FutureBoardPage.tsx` (+ `.test.tsx`), landmark `<main aria-label="Futuro">`, compondo trilho + foco, consumindo `useFutureHorizonQuery()` (trilho/distantes) e `useMonthlyLogQuery(monthFirst)` (coluna de foco). Estado do mês em foco é **local** (sem param de rota) — registrar a decisão no cabeçalho do arquivo.
+  - [ ] `frontend/src/app/router.tsx`: `planner/future` passa a montar `<FutureBoardPage />`; `<FuturePage />` deixa de ser montada (arquivo permanece no repo, AC9).
+  - [ ] `frontend/src/app/layout/shell/shellRouting.ts`: `planner/future` → `surfaceMigrated: true`; atualizar `shellRouting.test.ts` (`MIGRATED_ROUTE_IDS`).
+  - [ ] Estender `pages/planner/noLiteralTokens.test.ts` com `FutureBoardPage.tsx`.
+
+### Fase C — Datear/mover e anuais
+
+- [ ] **Task 8 — Datear/mover no lugar (AC4)**
+  - [ ] Fiar "Definir dia" (item sem dia) e "Mover" (qualquer item) no `trailingSlot` da Task Row, abrindo o `MonthlyDestinationPicker` estendido; confirmar por `useMigrateTaskMutation` com `destination:'future'`.
+  - [ ] Tratar erro preservando seletor + destino armado (`role="alert"`); nenhum toast no sucesso; conferir que origem `postponed` e sucessor convivem na lista e que a seta de linhagem navega com o destaque de 2000ms.
+  - [ ] Teste provando a invariante "todo mês desta superfície > mês corrente" (nenhum caminho monta `destination:'future'` com mês ≤ corrente).
+
+- [ ] **Task 9 — Anuais pendentes (AC6)**
+  - [ ] Seção `role="region"` + `aria-label="Anuais pendentes de {ano}"`, botão **"Alocar"**, `RecurringPlacementDialog` reusado **sem alteração**, molde "vazio = sem DOM" preservado.
+
+### Fase D — Acessibilidade, regressão e E2E
+
+- [ ] **Task 10 — Acessibilidade (AC7)**
+  - [ ] Cobrir as **5 faixas** (wide/medium/tablet/compact/reflow-320) com `axe` **desde o primeiro commit** do spec. Se o tablet reproduzir o achado de `target-size` da 14.6, a saída autorizada é adotar a composição compact nessa faixa — documentar no cabeçalho do arquivo, não silenciar a regra.
+  - [ ] Conferir foco/nome/papel do trilho, do foco e dos sheets; retorno de foco ao acionador; contraste do mês vazio em light **e** dark (AC7, `--ds-ink-muted`).
+
+- [ ] **Task 11 — E2E e regressão (AC9)**
+  - [ ] Criar `frontend/e2e/seedFutureLogScenario.ts` (itens datados/sem dia em meses do horizonte, um item num mês distante, um anual pendente) e `frontend/e2e/future-log-board.spec.ts` cobrindo: horizonte com 8 meses inclusive vazios; troca de foco; "Ir para mês…" com meses distantes e o estado vazio; captura com data completa e parcial; captura rejeitada em mês não-futuro; datear no lugar com linhagem (origem `Adiada` + sucessor + seta); mover para outro mês; ausência de concluir/cancelar na linha **e** no detalhe; offline; as 5 faixas de axe.
+  - [ ] Atualizar `future-log-annual.spec.ts` e `recurring-soft-delete.spec.ts` (container por `role="region"`, botão "Alocar", seleção do mês no trilho antes de assertar a Task Row).
+  - [ ] Conferir `move-task.spec.ts` (não deletar o teste), `weekly-monthly-cycle.spec.ts` e os `shell-*.spec.ts` — landmark preservado.
+  - [ ] `nvm use 22.15.1` antes de qualquer comando de frontend/e2e; `DJANGO_SETTINGS_MODULE=config.settings.e2e uv run python manage.py migrate --check` limpo na branch Neon `e2e` **antes** do Playwright; `CI=1`, portas 5173/8000 (nunca matar 5174/8001).
+
+- [ ] **Task 12 — Gates finais (AC9)**
+  - [ ] `npx tsc -b --noEmit`, `npm run lint`, `npx vitest run`, `uv run pytest -q` (full-suite), `uv run ruff check .`, `uv run lint-imports`, `uv run python manage.py makemigrations --check --dry-run`, `schema.yaml`/`types.gen.ts` regenerados, Playwright escopado. **Números derivados de execução real, nunca por subtração** (achado recorrente das 14.3/14.6).
+
+## Dev Notes
+
+### Reuso obrigatório — não recriar
+
+| Já existe | Arquivo | Ação nesta story |
+|---|---|---|
+| `TaskRowBase` (`full`/`compact`/`readonly`) | `features/bujo/components/TaskRowBase.tsx` | Consumir `full`. **Uma** prop aditiva (AC5). Nada mais muda. |
+| `TaskDetailCard` | `features/bujo/components/TaskDetailCard.tsx` | Consumir. **Uma** prop aditiva (omitir `Cancelar tarefa`). |
+| `taskStatusIcons.tsx` | `features/bujo/components/taskStatusIcons.tsx` | Importar `taskStatusIconFor`/`STATUS_LABEL`. **Não modificar.** |
+| `MonthlyDestinationPicker` | `features/bujo/components/monthly/MonthlyDestinationPicker.tsx` | Estender com props opcionais (AC4). Precedente de import cruzado: `MonthlyBoardPage` importa `WeeklyTaskPanel` de `weekly/`. |
+| `RecurringPlacementDialog` | `features/bujo/components/RecurringPlacementDialog.tsx` | Reusar **intocado** (AC6). |
+| `useCreateMonthlyTaskMutation`, `useMigrateTaskMutation`, `useRecurringTemplatesQuery`, `usePlaceRecurringTemplateMutation`, `useMonthlyLogQuery` | `features/bujo/api.ts` | Consumir. Só as invalidações da AC9 mudam. |
+| `shared/date/index.ts`, `monthNames.ts` | — | Base dos helpers novos. **Não duplicar** de `FuturePage.tsx`. |
+| `PlannerSkeleton` | `features/bujo/components/PlannerSkeleton.tsx` | Avaliar: o skeleton precisa preservar a geometria trilho+foco (AC7). Se não preservar, compor local — não deformar o compartilhado. |
+
+### Contratos de API (todos verificados no código atual — nenhum é hipotético)
+
+| Capacidade | Método + URL | Onde |
+|---|---|---|
+| **Horizonte + distantes — NOVO** | `GET /api/bujo/future-log/horizon/` | `FutureLogHorizonView` — **a criar (AC2)** |
+| Future Log agrupado (legado, intocado) | `GET /api/bujo/future-log/` | `FutureLogView` (`views.py:518`) |
+| Tarefas do mês em foco | `GET /api/bujo/logs/monthly/?month_first=` | `MonthlyLogView.get` (`views.py:378`) |
+| Captura no futuro | `POST /api/bujo/logs/monthly/` | `MonthlyLogView.post` (`views.py:405`) |
+| Datear/mover | `POST /api/bujo/tasks/{id}/migrate/` | `TaskMigrateView` (`views.py:736`) |
+| Anuais pendentes | `GET /api/bujo/recurring-templates/?active&recurrence_group=annual&unplaced_year=` | `useRecurringTemplatesQuery` |
+| Alocar anual | `POST /api/bujo/recurring-templates/{id}/place/` | `RecurringTaskTemplatePlaceView` (`views.py:293`) |
+
+### `GET /logs/monthly/` **materializa** — e por que é aceitável aqui
+
+`MonthlyLogView.get` chama `get_or_create_monthly_log` (`views.py:389`), então **focar um mês vazio cria o `MonthlyLog`**. Aceito deliberadamente, com três razões verificadas:
+
+1. É o comportamento já vigente e documentado desse endpoint desde a 14.1 ("Consultar um monthly futuro (armazenamento do Future Log) segue devolvendo `status: null`") e o `MonthlyBoardPage` da 14.6 já opera assim.
+2. O log criado nasce com `status = NULL` — **inerte** para todos os predicados de ciclo: `_previous_operational` filtra `status__isnull=False` (`cycles.py:134-147`), `_monthly_next_planning_exists` exige `status=PLANNING` (`cycles.py:97`), `monthly_cycle_readiness` só olha `ACTIVE`/`PLANNING`. Não entra na navegação operacional (decision-log 2026-07-20, M07/M08).
+3. O endpoint **novo** da AC2 é que não pode materializar — é ele que varre o horizonte inteiro. Por isso a AC2 exige a prova de leitura pura só dele.
+
+Se o dev preferir um caminho de leitura sem materialização para o foco, é mudança de escopo — registrar como Questão aberta, não implementar de improviso.
+
+### `migrated` × `postponed` — a divergência de vocabulário mais perigosa desta story
+
+O M08 e o mockup dizem "a origem fica terminal **`migrated`**". O backend, **intocado**, produz `Task.Status.POSTPONED` para `destination in ('month','future')` (`services/migration.py:162-165`, docstring explícito) — só `today`/`week` produzem `MIGRATED`. `postponed` é rótulo "Adiada" e ícone `ArrowLineRight` (`taskStatusIcons.tsx:30,39`). Os dois são terminais com linhagem (`migrated_to_task` preenchido, `TERMINAL_OPACITY_STATUSES` inclui ambos, `TaskRowBase` renderiza a seta ao sucessor para os dois). **Ler "terminal `migrated`" como "terminal com linhagem"** e usar o que o backend devolve. Não abrir transição nova, não renomear status, não escrever `migrated` à mão. O E2E existente já confirma o comportamento real: `move-task.spec.ts` assere `originRow.getByLabel('Adiada')` depois de mover para o Futuro.
+
+### A invariante que dissolve o bug CRÍTICO da 14.6
+
+O code-review da 14.6 encontrou que `destination:'future'` é rejeitado (400) quando `monthFirst <= mês corrente`, e que durante regularização de 2+ meses pulados o alvo do ritual pode ser **anterior** ao mês corrente — deixando 3 ações quebradas (Questão aberta #5 da 14.6). Aqui a mesma armadilha existe **se e somente se** o âncora do horizonte for o `active` puro. Com o piso `max(active, mês corrente)` da AC2, todo mês do trilho e todo mês distante é **estritamente maior** que o mês corrente, e `destination:'future'` é sempre aceito. Isso é uma **invariante a testar**, não uma coincidência a torcer para que se mantenha.
+
+### Inteligência das stories anteriores — 7 lições que custaram code-review nas 14.5/14.6
+
+Todas extraídas dos Dev Agent Records e dos achados de code-review já registrados. Cada uma tem endereço nesta story:
+
+1. **Invalidação por chave exata em vez de prefixo** — bug real na 14.5 (`useCreateWeeklyTaskMutation`) e de novo na 14.6 (`useCreateMonthlyTaskMutation` + `invalidateRitualQueries`). Terceira ocorrência endereçada pela AC9 **antes** de existir.
+2. **Número de gate afirmado sem execução** — MÉDIO na 14.3 e na 14.6 ("`move-task.spec.ts` 8/11" num arquivo de 9 testes). Contar por contagem literal de `test(`, nunca por subtração (Task 12).
+3. **Deletar um teste que a AC mandava atualizar** — ALTO na 14.6 (`move-task.spec.ts`). Ver AC9: o mesmo teste volta a aparecer aqui e **não** pode ser removido.
+4. **`tsc -b --noEmit` mascarado pelo Vitest** — ALTO na 14.6 (esbuild não type-checa testes). Rodar `tsc` de verdade antes de declarar o gate.
+5. **Guardrail de literal com regex genérica demais / de menos** — ALTO na 14.6 (literal `7` passava porque `\b7\b` colidiria com prosa). O `8` do horizonte tem o mesmo perfil: regex específica, AC8.
+6. **Achados de a11y que só o browser real pega** — 3 na 14.6, nenhum reproduzível em jsdom: `color-contrast` de `--ds-ink-disabled` sobre `--ds-surface-subtle` (~2,6:1, **exatamente o par que o `DESIGN.md` sugere para mês vazio** — ver AC7), `target-size` de botão herdando o piso global de 44px dentro de container estreito, e falta de espaço para alvos de toque em faixa intermediária. Rodar as 5 faixas cedo, não no fim.
+7. **Barrel incompleto travando a fase seguinte** — a 14.6 descobriu no meio da Fase B que `features/bujo/index.ts` não reexportava os hooks novos. Fechado na Task 3.
+
+**Padrão de commit observado no git** (`971da7c` → `0fc9ce6`, seis stories): **um commit por story**, mensagem `feat(story-14.N): <título>`, incluindo backend + frontend + E2E + o próprio arquivo da story + `sprint-status.yaml` + o relatório de arquivos não commitados. Manter.
+
+### Riscos de regressão E2E (verificados lendo os specs atuais, não hipotéticos)
+
+- `frontend/e2e/future-log-annual.spec.ts` — o mais acoplado. Depende de: botão `'Definir placement'` (vira "Alocar", AC6); container por `getByText(...).locator('xpath=..')`; `page.getByText(futureGroupHeading)` e `getByTestId('task-row')` **sem selecionar mês** (na superfície nova só o mês em foco renderiza tarefas — e o heading do mês passa a existir no trilho o tempo todo, o que torna o assert atual um **falso positivo**, não um falso negativo). O trecho final que confere o placement sem data em "Este Mês" não muda.
+- `frontend/e2e/recurring-soft-delete.spec.ts:236-247` — mesmo container por `xpath=..`; a tese (excluído sai da elegibilidade, seção sobrevive pelo vivo) precisa ser preservada literalmente.
+- `frontend/e2e/move-task.spec.ts:171-212` — assert final navega para "Futuro" e procura a `task-row`. **Não deletar o teste**: ele já falha antes, no passo "Mover tarefa", por causa-raiz pré-existente da 14.5 (affordance que só `TaskRow.tsx` legado expõe), documentada num comentário extenso no próprio arquivo; a 14.6 levou achado ALTO no code-review exatamente por ter deletado este teste em vez de atualizá-lo.
+- `frontend/e2e/weekly-monthly-cycle.spec.ts:81,106` e `shell-{a11y,active-destination,bottomnav,keyboard,sidebar,states}.spec.ts` — só dependem do rótulo "Futuro" do destino e do landmark `getByLabel('Futuro')`. Preservar `<main aria-label="Futuro">` mantém todos verdes; conferir, não reescrever.
+- `frontend/src/pages/planner/FuturePage.test.tsx` — continua verde por renderizar o componente diretamente (não depende da rota). Deixar como está.
+
+### Stack em vigor — **nenhuma dependência nova**
+
+Verificado em `frontend/package.json` no baseline desta story: React `^19.2.0`, `@mui/material` `^6.1.0`, `@tanstack/react-query` `^5.59.0`, `@phosphor-icons/react` `^2.1.10`, TypeScript `~5.9.0`, Vitest `^4.1.9`, `@playwright/test` `^1.61.1`, `@axe-core/playwright` `^4.12.1`, `openapi-typescript` `^7.0.0`. Backend: Django + DRF + `drf-spectacular`, gerenciado por `uv`.
+
+Esta story **não instala nada**: sem date picker (`@mui/x-date-pickers` continua fora — a grade de dias é a do `MonthlyDestinationPicker`, e o mês usa `<input type="month">` nativo, decisão já vigente em `FutureLogItemForm`), sem lib de virtualização (o horizonte tem 8 linhas fixas), sem lib de ícones além do catálogo Phosphor fechado. `@mui/icons-material` permanece **só** no legado até o Épico 18 — componente novo que precise de ícone usa `@phosphor-icons/react` via catálogo (AD-29). Qualquer dependência nova é mudança de escopo: registrar como Questão aberta antes de instalar.
+
+### Convenções de teste (idênticas às da 14.5/14.6 — citadas, não repetidas)
+
+Co-localização `Component.test.tsx`; `frontend/e2e/fixtures.ts` (`test` **nunca** de `@playwright/test` direto); `shellHelpers.ts` (`navigate`, `waitForDialogSettled`, `waitForSheetSettled`); `axeHelper.ts` (`expectNoAxeViolations`); disciplina de não-vacuidade (toda asserção "não aparece" tem irmã "aparece quando deveria"); nomes de teste em pt-BR no backend; guardrails `noLiteralTokens.test.ts` por fronteira de pasta. **`nvm use 22.15.1`** antes de qualquer comando de frontend (a sessão abre em v18). Playwright em `CI=1` nas portas 5173/8000 — **nunca** matar 5174/8001 (dev local do usuário). No viewport tablet (800px) a sidebar inicia em **rail colapsado**: expandir antes de clicar em destino aninhado (`mainNav().getByRole('button',{name:'Expandir sidebar'})`), senão o clique trava até timeout.
+
+### Referências
+
+- [Source: `_bmad-output/planning-artifacts/epics.md#Story 14.7` (L2317-2333) — ACs originais do épico]
+- [Source: `_bmad-output/planning-artifacts/ux-designs/ux-hmmb-bujo-2026-07-17/EXPERIENCE.md#Future Log` (L313-339), `#State Patterns` (Future vazio / Future além do horizonte), `#Key Flows` Fluxo 6 (L661-670)]
+- [Source: `.../mockups/key-future-log.html` — mockup canônico aprovado (frames A–E + reconciliação)]
+- [Source: `.../DESIGN.md` L383-387 (`{components.future-board}`), L627-633 (seção Future Log)]
+- [Source: `.../architecture-and-story-handoff.md#M08 — Future Log` (L35-39)]
+- [Source: `.../.decision-log.md` — "Abertura do M08" (2026-07-20), "M08 aprovado e promovido" (2026-07-21, 3 questões resolvidas), "Separação de navegação Monthly/Future" (2026-07-20), M09/"Alocar" (2026-07-21)]
+- [Source: `_bmad-output/planning-artifacts/architecture.md` L307 (Future Log = `monthly_log` futuro, sem tabela própria), AD-28 item 1 (`status IS NULL` = fora do regime)]
+- [Source: `_bmad-output/implementation-artifacts/14-6-monthly-board-e-planejamento-mensal-no-sistema-novo.md` — precedente direto: props/reuso, achados de a11y, bug de `destinationForTarget()`, Questão aberta #5]
+- [Source: `_bmad-output/implementation-artifacts/14-5-weekly-board-e-planejamento-semanal-no-sistema-novo.md` — origem de `TaskRowBase`/`TaskDetailCard`/tokens]
+- [Source: `backend/bujo/views.py` (`FutureLogView`, `MonthlyLogView`, `TaskMigrateView`), `backend/bujo/services/migration.py` (`migrate_task`), `backend/bujo/services/cycles.py` (`add_months`, `_previous_operational`, `next_monthly_target`), `backend/bujo/services/rituals.py` (`_by_day_then_undated`)]
+- [Source: `frontend/src/pages/planner/FuturePage.tsx`, `frontend/src/features/bujo/api.ts`, `frontend/src/api/keys.ts`, `frontend/src/shared/design/tokens.ts`]
+
+### Questões abertas
+
+1. **Deep-link do mês em foco.** Esta story usa estado local (sem param de rota), coerente com o stepper da 14.6. Vale um `?month=AAAA-MM` para compartilhar/voltar direto a um mês distante? Decisão de produto — não implementar sem ela.
+2. **Título do `RecurringPlacementDialog`.** O botão vira "Alocar" (AC6) mas o dialog continua "Definir placement" até a 14.8, que é a dona da padronização na biblioteca. Confirmar que a inconsistência temporária é aceitável, ou antecipar o rename (custo: `RecurringPlacementSection` + `recurring-templates.spec.ts:306`, que **já** falha por esse locator desde a 13.3).
+3. **Onde mora o seletor de destino depois desta story.** Ele nasce em `monthly/` (14.6), é estendido aqui e a 14.9 vai precisar de abas "Esta semana · Dia no mês · Outro mês". Promover a `components/` compartilhado com nome neutro é decisão natural da 14.9 — registrar, não fazer agora.
+4. **Materialização no foco.** `GET /logs/monthly/` cria o log ao consultar (ver Dev Notes). Se o dono quiser zero materialização por navegação no Futuro, é uma leitura nova (ou um `?materialize=false`) — story própria.
+5. **`FuturePage.tsx` desmontada.** Fica no repo como código morto até o Épico 18, junto com `TaskRow.tsx`. Alternativa (remover já) foi descartada porque o Épico 18 é o dono da remoção e o teste do arquivo ainda documenta o contrato legado — confirmar que a dívida temporária é aceitável.
+6. **Herdada da 14.6, ainda aberta (não é escopo desta story):** `onMove` do `TaskDetailCard` continua sem handler no Weekly/Monthly Board, deixando 4 testes de `move-task.spec.ts` vermelhos por decisão pendente de produto. Esta story **fia** o mover no Future Log (é requisito do M08) — o que aumenta a assimetria e talvez ajude a decidir.
+
+## Dev Agent Record
+
+### Agent Model Used
+
+### Debug Log References
+
+### Completion Notes List
+
+### File List
+
+## Change Log
+
+| Data | Versão | Descrição | Autor |
+|---|---|---|---|
+| 2026-07-25 | 0.1 | Story criada pelo workflow `create-story` (9 ACs / 12 tasks) | Amelia (create-story) |
