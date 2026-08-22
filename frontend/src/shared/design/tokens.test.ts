@@ -7,8 +7,10 @@ import {
   colorModes,
   colorRoles,
   colorTokenName,
+  completionBar,
   domainIcon,
   focusRing,
+  habitTrackerRow,
   legacySeam,
   mediaQueries,
   mineralDark,
@@ -18,7 +20,9 @@ import {
   monthlyPlanning,
   palettes,
   panel,
+  pictogramPicker,
   radius,
+  recordCards,
   resolvePalette,
   shellCssVariables,
   spacing,
@@ -178,6 +182,14 @@ describe('tokens — componentes do Épico 14 (Story 14.5)', () => {
     expect(domainIcon.color).toBe('currentColor')
   })
 
+  it('test_domain_icon_emite_as_duas_medidas_em_shellCssVariables', () => {
+    // Primeiro consumidor CSS é a coluna (vazia) do pictograma da Habit
+    // Tracker Row (Story 16.1) — antes disso `domainIcon` era só dado puro.
+    const vars = shellCssVariables('light')
+    expect(vars['--ds-domain-icon-size-default']).toBe(domainIcon.sizeDefault)
+    expect(vars['--ds-domain-icon-size-compact']).toBe(domainIcon.sizeCompact)
+  })
+
   it('test_cada_token_de_componente_novo_aparece_em_shellCssVariables', () => {
     const vars = shellCssVariables('light')
     expect(vars['--ds-task-row-min-height-pointer']).toBe(taskRow.minHeightPointer)
@@ -218,6 +230,87 @@ describe('tokens — componentes do Épico 14 (Story 14.5)', () => {
     // Weekly/Monthly/Future) — nenhuma var própria do future-board.
     expect(vars['--ds-future-board-terminal-opacity']).toBeUndefined()
     expect(vars['--ds-task-row-terminal-opacity']).toBe(String(futureBoard.terminalOpacity))
+  })
+})
+
+describe('tokens — componentes do Épico 16 (Story 16.1, gate 16.0)', () => {
+  it('test_record_cards_bate_com_o_design_md', () => {
+    expect(recordCards.maxWidth).toBe('1120px')
+    expect(recordCards.columnsWide).toBe(2)
+    expect(recordCards.cardMinWidth).toBe('520px')
+    expect(recordCards.gap).toBe(spacing[4])
+    // A variante ROMPE deliberadamente a largura de leitura (DESIGN.md L708):
+    // se um dia empatarem, a variante perdeu o sentido.
+    expect(recordCards.maxWidth).not.toBe(appShell.readingWidth)
+  })
+
+  it('test_completion_bar_bate_com_o_design_md', () => {
+    expect(completionBar.heightDay).toBe('8px')
+    expect(completionBar.heightGroup).toBe('6px')
+    expect(completionBar.track).toBe('surface-subtle')
+    expect(completionBar.trackBorderWidth).toBe('1px')
+    expect(completionBar.trackBorderColor).toBe('border')
+    expect(completionBar.fill).toBe('primary')
+    expect(completionBar.radius).toBe(radius.xs)
+    // `track`/`fill`/`trackBorderColor` são PAPÉIS de cor, não valores crus.
+    expect(colorRoles).toContain(completionBar.track)
+    expect(colorRoles).toContain(completionBar.fill)
+    expect(colorRoles).toContain(completionBar.trackBorderColor)
+  })
+
+  it('test_habit_tracker_row_bate_com_o_design_md', () => {
+    expect(habitTrackerRow.controlColumn).toBe('44px')
+    expect(habitTrackerRow.numericFieldWidth).toBe('104px')
+    expect(habitTrackerRow.categoryBorder).toBe('none')
+    expect(habitTrackerRow.terminalOpacity).toBe(0.58)
+    // Mede igual à Task Row (DESIGN.md L710) — as alturas NÃO são próprias.
+    expect(taskRow.minHeightPointer).toBe('36px')
+    expect(taskRow.minHeightTouch).toBe('48px')
+  })
+
+  it('test_pictogram_picker_bate_com_o_design_md', () => {
+    expect(pictogramPicker.columnsDialog).toBe(6)
+    expect(pictogramPicker.columnsSheet).toBe(4)
+    // ALIAS do alvo de toque mínimo, não medida própria.
+    expect(pictogramPicker.tileMinSize).toBe(appShell.touchTargetMin)
+  })
+
+  it('test_cada_medida_de_geometria_da_16_1_aparece_em_shellCssVariables', () => {
+    const vars = shellCssVariables('light')
+    expect(vars['--ds-record-cards-max-width']).toBe(recordCards.maxWidth)
+    expect(vars['--ds-record-cards-columns-wide']).toBe(String(recordCards.columnsWide))
+    expect(vars['--ds-record-cards-card-min-width']).toBe(recordCards.cardMinWidth)
+    expect(vars['--ds-record-cards-gap']).toBe(recordCards.gap)
+    expect(vars['--ds-completion-bar-height-day']).toBe(completionBar.heightDay)
+    expect(vars['--ds-completion-bar-height-group']).toBe(completionBar.heightGroup)
+    expect(vars['--ds-completion-bar-track-border-width']).toBe(completionBar.trackBorderWidth)
+    expect(vars['--ds-habit-tracker-row-control-column']).toBe(habitTrackerRow.controlColumn)
+    expect(vars['--ds-habit-tracker-row-numeric-field-width']).toBe(
+      habitTrackerRow.numericFieldWidth,
+    )
+    expect(vars['--ds-pictogram-picker-columns-dialog']).toBe(
+      String(pictogramPicker.columnsDialog),
+    )
+    expect(vars['--ds-pictogram-picker-columns-sheet']).toBe(String(pictogramPicker.columnsSheet))
+  })
+
+  it('test_o_que_reusa_var_existente_nao_ganha_var_propria', () => {
+    const vars = shellCssVariables('light')
+    // Raio da barra = `--ds-radius-xs`; papéis de cor = `--ds-<papel>`.
+    expect(vars['--ds-completion-bar-radius']).toBeUndefined()
+    expect(vars['--ds-completion-bar-track']).toBeUndefined()
+    expect(vars['--ds-completion-bar-fill']).toBeUndefined()
+    expect(vars['--ds-radius-xs']).toBe(completionBar.radius)
+    expect(vars[`--ds-${completionBar.track}`]).toBe(mineralLight['surface-subtle'])
+    expect(vars[`--ds-${completionBar.fill}`]).toBe(mineralLight.primary)
+    // Opacidade terminal compartilhada com Weekly/Monthly/Future.
+    expect(vars['--ds-habit-tracker-row-terminal-opacity']).toBeUndefined()
+    expect(vars['--ds-task-row-terminal-opacity']).toBe(String(habitTrackerRow.terminalOpacity))
+    // `categoryBorder: 'none'` é dado puro (decisão), não medida.
+    expect(vars['--ds-habit-tracker-row-category-border']).toBeUndefined()
+    // Tile do seletor = alvo de toque mínimo.
+    expect(vars['--ds-pictogram-picker-tile-min-size']).toBeUndefined()
+    expect(vars['--ds-touch-target-min']).toBe(pictogramPicker.tileMinSize)
   })
 })
 

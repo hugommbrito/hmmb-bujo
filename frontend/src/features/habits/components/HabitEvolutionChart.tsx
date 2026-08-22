@@ -1,5 +1,4 @@
 import { Box, Typography } from '@mui/material'
-import { useTheme } from '@mui/material/styles'
 import {
   CartesianGrid,
   Line,
@@ -12,6 +11,7 @@ import {
   YAxis,
 } from 'recharts'
 import type { DayType, HabitSeries } from '../types'
+import { HABIT_SERIES_VIEW_LABEL, type HabitSeriesView } from './habitSeriesView'
 import {
   DAY_TYPE_LABEL,
   describeEvent,
@@ -85,16 +85,26 @@ function ChartTooltip({ active, payload, unit }: ChartTooltipProps) {
 
 export interface HabitEvolutionChartProps {
   series: HabitSeries
+  /**
+   * Visão do eixo (Story 16.1). Quem escolhe a visão TRANSFORMA os pontos
+   * antes de passar a série (as derivações vivem em
+   * `record/habitsSurface.ts`, sobre os valores que o servidor congelou);
+   * aqui a prop só ajusta eixo, unidade e resumo. `value` é o comportamento
+   * histórico da 6.4 e segue sendo o default — `HabitHistory.tsx` (legado)
+   * não passa a prop.
+   */
+  view?: HabitSeriesView
 }
 
-export function HabitEvolutionChart({ series }: HabitEvolutionChartProps) {
-  const theme = useTheme()
+export function HabitEvolutionChart({ series, view = 'value' }: HabitEvolutionChartProps) {
   const { habit, points, events } = series
   const dayTypes = series.dayTypes ?? []
 
   const pointByDate = new Map(points.map((p) => [p.date, p]))
   const eventByDate = new Map(events.map((e) => [e.effectiveFrom, describeEvent(e)]))
   const isBoolean = habit.type === 'boolean'
+  const isPercentView = view !== 'value'
+  const unit = isPercentView ? '%' : habit.unit
 
   const chartData: ChartDatum[] = dayTypes.map((dt) => {
     const point = pointByDate.get(dt.date)
@@ -107,7 +117,7 @@ export function HabitEvolutionChart({ series }: HabitEvolutionChartProps) {
     } else if (point.value != null) {
       value = Number(point.value)
     } else {
-      value = isBoolean ? 0 : null
+      value = isBoolean && !isPercentView ? 0 : null
     }
     return {
       date: dt.date,
@@ -134,7 +144,7 @@ export function HabitEvolutionChart({ series }: HabitEvolutionChartProps) {
   const last = chartData[chartData.length - 1]?.date
   const summary =
     first && last
-      ? `Evolução de ${habit.name} de ${formatDateBR(first)} a ${formatDateBR(last)}. ` +
+      ? `Evolução de ${habit.name} (${HABIT_SERIES_VIEW_LABEL[view].toLowerCase()}) de ${formatDateBR(first)} a ${formatDateBR(last)}. ` +
         `${daysWithRecord} ${daysWithRecord === 1 ? 'dia' : 'dias'} com registro, ` +
         `${changeCount} ${changeCount === 1 ? 'mudança' : 'mudanças'} de configuração no período.`
       : `Evolução de ${habit.name}: nenhum dia no período.`
@@ -146,22 +156,22 @@ export function HabitEvolutionChart({ series }: HabitEvolutionChartProps) {
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={chartData} margin={{ top: 8, right: 16, bottom: 8, left: 0 }}>
               <CartesianGrid
-                stroke={theme.palette.divider}
+                stroke={'var(--ds-border)'}
                 strokeDasharray="3 3"
                 vertical={false}
               />
               <XAxis
                 dataKey="date"
                 tickFormatter={formatDateShortBR}
-                tick={{ fill: theme.palette.text.secondary, fontSize: 11 }}
-                stroke={theme.palette.divider}
+                tick={{ fill: 'var(--ds-ink-muted)', fontSize: 11 }}
+                stroke={'var(--ds-border)'}
                 minTickGap={16}
               />
               <YAxis
-                domain={isBoolean ? [0, 1] : [0, 'auto']}
-                allowDecimals={!isBoolean}
-                tick={{ fill: theme.palette.text.secondary, fontSize: 11 }}
-                stroke={theme.palette.divider}
+                domain={isPercentView ? [0, 100] : isBoolean ? [0, 1] : [0, 'auto']}
+                allowDecimals={isPercentView || !isBoolean}
+                tick={{ fill: 'var(--ds-ink-muted)', fontSize: 11 }}
+                stroke={'var(--ds-border)'}
                 width={40}
               />
               {bands.map((band) => (
@@ -169,7 +179,7 @@ export function HabitEvolutionChart({ series }: HabitEvolutionChartProps) {
                   key={`${band.x1}-${band.x2}`}
                   x1={band.x1}
                   x2={band.x2}
-                  fill={theme.palette.text.primary}
+                  fill={'var(--ds-ink)'}
                   fillOpacity={0.06}
                 />
               ))}
@@ -177,16 +187,16 @@ export function HabitEvolutionChart({ series }: HabitEvolutionChartProps) {
                 <ReferenceLine
                   key={event.effectiveFrom}
                   x={event.effectiveFrom}
-                  stroke={theme.palette.text.secondary}
+                  stroke={'var(--ds-ink-muted)'}
                   strokeDasharray="4 2"
                 />
               ))}
-              <Tooltip content={<ChartTooltip unit={habit.unit} />} />
+              <Tooltip content={<ChartTooltip unit={unit} />} />
               <Line
                 type="monotone"
                 dataKey="value"
                 name={habit.name}
-                stroke={theme.palette.category.blue}
+                stroke={'var(--ds-primary)'}
                 strokeWidth={2}
                 dot={{ r: 3 }}
                 activeDot={{ r: 5 }}

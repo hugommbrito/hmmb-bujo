@@ -52,9 +52,54 @@ vi.mock('../features/braindump', () => ({
 
 // HabitTracker (DailyPage, Story 6.2) e useHabitDayQuery (via useDailyData) usam
 // TanStack Query direto — mesmo motivo dos mocks acima, sem QueryClientProvider aqui.
+// Story 16.1: a superfície NOVA (`HabitsRecordPage`, rota lazy do registro)
+// consome MAIS hooks do barrel. Sem estendê-los aqui, o import vira `undefined`
+// assim que o Suspense resolve `/habits` e o teste quebra.
+const habitsQueryStub = { isPending: false, isError: false, data: undefined, refetch: vi.fn() }
+const habitsMutationStub = {
+  mutate: vi.fn(),
+  reset: vi.fn(),
+  isPending: false,
+  isError: false,
+}
 vi.mock('../features/habits', () => ({
-  useHabitDayQuery: () => ({ isPending: false, data: undefined }),
+  useHabitDayQuery: () => habitsQueryStub,
+  useHabitsQuery: () => habitsQueryStub,
+  useHabitGroupsQuery: () => habitsQueryStub,
+  useHabitHistoryQuery: () => habitsQueryStub,
+  useHabitSeriesQuery: () => habitsQueryStub,
+  useGroupMultipliersQuery: () => habitsQueryStub,
+  useMarkHabitEntryMutation: () => habitsMutationStub,
+  useSetHolidayMutation: () => habitsMutationStub,
+  useOverrideDayWorkdayMutation: () => habitsMutationStub,
+  useCreateHabitMutation: () => habitsMutationStub,
+  useCreateHabitGroupMutation: () => habitsMutationStub,
+  useUpdateHabitIdentityMutation: () => habitsMutationStub,
+  useAddHabitVersionMutation: () => habitsMutationStub,
+  useSetGroupMultipliersMutation: () => habitsMutationStub,
   HabitTracker: () => null,
+}))
+
+// Os componentes da superfície NOVA importam os hooks direto de
+// `features/habits/api` (import intra-feature normal), não do barrel — então o
+// mock acima NÃO os intercepta. Sem este segundo mock, montar `/habits` chama
+// TanStack Query de verdade e explode ("No QueryClient set"), porque estes dois
+// testes de chrome não têm `QueryClientProvider` por construção (AC7 da 13.1).
+vi.mock('../features/habits/api', () => ({
+  useHabitDayQuery: () => habitsQueryStub,
+  useHabitsQuery: () => habitsQueryStub,
+  useHabitGroupsQuery: () => habitsQueryStub,
+  useHabitHistoryQuery: () => habitsQueryStub,
+  useHabitSeriesQuery: () => habitsQueryStub,
+  useGroupMultipliersQuery: () => habitsQueryStub,
+  useMarkHabitEntryMutation: () => habitsMutationStub,
+  useSetHolidayMutation: () => habitsMutationStub,
+  useOverrideDayWorkdayMutation: () => habitsMutationStub,
+  useCreateHabitMutation: () => habitsMutationStub,
+  useCreateHabitGroupMutation: () => habitsMutationStub,
+  useUpdateHabitIdentityMutation: () => habitsMutationStub,
+  useAddHabitVersionMutation: () => habitsMutationStub,
+  useSetGroupMultipliersMutation: () => habitsMutationStub,
 }))
 
 // Mock useMediaQuery to avoid jsdom matchMedia issues

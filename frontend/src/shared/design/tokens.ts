@@ -269,6 +269,81 @@ export const monthlyPlanning = {
   densityPosition: 'sticky',
 } as const
 
+// ─── Componentes do sistema novo (Épico 16, Story 16.1 — gate 16.0) ──────────
+// [Source: DESIGN.md#components — record-cards L365-369, completion-bar
+// L370-376, habit-tracker-row L377-381, pictogram-picker L382-385;
+// DESIGN.md#Hábitos (Registro); mockups/key-habitos.html F1-F9]
+
+/**
+ * `{components.record-cards}` — variante canônica "Registro em cards".
+ *
+ *   ▶ NÃO é exceção local de Hábitos: DESIGN.md L708 registra a variante como
+ *     reutilizável por qualquer superfície com dados agrupados de mesma forma
+ *     (Saúde-Métricas, Story 16.3). Por isso nasce com nome de VARIANTE, não
+ *     `habitsBoard`.
+ *   ▶ `maxWidth` ROMPE deliberadamente `workspace.readingWidth` (800px): a
+ *     leitura textual corrida continua em 800px, o registro agrupado vai a
+ *     1120px.
+ */
+export const recordCards = {
+  maxWidth: '1120px',
+  columnsWide: 2,
+  cardMinWidth: '520px',
+  gap: spacing[4],
+} as const
+
+/**
+ * `{components.completion-bar}` — barra de completude (LEITURA, nunca controle).
+ *
+ *   ▶ `track`/`fill`/`trackBorderColor` são PAPÉIS de cor (resolvidos como
+ *     `--ds-<papel>`), não valores — mesmo padrão de `panel`/`taskRow.hover`.
+ *   ▶ `radius` REUSA `--ds-radius-xs`; não há var própria.
+ */
+export const completionBar = {
+  heightDay: '8px',
+  heightGroup: '6px',
+  track: 'surface-subtle',
+  trackBorderWidth: '1px',
+  trackBorderColor: 'border',
+  fill: 'primary',
+  radius: radius.xs,
+} as const
+
+/**
+ * `{components.habit-tracker-row}` — variante Habit Tracker Row da Item Row.
+ *
+ *   ▶ `categoryBorder: 'none'` é DADO PURO, não CSS var: hábito não tem
+ *     categoria, e a ausência de borda é a decisão — não uma medida a emitir.
+ *   ▶ `terminalOpacity` REUSA `--ds-task-row-terminal-opacity` (mesmo valor e
+ *     mesmo racional já documentado em `futureBoard`): quem recebe a de-ênfase
+ *     é a linha, não a superfície.
+ *   ▶ As alturas seguem `taskRow.minHeightPointer`/`minHeightTouch` — a Habit
+ *     Tracker Row mede igual à Task Row (DESIGN.md L710).
+ */
+export const habitTrackerRow = {
+  controlColumn: '44px',
+  numericFieldWidth: '104px',
+  categoryBorder: 'none',
+  terminalOpacity: 0.58,
+} as const
+
+/**
+ * `{components.pictogram-picker}` — seletor de pictograma.
+ *
+ *   ▶ SEM CONSUMIDOR na 16.1 por decisão do gate: o seletor (frames O1/O2) é da
+ *     **Story 16.2**, junto com `iconKey` e a migração `emoticon` → `iconKey`.
+ *     O bloco nasce aqui porque o gate 16.0 promoveu os QUATRO blocos de
+ *     geometria de uma vez e dividi-los deixaria a 16.2 inventando medidas.
+ *   ▶ `tileMinSize` é ALIAS de `appShell.touchTargetMin`: consome
+ *     `--ds-touch-target-min`, sem var própria (duplicar a mesma medida em duas
+ *     vars deixaria as duas divergirem).
+ */
+export const pictogramPicker = {
+  columnsDialog: 6,
+  columnsSheet: 4,
+  tileMinSize: appShell.touchTargetMin,
+} as const
+
 /** `{components.panel}` — painel diário/pool e cartões do rail. */
 export const panel = {
   background: 'surface',
@@ -506,6 +581,29 @@ const structuralCssVariables: Readonly<Record<string, string>> = {
   '--ds-future-board-trail-width': futureBoard.trailWidth,
   '--ds-panel-padding': panel.padding,
   '--ds-chip-height': chip.height,
+  // ─── Story 16.1 (gate 16.0) ────────────────────────────────────────────────
+  // Só o que o CSS precisa LER. Papéis de cor (`completion-bar.track/fill`),
+  // raio (`--ds-radius-xs`), opacidade terminal (`--ds-task-row-terminal-
+  // opacity`) e o alvo de toque (`--ds-touch-target-min`) já têm var — reusar,
+  // nunca duplicar (mesmo racional de `futureBoard`/`monthlyBoard`).
+  // `domainIcon` nasceu na 14.5 como DADOS puros (nenhum consumidor lia a
+  // medida pelo CSS). A 16.1 é o primeiro consumidor CSS: a coluna do
+  // pictograma existe e fica VAZIA (o glifo é da 16.2), então a largura
+  // precisa ser lida por `var()` — sem isso o guard de literais forçaria
+  // escrever `20px` cru na Habit Tracker Row.
+  '--ds-domain-icon-size-default': domainIcon.sizeDefault,
+  '--ds-domain-icon-size-compact': domainIcon.sizeCompact,
+  '--ds-record-cards-max-width': recordCards.maxWidth,
+  '--ds-record-cards-columns-wide': String(recordCards.columnsWide),
+  '--ds-record-cards-card-min-width': recordCards.cardMinWidth,
+  '--ds-record-cards-gap': recordCards.gap,
+  '--ds-completion-bar-height-day': completionBar.heightDay,
+  '--ds-completion-bar-height-group': completionBar.heightGroup,
+  '--ds-completion-bar-track-border-width': completionBar.trackBorderWidth,
+  '--ds-habit-tracker-row-control-column': habitTrackerRow.controlColumn,
+  '--ds-habit-tracker-row-numeric-field-width': habitTrackerRow.numericFieldWidth,
+  '--ds-pictogram-picker-columns-dialog': String(pictogramPicker.columnsDialog),
+  '--ds-pictogram-picker-columns-sheet': String(pictogramPicker.columnsSheet),
   ...Object.fromEntries(
     Object.entries(spacing).map(([step, value]) => [`--ds-space-${step}`, value]),
   ),
