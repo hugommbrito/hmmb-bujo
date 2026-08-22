@@ -1,6 +1,7 @@
 # Story 16.0: [UX] Mockup de Hábitos no sistema novo (x.0 — gate do épico)
 
-Status: ready-for-dev
+Status: done
+baseline_commit: 86ae2210575a526ed347daaa1ea69ac9b179b153
 
 > **Gate de execução:** apesar do status padronizado `ready-for-dev`, esta é uma story `x.0` de UX. Executar exclusivamente pelo rito **`bmad-ux` human-in-the-loop**. **Não executar com `dev-story` nem com story-automator.** As Stories 16.1–16.2 permanecem bloqueadas até esta story ser aprovada, promovida aos artefatos canônicos e marcada `done`.
 >
@@ -58,44 +59,44 @@ Para que o módulo migre com pictogramas e padrão de registro definidos (UX-DR3
 
 ## Tasks / Subtasks
 
-- [ ] **1. Executar o rito `bmad-ux` e congelar o escopo** (AC: 1, 6)
-  - [ ] Confirmar que é x.0 human-in-the-loop, nunca `dev-story`/story-automator; nenhuma alteração em `frontend/`/`backend/` nesta story.
-  - [ ] Confirmar as 3 superfícies-alvo e a exclusão explícita de Saúde/Medicamentos/Gratidão (ficam para 16.3/16.10).
-  - [ ] Usar como autoridades, nesta ordem: `DESIGN.md`/`EXPERIENCE.md` vigentes, arquitetura (AD-06/AD-10/AD-11), PRD FR-7, comportamento real inventariado.
-  - [ ] Registrar toda divergência proposta; se exigir regra de produto nova, encaminhar upstream em vez de resolver visualmente.
+- [x] **1. Executar o rito `bmad-ux` e congelar o escopo** (AC: 1, 6)
+  - [x] Confirmar que é x.0 human-in-the-loop, nunca `dev-story`/story-automator; nenhuma alteração em `frontend/`/`backend/` nesta story.
+  - [x] Confirmar as 3 superfícies-alvo e a exclusão explícita de Saúde/Medicamentos/Gratidão (ficam para 16.3/16.10).
+  - [x] Usar como autoridades, nesta ordem: `DESIGN.md`/`EXPERIENCE.md` vigentes, arquitetura (AD-06/AD-10/AD-11), PRD FR-7, comportamento real inventariado.
+  - [x] Registrar toda divergência proposta; se exigir regra de produto nova, encaminhar upstream em vez de resolver visualmente.
 
-- [ ] **2. Inventariar as 3 superfícies legado e a regra de domínio** (AC: 1, 4, 5)
-  - [ ] Percorrer `/habits` (tracker), `/habits/history` (histórico + grade + gráfico) e `/settings/habits` (configuração).
-  - [ ] Documentar o tracker: grupos com `%` de completude, linha booleana (checkbox) e numérica (valor/meta/bonus/`%`), toggle "Feriado", override "tratar como dia útil", legenda de multiplicador quando ≠1.
-  - [ ] Documentar a configuração: criar grupo, criar hábito (booleano/numérico com campos condicionais), editar peso/meta/bonus/unidade com aviso "vale a partir de hoje", ativar/desativar, "Mostrar inativos".
-  - [ ] Documentar o histórico: controle de intervalo (período anterior/próximo), detalhe por-data read-only agrupado, seletor de hábito + gráfico de evolução, grade hábito×dia com alternativa em lista no mobile.
-  - [ ] Confirmar que nenhum desses comportamentos já existentes fica de fora do mockup — paridade é pré-requisito da Story 16.1, não desta.
+- [x] **2. Inventariar as 3 superfícies legado e a regra de domínio** (AC: 1, 4, 5)
+  - [x] Percorrer `/habits` (tracker), `/habits/history` (histórico + grade + gráfico) e `/settings/habits` (configuração).
+  - [x] Documentar o tracker: grupos com `%` de completude, linha booleana (checkbox) e numérica (valor/meta/bonus/`%`), toggle "Feriado", override "tratar como dia útil", legenda de multiplicador quando ≠1.
+  - [x] Documentar a configuração: criar grupo, criar hábito (booleano/numérico com campos condicionais), editar peso/meta/bonus/unidade com aviso "vale a partir de hoje", ativar/desativar, "Mostrar inativos".
+  - [x] Documentar o histórico: controle de intervalo (período anterior/próximo), detalhe por-data read-only agrupado, seletor de hábito + gráfico de evolução, grade hábito×dia com alternativa em lista no mobile.
+  - [x] Confirmar que nenhum desses comportamentos já existentes fica de fora do mockup — paridade é pré-requisito da Story 16.1, não desta.
 
-- [ ] **3. Produzir e aprovar o mockup canônico do módulo** (AC: 1, 2, 3, 5)
-  - [ ] Criar a exploração em `.working/` e promover a versão aprovada como `mockups/key-habitos.html` (confirmar nome exato com Sally durante o rito).
-  - [ ] Aplicar o padrão Registro (data → registro → feedback → histórico) às 3 superfícies com componentes canônicos do `DESIGN.md` vigente.
-  - [ ] Representar `iconKey` Phosphor + fallback emoji de forma consistente (AC2).
-  - [ ] Não inventar endpoint, schema, tipo de hábito, streak, ranking ou gamificação (voz factual, sem celebração).
+- [x] **3. Produzir e aprovar o mockup canônico do módulo** (AC: 1, 2, 3, 5)
+  - [x] Criar a exploração em `.working/` e promover a versão aprovada como `mockups/key-habitos.html` (confirmar nome exato com Sally durante o rito).
+  - [x] Aplicar o padrão Registro (data → registro → feedback → histórico) às 3 superfícies com componentes canônicos do `DESIGN.md` vigente.
+  - [x] Representar `iconKey` Phosphor + fallback emoji de forma consistente (AC2).
+  - [x] Não inventar endpoint, schema, tipo de hábito, streak, ranking ou gamificação (voz factual, sem celebração).
 
-- [ ] **4. Fechar a matriz de estados funcionais** (AC: 3)
-  - [ ] Loading com skeleton da geometria real; shell/header estáveis.
-  - [ ] Vazio: sem grupo (config), sem hábito ativo no dia (tracker), sem registro no período (histórico/grade/gráfico) — nunca 0% fabricado.
-  - [ ] Erro de leitura com retry local e de escrita com entrada preservada.
-  - [ ] Offline: leitura/cache disponível quando existir; escrita indisponível com motivo.
-  - [ ] Hábito inativo: menor ênfase + chip textual "inativo", visível só com "Mostrar inativos".
-  - [ ] Collection "Hábitos" desligada/ausente: destino ausente da navegação, núcleo e Planner intactos, sem heading vazio nem item disabled (DIR-12c).
+- [x] **4. Fechar a matriz de estados funcionais** (AC: 3)
+  - [x] Loading com skeleton da geometria real; shell/header estáveis.
+  - [x] Vazio: sem grupo (config), sem hábito ativo no dia (tracker), sem registro no período (histórico/grade/gráfico) — nunca 0% fabricado.
+  - [x] Erro de leitura com retry local e de escrita com entrada preservada.
+  - [x] Offline: leitura/cache disponível quando existir; escrita indisponível com motivo.
+  - [x] Hábito inativo: menor ênfase + chip textual "inativo", visível só com "Mostrar inativos".
+  - [x] Collection "Hábitos" desligada/ausente: destino ausente da navegação, núcleo e Planner intactos, sem heading vazio nem item disabled (DIR-12c).
 
-- [ ] **5. Auditar regras de domínio sem redesenho** (AC: 4, 5)
-  - [ ] Completude ponderada (AD-06): booleano 100% do peso quando marcado; numérico proporcional 0%–(100%−bonus%) até a meta, 100% ao atingi-la; hábito inativo não entra no denominador.
-  - [ ] Multiplicador por tipo de dia (AD-10): vive no grupo, `weekday`=1.0 implícito, precedência `holiday > weekend > weekday` sem acumular; override avulso "tratar como dia útil" continua disponível.
-  - [ ] Snapshot imutável/versionamento prospectivo (AD-06): mudança de peso/meta/bonus/ativação só vale a partir de hoje; edição de dia passado é avulsa e não retroage a configuração.
-  - [ ] Gráfico (AD-11): mudanças reais sempre anotadas por texto; ritmo (fim de semana/feriado) é sombreamento, nunca confundido com mudança de config.
+- [x] **5. Auditar regras de domínio sem redesenho** (AC: 4, 5)
+  - [x] Completude ponderada (AD-06): booleano 100% do peso quando marcado; numérico proporcional 0%–(100%−bonus%) até a meta, 100% ao atingi-la; hábito inativo não entra no denominador.
+  - [x] Multiplicador por tipo de dia (AD-10): vive no grupo, `weekday`=1.0 implícito, precedência `holiday > weekend > weekday` sem acumular; override avulso "tratar como dia útil" continua disponível.
+  - [x] Snapshot imutável/versionamento prospectivo (AD-06): mudança de peso/meta/bonus/ativação só vale a partir de hoje; edição de dia passado é avulsa e não retroage a configuração.
+  - [x] Gráfico (AD-11): mudanças reais sempre anotadas por texto; ritmo (fim de semana/feriado) é sombreamento, nunca confundido com mudança de config.
 
-- [ ] **6. Promover, reconciliar e obter aprovação explícita** (AC: 6)
-  - [ ] Atualizar `DESIGN.md` somente com anatomia/variantes/estados visuais aprovados que ainda não sejam canônicos.
-  - [ ] Atualizar `EXPERIENCE.md` somente com o comportamento/estados aprovados, substituindo as entradas "diferido à Story 16.0".
-  - [ ] Atualizar decision-log/requirements-traceability/validation-report apenas se o rito `bmad-ux` exigir e houver conteúdo novo.
-  - [ ] Obter aprovação explícita de Hugo; marcar `done` somente após promoção sem divergência silenciosa; só então liberar 16.1–16.2.
+- [x] **6. Promover, reconciliar e obter aprovação explícita** (AC: 6)
+  - [x] Atualizar `DESIGN.md` somente com anatomia/variantes/estados visuais aprovados que ainda não sejam canônicos.
+  - [x] Atualizar `EXPERIENCE.md` somente com o comportamento/estados aprovados, substituindo as entradas "diferido à Story 16.0".
+  - [x] Atualizar decision-log/requirements-traceability/validation-report apenas se o rito `bmad-ux` exigir e houver conteúdo novo.
+  - [x] Obter aprovação explícita de Hugo; marcar `done` somente após promoção sem divergência silenciosa; só então liberar 16.1–16.2.
 
 ## Dev Notes
 
@@ -216,8 +217,52 @@ Os testes automatizados (Vitest/Playwright) entram na Story 16.1, que deve cobri
 
 ### Agent Model Used
 
+Claude Opus 5 (1M) — rito `bmad-ux` human-in-the-loop via `bmad-build`, sessão interativa de 2026-08-21. **Não** executado por `dev-story` nem story-automator, conforme o gate.
+
 ### Debug Log References
+
+Entrada: handoff produzido por Hugo no Claude Design, em `docs/ux-handoffs/16-0`, copiado para `imports/story-16-0-habitos-handoff/` no workspace canônico. Decisões da sessão registradas em `.memlog.md` (entradas 16–30).
 
 ### Completion Notes List
 
+**Doze decisões de Hugo destravaram o gate.** O handoff chegou com quatro bloqueios declarados (Q2, Q5, Q7+Q10, Q4) e seis definições de domínio pendentes; todas foram decididas nesta sessão antes de qualquer escrita em artefato.
+
+1. **Q2 — o emoji sai da interface.** O handoff venceu o AC2 original desta story: `iconKey` é obrigatório, sem fallback de emoji. Consequência real: a Story 16.2 deixa de ser uma adição retrocompatível de campo e passa a carregar **migração de dado** (`emoticon` → `iconKey`); a 16.1 não exibe emoji. O AC2 acima permanece com o texto original congelado — o `epics.md` e os spines carregam a versão aprovada.
+2. **Q5 — sem limite de retroatividade** na edição de dias passados. Nenhuma regra nova de backend.
+3. **Q4 — "Registro em cards" é variante canônica**, não exceção local: Saúde-Métricas (16.3) reaproveita.
+4. **Q7+Q10 — o limite "sem streaks/gamificação" foi revogado** como proibição de *métrica agregada*; a proibição de *celebração* permanece integralmente válida. As quatro leituras viraram a **Story 16.2b** (nova), posterior a 16.1/16.2. As superfícies 2e–2j seguem implementáveis na 16.1 sem depender disso.
+5. Definições de domínio fixadas para a 16.2b: sequência atravessa inatividade, quebra em dia ativo sem registro, hoje é neutro; denominador é sempre "dias com registro"; numérico agrega por média simples; ano civil; dia com Σ pesos efetivos = 0 sai da contagem; teto de 4 cores com degradação para série única; semana parcial rotula os dias reais.
+
+**Divergência de contrato encontrada e corrigida:** `architecture-and-story-handoff.md` chamava `iconKey` de "mudança contratual isolada, retrocompatível" — deixa de ser, pela decisão Q2.
+
+**Divergência do delta de design system:** o pacote afirmava "nenhum token novo". Verdadeiro para **cores** (nenhuma cor nova), falso para geometria — 1120px, 520px, 44px de coluna de controle, 104px de campo, 8px/6px de barra e 6/4 colunas de grade não tinham endereço. Como Q4 promove "Registro em cards" a variante reutilizável, medida sem token seria inendereçável; 4 blocos foram adicionados com valores literais do handoff.
+
+**Verificação formal de acessibilidade não foi reintroduzida** — descontinuada desde a retro do Épico 15. Os estados funcionais obrigatórios (paridade) foram cobertos normalmente.
+
+**Reviewer Gate (rubric walker, lente escolhida por Hugo):** 0 critical, 3 high, 3 medium, 4 low. O critical da rodada 15.0 (referências de token quebradas) **não reincidiu** — 452 tokens, 0 quebras. Os 3 high foram corrigidos nesta sessão: (1) UJ-8/FR-7 saíram de "diferido" sem Key Flow → criado o **Fluxo 9 — Configurar e registrar hábitos**; (2) catálogo bilateral dessincronizado (5 linhas no DESIGN, 1 no EXPERIENCE) → 4 linhas comportamentais adicionadas e `Hábitos` renomeado para `Hábitos (Registro)` para casar por nome; (3) **DIR-12c ausente** — o handoff não cobriu "collection desligada/ausente" apesar de ser AC3 desta story, e a recusa da 15.0 não valia porque Hábitos **é** collection gateável → fechado por contrato comportamental (linha em State Patterns), decisão de Hugo. Relatório completo em `review-rubric.md`.
+
+**Decisão posterior à revisão visual (2026-08-22):** Hugo inverteu o canal de leitura da grade hábitos × períodos — o **tom** virou canal primário, em **escala contínua** (alpha = completude da própria célula; booleano usa a razão real da fração), com o número recuando para a cor do próprio fundo um degrau mais escura. Isso revogou duas regras escritas horas antes neste mesmo gate ("o número é o canal primário" e "nenhuma célula abaixo de 4,5:1") e criou a **única exceção nomeada ao piso de contraste** do produto, registrada em `EXPERIENCE.md.Accessibility Floor` e sustentada pela tabela equivalente permanente em `details`.
+
+**Nenhum arquivo de runtime foi tocado:** `frontend/`, `backend/`, schema, OpenAPI, dependências e testes automatizados permanecem intactos, como exige a fronteira desta x.0.
+
 ### File List
+
+**Promoção canônica (workspace `_bmad-output/planning-artifacts/ux-designs/ux-hmmb-bujo-2026-07-17/`):**
+
+- `UPDATE` `DESIGN.md` — seções novas `Hábitos (Registro)` e `Seleção de pictograma`; `Grid/Calendar`, `Dialog/Sheet` e `Pictogramas de domínio` estendidos/reescritos; 5 linhas no catálogo bilateral; 4 blocos de token de geometria; `updated: 2026-08-21`
+- `UPDATE` `EXPERIENCE.md` — seção nova `Hábitos`; `Pictogramas de hábitos e saúde` reescrita; 5 linhas em State Patterns; 1 em Component Patterns; fronteira de Voice and Tone; 1 em Decisions for Architecture; todas as marcações "diferido à Story 16.0" substituídas; `updated: 2026-08-21`
+- `UPDATE` `architecture-and-story-handoff.md` — seção `M12 — Hábitos`; correção da linha "retrocompatível" no Checklist
+- `UPDATE` `requirements-traceability.md` — FR-7 de `diferido` para `coberto`; UJ-8 fechada
+- `NEW` `reconcile-story-16-0-habitos.md` — reconciliação da entrada, decisões Q1–Q10, Reviewer Gate, divergências resolvidas e escopo não promovido
+- `NEW` `review-rubric.md` — relatório do Reviewer Gate (o da rodada 15.0 preservado como `review-rubric-15-0-brain-dump.md`)
+- `UPDATE` `EXPERIENCE.md` — **Fluxo 9** acrescentado aos Key Flows
+- `NEW` `mockups/key-habitos.html` — mockup canônico (F1–F12, O1–O2, E1–E6 + F13–F15 isolados como alvo da 16.2b)
+- `NEW` `imports/story-16-0-habitos-handoff/` — pacote de origem preservado como evidência
+- `UPDATE` `.memlog.md` — 15 entradas novas (decisões e mudanças)
+
+**Planejamento:**
+
+- `UPDATE` `_bmad-output/planning-artifacts/epics.md` — bloco de resultado do gate na 16.0; AC da 16.1 e da 16.2 corrigidos; **Story 16.2b nova**; UX-DR13 e UX-DR19 qualificadas
+- `UPDATE` `_bmad-output/implementation-artifacts/sprint-status.yaml` — chave `16-2b-leituras-agregadas-de-habitos` adicionada
+
+Nenhum arquivo em `frontend/` ou `backend/`.

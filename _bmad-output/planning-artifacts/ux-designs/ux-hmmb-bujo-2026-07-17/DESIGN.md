@@ -3,7 +3,7 @@ name: HMMB BuJo — Sistema Operacional Visual
 description: Design system denso, calmo e produtivo para o Bullet Journal digital do hmmb-bujo.
 status: final
 created: 2026-07-17
-updated: 2026-07-29
+updated: 2026-08-22
 sources:
   - ../../../specs/spec-design-system-migration/SPEC.md
   - ../../../specs/spec-design-system-migration/design-system-contract.md
@@ -15,6 +15,7 @@ sources:
   - ../../../implementation-artifacts/14-0-ux-mockups-complementares-do-nucleo-bujo.md
   - imports/mybujo-full-handoff/design_handoff_full_app/README.md
   - imports/story-15-0-brain-dump-handoff/README.md
+  - imports/story-16-0-habitos-handoff/README.md
 colors:
   # Aliases canônicos: Mineral Light.
   canvas: '#F5F2EA'
@@ -361,6 +362,27 @@ components:
     reading-width: '800px'
     gutter-wide: '{spacing.8}'
     gutter-compact: '{spacing.4}'
+  record-cards:
+    max-width: '1120px'
+    columns-wide: '2'
+    card-min-width: '520px'
+    gap: '{spacing.4}'
+  completion-bar:
+    height-day: '8px'
+    height-group: '6px'
+    track: '{colors.surface-subtle}'
+    track-border: '1px solid {colors.border}'
+    fill: '{colors.primary}'
+    radius: '{rounded.xs}'
+  habit-tracker-row:
+    control-column: '44px'
+    numeric-field-width: '104px'
+    category-border: 'none'
+    terminal-opacity: '0.58'
+  pictogram-picker:
+    columns-dialog: '6'
+    columns-sheet: '4'
+    tile-min-size: '{components.app-shell.touch-target-min}'
   weekly-board:
     gap: '{spacing.2}'
     weekday-min-width: '240px'
@@ -540,6 +562,11 @@ Raios de 2–8px comunicam ferramenta, não aplicativo lifestyle. Pills ficam re
 | Month Density | Monthly Planning Workspace | minicalendário e distribuição |
 | Archive History | Workspace Surface | abas temporais + filtros + lista mestre + detalhe readonly |
 | Brain Dump (Inbox) | Workspace Surface | Panel Capturar + Section Header + lista Item Row; sem rail de contexto |
+| Hábitos (Registro) | Workspace Surface | abas Hoje · Histórico · Configuração; Registro em cards; sem rail de contexto |
+| Habit Tracker Row | Item Row | coluna de controle + pictograma + nome/peso + campo numérico; sem borda de categoria |
+| Registro em cards | Panel | cards de grupo em duas colunas em wide, rompendo a largura de leitura |
+| Barra de completude | raiz | trilha + preenchimento sempre redundantes à porcentagem textual |
+| Seletor de pictograma | Dialog/Sheet | grade de tiles `role="radio"` com busca e virtualização |
 
 ### App Shell
 
@@ -674,6 +701,30 @@ A captura persistente do shell (`{components.capture-action}`) abre o **Capture 
 
 → Referência aprovada: [`mockups/key-brain-dump.html`](mockups/key-brain-dump.html), a partir do handoff em [`imports/story-15-0-brain-dump-handoff/`](imports/story-15-0-brain-dump-handoff/). Os spines vencem em qualquer conflito.
 
+### Hábitos (Registro)
+
+Superfície de padrão **Registro** conforme `{components.workspace}`: principal única, sem rail de contexto, dividida em três abas na ordem canônica **Hoje · Histórico · Configuração** (no compact, "Config." pela largura), com o vocabulário de `tablist` já vigente. A ordem de leitura é idêntica nas três faixas — data e tipo de dia → completude do dia → registro por grupo → histórico — e a recomposição responsiva nunca comprime: a grade densa vira lista por dia no compact e o gráfico conserva sua tabela equivalente em todas as faixas.
+
+O registro do dia usa a variante canônica **Registro em cards** conforme `{components.record-cards}`: um Panel por grupo de hábitos, com Section Header interno (nome do grupo, porcentagem ponderada e peso efetivo) e a barra redundante, em duas colunas de `{components.record-cards.card-min-width}` em wide e uma coluna nas demais faixas. Isso amplia o workspace até `{components.record-cards.max-width}` e **rompe deliberadamente** `{components.workspace.reading-width}` — a exceção é da variante, não de Hábitos: qualquer superfície com dados agrupados de mesma forma a reutiliza, e a leitura textual corrida continua em 800px. Nenhum Panel aninhado; os cards não viram dashboard nem ganham sombra.
+
+Cada linha é a **variante Habit Tracker Row** do Item Row, conforme `{components.habit-tracker-row}`: coluna de controle de `{components.habit-tracker-row.control-column}` à esquerda, pictograma de `{components.domain-icon.size-default}` em seguida, e o bloco central com nome e peso nas extremidades opostas da mesma linha (`space-between`), o estado ou a razão da meta abaixo. No hábito numérico, o trailing recebe o campo de `{components.habit-tracker-row.numeric-field-width}` alinhado à direita. A linha **não tem borda esquerda de categoria** — hábito não tem categoria, e o alinhamento é dado pela coluna de controle, não por um filete neutro. As alturas seguem `{components.task-row.min-height-pointer}` e `{components.task-row.min-height-touch}`; no compact, a linha booleana é alvo único com o rótulo inteiro clicável e a numérica quebra em duas faixas, campo em largura total alinhado à coluna do nome. Os fatores congelados aparecem como texto de transparência na própria linha (`Peso 3 × 0,5 = 1,5`), com inteiro sem fração quando não há vírgula.
+
+A coluna de controle abriga dois objetos visualmente idênticos e semanticamente opostos: **checkbox interativo** no booleano, **checkbox indicador** no numérico — desabilitado, marcado sozinho ao atingir a meta, uso do controle como *saída* e não entrada. O catálogo registra essa exceção para que a aparência disabled não seja lida como falta de permissão. O estado textual ao lado ("Feito" / "Não feito" / "Meta atingida") é obrigatório em ambos, porque a marca do checkbox nunca é canal único; o contrato de comportamento está em `EXPERIENCE.md.Hábitos`.
+
+A **barra de completude** é leitura, não controle, e segue `{components.completion-bar}`: `{components.completion-bar.height-day}` no cabeçalho do dia, `{components.completion-bar.height-group}` no card de grupo, trilha `{components.completion-bar.track}` com borda `{colors.border}`, preenchimento `{colors.primary}` e raio `{rounded.xs}`. Mesma largura em todas as faixas, `role="img"` com a porcentagem no nome, e **sempre redundante** à porcentagem em texto tabular acompanhada do denominador nomeado. Nenhuma barra existe sem o número ao lado; dia sem registro não desenha barra zerada.
+
+Hábito inativo combina o chip textual **"Inativo"** — `{components.chip}` no padrão de etiqueta curta — com o tratamento terminal de `{components.habit-tracker-row.terminal-opacity}`, o mesmo valor dos boards. Opacidade **nunca** é canal único: o chip carrega o estado e o contraste do texto essencial permanece legível. O mesmo par vale no histórico, onde o inativo entra em agrupamento próprio com travessão. Excluir hábito não existe em nenhuma superfície: só desativar e reativar, com ações que nomeiam a consequência. O histórico inteiro é readonly em contraste normal — readonly nunca assume aparência disabled.
+
+→ Referência aprovada: [`mockups/key-habitos.html`](mockups/key-habitos.html), a partir do handoff em [`imports/story-16-0-habitos-handoff/`](imports/story-16-0-habitos-handoff/). Os spines vencem em qualquer conflito.
+
+### Seleção de pictograma
+
+O `iconKey` guarda o nome do glifo Phosphor de um catálogo **aberto** — os ~1.500 nomes da versão instalada; a regra de busca e de validação está em `EXPERIENCE.md.Pictogramas de hábitos e saúde`. O peso `{components.domain-icon.weight}` é fixo no front e `fill` continua reservado ao destino selecionado do App Shell. Os tamanhos são `{components.domain-icon.size-default}` em configuração, tracker e Hoje, e `{components.domain-icon.size-compact}` em grade, série e listas densas, sempre `currentColor` e monocromático. O nome do glifo nunca aparece fora do seletor, e com o nome do hábito visível o pictograma é decorativo.
+
+O seletor segue `{components.pictogram-picker}`: busca no topo, grade de tiles de `{components.pictogram-picker.columns-dialog}` colunas no dialog e `{components.pictogram-picker.columns-sheet}` no sheet, cada tile com no mínimo `{components.pictogram-picker.tile-min-size}`. Cada tile é um `role="radio"` focável **sem controle desenhado**: a seleção é comunicada por borda e fundo `{colors.primary}` mais o estado programático, e o foco pelo anel `{components.focus-ring}`. Esse é o padrão canônico de seleção visual por tile do sistema. A rolagem é **virtualizada por obrigação** — a grade não monta o catálogo inteiro em nós.
+
+Sem pictograma escolhido, a coluna do glifo fica **vazia** e o layout não muda; o mesmo vale para uma chave órfã, cuja validação é do servidor contra a versão instalada. Quadrado vazio, tofu ou glifo de erro não são estados desenhados.
+
 ### Task Row
 
 O cluster leading reúne borda de categoria, ícone de status e Eisenhower. Título, descrição e indicação de subtarefas ocupam o centro. O indicador numérico de ordem fica no trailing; a alça de drag, quando disponível, fica junto dele sem substituir a alternativa por teclado/comando. A linha secundária mostra apenas descrição e, quando aplicável, quantidade/expansão de subtarefas — não repete origem, horário ou status. Hover pode revelar atalhos, mas foco e touch têm equivalentes.
@@ -690,7 +741,7 @@ No footer do detalhe, Salvar é primário. Cancelar tarefa é um botão danger c
 
 Phosphor é o vocabulário iconográfico de toda a plataforma. Para entidades e registros de domínio, usa `{components.domain-icon.weight}`, `{components.domain-icon.size-compact}` ou `{components.domain-icon.size-default}` e `currentColor`; a variante padrão é monocromática, sem duotone, fill decorativo ou cor própria por ícone. A troca `regular`→`fill` é reservada ao estado selecionado dos destinos do App Shell.
 
-O pictograma identifica o assunto, não comunica conclusão, severidade, seleção ou disponibilidade. Esses estados continuam nos controles e padrões específicos. A seleção oferecida ao usuário deve ser curada, nomeada semanticamente e consistente entre cadastro, Hoje, grids e histórico. Emoji não é o padrão visual novo, mas permanece como fallback durante a migração de dados.
+O pictograma identifica o assunto, não comunica conclusão, severidade, seleção ou disponibilidade. Esses estados continuam nos controles e padrões específicos. A seleção oferecida ao usuário deve ser curada, nomeada semanticamente e consistente entre cadastro, Hoje, grids e histórico. Emoji não é o padrão visual novo. Onde ainda existe dado legado de `emoticon` sem correspondência Phosphor, ele permanece como fallback apenas enquanto aquele módulo não migrou. Em **Hábitos** esse fallback termina: a Story 16.2 inclui a migração de dado `emoticon` → `iconKey`, todo hábito passa a ter pictograma obrigatório e o campo de emoji sai da interface — nem entrada, nem exibição, nem substituto quando a chave falta.
 
 Fronteira do sistema:
 
@@ -715,11 +766,19 @@ Stepper anterior/atual/próximo com seletor acessível. Datas usam locale pt-BR 
 
 Headers persistentes, célula com estados nomeados, foco navegável e alternativa de lista. Today, selected, missing, N/A e closed são visualmente distintos sem depender apenas de preenchimento.
 
+A composição **hábitos × períodos** do histórico de Hábitos usa este componente: uma linha por hábito, agrupadas por grupo como no tracker, e uma coluna por semana ou quinzena, com o inativo em agrupamento próprio marcado por travessão. Aqui o **tom é o canal primário** e o número é a leitura precisa que o acompanha — booleano mostra dias feitos sobre dias com registro ("5/7"), numérico mostra a média ("71%"), e a coluna rotula os dias reais quando diferem dos dias corridos ("3 dias"). Célula sem registro é tracejada com "—", nunca 0% fabricado. Cabeçalhos usam `th scope` em linha e coluna, `caption` descreve a leitura, tags textuais FDS/FER acompanham o tipo de dia, e a tabela equivalente vive em `details` na mesma superfície. No compact a grade vira lista por dia com a mesma informação.
+
+O tom é uma **escala contínua**, não faixas: a célula pinta `{colors.primary}` sobre `{colors.surface}` com alpha igual à própria completude, de modo que 71% é literalmente 71% de opacidade. O booleano usa a razão real da fração — "5/7" pinta a 71%, nunca o numerador. O número herda essa mesma cor um degrau mais escura e recua deliberadamente: ele permanece legível de perto e presente para conferência, mas a leitura à distância é a mancha. Tudo derivado por `color-mix`, sem token ou cor nova.
+
+Esta é a **exceção nomeada** ao piso de contraste do sistema: as células ficam abaixo de 4,5:1 por decisão de design (2026-08-22), porque a densidade da grade se lê por gradiente e não por dígito. O que sustenta a acessibilidade aqui não é a célula e sim a redundância ao redor — a **tabela equivalente em `details`** na mesma superfície, em contraste normal, mais `caption`, `th scope` e as tags textuais FDS/FER. Fora desta composição o piso continua valendo integralmente. **Célula sem número continua sendo bug, não variante.** A leitura agregada por sequência, dias 100% e série de completude por grupo é alvo da **Story 16.2b** e não altera esta anatomia.
+
 ### Dialog/Sheet
 
 Dialog para decisão curta; sheet para detalhe/captura compacta e escolha de destino. Migração/Catch-Up **não** usa camada modal própria nem tela cheia: reusa o **ritual** (fontes + decisões + contexto) dentro do workspace, como o planejamento semanal/mensal. Apenas uma camada modal por vez. Ações destrutivas ficam separadas e nomeiam a consequência. Migração, adiamento e alocação confirmam no próprio seletor com destino explícito; cancelamento e finalização irreversível usam dialog.
 
 O Brain Dump usa três variantes deste componente: **Capture** (captura persistente do shell), **destino** (idêntica ao seletor do ritual de migração, com seletor de log no lugar das abas) e **confirmação** (Descartar item?/Descartar alterações?, foco inicial em Continuar editando — ver `Brain Dump (Inbox)` acima para a condição exata de disparo). Nenhuma delas abre sobre outra — o seletor de destino e o sheet de item nunca empilham sobre o Capture Sheet.
+
+Hábitos acrescenta a variante **seletor de pictograma**: dialog em wide/medium/tablet e sheet no compact, com busca no topo, contador anunciado, grade virtualizada de tiles e footer cuja ação primária nomeia a chave escolhida. É a **única profundidade de overlay** do módulo — nada abre sobre ela e ela não abre sobre outra camada; o foco fica preso e volta ao controle de origem. A anatomia visual da grade está em `Seleção de pictograma` acima.
 
 ### Feedback
 

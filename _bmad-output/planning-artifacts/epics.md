@@ -317,7 +317,7 @@ _Requisitos acionáveis extraídos do EXPERIENCE.md (comportamento, fluxos, comp
 
 **Estados, microcopy e feedback:**
 
-- **UX-DR13 (Voz, tom e estados vazios)** — pt-BR direto e funcional; zero gamificação/exclamações/sequências; microcopy conforme tabela de exemplos (EXPERIENCE §3); estados vazios informativos ("Brain Dump vazio.", "Nenhuma tarefa para hoje.", etc.).
+- **UX-DR13 (Voz, tom e estados vazios)** — pt-BR direto e funcional; zero gamificação/exclamações/celebração. **[Fronteira registrada — gate 16.0, 2026-08-21]**: a proibição de *sequências* foi revogada como proibição de **métrica agregada** — contagem factual (sequência, dias com 100%, completude por período) é permitida quando calculada no servidor (Story 16.2b). Permanece proibida a **celebração**: chama colorida, medalha, "não quebre a corrente", confete, som ou cor que mude conforme o número; microcopy conforme tabela de exemplos (EXPERIENCE §3); estados vazios informativos ("Brain Dump vazio.", "Nenhuma tarefa para hoje.", etc.).
 - **UX-DR14 (Loading & escrita otimista)** — skeleton screens (Daily/Weekly/Monthly); sem spinner global em escrita; resposta otimista com rollback + erro inline em falha; meta percebida < 2s (NFR-2).
 - **UX-DR15 (Conectividade & erros)** — MVP sem offline; toast não-bloqueante em perda de conexão; erro inline em escrita com retry; FAB desabilitado offline; nenhuma captura perdida silenciosamente.
 - **UX-DR16 (Estados de Auth)** — redirect para Login sem sessão; erro de login inline ("Email ou senha incorretos."); sessão expirada com banner não-bloqueante sem destruir o estado da UI. **[REVOGADO PARCIALMENTE — CC 2026-07-22]**: a cláusula "pós-login abre no Daily Log de hoje" é revogada — pós-login abre no **Dashboard-panorama (home)**. Exigências preservadas: captura a um toque; card do dia **acionável** (rapid logging direto, migrações pendentes visíveis). "Hoje" permanece como superfície de trabalho — **Hoje = trabalhar / Dashboard = ver** — compartilhando o mesmo componente de tasks do dia. Detalhamento na spec da nova home (bmad-ux, pré-requisito da Onda 2b).
@@ -326,7 +326,7 @@ _Requisitos acionáveis extraídos do EXPERIENCE.md (comportamento, fluxos, comp
 
 - **UX-DR17 (Arquitetura de Informação / Roteamento)** — mapa de superfícies (Hoje, Planner: Esta Semana/Este Mês/Futuro, Hábitos, Saúde: Métricas/Medicamentos, Gratidão, Brain Dump, Arquivo, Configurações + sub-seções); empilhamento de modal máximo 1 nível; Fluxo de Migração nunca navegado diretamente.
 - **UX-DR18 (Responsividade)** — breakpoints desktop ≥1024 / tablet 768–1023 / mobile <768; Weekly Log 7 colunas (desktop) → seletor de dia (tablet/mobile), sem scroll horizontal; Monthly Log lista vertical no mobile; detalhe de tarefa = bottom sheet no mobile; Migração full-screen no mobile.
-- **UX-DR19 (Primitivos de interação / teclado)** — atalhos globais `[` (sidebar), `N` (nova tarefa), `B` (Brain Dump), `Esc` (fechar modal/popover); drag-and-drop de reordenação só desktop; ciclo de status por clique; proibições explícitas (migração automática, drag mobile, modal aninhado, gamificação, sugestões de IA, scroll horizontal de navegação). **[Fronteira registrada — CC 2026-07-22]**: "sugestões de IA" proíbe IA como **primitivo de interação** (sugerir/preencher/automatizar captura e migração — atalhos em fluxos intencionalmente atritosos). **Não** proíbe análises sobre dados já preenchidos (collection Análises) nem transcrição sob confirmação humana obrigatória (Pressão Arterial foto+IA). Guardrail obrigatório nas stories dessas features: *a IA analisa e explica; nunca sugere, preenche ou automatiza captura/migração; transcrição só salva após confirmação explícita.* Consentimento: campo de journalling só vira contexto com `contexto_ia: on` (opt-in, default off); métrica selecionada em Modelo de Relatório ganha badge "dado lido por IA" no formulário de origem (cor + ícone/texto, conforme UX-DR20).
+- **UX-DR19 (Primitivos de interação / teclado)** — atalhos globais `[` (sidebar), `N` (nova tarefa), `B` (Brain Dump), `Esc` (fechar modal/popover); drag-and-drop de reordenação só desktop; ciclo de status por clique; proibições explícitas (migração automática, drag mobile, modal aninhado, gamificação, sugestões de IA, scroll horizontal de navegação) — "gamificação" proíbe a mecânica de recompensa, não a métrica agregada factual (ver fronteira em UX-DR13, gate 16.0). **[Fronteira registrada — CC 2026-07-22]**: "sugestões de IA" proíbe IA como **primitivo de interação** (sugerir/preencher/automatizar captura e migração — atalhos em fluxos intencionalmente atritosos). **Não** proíbe análises sobre dados já preenchidos (collection Análises) nem transcrição sob confirmação humana obrigatória (Pressão Arterial foto+IA). Guardrail obrigatório nas stories dessas features: *a IA analisa e explica; nunca sugere, preenche ou automatiza captura/migração; transcrição só salva após confirmação explícita.* Consentimento: campo de journalling só vira contexto com `contexto_ia: on` (opt-in, default off); métrica selecionada em Modelo de Relatório ganha badge "dado lido por IA" no formulário de origem (cor + ícone/texto, conforme UX-DR20).
 - **UX-DR20 (Acessibilidade — WCAG 2.2 AA)** — cor nunca único indicador (sempre + ícone/texto); touch target ≥ 44px mobile; focus ring MUI preservado; tab order = ordem visual; `Esc` fecha modal/popover; anúncios `aria-live` (mudança de superfície, progresso de migração, status de tarefa, badge do Brain Dump); semântica HTML (`<nav>`, `<main>`, `role=dialog`/`aria-modal` com foco travado). **[EMENDA 2026-07-31 — ver `sprint-change-proposal-2026-07-31.md`]:** estes princípios seguem valendo como convenção de design herdada dos componentes compartilhados (grátis, já embutida), mas deixam de ser **verificação formal obrigatória** por story — ver `UX-DR30` item (6).
 
 **Sistema de design novo — migração 2026-07-17 (governa todo trabalho novo; CAP-3):**
@@ -2463,8 +2463,14 @@ Para que o módulo migre com pictogramas e padrão de registro definidos (UX-DR3
 
 **Dado que** o padrão Registro (data → registro → feedback → histórico) e os pictogramas Phosphor,
 **Quando** a x.0 rodar,
-**Então** cobre tracker diário (booleano/numérico, grupos, percentuais), configuração, histórico/grid e gráfico de evolução, com `iconKey` + fallback emoji representados,
+**Então** cobre tracker diário (booleano/numérico, grupos, percentuais), configuração, histórico/grid e gráfico de evolução, com `iconKey` Phosphor representado,
 **E** inclui os estados obrigatórios + "collection desligada/ausente" (DIR-12c); promovida a DESIGN/EXPERIENCE antes do lote de Hábitos.
+
+> **Resultado do gate (2026-08-21).** Aprovado a partir do handoff em `docs/ux-handoffs/16-0`, promovido a `DESIGN.md.Hábitos (Registro)` e `EXPERIENCE.md.Hábitos`. Quatro decisões de Hugo alteram as stories seguintes:
+> 1. **Emoji sai da interface** — `iconKey` é obrigatório e **não há fallback de emoji**. A Story 16.2 passa a carregar migração de dado (`emoticon` → `iconKey`); a 16.1 não exibe emoji.
+> 2. **Sem limite de retroatividade** na edição de dias passados do tracker — qualquer dia já semeado é editável, com os pesos congelados daquele dia.
+> 3. **"Registro em cards"** vira variante canônica do padrão Registro (cards de grupo em 2 colunas em wide, workspace até 1120px), reaproveitável pela Story 16.3.
+> 4. **Limite "sem streaks/gamificação" revogado** como proibição de métrica agregada (ver UX-DR13/UX-DR19) — as quatro leituras aprovadas viram a **Story 16.2b**. A proibição de celebração permanece integralmente válida.
 
 ### Story 16.1: Hábitos no sistema novo
 
@@ -2477,7 +2483,7 @@ Para que o tracker diário, a config e o histórico vivam na linguagem nova sem 
 **Dado que** o inventário do módulo legado,
 **Quando** as superfícies migram (tracker, config de hábitos/grupos, histórico por data, grid, gráfico de evolução com anotações),
 **Então** paridade completa de ações/estados/cálculos (completude ponderada, multiplicador por tipo de dia, snapshot imutável intocados — zero mudança de regra),
-**E** estados obrigatórios passam; emoji atual permanece exibido como fallback.
+**E** estados obrigatórios passam; a interface não exibe emoji — o pictograma `iconKey` chega pela Story 16.2, e até lá a coluna do glifo fica vazia sem alterar o layout (gate 16.0).
 
 ### Story 16.2: Campo `icon_key` e catálogo Phosphor (mudança de contrato)
 
@@ -2489,12 +2495,35 @@ Para que a identidade visual dos domínios seja consistente em toda superfície 
 
 **Dado que** a decisão de contrato (EXPERIENCE.md: `iconKey` estável, nunca componente/SVG persistido),
 **Quando** a migration adiciona `icon_key` (nullable) a hábitos e métricas de saúde,
-**Então** o catálogo fechado e pesquisável por nome valida os valores no service (nome fora do catálogo = 400),
-**E** a migration vai à branch Neon e2e; registros sem mapeamento continuam exibindo emoji até escolha do usuário (retrocompatível).
+**Então** o catálogo **aberto** do Phosphor (~1.500 nomes, buscável por substring do nome em inglês) valida os valores no service contra a versão instalada do pacote (nome inexistente = 400),
+**E** a migration mapeia cada `emoticon` existente para um `iconKey` — **o emoji deixa de ser renderizado** (gate 16.0, decisão 1); chave órfã por atualização do pacote cai para coluna de glifo vazia, nunca para tofu.
 
 **Dado que** o mesmo `iconKey` representa a entidade em toda parte,
 **Quando** cadastro, tracker, grids e históricos renderizam,
 **Então** usam o mesmo pictograma monocromático (`currentColor`, 18/20px), decorativo quando há label (sem anúncio duplo), com nome acessível quando sozinho.
+
+### Story 16.2b: Leituras agregadas de Hábitos (sequência, dias 100%, série por grupo, grade por período)
+
+Como Hugo,
+Quero ver sequência por hábito, dias com 100% de completude, a série de completude por grupo e a grade agregada por período,
+Para que o histórico de Hábitos responda perguntas de tendência que hoje exigem leitura dia a dia (aprovado no gate 16.0; revoga o limite de métrica agregada em UX-DR13/UX-DR19).
+
+**Critérios de Aceitação:**
+
+**Dado que** a interface nunca infere completude — a regra vale igualmente para agregações —,
+**Quando** as quatro leituras forem implementadas,
+**Então** todas são calculadas **no servidor** sobre os pesos congelados, com dia sem linha vindo explicitamente nulo (render "sem registro", nunca barra zerada),
+**E** a rota da série por grupo é `GET /api/habits/history/by-group/?start&end`.
+
+**Dado que** as definições foram fixadas no gate 16.0,
+**Quando** cada leitura for calculada,
+**Então** o denominador é sempre "dias com registro" (dia sem linha não entra nem como falha); o hábito numérico agrega por **média simples** das contribuições diárias; o booleano mostra dias feitos sobre dias com registro; o período "ano" é **ano civil**; dia com Σ pesos efetivos = 0 sai da contagem,
+**E** a sequência atravessa período de inatividade do hábito, quebra em dia não aberto dentro de período ativo e trata o dia corrente ainda não registrado como **neutro** (considera até ontem).
+
+**Dado que** a leitura precisa permanecer legível e factual,
+**Quando** as superfícies renderizarem,
+**Então** o gráfico por grupo respeita o teto de 4 cores — acima disso mostra só o total do dia e a leitura por grupo fica íntegra na tabela equivalente —, o filtro de grupos é de leitura (ocultar um grupo não muda o total do dia), a grade rotula a semana parcial pelos dias reais ("3 dias") e o número dentro da célula é o canal primário com o tom como reforço,
+**E** nada de chama colorida, medalha, "não quebre a corrente" ou cor que mude conforme o número — a proibição de celebração (UX-DR13) permanece válida.
 
 ### Story 16.3: [UX] Mockups de Saúde-Métricas + Medicamentos (x.0 do lote — mesma sessão)
 

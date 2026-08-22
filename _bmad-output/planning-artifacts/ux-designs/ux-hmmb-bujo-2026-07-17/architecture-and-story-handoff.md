@@ -4,7 +4,7 @@ Companion técnico do `EXPERIENCE.md`. Preserva obrigações downstream extraíd
 
 ## Fundação transversal
 
-Arquitetura deve definir namespace/fronteira dos temas, ownership entre `app/pages/features/shared`, ativação e rollback por rota, CSS baseline/portals, política de extensão MUI, fronteira MUI/Phosphor, catálogo e persistência de `iconKey`, fallback de `emoticon`, visual regression, feature flags, deprecação e remoção.
+Arquitetura deve definir namespace/fronteira dos temas, ownership entre `app/pages/features/shared`, ativação e rollback por rota, CSS baseline/portals, política de extensão MUI, fronteira MUI/Phosphor, catálogo e persistência de `iconKey`, fallback de `emoticon` (ver [M12](#m12--hábitos): termina em Hábitos), visual regression, feature flags, deprecação e remoção.
 
 ### Aparência multi-dispositivo
 
@@ -56,9 +56,15 @@ Definir endpoint de atualização do item (`PATCH /api/brain-dump/items/{id}/`, 
 
 Preservam `BrainDumpPage`/`CaptureSheet.tsx`: rotas `GET/POST /api/brain-dump/items/` · `DELETE .../items/{id}/` · `POST .../items/{id}/process/` · `GET .../count/`; campos `id`, `title` (máx. 500), `description`, `target_log` (`today|week|month|future` ou nulo), `created_at`; ordenação por `created_at`; destinos `today·week·month·future`, com `future` exigindo `month_first` posterior ao mês corrente e `month` resolvendo o mês corrente no servidor; processar cria a Task e apaga o item; descartar apaga sem confirmação, sem desfazer. Ampliam contrato: endpoint de atualização do item, `scheduled_date` exercitado por Esta Semana/Este Mês no seletor de destino, e sheet de edição do item com confirmação de descarte de rascunho equivalente à do Capture Sheet.
 
+## M12 — Hábitos
+
+Definir a migração de dado `emoticon` → `iconKey` da **Story 16.2**: o campo substitui `emoticon` na interface de Hábitos e deixa de ser adição retrocompatível, porque o emoji para de ser renderizado. O servidor valida `iconKey` contra o catálogo da versão instalada do Phosphor e rejeita nome inexistente; chave que se torne órfã numa atualização do pacote cai para coluna de glifo vazia, nunca para tofu. Definir também as quatro leituras agregadas da **Story 16.2b** (sequência por hábito, contagem de dias com 100%, série de completude por grupo e agregação por hábito/período), calculadas **no servidor** sobre os pesos congelados — a proibição de inferir completude na interface vale igualmente para agregações. Rota sugerida para a série por grupo: `GET /api/habits/history/by-group/?start&end`, com dia sem linha vindo explicitamente nulo, para render "sem registro" em vez de barra zerada. Definições fixadas no gate: denominador é sempre "dias com registro"; o hábito numérico agrega por média simples das contribuições diárias; o período "ano" é ano civil; dia com Σ pesos efetivos = 0 sai da contagem; a sequência atravessa período de inatividade, quebra em dia não aberto dentro de período ativo e trata o dia corrente como neutro.
+
+Preservam o domínio do Épico 6, sem nenhuma mudança nas superfícies do gate 16.0: completude ponderada (AD-06), multiplicador por tipo de dia (AD-10) e anotação textual de mudanças no gráfico (AD-11) são autoridade herdada, que a UX apenas apresenta. A interface **nunca** calcula completude — o otimismo se limita ao valor da linha e a porcentagem reconcilia com o refetch. Preservam as rotas vigentes: `GET/POST /api/habits/` · `PATCH /api/habits/{id}/` (identidade) · `POST /api/habits/{id}/versions/` (versão prospectiva) · `GET/POST /api/habit-groups/` · `GET/PUT /api/habit-groups/{id}/multipliers/` · `GET /api/habits/days/?date` · `PATCH /api/habits/days/{entryId}/` · `POST /api/habits/holidays/` · `GET /api/habits/history/?start&end` · `GET /api/habits/{id}/series/?start&end`. A edição de dia passado não tem janela de retroatividade: qualquer dia já semeado é editável e toca só a linha daquele dia.
+
 ## Checklist de cada story
 
-Cada story carrega onda, superfície, paridade, tokens/componentes, matriz responsiva, estados, aceite acessível, ownership, dependências, rollout/rollback, testes e dívida legada removida. Trocar MUI ou regras de domínio não é autorizado por esta UX. `iconKey` é mudança contratual isolada, retrocompatível e explicitamente aprovada.
+Cada story carrega onda, superfície, paridade, tokens/componentes, matriz responsiva, estados, aceite acessível, ownership, dependências, rollout/rollback, testes e dívida legada removida. Trocar MUI ou regras de domínio não é autorizado por esta UX. `iconKey` é mudança contratual isolada e explicitamente aprovada; desde o gate 16.0 ela carrega migração de dado, porque o emoji deixa de ser renderizado na interface de Hábitos (ver [M12](#m12--hábitos)).
 
 ## Fontes
 
@@ -71,3 +77,4 @@ Cada story carrega onda, superfície, paridade, tokens/componentes, matriz respo
 - `../../prds/prd-hmmb-bujo-2026-06-15/addendum.md`
 - [`requirements-traceability.md`](requirements-traceability.md)
 - [`imports/story-15-0-brain-dump-handoff/`](imports/story-15-0-brain-dump-handoff/)
+- [`imports/story-16-0-habitos-handoff/`](imports/story-16-0-habitos-handoff/)

@@ -2,7 +2,7 @@
 name: HMMB BuJo — Sistema Operacional Visual
 status: final
 created: 2026-07-17
-updated: 2026-07-29
+updated: 2026-08-22
 sources:
   - ../../../specs/spec-design-system-migration/SPEC.md
   - ../../../specs/spec-design-system-migration/design-system-contract.md
@@ -16,6 +16,7 @@ sources:
   - ../../../implementation-artifacts/sprint-status.yaml
   - imports/mybujo-full-handoff/design_handoff_full_app/README.md
   - imports/story-15-0-brain-dump-handoff/README.md
+  - imports/story-16-0-habitos-handoff/README.md
 ---
 
 # HMMB BuJo — Experience Spine
@@ -98,6 +99,10 @@ pt-BR, direto, sereno e específico. O sistema descreve estado e consequência; 
 | “Brain Dump vazio.” | “Tudo limpo por aqui 🎉” |
 | “Sem conexão. Esta ação exige rede.” | “Você está offline, mas cuidamos de tudo.” |
 | “Fica no Brain Dump até ser processado.” | “Salvo no Brain Dump até você processar.” |
+| “Sequência atual: 5 dias.” · “12 dias com 100% no mês.” | chama colorida, medalha, “não quebre a corrente”, cor que muda conforme o número |
+| “Sem conexão. Registrar e configurar hábitos exige rede.” | “Salvamos offline e sincronizamos depois.” |
+
+A contagem factual de uma leitura agregada é permitida; a celebração dela não. Métrica agregada descreve o registro — número em texto, mesmo peso tipográfico das demais leituras, nenhum canal que suba de tom conforme o valor. O que a Story 16.2b revoga é o limite da métrica, nunca o da celebração.
 
 Empty states explicam a ausência e oferecem no máximo uma ação pertinente. Ciclos fechados usam “Fechado”; arquivo usa “Somente leitura” quando necessário.
 
@@ -137,6 +142,11 @@ Empty states explicam a ausência e oferecem no máximo uma ação pertinente. C
 | Month Density | Planejamento mensal | minicalendário real, total e distribuição textual por status em cada dia e no pool sem dia |
 | Archive History | Arquivo | abas Semanal/Mensal; filtros de data; lista selecionável; detalhe readonly; linhagem e restauração de contexto |
 | Brain Dump (Inbox) | Brain Dump | padrão Inbox; captura → pendências → processamento; Mover/Descartar/editar por linha; badge/contagem otimista |
+| Hábitos (Registro) | Hábitos e bloco do Hoje | abas Hoje · Histórico · Configuração; abre o dia semeado sem criar linhas nem calcular completude; identidade muda direto e peso/meta/bônus/ativação versionam a partir de hoje; histórico readonly devolve a edição ao Hoje |
+| Habit Tracker Row | Hábitos (tracker e bloco do Hoje) | booleano alterna `1` ↔ nulo com estado textual obrigatório; numérico faz commit em `blur`/`Enter` e valor inalterado não envia; checkbox do numérico é indicador, nunca controle |
+| Registro em cards | Hábitos, Saúde-Métricas (16.3) | um card por grupo, duas colunas em wide e uma nas demais faixas; rompe a largura de leitura sem levar a leitura textual junto; sem Panel aninhado |
+| Barra de completude | Hábitos, Saúde-Métricas (16.3) | leitura e não controle; sempre redundante à porcentagem em texto com o denominador nomeado; nunca desenha barra zerada onde não há registro |
+| Seletor de pictograma | cadastro de hábito e de métrica | busca por substring filtra o catálogo aberto com contagem anunciada; tiles em `radiogroup` por setas; confirma nomeando a chave e devolve o foco ao acionador |
 
 ### App Shell, aparência e atalhos
 
@@ -343,11 +353,13 @@ Estados seguem o contrato global: skeleton preserva a geometria trilho + foco; e
 
 ### Pictogramas de hábitos e saúde
 
-Hábitos e métricas de Saúde adotam Phosphor como linguagem pictográfica conforme `{components.domain-icon}`. O mesmo `iconKey` representa a entidade no cadastro, no Hoje, em trackers, grids e históricos. O catálogo é fechado e pesquisável por nome; não aceita nome arbitrário de componente nem transforma o ícone em campo de texto livre.
+Hábitos e métricas de Saúde adotam Phosphor como linguagem pictográfica conforme `{components.domain-icon}`. O mesmo `iconKey` representa a entidade no cadastro, no Hoje, em trackers, grids e históricos, e guarda **o nome do glifo** — nunca componente React nem path SVG. O peso `regular` é fixo no front-end; `fill` permanece reservado ao destino selecionado do App Shell.
 
-Quando o label está visível, o pictograma é decorativo e não é anunciado duas vezes. Em uma apresentação somente por ícone, o controle recebe nome acessível e tooltip. Conclusão de hábito, valor preenchido, alerta e readonly são anunciados separadamente; nunca se deduz estado pela forma ou cor do pictograma.
+O catálogo é **aberto**: os ~1.500 nomes únicos do Phosphor instalado, buscáveis por substring do nome em inglês, sem categorias e sem sinônimos em pt-BR. Isso revoga a formulação anterior de catálogo "fechado e pesquisável"; o catálogo curado permanece válido só no App Shell, onde os destinos são fixos. Aberto não significa texto livre: a fonte única de nomes válidos é o pacote instalado, o servidor rejeita chave inexistente e o nome do glifo nunca aparece fora do seletor. A grade de tiles exige virtualização — não monta ~1.500 nós — e anuncia a contagem filtrada por `aria-live="polite"`. Sem busca, a lista abre pelos ícones já usados pelos hábitos existentes, seguidos do catálogo em ordem alfabética.
 
-A migração preserva o `emoticon` existente como fallback e compatibilidade de leitura. Arquitetura deve avaliar um `iconKey` estável e validado, sem persistir componentes React ou paths SVG. Registros sem mapeamento continuam exibindo o emoji até o usuário escolher um pictograma ou uma migração segura ser executada. A introdução do campo é mudança explícita de contrato e exige história própria; não fica implícita na troca visual.
+Quando o label está visível, o pictograma é decorativo e não é anunciado duas vezes. Em uma apresentação somente por ícone, o controle recebe nome acessível e tooltip. Conclusão de hábito, valor preenchido, alerta e readonly são anunciados separadamente; nunca se deduz estado pela forma ou cor do pictograma. Uma chave pode repetir entre entidades.
+
+**O emoji sai da interface de Hábitos.** A formulação anterior — `emoticon` preservado como fallback, registros sem mapeamento continuando a exibir emoji — está **revogada**: todo hábito passa a ter `iconKey` obrigatório e nenhum fallback de emoji é renderizado. A conversão de cada `emoticon` existente em `iconKey` é **passo de migração de dado da Story 16.2**, não escolha adiada para o usuário. Sem glifo, a regra é de ausência e não de substituto: hábito sem pictograma escolhido, e `iconKey` órfão porque o glifo saiu numa atualização do Phosphor, caem para **coluna de glifo vazia** — o layout não muda e **nunca** se renderiza quadrado vazio ou tofu. A validação da chave contra a versão instalada do Phosphor é obrigação de servidor.
 
 ### Recorrentes
 
@@ -383,6 +395,43 @@ Item Row usa a variante Brain Dump: título, descrição truncada em uma linha, 
 
 → Composição e estados aprovados: [`mockups/key-brain-dump.html`](mockups/key-brain-dump.html); especificação de origem em [`imports/story-15-0-brain-dump-handoff/story-15.0-brain-dump.md`](imports/story-15-0-brain-dump-handoff/story-15.0-brain-dump.md). Os spines vencem em conflito.
 
+### Hábitos
+
+Hábitos é uma superfície no padrão **Registro** com três abas internas em ordem canônica e invariável — **Hoje · Histórico · Configuração** — em todas as faixas (no compact o rótulo abrevia para "Config."). O módulo já existe desde o Épico 6; a 16.0 recompõe a apresentação sobre o sistema novo **sem tocar no domínio**: completude ponderada, multiplicador por tipo de dia, versionamento prospectivo e snapshot imutável são autoridade herdada, que este spine descreve e nunca redesenha. O seletor de pictograma é a única profundidade de overlay do módulo; nenhuma aba abre sobre outra.
+
+**Semeadura e propriedade do dado.** A primeira abertura de um dia materializa uma linha por hábito ativo, congelando peso, meta, bônus, tipo de dia e multiplicador. A interface não cria linhas: ela **abre o dia**. Tudo que a superfície mostra depois disso opera sobre linhas que já existem no servidor.
+
+**Registro do dia.** A marcação booleana alterna entre `1` e nulo; nulo é apresentado como **"Não feito"**, nunca como ausência de registro, e a marca do checkbox nunca é o único canal — o estado textual "Feito"/"Não feito" é obrigatório. O registro numérico faz commit no `blur` e no `Enter`, campo vazio grava nulo e valor inalterado não dispara requisição; a linha lê `valor / meta unidade (percentual da meta)` e passa a "Meta atingida" ao alcançar a meta, quando o checkbox indicador — desabilitado, saída e não entrada — marca sozinho. No hábito numérico esse checkbox nunca é controle.
+
+**A interface nunca calcula completude.** A porcentagem do dia e a de cada grupo vêm do servidor. O otimismo é restrito ao **valor da linha**: alterar um valor não muda a porcentagem antes da resposta, e a porcentagem reconcilia com o refetch. Pesos efetivos e multiplicadores seguem a mesma regra — só mudam com resposta do servidor. Cada escopo (dia e grupo) tem uma leitura só, com o denominador nomeado em texto ("Soma dos pesos efetivos do dia: 14,0 · 7 de 11 registros preenchidos"); a barra é sempre redundante à porcentagem, nunca a única fonte.
+
+**Tipo de dia, multiplicador e override.** Feriado é marcado por data, no cabeçalho de completude, e a mudança de tipo de dia reescreve o `multiplierAtTime` das linhas daquele dia no servidor, com refetch da interface. A legenda do grupo ("Feriado · peso ×0,5 neste grupo") só aparece quando o dia não é útil **e** o multiplicador difere de 1; os fatores aparecem separados na linha (`Peso 3 × 0,5 = 1,5`), com peso escrito como inteiro quando não há fração. O override avulso "Tratar este dia como dia útil (peso cheio)" grava `multiplierAtTime = 1,00` em cada linha do dia visível e não altera a configuração dos grupos.
+
+**Dias passados.** A navegação de data no tracker edita **qualquer dia já semeado**, com os pesos congelados daquele dia. Não existe limite de retroatividade, janela de N dias nem regra nova de backend: corrigir um dia passado toca apenas a linha daquele dia.
+
+**Configuração.** Padrão Coleção — grupos → hábitos do grupo → criação ao fim — com dois blocos separados por natureza de dado. **Identidade** (nome, pictograma, unidade, grupo) muda direto e vale para todo o histórico. **Versionado** (peso, meta, bônus, ativação) abre versão com efeito a partir de hoje; a segunda mudança no mesmo dia atualiza a versão do dia. O aviso **"Alteração válida a partir de hoje. Registros anteriores preservados."** é texto persistente sob os campos versionados — **nunca tooltip**, porque tooltip não sobrevive a teclado nem a toque. Um bloco de edição aberto por vez; "Cancelar edição" descarta sem tocar o servidor.
+
+Na criação, grupo é obrigatório: sem grupo cadastrado, criar hábito fica indisponível e o motivo é escrito e acessível — **"Crie um grupo para começar a adicionar hábitos."** Nome, grupo, tipo e peso inicial são obrigatórios; meta, bônus e unidade só existem no tipo numérico. O tipo é escolhido por **radio group**, não por select, e é **imutável após a criação**. **Excluir não existe** em nenhuma superfície: o domínio desativa, nunca deleta. Hábitos inativos ficam fora da lista por padrão, aparecem com "Mostrar inativos", somem do dia ativo e permanecem no histórico; o tratamento terminal vem sempre acompanhado do chip textual "Inativo", porque opacidade nunca é canal único. As ações nomeiam a consequência: "Desativar hábito" / "Reativar hábito", e reativar vale a partir do dia da reativação. Os multiplicadores do grupo são dois campos — fim de semana e feriado — preenchidos pela configuração vigente e salvos prospectivamente; **campo vazio remove a configuração e devolve 1,00**, e dia útil é 1,00 implícito, nunca armazenado. A precedência feriado > fim de semana > dia útil é declarada no próprio bloco onde a configuração é editada. Grupo sem hábitos diz "Nenhum hábito neste grupo." sem sugerir ação.
+
+**Histórico.** Somente leitura, com **contraste normal** — readonly nunca parece disabled. Ordem: intervalo → detalhe de um dia → evolução de um hábito → completude por hábito e período. O intervalo padrão é de 30 dias; "Período anterior"/"Próximo período" deslocam o intervalo inteiro e a data do detalhe fica presa a ele. Não existe nenhum controle de escrita na superfície: **"Abrir este dia para edição"** leva o dia selecionado para a aba **Hoje**, onde a correção acontece. Intervalo sem nenhum registro exibe **"Nenhum registro no período."**; dia sem linha materializada exibe **"Sem registro neste dia."** e **nenhuma porcentagem** — nunca 0% fabricado. Hábito inativo aparece com o tratamento terminal e a data de inativação.
+
+**Evolução.** Um hábito por vez, selecionado explicitamente; **sem seleção, nada é buscado**. Três visões sobre o payload que a série já devolve — valor diário, % da meta e contribuição na completude; qualquer visão além dessas exigiria payload novo. Dia sem registro é linha tracejada no zero. Mudanças reais de configuração aparecem como eventos datados em texto ("1 de julho de 2026 — Peso 2 → 3"). A **tabela equivalente é permanente**, na mesma superfície, nunca escondida atrás de botão ou disclosure.
+
+**Integração com o Hoje.** As duas lentes compartilham dados e regras; só a composição muda. Em **Foco nas tarefas**, Hábitos é um totalizador navegável — porcentagem, barra redundante, "7 de 11 registros preenchidos · peso efetivo 14,0 · dia útil" e acesso ao módulo para registrar — sem edição no lugar. Em **Dia completo**, é lista densa editável (checkbox + pictograma + nome) que não repete o cabeçalho de completude; feito e não feito se distinguem por checkbox, nome acessível **e** opacidade, nunca só por opacidade. Sem hábito ativo, o bloco diz "Nenhum hábito ativo hoje." com acesso à Configuração. O bloco falha isolado, com retry, sem derrubar o Daily Log.
+
+**Fora de escopo declarado.** Nenhuma superfície do módulo exibe toast de sucesso — sucesso é a mudança do valor e da porcentagem. Não existem fila offline, rascunho local, autosave ou promessa de envio posterior: registrar e configurar exigem rede. Não existem lembrete, recomendação, insight, IA, comparação entre períodos, busca, filtro ou ordenação manual; `display_order` existe no schema, não tem UI nem endpoint, e a ordem exibida é a do servidor. As quatro leituras agregadas são desenho aprovado e **alvo da Story 16.2b**: nenhuma é calculável no cliente e nenhuma é implementável nas superfícies desta story.
+
+**Leituras agregadas — Story 16.2b.** Quatro leituras entram como desenho aprovado, calculadas no servidor sobre os pesos congelados, com as definições de domínio já decididas neste gate:
+
+- **Sequência por hábito.** Atravessa períodos de inatividade — o hábito não era exigível — e quebra em dia ativo sem registro. O dia de hoje ainda não registrado é neutro: a sequência conta até ontem e incrementa se hoje for feito, sem zerar toda manhã.
+- **Contagem de dias com 100%.** Período "ano" é ano civil, de 1º de janeiro até hoje, coerente com semana começando na segunda e mês civil. Dia com Σ pesos efetivos = 0 sai do numerador e do denominador — nada era exigível, logo não é conquista nem falha.
+- **Série de completude por grupo e por data.** Teto de quatro cores; acima de quatro grupos o gráfico degrada para série única do total do dia e a leitura por grupo permanece íntegra na tabela equivalente. O filtro de grupos é de leitura: ocultar um grupo tira segmento e coluna, mas o total do dia continua sendo o do dia inteiro.
+- **Grade agregada por hábito × período.** O booleano mostra dias feitos sobre dias com registro ("5/7") e o numérico a média simples das contribuições diárias, sem ponderar por peso — a célula é sobre um hábito só, cujo peso não varia na linha.
+
+O denominador é **dias com registro** na contagem de dias 100% e na grade, nunca dias corridos; dia sem linha materializada não entra nem como falha. A coluna rotula os dias reais sempre que divergirem dos dias corridos, inclusive na semana parcial ("3 dias"), para que "2/3" não seja lido como "2/7".
+
+→ Composição e estados aprovados: [`mockups/key-habitos.html`](mockups/key-habitos.html); especificação de origem em [`imports/story-16-0-habitos-handoff/story-16.0-habitos.md`](imports/story-16-0-habitos-handoff/story-16.0-habitos.md). Os spines vencem em conflito.
+
 ### Arquivo e ciclo fechado
 
 Ciclo finalizado permanece navegável e legível, em readonly. Controles de mutação desaparecem; conteúdo não recebe aparência disabled. Weekly só finaliza explicitamente sem tarefas `pending`/`started` e nunca reabre.
@@ -409,7 +458,7 @@ Wide/medium usam lista + detalhe; tablet reduz a lista; compact usa lista → de
 
 ### Módulos futuros previstos e estados diferidos
 
-- **Hábitos — Story 16.0:** tracker diário e configuração; estados específicos de vazio, inativo, histórico, falha e offline serão fechados nesse gate. Sem streaks/ranking.
+- **Hábitos — gate 16.0 fechado:** tracker diário, configuração, histórico e integração com o Hoje estão especificados em **Component Patterns → Hábitos**, com os estados de vazio, inativo, dia-lacuna, falha parcial e offline promovidos a **State Patterns**. A restrição "sem streaks/ranking" está **revogada como proibição de métrica agregada** — a proibição de celebração segue integralmente válida (ver **Voice and Tone**). As quatro leituras agregadas são **alvo da Story 16.2b**, posterior a 16.1/16.2, e **não são implementáveis** até ela: nenhuma existe no domínio e nenhuma pode ser calculada no cliente, porque a proibição de inferir completude vale igualmente para agregações. As definições de domínio que essa story deve honrar estão na mesma seção.
 - **Saúde-Métricas + Medicamentos — Story 16.3:** campos dinâmicos, histórico e confirmações; estados de métrica sem valor, histórico vazio, dose perdida/readonly e falha parcial serão fechados na mesma sessão.
 - **Journalling/Gratidões — Story 16.10:** composer e histórico; vazio, salvamento, falha preservando texto e offline serão fechados nesse gate. Sem insights, streak ou IA.
 
@@ -427,6 +476,11 @@ Wide/medium usam lista + detalhe; tablet reduz a lista; compact usa lista → de
 | Disabled | motivo acessível quando não óbvio; label legível |
 | Readonly/archive | mutações ausentes, contraste normal, estado textual |
 | Recorrente inativo | menor ênfase + chip "inativo"; visível só com "Mostrar inativos"; efeito prospectivo |
+| Hábito inativo | tratamento terminal **e** chip textual "Inativo"; fora da lista e do dia ativo até "Mostrar inativos"; permanece no histórico com a data de inativação; reativação é prospectiva |
+| Dia-lacuna no histórico | "Sem registro neste dia." com a nota de que nenhuma linha foi materializada; nenhuma porcentagem exibida e nunca 0% fabricado |
+| Σ pesos efetivos = 0 | completude do dia é 0% por definição do domínio, jamais recalculada pela interface; o denominador nomeado explicita que nada era exigível |
+| Hábitos falha parcial | série falha e a grade carrega; a config de multiplicador falha sem derrubar a lista de hábitos; cada bloco tem erro e retry próprios |
+| Bloco de Hábitos no Hoje | carrega, falha e tenta de novo isolado, com o Daily Log e as demais regiões intactos |
 | Recorrente excluído | soft delete: some da biblioteca e dos rituais; registro e linhagem (`source_template`) preservados; confirmação em dialog |
 | Closed cycle | “Fechado” no header; consulta e navegação ativas |
 | Optimistic | estado provisório anunciado; confirma ou reverte sem duplicação |
@@ -442,6 +496,7 @@ Wide/medium usam lista + detalhe; tablet reduz a lista; compact usa lista → de
 | Migração pausada | decisões persistidas por item; retoma pela faixa com os itens restantes; sem posição salva |
 | Migração concluída | resumo factual (migradas/adiadas/canceladas) antes de voltar ao Hoje |
 | Nav sem collections | núcleo + Planner completo; nenhum heading de collections, Saúde vazio ou item desabilitado |
+| Hábitos com a collection desligada | destino ausente da navegação, sem link fantasma nem item disabled; rota direta não resolve e devolve ao núcleo; núcleo, Planner e Hoje seguem íntegros, sem heading vazio nem bloco de Hábitos; nenhum dado apagado e religar devolve o histórico (DIR-12c) |
 | Nav com uma collection | destino direto ou Saúde com um único filho; hierarquia não é achatada |
 | Grupo com filho ativo recolhido | permanece recolhido; indicador no grupo; filho conserva rota ativa; grupo não recebe `aria-current` |
 | Badge Brain Dump 0/loading/error | badge oculto; navegação e captura continuam funcionais |
@@ -499,7 +554,8 @@ Retorno de foco segue a tabela **Resiliência canônica**; se a ação navega, f
 ## Accessibility Floor
 
 - WCAG 2.2 AA em todos os estados e temas efetivamente entregues.
-- Contraste de texto normal é no mínimo 4,5:1; texto grande, no mínimo 3:1. Foco, limites necessários e indicadores de estado alcançam 3:1 contra cores adjacentes; hover/seleção também alcançam 3:1 quando identificam o estado. Contraste reduzido só é admitido em controles realmente indisponíveis, mantendo legíveis o rótulo e o motivo.
+- Contraste de texto normal é no mínimo 4,5:1; texto grande, no mínimo 3:1. Foco, limites necessários e indicadores de estado alcançam 3:1 contra cores adjacentes; hover/seleção também alcançam 3:1 quando identificam o estado. Contraste reduzido só é admitido em controles realmente indisponíveis, mantendo legíveis o rótulo e o motivo, e na exceção nomeada abaixo.
+- **Exceção nomeada — grade hábitos × períodos** (decisão de 2026-08-22, `DESIGN.md.Grid/Calendar`): nessa composição o tom é o canal primário em escala contínua e o número dentro da célula recua abaixo de 4,5:1 de propósito, porque a leitura pretendida é o gradiente da densidade. A informação não fica presa à cor: a **tabela equivalente em `details`**, permanente na mesma superfície e em contraste normal, carrega os mesmos números, ao lado de `caption`, `th scope` em linha e coluna e as tags textuais FDS/FER. É a única exceção ao piso no produto e não se estende a nenhuma outra superfície.
 - Boundaries necessários para reconhecer controles interativos usam o papel `{colors.control-border}` contra a surface correspondente. `{colors.border}` permanece estrutural e `{colors.border-strong}` não é fallback para boundary interativo.
 - Em cores forçadas/alto contraste, forma, contorno, estado e semântica permanecem reconhecíveis com cores do sistema; nenhum significado depende dos fills do tema.
 - Target mínimo 44×44px; controles frequentes compactos usam 48px.
@@ -580,6 +636,7 @@ Uma story de implementação precisa:
 | Recorrentes | biblioteca, edição e soft delete | preservar `source_template` e alocação | [M09](architecture-and-story-handoff.md#m09--recorrentes) |
 | Migração | fila unificada e ritual no shell | unificação, retomada, resumo e erro | [M10](architecture-and-story-handoff.md#m10--migraçãocatch-up) |
 | Brain Dump | edição paritária do item; `scheduled_date` exercitado por Esta Semana/Este Mês; contagem otimista | endpoint de atualização (`PATCH`), invalidação de chaves, rollback de contagem | [M11](architecture-and-story-handoff.md#m11--brain-dumpcaptura) |
+| Hábitos | `iconKey` obrigatório sem fallback de emoji; domínio de completude/versionamento preservado; leituras agregadas promovidas | migração de dado `emoticon` → `iconKey` na 16.2; validação de `iconKey` contra o pacote instalado; agregações da 16.2b calculadas no servidor | [M12](architecture-and-story-handoff.md#m12--hábitos) |
 
 ## Inspiration & Anti-patterns
 
@@ -594,7 +651,7 @@ São rejeitados: papel/caderno literal, annotation layer, toolbar, fontes/ícone
 | [Monthly & Future Log](<imports/mybujo-full-handoff/design_handoff_full_app/Monthly & Future Log Wireframe.html>) | calendário e horizonte | substituído por [`mockups/key-monthly.html`](mockups/key-monthly.html) e [`mockups/key-future-log.html`](mockups/key-future-log.html) |
 | [Migration Ritual](<imports/mybujo-full-handoff/design_handoff_full_app/Migration Ritual Wireframe.html>) | ritual de decisão | substituído por [`mockups/key-migracao.html`](mockups/key-migracao.html) |
 | [Recurrents Engine](<imports/mybujo-full-handoff/design_handoff_full_app/Recurrents Engine Wireframe.html>) | biblioteca de templates | substituído por [`mockups/key-recorrentes.html`](mockups/key-recorrentes.html) |
-| [Habits Tracker](<imports/mybujo-full-handoff/design_handoff_full_app/Habits Tracker Wireframe.html>) | tracker/configuração | diferido à Story 16.0 |
+| [Habits Tracker](<imports/mybujo-full-handoff/design_handoff_full_app/Habits Tracker Wireframe.html>) | tracker/configuração | substituído por [`mockups/key-habitos.html`](mockups/key-habitos.html) na Story 16.0 |
 | [Gratitude Journal](<imports/mybujo-full-handoff/design_handoff_full_app/Gratitude Journal Wireframe.html>) | escrita e histórico | absorvido por Journalling; diferido à Story 16.10 |
 | [Health Tracking](<imports/mybujo-full-handoff/design_handoff_full_app/Health Tracking Wireframe.html>) | métricas e histórico | diferido à Story 16.3 |
 | [Analytics Dashboard](<imports/mybujo-full-handoff/design_handoff_full_app/Analytics Dashboard Wireframe.html>) | análises de período | diferido à x.0 do Épico 21 |
@@ -612,7 +669,7 @@ Os nove HTMLs são referências ilustrativas: os spines vencem em conflito. Scri
 | UJ-5 — Future Log | Capturar longe e reencontrar | Fluxo 6 |
 | UJ-6 — Diário de Gratidão | Journalling · campo seed “Gratidões” | diferido à Story 16.10 |
 | UJ-7 — Saúde e Medicamentos | Saúde agrupador → Métricas + Medicamentos | diferido à Story 16.3 |
-| UJ-8 — Configuração de Hábitos | Hábitos | diferido à Story 16.0 |
+| UJ-8 — Configuração de Hábitos | Hábitos | Fluxo 9 |
 
 ### Rastreabilidade FR agrupada
 
@@ -622,7 +679,7 @@ Os nove HTMLs são referências ilustrativas: os spines vencem em conflito. Scri
 | FR-4 | Núcleo BuJo | Fluxos 1, 2 e 5 | PRD/épicos |
 | FR-5 | Brain Dump/captura | Fluxo 3 | PRD/Story 13.0 + Story 15.0 |
 | FR-6 | Home/dashboard | diferido | x.0 do Épico 17 |
-| FR-7 | Hábitos | diferido | Story 16.0 |
+| FR-7 | Hábitos | coberto | Story 16.0 · Fluxo 9 |
 | FR-8–FR-9 | Saúde-Métricas + Medicamentos | diferido | Story 16.3 |
 | FR-10 | Journalling/Gratidões | diferido | Story 16.10 |
 | FR-11–FR-13 | Alimentação, Pressão e Análises | diferido | gates dos épicos correspondentes; Análises na x.0 do Épico 21 |
@@ -716,3 +773,16 @@ Falha: o salvamento falha; Mineral · Claro permanece aplicado, Horizonte Azul �
 6. **Clímax:** Hugo navega para Arquivo sem perder acesso à captura; ao fechar o sheet sem navegar, foco retorna a Menu.
 
 Falha: ao tentar desligar uma collection que ocupa um atalho, Salvar permanece bloqueado e indica qual slot exige substituição. Se um destino desaparece externamente, o primeiro destino canônico disponível e não duplicado ocupa a lacuna.
+
+### Fluxo 9 — Configurar e registrar hábitos (Hugo, começando um ciclo novo, desktop e mobile)
+
+1. Hugo abre Hábitos → Configuração. Ainda não há grupo, então criar hábito está indisponível e a tela diz por quê: "Crie um grupo para começar a adicionar hábitos."
+2. Cria o grupo **Corpo** e, nele, o hábito **Corrida**: escolhe o tipo **numérico** no radio group — decisão imutável —, define meta 8 km, bônus e peso 3, e abre o seletor de pictograma. Digita "run", a contagem é anunciada, ele percorre os tiles pelas setas e confirma com a ação que nomeia a chave.
+3. Configura o multiplicador do grupo: fim de semana ×0,5. O aviso "Alteração válida a partir de hoje. Registros anteriores preservados." fica sob os campos versionados, em texto persistente.
+4. Vai à aba **Hoje**. O dia é aberto — não criado — e cada hábito ativo já tem sua linha com peso, meta e multiplicador congelados. Marca **Leitura** e digita 7,2 no campo de Corrida, que faz commit no `blur` e passa a "7,2 / 8 km (90%)".
+5. A completude do dia **não muda na hora**: o valor da linha é otimista, a porcentagem espera o servidor e reconcilia com o refetch, sob o denominador nomeado.
+6. No dia seguinte atinge a meta: a linha passa a "Meta atingida" e o checkbox indicador marca sozinho, sem virar controle.
+7. **Clímax:** percebe que esqueceu de registrar a quinta-feira anterior. Navega a data no tracker, o dia abre com os pesos que valiam **naquele** dia — não os de hoje —, corrige o valor, e a configuração dos grupos permanece intocada.
+8. No mês seguinte **desativa** Corrida. O hábito sai do dia ativo a partir do dia seguinte, some da lista até "Mostrar inativos" e continua no histórico com o chip "Inativo".
+
+Falha: a escrita offline fica indisponível com o motivo escrito ("Sem conexão. Registrar e configurar hábitos exige rede."), sem prometer fila local; erro de escrita preserva o valor digitado, reverte o otimismo da linha e oferece retry ali mesmo; erro na configuração do multiplicador não derruba a lista de hábitos. Nenhuma dessas falhas altera uma porcentagem, porque a interface nunca a calcula.

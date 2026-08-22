@@ -1,0 +1,1785 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>M12 — Hábitos canônico</title>
+<style>
+/* Governado por DESIGN.md: Brand & Style; Colors; Typography; Layout & Spacing;
+   Components/App Shell, Workspace Surface, Page/Period Header, Panel, Section Header,
+   Item Row (variante Habit Tracker Row), Chip, Text Input, Category Radio Group,
+   Date/Range Control, Grid/Calendar, Dialog/Sheet, Skeleton Block — ver seção "Hábitos".
+   Governado por EXPERIENCE.md: Foundation; Information Architecture (padrão Registro:
+   data e tipo de dia → completude → registro por grupo → histórico); Voice and Tone
+   (estado e consequência, sem julgamento, sem celebração); Component Patterns
+   (Habit Tracker Row, Dialog/Sheet, Grid); State Patterns (vazio, loading, saving,
+   erro com retry, offline, falha parcial); Interaction Primitives; Accessibility Floor.
+   Composição de referência: imports/story-16-0-habitos-handoff/story-16.0-habitos.md —
+   §3 tracker, §4 configuração, §5 pictograma, §6 histórico, §7 Hoje, §8 estados +
+   §8.1 textos verbatim, §9 interação, §10 a11y; traceability.md §3 (estado → frame).
+   Decisões ratificadas por Hugo (2026-08-21): Q2 emoji sai da interface; Q4 "Registro em
+   cards" é variante canônica (workspace 1120px); Q5 sem limite de retroatividade;
+   Q7+Q10 leituras agregadas promovidas como alvo da Story 16.2b.
+   Estrutura visual reusa key-brain-dump.html (board/intro/caption/spec, browser chrome,
+   rail, phone, blocos de estado e notas).
+   Spines vencem em conflito. */
+:root{--canvas:#f5f2ea;--surface:#fbfaf6;--raised:#fff;--subtle:#eeebe2;--strong:#e3dfd5;--ink:#25231f;--muted:#666159;--disabled:#969087;--line:#d6d1c7;--line2:#aaa399;--primary:#315f5a;--primary-hover:#274d49;--primary-soft:#ddeae7;--on-primary:#fff;--info:#3d6488;--info-soft:#e2ebf3;--success:#4b6f52;--success-soft:#e2ebe1;--warn:#8a6826;--warn-soft:#f2e8ce;--danger:#9a493f;--danger-soft:#f3e1de;--focus:#166c9c;--teal:#2bada0;--purple:#7b5ea7;--pink:#d95f78;--yellow:#c89b00;--green:#4a8c5c;--blue:#3d72b4;--ui:#c0392b;--u:#d4660a;--i:#b8920a}
+*{box-sizing:border-box}html{background:#e7e3da}
+body{margin:0;color:var(--ink);font:14px/1.42 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+button,input,select,textarea{font:inherit;color:inherit}button{cursor:default}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.board{max-width:1780px;margin:auto;padding:28px}
+.intro{max-width:1100px;margin-bottom:26px}
+.eyebrow{font-size:11px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--primary)}
+h1{margin:6px 0;font-size:30px;letter-spacing:-.03em}
+.intro p{margin:0 0 8px;color:var(--muted);font-size:15px}
+.caption{display:flex;align-items:baseline;gap:16px;margin:0 0 9px;flex-wrap:wrap}
+.caption h2{margin:0;font-size:19px}
+.caption span{font-size:12px;color:var(--muted)}
+.spec{margin-bottom:34px}
+.tabular{font-variant-numeric:tabular-nums}
+
+/* browser chrome */
+.browser{border:1px solid var(--line2);border-radius:11px;overflow:hidden;background:var(--surface);box-shadow:0 14px 36px rgba(37,35,31,.08)}
+.browserbar{height:25px;background:#ddd9d0;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:5px;padding:0 10px}
+.dot{width:7px;height:7px;border-radius:50%;background:#aaa49a}
+.app{display:grid;grid-template-columns:64px minmax(0,1fr);background:var(--canvas)}
+.app.h900{height:900px}.app.h760{height:760px}.app.h1080{height:1080px}.app.h620{height:620px}
+.rail{border-right:1px solid var(--line);background:var(--surface);padding:10px 5px;display:flex;flex-direction:column;align-items:center;gap:6px}
+.brand{width:38px;height:38px;border:2px solid var(--ink);border-radius:7px;display:grid;place-items:center;font-weight:850;margin-bottom:8px}
+.nav{position:relative;width:52px;min-height:44px;border:0;border-radius:6px;background:transparent;color:var(--muted);font-size:8px;display:grid;place-items:center;gap:1px}
+.nav b{font-size:16px;font-weight:500}
+.nav.active{background:#fff;outline:1px solid var(--line2);color:var(--ink);font-weight:750}
+.grow{flex:1}
+
+/* workspace — Q4: até 1120px no tracker/histórico; leitura textual segue 800px */
+.workspace{min-width:0;overflow:auto;padding:20px 28px 24px;display:flex;flex-direction:column}
+.wide1120{max-width:1120px;width:100%;margin:0 auto}
+.reading{max-width:800px;width:100%;margin:0 auto}
+.pagehead{display:flex;align-items:baseline;gap:10px;padding-bottom:10px;border-bottom:1px solid var(--line);margin-bottom:12px;flex-wrap:wrap}
+.pagehead h1{font-size:24px;line-height:1.25;letter-spacing:-.02em;margin:0}
+.pagehead p{margin:0;color:var(--muted);font-size:13px}
+
+/* abas internas — ordem canônica Hoje · Histórico · Configuração */
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:16px}
+.tabs button{min-height:40px;border:0;border-bottom:2px solid transparent;background:transparent;color:var(--muted);font-size:13px;font-weight:650;padding:0 14px}
+.tabs button[aria-selected="true"]{color:var(--primary);border-bottom-color:var(--primary);font-weight:800}
+
+/* cabeçalho de completude do dia */
+.dayhead{background:#fff;border:1px solid var(--line2);border-radius:8px;padding:14px 16px;margin-bottom:16px}
+.dayhead .r1{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.dayhead h2{margin:0;font-size:16px}
+.daytag{display:inline-block;font-size:10px;font-weight:750;border-radius:4px;padding:2px 7px;border:1px solid var(--line2);color:var(--muted);background:var(--subtle)}
+.daytag.util{color:var(--primary);border-color:#a9c6c2;background:var(--primary-soft)}
+.daytag.fer{color:var(--warn);border-color:#d9c391;background:var(--warn-soft)}
+.daynav{margin-left:auto;display:flex;gap:6px;align-items:center}
+.daynav button{min-height:36px;min-width:44px;border:1px solid var(--line2);background:#fff;border-radius:6px;font-size:12px;font-weight:650;padding:0 10px}
+.pct{font-size:26px;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1}
+.bar{height:8px;border-radius:3px;background:var(--subtle);border:1px solid var(--line);overflow:hidden}
+.bar>i{display:block;height:100%;background:var(--primary)}
+.bar.g6{height:6px}
+.denom{margin:7px 0 0;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.holidayrow{display:flex;align-items:center;gap:9px;margin-top:11px;padding-top:11px;border-top:1px solid var(--line);flex-wrap:wrap;font-size:12px}
+.holidayrow label{display:flex;align-items:center;gap:7px;min-height:44px}
+.btn-override{min-height:40px;border:1px solid var(--primary);color:var(--primary);background:#fff;border-radius:6px;font-size:12px;font-weight:750;padding:0 12px;margin-left:auto}
+
+/* Registro em cards (Q4) — Panel por grupo */
+.cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}
+.cards.one{grid-template-columns:minmax(0,1fr)}
+.gcard{background:#fff;border:1px solid var(--line2);border-radius:6px;padding:16px}
+.gcard .gh{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;margin-bottom:7px}
+.gcard .gh h3{margin:0;font-size:14px}
+.gcard .gh .gp{margin-left:auto;font-size:15px;font-weight:800;font-variant-numeric:tabular-nums}
+.gcard .gw{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+.gcard .legend{margin:7px 0 0;font-size:11px;color:var(--warn);font-weight:650}
+.hrows{list-style:none;margin:12px 0 0;padding:0;border-top:1px solid var(--line)}
+
+/* Habit Tracker Row — sem borda esquerda de categoria */
+.hrow{display:grid;grid-template-columns:44px 20px minmax(0,1fr);gap:10px;align-items:start;min-height:36px;padding:9px 0;border-bottom:1px solid var(--line)}
+.hrow.num{grid-template-columns:44px 20px minmax(0,1fr) 104px}
+.hrow .ctl{display:grid;place-items:center;min-height:44px}
+.hrow .ico{display:grid;place-items:center;min-height:44px;color:var(--muted)}
+.hrow .bd{min-width:0;padding-top:11px}
+.hrow .n1{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.hrow .n1 strong{font-size:14px;font-weight:600}
+.hrow .n1 .w{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.hrow .st{margin:2px 0 0;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.hrow .st.done{color:var(--success);font-weight:650}
+.hrow .numfield{padding-top:9px}
+.numinput{width:104px;min-height:44px;border:1px solid var(--line2);border-radius:6px;background:#fff;padding:0 10px;text-align:right;font-size:14px;font-variant-numeric:tabular-nums}
+.numinput[disabled]{opacity:.5;background:var(--subtle)}
+input[type=checkbox]{width:20px;height:20px;accent-color:var(--primary)}
+input[type=checkbox][disabled]{opacity:.6}
+.indhint{font-size:10px;color:var(--disabled);text-align:center;display:block;margin-top:1px}
+
+/* configuração (padrão Coleção) */
+.panel{background:#fff;border:1px solid var(--line2);border-radius:8px}
+.panelpad{padding:16px 18px 18px}
+.sectionhead{display:flex;align-items:baseline;gap:9px;margin:22px 0 8px;flex-wrap:wrap}
+.sectionhead h2{margin:0;font-size:16px}
+.sectionhead .count{margin-left:auto;color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}
+.cfglist{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
+.cfgrow{display:grid;grid-template-columns:20px minmax(0,1fr) auto;gap:11px;align-items:center;min-height:44px;padding:9px 0;border-bottom:1px solid var(--line)}
+.cfgrow .ico{color:var(--muted);display:grid;place-items:center}
+.cfgrow strong{font-size:14px;font-weight:600}
+.cfgrow p{margin:2px 0 0;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+.cfgrow.inactive{opacity:.58}
+.chip{display:inline-block;font-size:9px;font-weight:700;color:var(--muted);background:var(--subtle);border:1px solid var(--line2);border-radius:4px;padding:2px 6px;white-space:nowrap;vertical-align:middle;margin-left:6px}
+.chip.info{color:var(--info);background:var(--info-soft);border-color:#bcd0e0}
+.btn-sec{min-height:40px;border:1px solid var(--line2);background:#fff;border-radius:6px;font-size:12px;font-weight:650;color:var(--ink);padding:0 12px}
+.btn-sec[disabled]{opacity:.5}
+.primary{min-height:44px;border:1px solid var(--primary);background:var(--primary);color:var(--on-primary);border-radius:7px;font-size:14px;font-weight:800;padding:0 18px}
+.primary[disabled]{opacity:.5}
+.editblock{border:1px solid var(--primary);border-radius:7px;background:var(--surface);padding:14px;margin:10px 0 12px}
+.editblock h4{margin:0 0 3px;font-size:12px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--primary)}
+.editblock .sub{margin:0 0 11px;font-size:11px;color:var(--muted)}
+.natsplit{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.natbox{border:1px solid var(--line);border-radius:6px;background:#fff;padding:12px}
+.field{display:grid;gap:5px;margin-bottom:11px}
+.field:last-child{margin-bottom:0}
+.field label{font-size:11px;font-weight:760}
+.input{width:100%;min-height:44px;border:1px solid var(--line2);border-radius:6px;background:#fff;padding:0 11px;font-size:14px}
+select.input{padding:0 8px}
+.f2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.persistnote{margin:9px 0 0;padding:8px 10px;border-left:3px solid var(--info);background:var(--info-soft);border-radius:0 4px 4px 0;font-size:11px;line-height:1.4}
+.picktrigger{display:flex;align-items:center;gap:9px;min-height:44px;border:1px solid var(--line2);border-radius:6px;background:#fff;padding:0 11px;font-size:13px}
+.picktrigger .k{margin-left:auto;font-size:11px;color:var(--muted)}
+.radiogrp{display:flex;gap:8px}
+.radiogrp label{flex:1;display:flex;align-items:center;gap:7px;min-height:44px;border:1px solid var(--line2);border-radius:6px;background:#fff;padding:0 11px;font-size:13px}
+.radiogrp label.on{border:2px solid var(--primary);background:var(--primary-soft);font-weight:750;color:var(--primary)}
+.radiogrp label.locked{opacity:.6}
+.multbox{border:1px dashed var(--line2);border-radius:6px;background:var(--surface);padding:12px;margin-top:12px}
+.multbox h4{margin:0 0 3px;font-size:12px}
+.multbox p{margin:0 0 10px;font-size:11px;color:var(--muted)}
+details.multdet{border:1px dashed var(--line2);border-radius:6px;background:var(--surface);padding:9px 11px;margin-top:10px}
+details.multdet summary{font-size:12px;font-weight:700;min-height:44px;display:flex;align-items:center}
+.toggleline{display:flex;align-items:center;gap:8px;min-height:44px;font-size:12px;color:var(--muted)}
+.reason{margin:8px 0 0;font-size:12px;color:var(--muted)}
+.actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+
+/* seletor de pictograma */
+.overlay-demo{display:grid;grid-template-columns:1fr 420px;gap:22px;align-items:start}
+.ov-label{font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px}
+.scrimbg{background:linear-gradient(rgba(37,35,31,.48),rgba(37,35,31,.48)),var(--canvas);border-radius:12px;padding:34px 22px;display:flex;justify-content:center}
+.picker{width:560px;max-width:100%;background:#fff;border:1px solid var(--line2);border-radius:10px;overflow:hidden;box-shadow:0 16px 40px rgba(37,35,31,.22)}
+.picker .ph{display:flex;align-items:flex-start;gap:10px;padding:13px 15px;border-bottom:1px solid var(--line)}
+.picker .ph h4{margin:0;font-size:15px}
+.picker .ph p{margin:3px 0 0;font-size:11px;color:var(--muted)}
+.close{width:34px;height:34px;flex:none;border:1px solid var(--line);background:#fff;border-radius:7px;font-size:18px;color:var(--muted);line-height:1;margin-left:auto}
+.pbody{padding:13px 15px}
+.livecount{margin:9px 0 11px;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+.tiles{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
+.tiles.four{grid-template-columns:repeat(4,1fr)}
+.tile{min-height:64px;border:1px solid var(--line2);border-radius:7px;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;font-size:9px;color:var(--muted)}
+.tile.on{border:2px solid var(--primary);background:var(--primary-soft);color:var(--primary);font-weight:800}
+.tile svg{color:var(--ink)}
+.tile.on svg{color:var(--primary)}
+.pfoot{padding:12px 15px;border-top:1px solid var(--line);display:flex;gap:8px;align-items:center}
+.pfoot .primary{margin-left:auto}
+.virtnote{font-size:10px;color:var(--disabled);padding:0 15px 11px}
+
+/* histórico */
+.rangebar{display:flex;align-items:center;gap:9px;flex-wrap:wrap;background:#fff;border:1px solid var(--line2);border-radius:8px;padding:11px 14px;margin-bottom:14px}
+.rangebar .rl{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.rangebar button{min-height:40px;border:1px solid var(--line2);background:#fff;border-radius:6px;font-size:12px;font-weight:650;padding:0 12px}
+.hblock{background:#fff;border:1px solid var(--line2);border-radius:8px;padding:14px 16px;margin-bottom:14px}
+.hblock h3{margin:0 0 3px;font-size:15px}
+.hblock .sub{margin:0 0 11px;font-size:11px;color:var(--muted)}
+.rolist{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
+.rorow{display:grid;grid-template-columns:18px minmax(0,1fr) auto;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line);font-size:13px}
+.rorow .ico{color:var(--muted);display:grid;place-items:center}
+.rorow .v{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.rorow.inactive{opacity:.58}
+.rogroup{margin:12px 0 4px;font-size:12px;font-weight:800;color:var(--primary);text-transform:uppercase;letter-spacing:.05em}
+.chart{border:1px solid var(--line);border-radius:6px;background:var(--surface);padding:12px}
+.evlist{list-style:none;margin:10px 0 0;padding:0;font-size:12px;border-top:1px solid var(--line)}
+.evlist li{padding:6px 0;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+table.eq{width:100%;border-collapse:collapse;font-size:11px;margin-top:11px}
+table.eq caption{text-align:left;font-size:11px;color:var(--muted);margin-bottom:6px}
+table.eq th,table.eq td{border:1px solid var(--line);padding:5px 7px;text-align:right;font-variant-numeric:tabular-nums}
+table.eq th[scope=row]{text-align:left;font-weight:650}
+table.eq thead th{background:var(--subtle);font-size:10px}
+.gridwrap{overflow-x:auto}
+table.grid{border-collapse:collapse;font-size:12px;width:100%;min-width:560px}
+table.grid caption{text-align:left;font-size:11px;color:var(--muted);margin-bottom:8px;line-height:1.45}
+table.grid th,table.grid td{border:1px solid var(--line2);padding:0;text-align:center}
+table.grid thead th{background:var(--subtle);font-size:10px;font-weight:750;padding:6px 4px;line-height:1.25}
+table.grid thead th .dias{display:block;font-size:9px;color:var(--muted);font-weight:600}
+table.grid th[scope=row]{text-align:left;font-weight:600;padding:6px 8px;background:#fff;min-width:150px}
+table.grid th[scope=row] .tags{font-size:9px;color:var(--muted);font-weight:600}
+table.grid td .cell{display:block;min-height:40px;line-height:40px;font-variant-numeric:tabular-nums;font-weight:700}
+/* Heatmap — escala contínua (decisão de Hugo, 2026-08-22, promovida a
+   DESIGN.md.Grid/Calendar). O TOM é o canal primário: cada célula pinta
+   `--primary` sobre `--surface` com alpha igual à própria completude (--p: 0..100),
+   então 71% é literalmente 71% de opacidade. O booleano usa a razão real da fração
+   (5/7 => --p:71), nunca o numerador. O número herda a cor do próprio fundo um
+   degrau mais escura e recua — legível de perto, sem disputar a leitura à distância.
+   As células ficam abaixo de 4,5:1 por decisão: é a exceção nomeada registrada em
+   EXPERIENCE.md.Accessibility Floor, sustentada pela tabela equivalente em `details`.
+   As classes .c0-.c3 sobrevivem só como rótulo semântico de faixa; quem pinta é --p. */
+.cell[style*="--p"]{
+  background:color-mix(in srgb,var(--primary) calc(var(--p) * 1%),var(--surface));
+  color:color-mix(in srgb,color-mix(in srgb,var(--primary) calc(var(--p) * 1%),var(--surface)) 72%,var(--ink));
+}
+.c0,.c1,.c2,.c3{background:transparent}
+.warnflag{color:var(--warn);font-weight:800}
+.cnone{background:repeating-linear-gradient(135deg,#fff,#fff 5px,var(--subtle) 5px,var(--subtle) 10px);color:var(--muted);border:1px dashed var(--line2)!important}
+.grouprow th{background:var(--subtle);text-align:left;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--primary);padding:5px 8px}
+.tagcell{font-size:9px;color:var(--muted);font-weight:700}
+
+/* frames de telefone — reusa key-brain-dump.html */
+.mobile-zone{display:grid;grid-template-columns:repeat(4,390px);gap:18px;align-items:start;overflow:auto;padding-bottom:8px}
+.phonecase h3{font-size:13px;margin:0 0 6px}
+.phonecase p.pc{font-size:11px;color:var(--muted);margin:0 0 8px}
+.phone{width:390px;height:840px;background:var(--canvas);border:7px solid var(--ink);border-radius:30px;overflow:hidden;display:flex;flex-direction:column;position:relative}
+.statusbar{height:24px;padding:5px 13px 0;display:flex;justify-content:space-between;font-size:9px;background:var(--surface);flex:none}
+.mobile-head{background:var(--surface);border-bottom:1px solid var(--line);padding:9px 11px;flex:none}
+.mobile-head h4{font-size:15px;margin:0}
+.mobile-head p{margin:2px 0 0;font-size:10px;color:var(--muted)}
+.mtabs{display:flex;gap:3px;padding:0 8px;background:var(--surface);border-bottom:1px solid var(--line);flex:none}
+.mtabs button{flex:1;min-height:40px;border:0;border-bottom:2px solid transparent;background:transparent;font-size:11px;font-weight:650;color:var(--muted)}
+.mtabs button[aria-selected="true"]{color:var(--primary);border-bottom-color:var(--primary);font-weight:800}
+.mscroll{min-height:0;flex:1;overflow:auto;padding:11px 11px 96px}
+.bottom-nav{position:absolute;left:0;right:0;bottom:0;height:58px;background:rgba(251,250,246,.97);border-top:1px solid var(--line2);display:grid;grid-template-columns:repeat(4,1fr)}
+.bottom-nav button{border:0;background:transparent;font-size:9px;color:var(--muted)}
+.bottom-nav button.on{color:var(--primary);font-weight:800}
+/* linha compact: booleano = alvo único 48px; numérico quebra em duas faixas */
+.mrow-bool{width:100%;min-height:48px;border:0;border-bottom:1px solid var(--line);background:#fff;display:grid;grid-template-columns:44px 20px minmax(0,1fr);gap:9px;align-items:center;padding:5px 9px;text-align:left}
+.mrow-bool .ico{color:var(--muted);display:grid;place-items:center}
+.mrow-bool strong{font-size:13px;font-weight:600;display:block}
+.mrow-bool .st{font-size:11px;color:var(--muted);display:block}
+.mrow-num{border-bottom:1px solid var(--line);background:#fff;padding:7px 9px 9px}
+.mrow-num .top{display:grid;grid-template-columns:44px 20px minmax(0,1fr);gap:9px;align-items:center;min-height:48px}
+.mrow-num .ico{color:var(--muted);display:grid;place-items:center}
+.mrow-num strong{font-size:13px;font-weight:600}
+.mrow-num .w{font-size:10px;color:var(--muted);float:right;font-variant-numeric:tabular-nums}
+.mrow-num .st{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+.mrow-num .fieldrow{padding-left:73px;margin-top:6px}
+.mrow-num .fieldrow input{width:100%;min-height:48px;border:1px solid var(--line2);border-radius:6px;padding:0 11px;text-align:right;font-size:14px;font-variant-numeric:tabular-nums}
+.mcard{background:#fff;border:1px solid var(--line2);border-radius:6px;padding:12px;margin-bottom:12px}
+.mcard .gh{display:flex;align-items:baseline;gap:8px;margin-bottom:6px}
+.mcard .gh h3{margin:0;font-size:13px}
+.mcard .gh .gp{margin-left:auto;font-size:14px;font-weight:800;font-variant-numeric:tabular-nums}
+.mrows{list-style:none;margin:9px -12px 0;padding:0;border-top:1px solid var(--line)}
+.msheet{position:absolute;left:0;right:0;bottom:0;background:var(--surface);border-radius:16px 16px 0 0;padding:8px 12px 16px;z-index:2;max-height:90%;overflow:auto}
+.scrim{position:absolute;inset:0;background:rgba(37,35,31,.42)}
+.handle{display:block;width:38px;height:4px;border-radius:2px;background:var(--line2);margin:0 auto 10px}
+.sheet-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+.sheet-head h4{font-size:15px;margin:0}
+
+/* bloco de Hábitos no Hoje */
+.todaywrap{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:18px;align-items:start}
+.reduced{background:var(--surface);border:1px dashed var(--line2);border-radius:8px;padding:13px 15px;color:var(--muted)}
+.reduced h3{margin:0 0 8px;font-size:13px;color:var(--ink)}
+.reduced ul{margin:0;padding-left:17px;font-size:12px;line-height:1.7}
+.habitcard{background:#fff;border:1px solid var(--line2);border-radius:8px;padding:14px 16px}
+.habitcard .hh{display:flex;align-items:baseline;gap:9px;margin-bottom:9px}
+.habitcard .hh h3{margin:0;font-size:14px}
+.habitcard a,.linkish{color:var(--primary);font-weight:700;font-size:12px;text-decoration:underline}
+.mlist-dense{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
+.dense{display:grid;grid-template-columns:44px 20px minmax(0,1fr);gap:9px;align-items:center;min-height:48px;border-bottom:1px solid var(--line);padding:4px 0}
+.dense .ico{color:var(--muted);display:grid;place-items:center}
+.dense strong{font-size:13px;font-weight:600}
+.dense.feito strong{opacity:.58;text-decoration:line-through}
+.dense .st{font-size:11px;color:var(--muted);display:block}
+.dense.feito .st{opacity:.58}
+
+/* estados */
+.state-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.state-grid.two{grid-template-columns:repeat(2,1fr)}
+.statecard{background:var(--surface);border:1px solid var(--line2);border-radius:8px;padding:13px}
+.statecard h3{font-size:13px;margin:0 0 5px}
+.statecard p{font-size:10px;color:var(--muted);margin:0 0 10px}
+.banner{padding:9px;border-left:3px solid var(--info);background:var(--info-soft);font-size:11px;border-radius:0 4px 4px 0}
+.banner.error{border-color:var(--danger);background:var(--danger-soft)}
+.banner.offline{border-color:var(--warn);background:var(--warn-soft)}
+.statecard button{width:100%;min-height:40px;margin-top:9px;border:1px solid var(--line2);border-radius:5px;background:#fff;font-size:11px;font-weight:750}
+.mini-panel{border:1px solid var(--line);border-radius:6px;padding:10px;background:#fff;margin-bottom:9px}
+.mini-empty{text-align:center;padding:12px 6px;color:var(--muted);font-size:12px}
+.sk{background:var(--subtle);border-radius:4px;display:block}
+.skrow{display:grid;grid-template-columns:44px 20px minmax(0,1fr) 104px;gap:10px;align-items:center;min-height:36px;padding:9px 0;border-bottom:1px solid var(--line)}
+.errline{margin:5px 0 0;font-size:11px;color:var(--danger);font-weight:650}
+.retry-inline{min-height:36px;border:1px solid var(--danger);color:var(--danger);background:#fff;border-radius:5px;font-size:11px;font-weight:750;padding:0 10px;margin-top:6px}
+.emptylist{list-style:none;margin:0;padding:0;font-size:12px}
+.emptylist li{padding:9px 10px;border:1px solid var(--line);border-radius:6px;background:#fff;margin-bottom:7px}
+.emptylist li b{display:block;font-size:10px;color:var(--muted);font-weight:750;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px}
+
+/* faixa isolada — Story 16.2b */
+.deferred{border:3px solid var(--warn);border-radius:12px;background:var(--warn-soft);padding:20px 22px;margin-bottom:34px}
+.deferred>.warnbar{background:#fff;border:1px solid var(--warn);border-left:5px solid var(--warn);border-radius:0 6px 6px 0;padding:12px 14px;font-size:13px;line-height:1.5}
+.deferred>.warnbar b{display:block;font-size:13px;color:var(--warn);margin-bottom:4px}
+.deferred .inner{background:var(--canvas);border:1px solid var(--line2);border-radius:8px;padding:18px;margin:16px 0}
+.spark{display:flex;align-items:flex-end;gap:3px;height:110px;padding-top:6px}
+.spark .col{flex:1;display:flex;flex-direction:column;justify-content:flex-end;gap:1px;min-width:0}
+.spark .seg{display:block;width:100%}
+.s1{background:var(--primary)}.s2{background:color-mix(in srgb,var(--primary) 62%,var(--surface))}.s3{background:var(--line2)}.s4{background:var(--strong)}
+.spark .nul{border-top:1px dashed var(--line2);height:2px;background:transparent}
+.sparkaxis{display:flex;gap:3px;font-size:9px;color:var(--muted);margin-top:5px}
+.sparkaxis span{flex:1;text-align:center;min-width:0;overflow:hidden}
+.leg{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--muted);margin-top:9px}
+.leg i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.countrow{display:flex;gap:22px;flex-wrap:wrap;margin-bottom:10px}
+.countrow div{border:1px solid var(--line2);border-radius:7px;background:#fff;padding:11px 14px;min-width:150px}
+.countrow .big{font-size:24px;font-weight:800;font-variant-numeric:tabular-nums;display:block;line-height:1.15}
+.countrow .lab{font-size:11px;color:var(--muted)}
+.seqlist{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
+.seqlist li{display:grid;grid-template-columns:18px minmax(0,1fr) auto auto;gap:11px;align-items:center;padding:9px 0;border-bottom:1px solid var(--line);font-size:13px}
+.seqlist .ico{color:var(--muted);display:grid;place-items:center}
+.seqlist .cur{display:flex;align-items:center;gap:5px;font-variant-numeric:tabular-nums;font-weight:700;color:var(--ink)}
+.seqlist .max{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;min-width:110px;text-align:right}
+.seqlist .dash{color:var(--muted);font-weight:400}
+
+/* notas */
+.notes{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.note{background:var(--surface);border:1px solid var(--line);border-radius:7px;padding:12px;font-size:11px;color:var(--muted);line-height:1.5}
+.note b{display:block;color:var(--ink);margin-bottom:4px;font-size:12px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+@media(max-width:1650px){.mobile-zone{grid-template-columns:repeat(2,390px)}}
+@media(max-width:1150px){.board{padding:14px}.overlay-demo,.state-grid,.notes,.natsplit,.todaywrap{grid-template-columns:1fr}}
+</style>
+</head>
+<body><main class="board">
+
+<!-- Pictogramas: glifos Phosphor (peso regular) redesenhados inline, monocromáticos,
+     currentColor. Nenhuma biblioteca importada — o arquivo é offline e autocontido.
+     A chave (iconKey) é o nome do glifo em inglês; nunca aparece fora do seletor. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
+  <g id="g-person-simple-run" fill="none" stroke="currentColor" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"><circle cx="164" cy="44" r="20" fill="currentColor" stroke="none"/><path d="M96 92l52-16 40 44 32 16"/><path d="M148 76l-44 36 28 40-20 76"/><path d="M132 152l-72 8"/></g>
+  <g id="g-book-open" fill="none" stroke="currentColor" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"><path d="M128 88c0-22 32-40 72-40h24v144h-24c-40 0-72 18-72 40z"/><path d="M128 88c0-22-32-40-72-40H32v144h24c40 0 72 18 72 40z"/></g>
+  <g id="g-drop" fill="none" stroke="currentColor" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"><path d="M128 224a72 72 0 0 0 72-72c0-48-72-120-72-120S56 104 56 152a72 72 0 0 0 72 72z"/></g>
+  <g id="g-brain" fill="none" stroke="currentColor" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"><path d="M128 60v140"/><path d="M128 60a28 28 0 0 0-52-14 30 30 0 0 0-32 40 30 30 0 0 0 8 52 32 32 0 0 0 44 44 28 28 0 0 0 32 18"/><path d="M128 60a28 28 0 0 1 52-14 30 30 0 0 1 32 40 30 30 0 0 1-8 52 32 32 0 0 1-44 44 28 28 0 0 1-32 18"/></g>
+  <g id="g-barbell" fill="none" stroke="currentColor" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"><path d="M76 96v64M52 84v88M180 96v64M204 84v88M76 128h104M32 112v32M224 112v32"/></g>
+  <g id="g-moon" fill="none" stroke="currentColor" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"><path d="M212 156A92 92 0 0 1 100 44a92 92 0 1 0 112 112z"/></g>
+  <g id="g-carrot" fill="none" stroke="currentColor" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"><path d="M60 196c40 20 108-16 132-72L96 60C40 88 40 156 60 196z"/><path d="M152 76l32-32M184 92l40-8"/></g>
+  <g id="g-pill" fill="none" stroke="currentColor" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"><rect x="24" y="76" width="208" height="104" rx="52"/><path d="M128 76v104"/></g>
+  <g id="g-cigarette-slash" fill="none" stroke="currentColor" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"><rect x="24" y="140" width="176" height="48" rx="8"/><path d="M160 140v48M48 40l160 176"/></g>
+  <g id="g-guitar" fill="none" stroke="currentColor" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"><circle cx="104" cy="160" r="60"/><circle cx="104" cy="160" r="18"/><path d="M148 116l68-68M196 28l32 32"/></g>
+  <g id="g-fire" fill="none" stroke="currentColor" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"><path d="M128 232a72 72 0 0 0 72-72c0-64-56-96-72-136-8 40-40 52-40 96 0 20 12 32 12 32s-12-4-20-20c-16 16-24 34-24 52a72 72 0 0 0 72 48z"/></g>
+  <g id="g-magnifying-glass" fill="none" stroke="currentColor" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"><circle cx="116" cy="116" r="76"/><path d="M170 170l54 54"/></g>
+  <g id="g-drop-half" fill="none" stroke="currentColor" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"><path d="M128 224a72 72 0 0 0 72-72c0-48-72-120-72-120S56 104 56 152a72 72 0 0 0 72 72z"/><path d="M64 152h128"/></g>
+  <g id="g-drop-simple" fill="none" stroke="currentColor" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"><path d="M128 228c40 0 68-28 68-68 0-52-68-124-68-124S60 108 60 160c0 40 28 68 68 68z"/></g>
+  <g id="g-drone" fill="none" stroke="currentColor" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"><rect x="88" y="88" width="80" height="80" rx="10"/><path d="M88 88L48 48M168 88l40-40M88 168l-40 40M168 168l40 40"/><circle cx="40" cy="40" r="16"/><circle cx="216" cy="40" r="16"/><circle cx="40" cy="216" r="16"/><circle cx="216" cy="216" r="16"/></g>
+  <g id="g-dress" fill="none" stroke="currentColor" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"><path d="M96 32l32 24 32-24 16 56-24 24 40 112H64l40-112-24-24z"/></g>
+  <g id="g-dresser" fill="none" stroke="currentColor" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"><rect x="32" y="48" width="192" height="160" rx="10"/><path d="M32 112h192M32 160h192M108 80h40M108 136h40M108 184h40"/></g>
+  <g id="g-drumsticks" fill="none" stroke="currentColor" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"><path d="M44 212L140 116M76 76a32 32 0 1 1 48 40 32 32 0 0 1-48-40z"/><path d="M140 60a32 32 0 1 1 48 40"/><path d="M108 212l96-96"/></g>
+</defs></svg>
+
+<header class="intro">
+  <div class="eyebrow">M12 · mockup canônico para aprovação — Story 16.0</div>
+  <h1>Hábitos: registro do dia, configuração prospectiva e histórico só de leitura</h1>
+  <p>Superfície de padrão Registro, em três abas na ordem canônica <b>Hoje · Histórico · Configuração</b>. A ordem de leitura é fixa nas três faixas: <b>data e tipo de dia → completude do dia → registro por grupo</b>. A interface nunca calcula completude — a marcação é otimista só no valor da linha e a porcentagem reconcilia com o refetch do servidor.</p>
+  <p>O módulo já existe (Épico 6). Esta é a recomposição visual sobre o sistema novo, <b>sem alterar domínio</b>: nenhum tipo de hábito novo, nenhuma regra de completude nova, nenhuma rota nova nas superfícies implementáveis. Não há ação de excluir hábito em lugar nenhum — o domínio desativa. Não há toast de sucesso em nenhuma mutação.</p>
+</header>
+
+<!-- ============ F1 · TRACKER WIDE 1440 — POPULADO ============ -->
+<section class="spec">
+  <div class="caption"><h2>F1 · Tracker (aba Hoje) — wide 1440, populado</h2><span>variante "Registro em cards": grupos em 2 colunas de ~520px, workspace até 1120px (Q4) · alvos 44px</span></div>
+  <div class="browser"><div class="browserbar"><i class="dot"></i><i class="dot"></i><i class="dot"></i></div>
+  <div class="app h900">
+    <nav class="rail" aria-label="Navegação principal"><div class="brand">B</div>
+      <button class="nav"><b aria-hidden="true">◉</b>Hoje</button>
+      <button class="nav"><b aria-hidden="true">▤</b>Semana</button>
+      <button class="nav"><b aria-hidden="true">▦</b>Mês</button>
+      <button class="nav"><b aria-hidden="true">⇱</b>Futuro</button>
+      <button class="nav"><b aria-hidden="true">⟳</b>Recorr.</button>
+      <button class="nav"><b aria-hidden="true">▣</b>Brain D.</button>
+      <button class="nav active" aria-current="page"><b aria-hidden="true">◈</b>Hábitos</button>
+      <span class="grow"></span>
+      <button class="nav"><b aria-hidden="true">⚙</b>Config.</button>
+    </nav>
+    <div class="workspace"><div class="wide1120">
+      <header class="pagehead"><h1>Hábitos</h1><p>Registro do dia, configuração e histórico</p></header>
+
+      <div class="tabs" role="tablist" aria-label="Seções de Hábitos">
+        <button role="tab" aria-selected="true">Hoje</button>
+        <button role="tab" aria-selected="false">Histórico</button>
+        <button role="tab" aria-selected="false">Configuração</button>
+      </div>
+
+      <section class="dayhead" aria-labelledby="f1-dh">
+        <div class="r1">
+          <h2 id="f1-dh">Sexta-feira, 21 de agosto de 2026</h2>
+          <span class="daytag util">Dia útil</span>
+          <div class="daynav">
+            <button aria-label="Dia anterior">‹ Anterior</button>
+            <button aria-label="Ir para hoje" aria-pressed="true">Hoje</button>
+            <button aria-label="Próximo dia">Próximo ›</button>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:14px">
+          <span class="pct">64%</span>
+          <div style="flex:1"><div class="bar" role="img" aria-label="Completude do dia: 64 por cento"><i style="width:64%"></i></div></div>
+        </div>
+        <p class="denom">Soma dos pesos efetivos do dia: 14,0 · 7 de 11 registros preenchidos</p>
+        <div class="holidayrow">
+          <label><input type="checkbox"> Marcar este dia como feriado</label>
+          <span style="color:var(--muted)">Precedência: feriado &gt; fim de semana &gt; dia útil.</span>
+        </div>
+      </section>
+
+      <div class="cards">
+        <!-- grupo 1 -->
+        <section class="gcard" aria-labelledby="f1-g1">
+          <div class="gh"><h3 id="f1-g1">Corpo</h3><span class="gw">peso efetivo 6,0</span><span class="gp">75%</span></div>
+          <div class="bar g6" role="img" aria-label="Completude do grupo Corpo: 75 por cento"><i style="width:75%"></i></div>
+          <ul class="hrows">
+            <li class="hrow num">
+              <span class="ctl"><input type="checkbox" id="f1-h1" checked disabled aria-describedby="f1-h1s"><span class="indhint" aria-hidden="true">meta</span></span>
+              <span class="ico"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-person-simple-run"/></svg></span>
+              <span class="bd"><span class="n1"><strong>Corrida</strong><span class="w">Peso 3</span></span><span class="st done" id="f1-h1s">Meta atingida · 8,4 / 8 km</span></span>
+              <span class="numfield"><input class="numinput" type="text" inputmode="decimal" value="8,4" aria-label="Corrida, valor em km"></span>
+            </li>
+            <li class="hrow num">
+              <span class="ctl"><input type="checkbox" id="f1-h2" disabled aria-describedby="f1-h2s"><span class="indhint" aria-hidden="true">meta</span></span>
+              <span class="ico"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-drop"/></svg></span>
+              <span class="bd"><span class="n1"><strong>Água</strong><span class="w">Peso 2</span></span><span class="st" id="f1-h2s">1,8 / 2,5 L (72%)</span></span>
+              <span class="numfield"><input class="numinput" type="text" inputmode="decimal" value="1,8" aria-label="Água, valor em litros"></span>
+            </li>
+            <li class="hrow">
+              <span class="ctl"><input type="checkbox" id="f1-h3" aria-describedby="f1-h3s"></span>
+              <span class="ico"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-barbell"/></svg></span>
+              <span class="bd"><span class="n1"><strong>Alongamento</strong><span class="w">Peso 1</span></span><span class="st" id="f1-h3s">Não feito</span></span>
+            </li>
+          </ul>
+        </section>
+
+        <!-- grupo 2 -->
+        <section class="gcard" aria-labelledby="f1-g2">
+          <div class="gh"><h3 id="f1-g2">Mente</h3><span class="gw">peso efetivo 5,0</span><span class="gp">60%</span></div>
+          <div class="bar g6" role="img" aria-label="Completude do grupo Mente: 60 por cento"><i style="width:60%"></i></div>
+          <ul class="hrows">
+            <li class="hrow">
+              <span class="ctl"><input type="checkbox" id="f1-h4" checked aria-describedby="f1-h4s"></span>
+              <span class="ico"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-brain"/></svg></span>
+              <span class="bd"><span class="n1"><strong>Meditação</strong><span class="w">Peso 2</span></span><span class="st done" id="f1-h4s">Feito</span></span>
+            </li>
+            <li class="hrow num">
+              <span class="ctl"><input type="checkbox" id="f1-h5" disabled aria-describedby="f1-h5s"><span class="indhint" aria-hidden="true">meta</span></span>
+              <span class="ico"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-book-open"/></svg></span>
+              <span class="bd"><span class="n1"><strong>Leitura</strong><span class="w">Peso 2</span></span><span class="st" id="f1-h5s">18 / 30 páginas (60%)</span></span>
+              <span class="numfield"><input class="numinput" type="text" inputmode="decimal" value="18" aria-label="Leitura, valor em páginas"></span>
+            </li>
+            <li class="hrow">
+              <span class="ctl"><input type="checkbox" id="f1-h6" aria-describedby="f1-h6s"></span>
+              <span class="ico"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-guitar"/></svg></span>
+              <span class="bd"><span class="n1"><strong>Violão</strong><span class="w">Peso 1</span></span><span class="st" id="f1-h6s">Não feito</span></span>
+            </li>
+          </ul>
+        </section>
+
+        <!-- grupo 3 -->
+        <section class="gcard" aria-labelledby="f1-g3">
+          <div class="gh"><h3 id="f1-g3">Rotina</h3><span class="gw">peso efetivo 2,0</span><span class="gp">50%</span></div>
+          <div class="bar g6" role="img" aria-label="Completude do grupo Rotina: 50 por cento"><i style="width:50%"></i></div>
+          <ul class="hrows">
+            <li class="hrow">
+              <span class="ctl"><input type="checkbox" id="f1-h7" checked aria-describedby="f1-h7s"></span>
+              <span class="ico"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-pill"/></svg></span>
+              <span class="bd"><span class="n1"><strong>Vitamina D</strong><span class="w">Peso 1</span></span><span class="st done" id="f1-h7s">Feito</span></span>
+            </li>
+            <li class="hrow">
+              <span class="ctl"><input type="checkbox" id="f1-h8" aria-describedby="f1-h8s"></span>
+              <span class="ico"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-moon"/></svg></span>
+              <span class="bd"><span class="n1"><strong>Dormir antes das 23h</strong><span class="w">Peso 1</span></span><span class="st" id="f1-h8s">Não feito</span></span>
+            </li>
+          </ul>
+        </section>
+
+        <!-- grupo 4 -->
+        <section class="gcard" aria-labelledby="f1-g4">
+          <div class="gh"><h3 id="f1-g4">Alimentação</h3><span class="gw">peso efetivo 1,0</span><span class="gp">0%</span></div>
+          <div class="bar g6" role="img" aria-label="Completude do grupo Alimentação: 0 por cento"><i style="width:0%"></i></div>
+          <ul class="hrows">
+            <li class="hrow">
+              <span class="ctl"><input type="checkbox" id="f1-h9" aria-describedby="f1-h9s"></span>
+              <span class="ico"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-carrot"/></svg></span>
+              <span class="bd"><span class="n1"><strong>Sem açúcar</strong><span class="w">Peso 1</span></span><span class="st" id="f1-h9s">Não feito</span></span>
+            </li>
+          </ul>
+        </section>
+      </div>
+    </div></div>
+  </div></div>
+</section>
+
+<!-- ============ F2 · FERIADO, MULTIPLICADOR E OVERRIDE ============ -->
+<section class="spec">
+  <div class="caption"><h2>F2 · Tracker — dia marcado como feriado, com override avulso</h2><span>legenda só quando o dia não é útil E o multiplicador difere de 1 · fatores separados na linha · override toca só o dia visível</span></div>
+  <div class="browser"><div class="browserbar"><i class="dot"></i><i class="dot"></i><i class="dot"></i></div>
+  <div class="app h620">
+    <nav class="rail" aria-label="Navegação principal"><div class="brand">B</div>
+      <button class="nav"><b aria-hidden="true">◉</b>Hoje</button>
+      <button class="nav"><b aria-hidden="true">▤</b>Semana</button>
+      <button class="nav"><b aria-hidden="true">▦</b>Mês</button>
+      <button class="nav active" aria-current="page"><b aria-hidden="true">◈</b>Hábitos</button>
+      <span class="grow"></span>
+      <button class="nav"><b aria-hidden="true">⚙</b>Config.</button>
+    </nav>
+    <div class="workspace"><div class="wide1120">
+      <section class="dayhead" aria-labelledby="f2-dh">
+        <div class="r1">
+          <h2 id="f2-dh">Sexta-feira, 7 de setembro de 2026</h2>
+          <span class="daytag fer">Feriado</span>
+          <div class="daynav">
+            <button aria-label="Dia anterior">‹ Anterior</button>
+            <button aria-label="Ir para hoje">Hoje</button>
+            <button aria-label="Próximo dia">Próximo ›</button>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:14px">
+          <span class="pct">55%</span>
+          <div style="flex:1"><div class="bar" role="img" aria-label="Completude do dia: 55 por cento"><i style="width:55%"></i></div></div>
+        </div>
+        <p class="denom">Soma dos pesos efetivos do dia: 8,5 · 6 de 11 registros preenchidos</p>
+        <div class="holidayrow">
+          <label><input type="checkbox" checked> Marcar este dia como feriado</label>
+          <span style="color:var(--muted)">Precedência: feriado &gt; fim de semana &gt; dia útil. Os pesos deste dia já estão congelados com o multiplicador de feriado.</span>
+          <button class="btn-override">Tratar este dia como dia útil (peso cheio)</button>
+        </div>
+      </section>
+
+      <div class="cards">
+        <section class="gcard" aria-labelledby="f2-g1">
+          <div class="gh"><h3 id="f2-g1">Corpo</h3><span class="gw">peso efetivo 3,0</span><span class="gp">50%</span></div>
+          <div class="bar g6" role="img" aria-label="Completude do grupo Corpo: 50 por cento"><i style="width:50%"></i></div>
+          <p class="legend">Feriado · peso ×0,5 neste grupo</p>
+          <ul class="hrows">
+            <li class="hrow num">
+              <span class="ctl"><input type="checkbox" id="f2-h1" disabled aria-describedby="f2-h1s"><span class="indhint" aria-hidden="true">meta</span></span>
+              <span class="ico"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-person-simple-run"/></svg></span>
+              <span class="bd"><span class="n1"><strong>Corrida</strong><span class="w">Peso 3 × 0,5 = 1,5</span></span><span class="st" id="f2-h1s">4,0 / 8 km (50%)</span></span>
+              <span class="numfield"><input class="numinput" type="text" inputmode="decimal" value="4,0" aria-label="Corrida, valor em km"></span>
+            </li>
+            <li class="hrow num">
+              <span class="ctl"><input type="checkbox" id="f2-h2" checked disabled aria-describedby="f2-h2s"><span class="indhint" aria-hidden="true">meta</span></span>
+              <span class="ico"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-drop"/></svg></span>
+              <span class="bd"><span class="n1"><strong>Água</strong><span class="w">Peso 2 × 0,5 = 1,0</span></span><span class="st done" id="f2-h2s">Meta atingida · 2,6 / 2,5 L</span></span>
+              <span class="numfield"><input class="numinput" type="text" inputmode="decimal" value="2,6" aria-label="Água, valor em litros"></span>
+            </li>
+            <li class="hrow">
+              <span class="ctl"><input type="checkbox" id="f2-h3" aria-describedby="f2-h3s"></span>
+              <span class="ico"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-barbell"/></svg></span>
+              <span class="bd"><span class="n1"><strong>Alongamento</strong><span class="w">Peso 1 × 0,5 = 0,5</span></span><span class="st" id="f2-h3s">Não feito</span></span>
+            </li>
+          </ul>
+        </section>
+
+        <section class="gcard" aria-labelledby="f2-g2">
+          <div class="gh"><h3 id="f2-g2">Rotina</h3><span class="gw">peso efetivo 2,0</span><span class="gp">50%</span></div>
+          <div class="bar g6" role="img" aria-label="Completude do grupo Rotina: 50 por cento"><i style="width:50%"></i></div>
+          <ul class="hrows">
+            <li class="hrow">
+              <span class="ctl"><input type="checkbox" id="f2-h7" checked aria-describedby="f2-h7s"></span>
+              <span class="ico"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-pill"/></svg></span>
+              <span class="bd"><span class="n1"><strong>Vitamina D</strong><span class="w">Peso 1</span></span><span class="st done" id="f2-h7s">Feito</span></span>
+            </li>
+            <li class="hrow">
+              <span class="ctl"><input type="checkbox" id="f2-h8" aria-describedby="f2-h8s"></span>
+              <span class="ico"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-moon"/></svg></span>
+              <span class="bd"><span class="n1"><strong>Dormir antes das 23h</strong><span class="w">Peso 1</span></span><span class="st" id="f2-h8s">Não feito</span></span>
+            </li>
+          </ul>
+          <p style="margin:9px 0 0;font-size:11px;color:var(--muted)">Sem legenda de multiplicador: este grupo não tem configuração para feriado, então o fator lido é 1,00.</p>
+        </section>
+      </div>
+    </div></div>
+  </div></div>
+  <div class="notes" style="margin-top:12px">
+    <div class="note"><b>Override avulso</b>"Tratar este dia como dia útil (peso cheio)" grava <code>multiplierAtTime = 1,00</code> em cada linha do dia visível. Não altera a configuração dos grupos e não vale para nenhum outro dia.</div>
+    <div class="note"><b>Peso como texto</b>Inteiro quando não há fração ("Peso 2"). A vírgula só aparece no valor quebrado do produto: "Peso 3 × 0,5 = 1,5".</div>
+    <div class="note"><b>Refetch, não recálculo</b>Marcar feriado reescreve o <code>multiplierAtTime</code> das linhas no servidor; a interface refetcha. Porcentagem, peso efetivo e multiplicador nunca mudam de forma otimista.</div>
+    <div class="note"><b>Dias passados (Q5)</b>A navegação de data edita qualquer dia já semeado, com os pesos congelados daquele dia. Não há limite de retroatividade nem janela de N dias.</div>
+  </div>
+</section>
+
+<!-- ============ F3 · TABLET 900 ============ -->
+<section class="spec">
+  <div class="caption"><h2>F3 · Tracker — tablet 900, rail de 64px</h2><span>mesmos cards em uma coluna · recomposição, nunca compressão · alvos 44px</span></div>
+  <div class="browser" style="max-width:900px"><div class="browserbar"><i class="dot"></i><i class="dot"></i><i class="dot"></i></div>
+  <div class="app h760">
+    <nav class="rail" aria-label="Navegação principal"><div class="brand">B</div>
+      <button class="nav"><b aria-hidden="true">◉</b>Hoje</button>
+      <button class="nav"><b aria-hidden="true">▤</b>Semana</button>
+      <button class="nav"><b aria-hidden="true">▦</b>Mês</button>
+      <button class="nav active" aria-current="page"><b aria-hidden="true">◈</b>Hábitos</button>
+      <span class="grow"></span>
+      <button class="nav"><b aria-hidden="true">⚙</b>Config.</button>
+    </nav>
+    <div class="workspace" style="padding:16px 20px 20px">
+      <header class="pagehead"><h1>Hábitos</h1></header>
+      <div class="tabs" role="tablist" aria-label="Seções de Hábitos">
+        <button role="tab" aria-selected="true">Hoje</button>
+        <button role="tab" aria-selected="false">Histórico</button>
+        <button role="tab" aria-selected="false">Configuração</button>
+      </div>
+      <section class="dayhead" aria-labelledby="f3-dh">
+        <div class="r1"><h2 id="f3-dh" style="font-size:15px">Sexta, 21 de agosto de 2026</h2><span class="daytag util">Dia útil</span>
+          <div class="daynav"><button aria-label="Dia anterior">‹</button><button>Hoje</button><button aria-label="Próximo dia">›</button></div></div>
+        <div style="display:flex;align-items:center;gap:12px"><span class="pct">64%</span>
+          <div style="flex:1"><div class="bar" role="img" aria-label="Completude do dia: 64 por cento"><i style="width:64%"></i></div></div></div>
+        <p class="denom">Soma dos pesos efetivos do dia: 14,0 · 7 de 11 registros preenchidos</p>
+      </section>
+      <div class="cards one">
+        <section class="gcard" aria-labelledby="f3-g1">
+          <div class="gh"><h3 id="f3-g1">Corpo</h3><span class="gw">peso efetivo 6,0</span><span class="gp">75%</span></div>
+          <div class="bar g6" role="img" aria-label="Completude do grupo Corpo: 75 por cento"><i style="width:75%"></i></div>
+          <ul class="hrows">
+            <li class="hrow num">
+              <span class="ctl"><input type="checkbox" id="f3-h1" checked disabled aria-describedby="f3-h1s"><span class="indhint" aria-hidden="true">meta</span></span>
+              <span class="ico"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-person-simple-run"/></svg></span>
+              <span class="bd"><span class="n1"><strong>Corrida</strong><span class="w">Peso 3</span></span><span class="st done" id="f3-h1s">Meta atingida · 8,4 / 8 km</span></span>
+              <span class="numfield"><input class="numinput" type="text" inputmode="decimal" value="8,4" aria-label="Corrida, valor em km"></span>
+            </li>
+            <li class="hrow num">
+              <span class="ctl"><input type="checkbox" id="f3-h2" disabled aria-describedby="f3-h2s"><span class="indhint" aria-hidden="true">meta</span></span>
+              <span class="ico"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-drop"/></svg></span>
+              <span class="bd"><span class="n1"><strong>Água</strong><span class="w">Peso 2</span></span><span class="st" id="f3-h2s">1,8 / 2,5 L (72%)</span></span>
+              <span class="numfield"><input class="numinput" type="text" inputmode="decimal" value="1,8" aria-label="Água, valor em litros"></span>
+            </li>
+            <li class="hrow">
+              <span class="ctl"><input type="checkbox" id="f3-h3" aria-describedby="f3-h3s"></span>
+              <span class="ico"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-barbell"/></svg></span>
+              <span class="bd"><span class="n1"><strong>Alongamento</strong><span class="w">Peso 1</span></span><span class="st" id="f3-h3s">Não feito</span></span>
+            </li>
+          </ul>
+        </section>
+        <section class="gcard" aria-labelledby="f3-g2">
+          <div class="gh"><h3 id="f3-g2">Mente</h3><span class="gw">peso efetivo 5,0</span><span class="gp">60%</span></div>
+          <div class="bar g6" role="img" aria-label="Completude do grupo Mente: 60 por cento"><i style="width:60%"></i></div>
+          <ul class="hrows">
+            <li class="hrow">
+              <span class="ctl"><input type="checkbox" id="f3-h4" checked aria-describedby="f3-h4s"></span>
+              <span class="ico"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-brain"/></svg></span>
+              <span class="bd"><span class="n1"><strong>Meditação</strong><span class="w">Peso 2</span></span><span class="st done" id="f3-h4s">Feito</span></span>
+            </li>
+            <li class="hrow num">
+              <span class="ctl"><input type="checkbox" id="f3-h5" disabled aria-describedby="f3-h5s"><span class="indhint" aria-hidden="true">meta</span></span>
+              <span class="ico"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-book-open"/></svg></span>
+              <span class="bd"><span class="n1"><strong>Leitura</strong><span class="w">Peso 2</span></span><span class="st" id="f3-h5s">18 / 30 páginas (60%)</span></span>
+              <span class="numfield"><input class="numinput" type="text" inputmode="decimal" value="18" aria-label="Leitura, valor em páginas"></span>
+            </li>
+          </ul>
+        </section>
+      </div>
+    </div>
+  </div></div>
+</section>
+
+<!-- ============ F4 · TRACKER COMPACT 390 ============ -->
+<section class="spec">
+  <div class="caption"><h2>F4 · Tracker — compact 390</h2><span>booleano vira alvo único de 48px (rótulo inteiro clicável) · numérico quebra em duas faixas · 96px reservados para a bottom nav</span></div>
+  <div class="mobile-zone">
+    <div class="phonecase">
+      <h3>F4 · aba Hoje, populado</h3>
+      <p class="pc">Cards em uma coluna. Ordem de leitura idêntica ao wide.</p>
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span>▮▮▮</span></div>
+        <div class="mobile-head"><h4>Hábitos</h4><p>Sexta, 21 de agosto de 2026 · Dia útil</p></div>
+        <div class="mtabs" role="tablist" aria-label="Seções de Hábitos">
+          <button role="tab" aria-selected="true">Hoje</button>
+          <button role="tab" aria-selected="false">Histórico</button>
+          <button role="tab" aria-selected="false">Config.</button>
+        </div>
+        <div class="mscroll">
+          <section class="mcard" aria-label="Completude do dia">
+            <div style="display:flex;align-items:center;gap:11px">
+              <span class="pct" style="font-size:22px">64%</span>
+              <div style="flex:1"><div class="bar" role="img" aria-label="Completude do dia: 64 por cento"><i style="width:64%"></i></div></div>
+            </div>
+            <p class="denom" style="font-size:11px">Soma dos pesos efetivos do dia: 14,0 · 7 de 11 registros preenchidos</p>
+            <label style="display:flex;align-items:center;gap:8px;min-height:48px;font-size:12px;margin-top:4px;border-top:1px solid var(--line);padding-top:2px"><input type="checkbox"> Marcar este dia como feriado</label>
+          </section>
+
+          <section class="mcard" aria-labelledby="f4-g1">
+            <div class="gh"><h3 id="f4-g1">Corpo</h3><span class="gw">peso efetivo 6,0</span><span class="gp">75%</span></div>
+            <div class="bar g6" role="img" aria-label="Completude do grupo Corpo: 75 por cento"><i style="width:75%"></i></div>
+            <ul class="mrows">
+              <li class="mrow-num">
+                <div class="top">
+                  <span style="display:grid;place-items:center"><input type="checkbox" checked disabled aria-describedby="f4-h1s"></span>
+                  <span class="ico"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-person-simple-run"/></svg></span>
+                  <span><span class="w">Peso 3</span><strong>Corrida</strong><br><span class="st" id="f4-h1s" style="color:var(--success);font-weight:650">Meta atingida · 8,4 / 8 km</span></span>
+                </div>
+                <div class="fieldrow"><input type="text" inputmode="decimal" value="8,4" aria-label="Corrida, valor em km"></div>
+              </li>
+              <li class="mrow-num">
+                <div class="top">
+                  <span style="display:grid;place-items:center"><input type="checkbox" disabled aria-describedby="f4-h2s"></span>
+                  <span class="ico"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-drop"/></svg></span>
+                  <span><span class="w">Peso 2</span><strong>Água</strong><br><span class="st" id="f4-h2s">1,8 / 2,5 L (72%)</span></span>
+                </div>
+                <div class="fieldrow"><input type="text" inputmode="decimal" value="1,8" aria-label="Água, valor em litros"></div>
+              </li>
+              <li><button class="mrow-bool" aria-pressed="false">
+                <span style="display:grid;place-items:center"><input type="checkbox" tabindex="-1" aria-hidden="true"></span>
+                <span class="ico"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-barbell"/></svg></span>
+                <span><strong>Alongamento <span class="w" style="float:right;font-size:10px;color:var(--muted)">Peso 1</span></strong><span class="st">Não feito</span></span>
+              </button></li>
+            </ul>
+          </section>
+
+          <section class="mcard" aria-labelledby="f4-g2">
+            <div class="gh"><h3 id="f4-g2">Mente</h3><span class="gw">peso efetivo 5,0</span><span class="gp">60%</span></div>
+            <div class="bar g6" role="img" aria-label="Completude do grupo Mente: 60 por cento"><i style="width:60%"></i></div>
+            <ul class="mrows">
+              <li><button class="mrow-bool" aria-pressed="true">
+                <span style="display:grid;place-items:center"><input type="checkbox" checked tabindex="-1" aria-hidden="true"></span>
+                <span class="ico"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-brain"/></svg></span>
+                <span><strong>Meditação <span class="w" style="float:right;font-size:10px;color:var(--muted)">Peso 2</span></strong><span class="st" style="color:var(--success);font-weight:650">Feito</span></span>
+              </button></li>
+              <li class="mrow-num">
+                <div class="top">
+                  <span style="display:grid;place-items:center"><input type="checkbox" disabled aria-describedby="f4-h5s"></span>
+                  <span class="ico"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-book-open"/></svg></span>
+                  <span><span class="w">Peso 2</span><strong>Leitura</strong><br><span class="st" id="f4-h5s">18 / 30 páginas (60%)</span></span>
+                </div>
+                <div class="fieldrow"><input type="text" inputmode="decimal" value="18" aria-label="Leitura, valor em páginas"></div>
+              </li>
+              <li><button class="mrow-bool" aria-pressed="false">
+                <span style="display:grid;place-items:center"><input type="checkbox" tabindex="-1" aria-hidden="true"></span>
+                <span class="ico"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-guitar"/></svg></span>
+                <span><strong>Violão <span class="w" style="float:right;font-size:10px;color:var(--muted)">Peso 1</span></strong><span class="st">Não feito</span></span>
+              </button></li>
+            </ul>
+          </section>
+
+          <section class="mcard" aria-labelledby="f4-g3">
+            <div class="gh"><h3 id="f4-g3">Rotina</h3><span class="gw">peso efetivo 2,0</span><span class="gp">50%</span></div>
+            <div class="bar g6" role="img" aria-label="Completude do grupo Rotina: 50 por cento"><i style="width:50%"></i></div>
+            <ul class="mrows">
+              <li><button class="mrow-bool" aria-pressed="true">
+                <span style="display:grid;place-items:center"><input type="checkbox" checked tabindex="-1" aria-hidden="true"></span>
+                <span class="ico"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-pill"/></svg></span>
+                <span><strong>Vitamina D <span class="w" style="float:right;font-size:10px;color:var(--muted)">Peso 1</span></strong><span class="st" style="color:var(--success);font-weight:650">Feito</span></span>
+              </button></li>
+              <li><button class="mrow-bool" aria-pressed="false">
+                <span style="display:grid;place-items:center"><input type="checkbox" tabindex="-1" aria-hidden="true"></span>
+                <span class="ico"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-moon"/></svg></span>
+                <span><strong>Dormir antes das 23h</strong><span class="st">Não feito · Peso 1</span></span>
+              </button></li>
+            </ul>
+          </section>
+        </div>
+        <nav class="bottom-nav" aria-label="Navegação principal">
+          <button>Hoje</button><button>Semana</button><button class="on" aria-current="page">Hábitos</button><button>Mais</button>
+        </nav>
+      </div>
+    </div>
+
+    <div class="phonecase">
+      <h3>F6 · aba Configuração — compact</h3>
+      <p class="pc">Mesma configuração recomposta; multiplicadores do grupo dentro de <code>details</code>.</p>
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span>▮▮▮</span></div>
+        <div class="mobile-head"><h4>Hábitos</h4><p>Configuração de hábitos e grupos</p></div>
+        <div class="mtabs" role="tablist" aria-label="Seções de Hábitos">
+          <button role="tab" aria-selected="false">Hoje</button>
+          <button role="tab" aria-selected="false">Histórico</button>
+          <button role="tab" aria-selected="true">Config.</button>
+        </div>
+        <div class="mscroll">
+          <div class="toggleline" style="justify-content:flex-end"><label style="display:flex;align-items:center;gap:8px;min-height:48px"><input type="checkbox"> Mostrar inativos</label></div>
+
+          <div class="sectionhead" style="margin:4px 0 6px"><h2 style="font-size:14px">Corpo</h2><span class="count">3 hábitos</span></div>
+          <ul class="cfglist">
+            <li class="cfgrow" style="grid-template-columns:20px minmax(0,1fr)">
+              <span class="ico"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-person-simple-run"/></svg></span>
+              <span><strong>Corrida</strong><p>Numérico · km · Peso 3 · Meta 8 · Bônus 0%</p>
+                <span style="display:flex;gap:6px;margin-top:7px"><button class="btn-sec" style="flex:1;min-height:48px">Editar</button><button class="btn-sec" style="flex:1;min-height:48px">Desativar hábito</button></span></span>
+            </li>
+            <li class="cfgrow" style="grid-template-columns:20px minmax(0,1fr)">
+              <span class="ico"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-drop"/></svg></span>
+              <span><strong>Água</strong><p>Numérico · L · Peso 2 · Meta 2,5 · Bônus 10%</p>
+                <span style="display:flex;gap:6px;margin-top:7px"><button class="btn-sec" style="flex:1;min-height:48px">Editar</button><button class="btn-sec" style="flex:1;min-height:48px">Desativar hábito</button></span></span>
+            </li>
+            <li class="cfgrow" style="grid-template-columns:20px minmax(0,1fr)">
+              <span class="ico"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-barbell"/></svg></span>
+              <span><strong>Alongamento</strong><p>Booleano · Peso 1</p>
+                <span style="display:flex;gap:6px;margin-top:7px"><button class="btn-sec" style="flex:1;min-height:48px">Editar</button><button class="btn-sec" style="flex:1;min-height:48px">Desativar hábito</button></span></span>
+            </li>
+          </ul>
+
+          <details class="multdet">
+            <summary>Multiplicadores do grupo Corpo</summary>
+            <p style="margin:4px 0 9px;font-size:11px;color:var(--muted)">Precedência: feriado &gt; fim de semana &gt; dia útil. Dia útil é sempre 1,00 e nunca é armazenado. Campo vazio remove a configuração e a leitura volta a 1,00.</p>
+            <div class="field"><label for="f6-fds">Fim de semana ×</label><input class="input" id="f6-fds" inputmode="decimal" value="0,5"></div>
+            <div class="field"><label for="f6-fer">Feriado ×</label><input class="input" id="f6-fer" inputmode="decimal" value="0,5"></div>
+            <p class="persistnote">Alteração válida a partir de hoje. Registros anteriores preservados.</p>
+            <button class="primary" style="width:100%;min-height:48px;margin-top:10px">Salvar multiplicadores</button>
+          </details>
+
+          <div class="sectionhead" style="margin:16px 0 6px"><h2 style="font-size:14px">Mente</h2><span class="count">2 hábitos</span></div>
+          <ul class="cfglist">
+            <li class="cfgrow" style="grid-template-columns:20px minmax(0,1fr)">
+              <span class="ico"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-brain"/></svg></span>
+              <span><strong>Meditação</strong><p>Booleano · Peso 2</p></span>
+            </li>
+            <li class="cfgrow inactive" style="grid-template-columns:20px minmax(0,1fr)">
+              <span class="ico"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-cigarette-slash"/></svg></span>
+              <span><strong>Sem rede social <span class="chip">Inativo</span></strong><p>Booleano · Peso 1 · inativo desde 3 de agosto de 2026</p>
+                <span style="display:flex;margin-top:7px"><button class="btn-sec" style="flex:1;min-height:48px">Reativar hábito</button></span></span>
+            </li>
+          </ul>
+
+          <button class="primary" style="width:100%;min-height:48px;margin-top:16px">Adicionar hábito</button>
+          <button class="btn-sec" style="width:100%;min-height:48px;margin-top:8px">Adicionar grupo</button>
+        </div>
+        <nav class="bottom-nav" aria-label="Navegação principal">
+          <button>Hoje</button><button>Semana</button><button class="on" aria-current="page">Hábitos</button><button>Mais</button>
+        </nav>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ F5 · CONFIGURAÇÃO WIDE ============ -->
+<section class="spec">
+  <div class="caption"><h2>F5 · Configuração (aba Configuração) — wide, populado</h2><span>padrão Coleção: grupos → hábitos → criação ao fim · Identidade e Versionado separados por natureza de dado · sem ação de excluir</span></div>
+  <div class="browser"><div class="browserbar"><i class="dot"></i><i class="dot"></i><i class="dot"></i></div>
+  <div class="app h1080">
+    <nav class="rail" aria-label="Navegação principal"><div class="brand">B</div>
+      <button class="nav"><b aria-hidden="true">◉</b>Hoje</button>
+      <button class="nav"><b aria-hidden="true">▤</b>Semana</button>
+      <button class="nav"><b aria-hidden="true">▦</b>Mês</button>
+      <button class="nav active" aria-current="page"><b aria-hidden="true">◈</b>Hábitos</button>
+      <span class="grow"></span>
+      <button class="nav"><b aria-hidden="true">⚙</b>Config.</button>
+    </nav>
+    <div class="workspace"><div class="reading">
+      <header class="pagehead"><h1>Hábitos</h1><p>Configuração de hábitos e grupos</p></header>
+      <div class="tabs" role="tablist" aria-label="Seções de Hábitos">
+        <button role="tab" aria-selected="false">Hoje</button>
+        <button role="tab" aria-selected="false">Histórico</button>
+        <button role="tab" aria-selected="true">Configuração</button>
+      </div>
+
+      <div class="toggleline" style="justify-content:flex-end;margin-top:-6px">
+        <label style="display:flex;align-items:center;gap:8px;min-height:44px"><input type="checkbox"> Mostrar inativos</label>
+      </div>
+
+      <!-- grupo Corpo -->
+      <div class="sectionhead"><h2>Corpo</h2><span class="count">3 hábitos ativos</span></div>
+      <ul class="cfglist">
+        <li class="cfgrow">
+          <span class="ico"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-person-simple-run"/></svg></span>
+          <span><strong>Corrida</strong><p>Numérico · km · Peso 3 · Meta 8 · Bônus 0%</p></span>
+          <span style="display:flex;gap:7px"><button class="btn-sec">Editar</button><button class="btn-sec">Desativar hábito</button></span>
+        </li>
+      </ul>
+
+      <!-- bloco de edição aberto: identidade x versionado -->
+      <div class="editblock" aria-label="Editando o hábito Água">
+        <h4>Editando: Água</h4>
+        <p class="sub">Um bloco de edição aberto por vez. "Cancelar edição" descarta sem tocar o servidor.</p>
+        <div class="natsplit">
+          <div class="natbox">
+            <h4 style="color:var(--ink);margin-bottom:2px">Identidade</h4>
+            <p class="sub" style="margin-bottom:10px">Vale para todo o histórico. Não cria versão.</p>
+            <div class="field"><label for="f5-n">Nome</label><input class="input" id="f5-n" value="Água"></div>
+            <div class="field"><label for="f5-p">Pictograma</label>
+              <button class="picktrigger" id="f5-p" aria-haspopup="dialog">
+                <svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-drop"/></svg>
+                <span>Pictograma escolhido</span><span class="k">Trocar</span>
+              </button>
+            </div>
+            <div class="f2">
+              <div class="field"><label for="f5-u">Unidade</label><input class="input" id="f5-u" value="L"></div>
+              <div class="field"><label for="f5-g">Grupo</label><select class="input" id="f5-g"><option selected>Corpo</option><option>Mente</option><option>Rotina</option><option>Alimentação</option></select></div>
+            </div>
+          </div>
+          <div class="natbox">
+            <h4 style="color:var(--ink);margin-bottom:2px">Versionado</h4>
+            <p class="sub" style="margin-bottom:10px">Cria versão com vigência a partir de hoje. O histórico não muda.</p>
+            <div class="f2">
+              <div class="field"><label for="f5-w">Peso</label><input class="input tabular" id="f5-w" inputmode="decimal" value="2"></div>
+              <div class="field"><label for="f5-m">Meta</label><input class="input tabular" id="f5-m" inputmode="decimal" value="2,5"></div>
+            </div>
+            <div class="f2">
+              <div class="field"><label for="f5-b">Bônus (%)</label><input class="input tabular" id="f5-b" inputmode="decimal" value="10"></div>
+              <div class="field"><label for="f5-a">Ativação</label><select class="input" id="f5-a"><option selected>Ativo</option><option>Inativo</option></select></div>
+            </div>
+            <p class="persistnote">Alteração válida a partir de hoje. Registros anteriores preservados.</p>
+          </div>
+        </div>
+        <div class="actions">
+          <button class="primary">Salvar alterações</button>
+          <button class="btn-sec">Cancelar edição</button>
+          <span style="font-size:11px;color:var(--muted);align-self:center">Segunda alteração no mesmo dia atualiza a versão de hoje, não cria outra.</span>
+        </div>
+      </div>
+
+      <ul class="cfglist" style="border-top:0">
+        <li class="cfgrow">
+          <span class="ico"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-barbell"/></svg></span>
+          <span><strong>Alongamento</strong><p>Booleano · Peso 1</p></span>
+          <span style="display:flex;gap:7px"><button class="btn-sec">Editar</button><button class="btn-sec">Desativar hábito</button></span>
+        </li>
+        <li class="cfgrow inactive">
+          <span class="ico"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-drumsticks"/></svg></span>
+          <span><strong>Ciclismo <span class="chip">Inativo</span></strong><p>Numérico · km · Peso 2 · Meta 20 · inativo desde 12 de julho de 2026</p></span>
+          <span style="display:flex;gap:7px"><button class="btn-sec">Editar</button><button class="btn-sec">Reativar hábito</button></span>
+        </li>
+      </ul>
+
+      <div class="multbox">
+        <h4>Multiplicadores do grupo Corpo</h4>
+        <p>Precedência: <b>feriado &gt; fim de semana &gt; dia útil</b>. Dia útil vale 1,00 e nunca é armazenado. Campo vazio remove a configuração e a leitura volta a 1,00.</p>
+        <div class="f2">
+          <div class="field"><label for="f5-fds">Fim de semana ×</label><input class="input tabular" id="f5-fds" inputmode="decimal" value="0,5"></div>
+          <div class="field"><label for="f5-fer">Feriado ×</label><input class="input tabular" id="f5-fer" inputmode="decimal" value="0,5"></div>
+        </div>
+        <p class="persistnote">Alteração válida a partir de hoje. Registros anteriores preservados.</p>
+        <div class="actions"><button class="primary">Salvar multiplicadores</button></div>
+      </div>
+
+      <!-- grupo Mente -->
+      <div class="sectionhead"><h2>Mente</h2><span class="count">3 hábitos ativos</span></div>
+      <ul class="cfglist">
+        <li class="cfgrow">
+          <span class="ico"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-brain"/></svg></span>
+          <span><strong>Meditação</strong><p>Booleano · Peso 2</p></span>
+          <span style="display:flex;gap:7px"><button class="btn-sec">Editar</button><button class="btn-sec">Desativar hábito</button></span>
+        </li>
+        <li class="cfgrow">
+          <span class="ico"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-book-open"/></svg></span>
+          <span><strong>Leitura</strong><p>Numérico · páginas · Peso 2 · Meta 30 · Bônus 0%</p></span>
+          <span style="display:flex;gap:7px"><button class="btn-sec">Editar</button><button class="btn-sec">Desativar hábito</button></span>
+        </li>
+        <li class="cfgrow">
+          <span class="ico"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-guitar"/></svg></span>
+          <span><strong>Violão</strong><p>Booleano · Peso 1</p></span>
+          <span style="display:flex;gap:7px"><button class="btn-sec">Editar</button><button class="btn-sec">Desativar hábito</button></span>
+        </li>
+      </ul>
+      <div class="multbox">
+        <h4>Multiplicadores do grupo Mente</h4>
+        <p>Precedência: <b>feriado &gt; fim de semana &gt; dia útil</b>. Sem configuração salva, os dois campos ficam vazios e a leitura é 1,00.</p>
+        <div class="f2">
+          <div class="field"><label for="f5b-fds">Fim de semana ×</label><input class="input tabular" id="f5b-fds" inputmode="decimal" value="" placeholder="1,00"></div>
+          <div class="field"><label for="f5b-fer">Feriado ×</label><input class="input tabular" id="f5b-fer" inputmode="decimal" value="" placeholder="1,00"></div>
+        </div>
+        <p class="persistnote">Alteração válida a partir de hoje. Registros anteriores preservados.</p>
+        <div class="actions"><button class="primary">Salvar multiplicadores</button></div>
+      </div>
+
+      <!-- grupo vazio -->
+      <div class="sectionhead"><h2>Alimentação</h2><span class="count">0 hábitos ativos</span></div>
+      <div class="mini-empty" style="border:1px solid var(--line);border-radius:6px;background:#fff">Nenhum hábito neste grupo.</div>
+
+      <!-- criação ao fim -->
+      <section class="panel panelpad" style="margin-top:24px" aria-labelledby="f5-new">
+        <div class="sectionhead" style="margin:0 0 12px"><h2 id="f5-new" style="font-size:15px">Adicionar hábito</h2></div>
+        <div class="f2">
+          <div class="field"><label for="f5-nn">Nome <span style="color:var(--muted);font-weight:500">(obrigatório)</span></label><input class="input" id="f5-nn" placeholder="Ex.: Caminhada"></div>
+          <div class="field"><label for="f5-ng">Grupo <span style="color:var(--muted);font-weight:500">(obrigatório)</span></label><select class="input" id="f5-ng"><option>Corpo</option><option>Mente</option><option>Rotina</option><option>Alimentação</option></select></div>
+        </div>
+        <div class="field"><label for="f5-np">Pictograma</label>
+          <button class="picktrigger" id="f5-np" aria-haspopup="dialog"><span style="width:20px;height:20px;display:inline-block" aria-hidden="true"></span><span style="color:var(--muted)">Nenhum pictograma escolhido</span><span class="k">Escolher</span></button>
+        </div>
+        <fieldset style="border:0;padding:0;margin:0 0 11px">
+          <legend style="font-size:11px;font-weight:760;padding:0;margin-bottom:5px">Tipo <span style="color:var(--muted);font-weight:500">(obrigatório · imutável depois da criação)</span></legend>
+          <div class="radiogrp" role="radiogroup" aria-label="Tipo do hábito">
+            <label class="on"><input type="radio" name="f5tipo" checked> Booleano</label>
+            <label><input type="radio" name="f5tipo"> Numérico</label>
+          </div>
+        </fieldset>
+        <div class="f2">
+          <div class="field"><label for="f5-nw">Peso inicial <span style="color:var(--muted);font-weight:500">(obrigatório)</span></label><input class="input tabular" id="f5-nw" inputmode="decimal" value="1"></div>
+          <div class="field"><label for="f5-nu">Unidade</label><input class="input" id="f5-nu" placeholder="só no tipo numérico" disabled></div>
+        </div>
+        <div class="f2">
+          <div class="field"><label for="f5-nm">Meta</label><input class="input tabular" id="f5-nm" placeholder="só no tipo numérico" disabled></div>
+          <div class="field"><label for="f5-nb">Bônus (%)</label><input class="input tabular" id="f5-nb" placeholder="só no tipo numérico" disabled></div>
+        </div>
+        <p class="hint" style="font-size:11px;color:var(--muted);margin:0 0 10px">Meta, bônus e unidade só existem no tipo numérico.</p>
+        <div class="actions"><button class="primary">Adicionar hábito</button><button class="btn-sec">Adicionar grupo</button></div>
+      </section>
+    </div></div>
+  </div></div>
+  <div class="notes" style="margin-top:12px">
+    <div class="note"><b>Identidade × versionado</b>Nome, pictograma, unidade e grupo mudam por UPDATE direto e valem para todo o histórico. Peso, meta, bônus e ativação abrem versão com vigência de hoje.</div>
+    <div class="note"><b>Aviso persistente</b>"Alteração válida a partir de hoje. Registros anteriores preservados." é texto fixo sob os campos versionados — nunca tooltip, porque tooltip não sobrevive a teclado nem a toque.</div>
+    <div class="note"><b>Inativo</b>Tratamento terminal com opacidade 0,58 <b>e</b> chip textual "Inativo". Opacidade nunca é canal único. Some do dia seguinte, permanece no histórico.</div>
+    <div class="note"><b>Excluir não existe</b>Nenhuma superfície oferece exclusão de hábito. As ações nomeiam a consequência: "Desativar hábito" e "Reativar hábito".</div>
+  </div>
+</section>
+
+<!-- ============ F7 · SEM GRUPO ============ -->
+<section class="spec">
+  <div class="caption"><h2>F7 · Configuração — estado sem grupo</h2><span>criar hábito indisponível com o motivo escrito, não só desabilitado</span></div>
+  <div class="browser" style="max-width:1000px"><div class="browserbar"><i class="dot"></i><i class="dot"></i><i class="dot"></i></div>
+  <div class="app h620">
+    <nav class="rail" aria-label="Navegação principal"><div class="brand">B</div>
+      <button class="nav"><b aria-hidden="true">◉</b>Hoje</button>
+      <button class="nav active" aria-current="page"><b aria-hidden="true">◈</b>Hábitos</button>
+      <span class="grow"></span><button class="nav"><b aria-hidden="true">⚙</b>Config.</button>
+    </nav>
+    <div class="workspace"><div class="reading">
+      <header class="pagehead"><h1>Hábitos</h1><p>Configuração de hábitos e grupos</p></header>
+      <div class="tabs" role="tablist" aria-label="Seções de Hábitos">
+        <button role="tab" aria-selected="false">Hoje</button>
+        <button role="tab" aria-selected="false">Histórico</button>
+        <button role="tab" aria-selected="true">Configuração</button>
+      </div>
+      <section class="panel panelpad" aria-labelledby="f7-h">
+        <div class="sectionhead" style="margin:0 0 10px"><h2 id="f7-h" style="font-size:15px">Grupos</h2><span class="count">0 grupos</span></div>
+        <p class="mini-empty" style="border:1px solid var(--line);border-radius:6px;background:var(--surface)">Crie um grupo para começar a adicionar hábitos.</p>
+        <div class="field" style="margin-top:14px"><label for="f7-g">Nome do grupo</label><input class="input" id="f7-g" placeholder="Ex.: Corpo"></div>
+        <div class="actions"><button class="primary">Adicionar grupo</button></div>
+      </section>
+      <section class="panel panelpad" style="margin-top:16px" aria-labelledby="f7-nh">
+        <div class="sectionhead" style="margin:0 0 10px"><h2 id="f7-nh" style="font-size:15px">Adicionar hábito</h2></div>
+        <div class="field"><label for="f7-n">Nome</label><input class="input" id="f7-n" disabled aria-describedby="f7-why" placeholder="Ex.: Caminhada"></div>
+        <div class="field"><label for="f7-gs">Grupo</label><select class="input" id="f7-gs" disabled aria-describedby="f7-why"><option>Nenhum grupo cadastrado</option></select></div>
+        <div class="actions"><button class="primary" disabled aria-describedby="f7-why">Adicionar hábito</button></div>
+        <p class="reason" id="f7-why" role="note">Crie um grupo para começar a adicionar hábitos.</p>
+      </section>
+    </div></div>
+  </div></div>
+</section>
+
+<!-- ============ O1 · O2 — SELETOR DE PICTOGRAMA ============ -->
+<section class="spec">
+  <div class="caption"><h2>O1 · O2 · Escolher pictograma — dialog (wide) e sheet (compact)</h2><span>única profundidade de overlay do módulo · tiles <code>role="radio"</code> sem controle desenhado · catálogo aberto do Phosphor</span></div>
+  <div class="overlay-demo">
+    <div>
+      <div class="ov-label">O1 · Dialog em wide — 6 colunas, busca ativa</div>
+      <div class="scrimbg">
+        <div class="picker" role="dialog" aria-modal="true" aria-labelledby="o1-t">
+          <div class="ph">
+            <div><h4 id="o1-t">Escolher pictograma</h4><p>Busque pelo nome do glifo em inglês. O nome não aparece fora deste seletor.</p></div>
+            <button class="close" aria-label="Fechar">×</button>
+          </div>
+          <div class="pbody">
+            <div class="field" style="margin-bottom:0">
+              <label for="o1-s" class="sr">Buscar pictograma</label>
+              <span style="position:relative;display:block">
+                <span style="position:absolute;left:11px;top:12px;color:var(--muted)" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 256 256"><use href="#g-magnifying-glass"/></svg></span>
+                <input class="input" id="o1-s" value="dr" style="padding-left:38px" placeholder="Ex.: drop, book, run">
+              </span>
+            </div>
+            <p class="livecount" role="status" aria-live="polite">11 de 1.512 ícones contêm "dr"</p>
+            <div class="tiles" role="radiogroup" aria-label="Pictogramas disponíveis">
+              <button class="tile on" role="radio" aria-checked="true"><svg width="24" height="24" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-drop"/></svg>drop</button>
+              <button class="tile" role="radio" aria-checked="false"><svg width="24" height="24" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-drop-half"/></svg>drop-half</button>
+              <button class="tile" role="radio" aria-checked="false"><svg width="24" height="24" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-drop-simple"/></svg>drop-simple</button>
+              <button class="tile" role="radio" aria-checked="false"><svg width="24" height="24" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-drone"/></svg>drone</button>
+              <button class="tile" role="radio" aria-checked="false"><svg width="24" height="24" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-dress"/></svg>dress</button>
+              <button class="tile" role="radio" aria-checked="false"><svg width="24" height="24" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-dresser"/></svg>dresser</button>
+              <button class="tile" role="radio" aria-checked="false"><svg width="24" height="24" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-drumsticks"/></svg>drumsticks</button>
+              <button class="tile" role="radio" aria-checked="false"><svg width="24" height="24" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-guitar"/></svg>guitar</button>
+              <button class="tile" role="radio" aria-checked="false"><svg width="24" height="24" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-carrot"/></svg>carrot</button>
+              <button class="tile" role="radio" aria-checked="false"><svg width="24" height="24" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-barbell"/></svg>barbell</button>
+              <button class="tile" role="radio" aria-checked="false"><svg width="24" height="24" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-book-open"/></svg>book-open</button>
+              <button class="tile" role="radio" aria-checked="false"><svg width="24" height="24" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-brain"/></svg>brain</button>
+            </div>
+          </div>
+          <p class="virtnote">Virtualização obrigatória (Q1): a grade nunca monta os ~1.500 nós do catálogo — só a janela visível mais folga de rolagem.</p>
+          <div class="pfoot">
+            <button class="btn-sec">Remover pictograma</button>
+            <button class="btn-sec">Cancelar</button>
+            <button class="primary">Usar pictograma drop</button>
+          </div>
+        </div>
+      </div>
+      <div class="notes" style="grid-template-columns:1fr 1fr;margin-top:12px">
+        <div class="note"><b>Seleção sem controle desenhado</b>O tile selecionado é identificado por borda de 2px + fundo <code>primary-soft</code> + <code>aria-checked="true"</code>. Setas percorrem o <code>radiogroup</code>; <kbd>Enter</kbd>/<kbd>Espaço</kbd> seleciona; <kbd>Esc</kbd> fecha devolvendo o foco ao botão de origem.</div>
+        <div class="note"><b>Sem busca</b>A lista abre pelos ícones já usados pelos hábitos existentes, seguidos do catálogo em ordem alfabética. Sem categorias e sem sinônimos em pt-BR.</div>
+        <div class="note"><b>Validação e chave órfã</b>O servidor aceita só nomes existentes na versão instalada do Phosphor. Chave órfã (glifo removido numa atualização) cai para coluna de glifo <b>vazia</b> — o layout não muda e nunca se renderiza quadrado vazio.</div>
+        <div class="note"><b>Emoji saiu (Q2)</b>O campo <code>emoticon</code> não existe mais na interface de Hábitos. Todo hábito tem <code>iconKey</code> Phosphor, sem fallback de emoji. A migração de dado mapeia cada emoji legado para uma chave.</div>
+      </div>
+    </div>
+    <div>
+      <div class="ov-label">O2 · Sheet em compact — 4 colunas</div>
+      <div class="phone" style="height:720px">
+        <div class="statusbar"><span>9:41</span><span>▮▮▮</span></div>
+        <div class="mobile-head"><h4>Hábitos</h4><p>Adicionar hábito</p></div>
+        <div class="mscroll" style="padding-bottom:11px">
+          <div class="field"><label for="o2-n">Nome</label><input class="input" id="o2-n" value="Água"></div>
+          <div class="field"><label for="o2-p">Pictograma</label><button class="picktrigger" id="o2-p" style="min-height:48px"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-drop"/></svg><span>Pictograma escolhido</span><span class="k">Trocar</span></button></div>
+        </div>
+        <div class="scrim"></div>
+        <div class="msheet" role="dialog" aria-modal="true" aria-labelledby="o2-t">
+          <span class="handle" aria-hidden="true"></span>
+          <div class="sheet-head"><h4 id="o2-t">Escolher pictograma</h4><button class="close" aria-label="Fechar">×</button></div>
+          <div class="field"><label for="o2-s" class="sr">Buscar pictograma</label><input class="input" id="o2-s" value="dr" style="min-height:48px" placeholder="Buscar pelo nome em inglês"></div>
+          <p class="livecount" role="status" aria-live="polite">11 de 1.512 ícones contêm "dr"</p>
+          <div class="tiles four" role="radiogroup" aria-label="Pictogramas disponíveis">
+            <button class="tile on" role="radio" aria-checked="true" style="min-height:72px"><svg width="24" height="24" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-drop"/></svg>drop</button>
+            <button class="tile" role="radio" aria-checked="false" style="min-height:72px"><svg width="24" height="24" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-drop-half"/></svg>drop-half</button>
+            <button class="tile" role="radio" aria-checked="false" style="min-height:72px"><svg width="24" height="24" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-drop-simple"/></svg>drop-simple</button>
+            <button class="tile" role="radio" aria-checked="false" style="min-height:72px"><svg width="24" height="24" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-drone"/></svg>drone</button>
+            <button class="tile" role="radio" aria-checked="false" style="min-height:72px"><svg width="24" height="24" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-dress"/></svg>dress</button>
+            <button class="tile" role="radio" aria-checked="false" style="min-height:72px"><svg width="24" height="24" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-dresser"/></svg>dresser</button>
+            <button class="tile" role="radio" aria-checked="false" style="min-height:72px"><svg width="24" height="24" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-drumsticks"/></svg>drumsticks</button>
+            <button class="tile" role="radio" aria-checked="false" style="min-height:72px"><svg width="24" height="24" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-carrot"/></svg>carrot</button>
+          </div>
+          <p style="font-size:10px;color:var(--disabled);margin:9px 0 10px">Rolagem virtualizada — a grade não monta o catálogo inteiro.</p>
+          <button class="primary" style="width:100%;min-height:48px">Usar pictograma drop</button>
+          <button class="btn-sec" style="width:100%;min-height:48px;margin-top:8px">Remover pictograma</button>
+        </div>
+      </div>
+      <div class="notes" style="grid-template-columns:1fr;margin-top:12px">
+        <div class="note"><b>Tamanhos do pictograma</b>20px na configuração, no tracker e no Hoje; 18px em grade, série e listas densas. Cor <code>currentColor</code>, peso <code>regular</code> fixo — <code>fill</code> segue reservado ao destino selecionado do App Shell.</div>
+        <div class="note"><b>Nunca sozinho</b>Com o nome do hábito visível, o pictograma é <code>aria-hidden</code>. Ele nunca é o único portador de significado, e uma mesma chave pode repetir entre hábitos.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ F8 · HISTÓRICO WIDE ============ -->
+<section class="spec">
+  <div class="caption"><h2>F8 · Histórico (aba Histórico) — wide, populado</h2><span>somente leitura com contraste normal · intervalo → detalhe do dia → evolução → grade hábitos × períodos</span></div>
+  <div class="browser"><div class="browserbar"><i class="dot"></i><i class="dot"></i><i class="dot"></i></div>
+  <div class="app" style="height:1580px">
+    <nav class="rail" aria-label="Navegação principal"><div class="brand">B</div>
+      <button class="nav"><b aria-hidden="true">◉</b>Hoje</button>
+      <button class="nav"><b aria-hidden="true">▤</b>Semana</button>
+      <button class="nav"><b aria-hidden="true">▦</b>Mês</button>
+      <button class="nav active" aria-current="page"><b aria-hidden="true">◈</b>Hábitos</button>
+      <span class="grow"></span><button class="nav"><b aria-hidden="true">⚙</b>Config.</button>
+    </nav>
+    <div class="workspace"><div class="wide1120">
+      <header class="pagehead"><h1>Hábitos</h1><p>Histórico e evolução · somente leitura</p></header>
+      <div class="tabs" role="tablist" aria-label="Seções de Hábitos">
+        <button role="tab" aria-selected="false">Hoje</button>
+        <button role="tab" aria-selected="true">Histórico</button>
+        <button role="tab" aria-selected="false">Configuração</button>
+      </div>
+
+      <!-- intervalo -->
+      <div class="rangebar">
+        <button aria-label="Período anterior">‹ Período anterior</button>
+        <span class="rl"><b>23 de julho a 21 de agosto de 2026</b> · 30 dias</span>
+        <button aria-label="Próximo período">Próximo período ›</button>
+        <span style="margin-left:auto;display:flex;align-items:center;gap:8px">
+          <label for="f8-d" style="font-size:12px;color:var(--muted)">Dia em detalhe</label>
+          <input class="input tabular" type="date" id="f8-d" value="2026-08-14" min="2026-07-23" max="2026-08-21" style="width:170px">
+        </span>
+      </div>
+
+      <!-- detalhe do dia -->
+      <section class="hblock" aria-labelledby="f8-det">
+        <h3 id="f8-det">Sexta-feira, 14 de agosto de 2026</h3>
+        <p class="sub">Dia útil · completude 73% · soma dos pesos efetivos: 11,0 · 11 de 11 registros preenchidos</p>
+        <div class="rogroup">Corpo · 83%</div>
+        <ul class="rolist">
+          <li class="rorow"><span class="ico"><svg width="18" height="18" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-person-simple-run"/></svg></span><span>Corrida <span style="color:var(--muted);font-size:11px">· Peso 3</span></span><span class="v">Meta atingida · 8,2 / 8 km</span></li>
+          <li class="rorow"><span class="ico"><svg width="18" height="18" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-drop"/></svg></span><span>Água <span style="color:var(--muted);font-size:11px">· Peso 2</span></span><span class="v">2,1 / 2,5 L (84%)</span></li>
+          <li class="rorow"><span class="ico"><svg width="18" height="18" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-barbell"/></svg></span><span>Alongamento <span style="color:var(--muted);font-size:11px">· Peso 1</span></span><span class="v">Não feito</span></li>
+          <li class="rorow inactive"><span class="ico"><svg width="18" height="18" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-drumsticks"/></svg></span><span>Ciclismo <span class="chip">Inativo</span> <span style="font-size:11px">· inativo desde 12 de julho de 2026</span></span><span class="v">—</span></li>
+        </ul>
+        <div class="rogroup">Mente · 60%</div>
+        <ul class="rolist">
+          <li class="rorow"><span class="ico"><svg width="18" height="18" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-brain"/></svg></span><span>Meditação <span style="color:var(--muted);font-size:11px">· Peso 2</span></span><span class="v">Feito</span></li>
+          <li class="rorow"><span class="ico"><svg width="18" height="18" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-book-open"/></svg></span><span>Leitura <span style="color:var(--muted);font-size:11px">· Peso 2</span></span><span class="v">21 / 30 páginas (70%)</span></li>
+          <li class="rorow"><span class="ico"><svg width="18" height="18" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-guitar"/></svg></span><span>Violão <span style="color:var(--muted);font-size:11px">· Peso 1</span></span><span class="v">Não feito</span></li>
+        </ul>
+        <div class="actions"><button class="btn-sec">Abrir este dia para edição</button>
+          <span style="font-size:11px;color:var(--muted);align-self:center">Leva o dia selecionado para a aba Hoje. Não há nenhum controle de escrita nesta superfície.</span></div>
+      </section>
+
+      <!-- dia-lacuna -->
+      <section class="hblock" aria-labelledby="f8-gap" style="background:var(--surface)">
+        <h3 id="f8-gap">Domingo, 2 de agosto de 2026</h3>
+        <p class="sub">Fim de semana</p>
+        <p class="mini-empty" style="border:1px solid var(--line);border-radius:6px;background:#fff;margin:0">Sem registro neste dia.</p>
+        <p style="margin:9px 0 0;font-size:11px;color:var(--muted)">Nenhuma linha foi materializada para este dia — o dia nunca foi aberto. Não existe porcentagem a exibir: 0% fabricado seria mentira.</p>
+      </section>
+
+      <!-- evolução -->
+      <section class="hblock" aria-labelledby="f8-ev">
+        <h3 id="f8-ev">Evolução por hábito</h3>
+        <p class="sub">Um hábito por vez, escolhido explicitamente. Sem seleção, nada é buscado.</p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px">
+          <span class="field" style="margin:0;min-width:220px"><label for="f8-hs">Hábito</label>
+            <select class="input" id="f8-hs"><option selected>Leitura (Mente)</option><option>Corrida (Corpo)</option><option>Água (Corpo)</option><option>Meditação (Mente)</option></select></span>
+          <span class="field" style="margin:0;min-width:220px"><label for="f8-vs">Visão</label>
+            <select class="input" id="f8-vs"><option selected>% da meta</option><option>Valor diário (páginas)</option><option>Contribuição na completude</option></select></span>
+        </div>
+        <div class="chart" role="img" aria-label="Evolução de Leitura, % da meta, de 10 a 21 de agosto de 2026. Valores: 70, 60, 47, sem registro, 100, 100, 83, 40, sem registro, 93, 100, 60 por cento. Bandas sombreadas marcam fim de semana e feriado.">
+          <div class="spark">
+            <div class="col"><i class="seg s1" style="height:70%"></i></div>
+            <div class="col"><i class="seg s1" style="height:60%"></i></div>
+            <div class="col" style="background:var(--subtle)"><i class="seg s1" style="height:47%"></i></div>
+            <div class="col" style="background:var(--subtle)"><i class="nul"></i></div>
+            <div class="col"><i class="seg s1" style="height:100%"></i></div>
+            <div class="col"><i class="seg s1" style="height:100%"></i></div>
+            <div class="col"><i class="seg s1" style="height:83%"></i></div>
+            <div class="col"><i class="seg s1" style="height:40%"></i></div>
+            <div class="col" style="background:var(--warn-soft)"><i class="nul"></i></div>
+            <div class="col" style="background:var(--subtle)"><i class="seg s1" style="height:93%"></i></div>
+            <div class="col"><i class="seg s1" style="height:100%"></i></div>
+            <div class="col"><i class="seg s1" style="height:60%"></i></div>
+          </div>
+          <div class="sparkaxis"><span>10</span><span>11</span><span>12</span><span>13</span><span>14</span><span>15</span><span>16</span><span>17</span><span>18</span><span>19</span><span>20</span><span>21</span></div>
+          <div class="leg">
+            <span><i style="background:var(--primary)"></i>% da meta (eixo único, 0 a 100%)</span>
+            <span><i style="background:var(--subtle)"></i>Fim de semana (FDS)</span>
+            <span><i style="background:var(--warn-soft)"></i>Feriado (FER)</span>
+            <span>Linha tracejada no zero = <b>sem registro neste dia</b></span>
+          </div>
+        </div>
+        <p style="margin:13px 0 5px;font-size:12px;font-weight:750">Eventos de configuração no período</p>
+        <ul class="evlist">
+          <li>1 de julho de 2026 — Peso 2 → 3</li>
+          <li>29 de julho de 2026 — Meta 25 → 30 páginas</li>
+          <li>12 de agosto de 2026 — Bônus 0% → 10%</li>
+        </ul>
+        <table class="eq">
+          <caption>Tabela equivalente do gráfico — Leitura, % da meta, 10 a 21 de agosto de 2026. Permanente, não escondida atrás de botão.</caption>
+          <thead><tr><th scope="col">Data</th><th scope="col">Tipo de dia</th><th scope="col">Valor</th><th scope="col">% da meta</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">10 de agosto</th><td>Dia útil</td><td>21 páginas</td><td>70%</td></tr>
+            <tr><th scope="row">11 de agosto</th><td>Dia útil</td><td>18 páginas</td><td>60%</td></tr>
+            <tr><th scope="row">12 de agosto</th><td>Dia útil</td><td>14 páginas</td><td>47%</td></tr>
+            <tr><th scope="row">13 de agosto</th><td>Dia útil</td><td>—</td><td>Sem registro neste dia.</td></tr>
+            <tr><th scope="row">14 de agosto</th><td>Dia útil</td><td>30 páginas</td><td>100%</td></tr>
+            <tr><th scope="row">15 de agosto</th><td>Fim de semana</td><td>36 páginas</td><td>100%</td></tr>
+            <tr><th scope="row">16 de agosto</th><td>Fim de semana</td><td>25 páginas</td><td>83%</td></tr>
+            <tr><th scope="row">17 de agosto</th><td>Dia útil</td><td>12 páginas</td><td>40%</td></tr>
+            <tr><th scope="row">18 de agosto</th><td>Feriado</td><td>—</td><td>Sem registro neste dia.</td></tr>
+            <tr><th scope="row">19 de agosto</th><td>Dia útil</td><td>28 páginas</td><td>93%</td></tr>
+            <tr><th scope="row">20 de agosto</th><td>Dia útil</td><td>32 páginas</td><td>100%</td></tr>
+            <tr><th scope="row">21 de agosto</th><td>Dia útil</td><td>18 páginas</td><td>60%</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- grade hábitos × períodos -->
+      <section class="hblock" aria-labelledby="f8-gr">
+        <h3 id="f8-gr">Completude por hábito e período</h3>
+        <p class="sub">Uma linha por hábito, agrupada como no tracker; uma coluna por semana. O <b>tom</b> é o canal primário, em escala contínua: a célula pinta na opacidade da própria completude. O número recua, na cor do fundo um degrau mais escura — a tabela equivalente abaixo é a leitura acessível.</p>
+        <div class="gridwrap">
+        <table class="grid">
+          <caption>Completude por hábito e semana, de 23 de julho a 21 de agosto de 2026. Booleano mostra dias feitos sobre dias com registro; numérico mostra a completude média do período. Célula tracejada com travessão indica período sem nenhum registro. FDS marca semana com fim de semana e FER marca semana com feriado.</caption>
+          <thead>
+            <tr>
+              <th scope="col">Hábito</th>
+              <th scope="col">23–26 jul.<span class="dias">3 dias</span></th>
+              <th scope="col">27 jul.–2 ago.<span class="dias">7 dias · <span class="tagcell">FDS</span></span></th>
+              <th scope="col">3–9 ago.<span class="dias">7 dias · <span class="tagcell">FDS</span></span></th>
+              <th scope="col">10–16 ago.<span class="dias">6 dias · <span class="tagcell">FDS</span></span></th>
+              <th scope="col">17–21 ago.<span class="dias">5 dias · <span class="tagcell">FER</span></span></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="grouprow"><th scope="col" colspan="6">Corpo</th></tr>
+            <tr>
+              <th scope="row">Corrida<br><span class="tags">numérico · km</span></th>
+              <td><span class="cell c1" style="--p:62" title="Corrida, 23 a 26 de julho de 2026, completude média 62 por cento">62%</span></td>
+              <td><span class="cell c2" style="--p:78" title="Corrida, 27 de julho a 2 de agosto de 2026, completude média 78 por cento">78%</span></td>
+              <td><span class="cell c3" style="--p:94" title="Corrida, 3 a 9 de agosto de 2026, completude média 94 por cento">94%</span></td>
+              <td><span class="cell c2" style="--p:81" title="Corrida, 10 a 16 de agosto de 2026, completude média 81 por cento">81%</span></td>
+              <td><span class="cell c1" style="--p:55" title="Corrida, 17 a 21 de agosto de 2026, completude média 55 por cento">55%</span></td>
+            </tr>
+            <tr>
+              <th scope="row">Água<br><span class="tags">numérico · L</span></th>
+              <td><span class="cell c1" style="--p:68" title="Água, 23 a 26 de julho de 2026, completude média 68 por cento">68%</span></td>
+              <td><span class="cell c1" style="--p:64" title="Água, 27 de julho a 2 de agosto de 2026, completude média 64 por cento">64%</span></td>
+              <td><span class="cell c2" style="--p:72" title="Água, 3 a 9 de agosto de 2026, completude média 72 por cento">72%</span></td>
+              <td><span class="cell c3" style="--p:90" title="Água, 10 a 16 de agosto de 2026, completude média 90 por cento">90%</span></td>
+              <td><span class="cell c2" style="--p:76" title="Água, 17 a 21 de agosto de 2026, completude média 76 por cento">76%</span></td>
+            </tr>
+            <tr>
+              <th scope="row">Alongamento<br><span class="tags">booleano</span></th>
+              <td><span class="cell cnone" title="Alongamento, 23 a 26 de julho de 2026, sem registro no período">—</span></td>
+              <td><span class="cell c0" style="--p:29" title="Alongamento, 27 de julho a 2 de agosto de 2026, 2 de 7 dias com registro feitos">2/7</span></td>
+              <td><span class="cell c1" style="--p:57" title="Alongamento, 3 a 9 de agosto de 2026, 4 de 7 dias com registro feitos">4/7</span></td>
+              <td><span class="cell c1" style="--p:50" title="Alongamento, 10 a 16 de agosto de 2026, 3 de 6 dias com registro feitos">3/6</span></td>
+              <td><span class="cell c0" style="--p:20" title="Alongamento, 17 a 21 de agosto de 2026, 1 de 5 dias com registro feitos">1/5</span></td>
+            </tr>
+            <tr class="grouprow"><th scope="col" colspan="6">Mente</th></tr>
+            <tr>
+              <th scope="row">Meditação<br><span class="tags">booleano</span></th>
+              <td><span class="cell c1" style="--p:67" title="Meditação, 23 a 26 de julho de 2026, 2 de 3 dias com registro feitos">2/3</span></td>
+              <td><span class="cell c3" style="--p:100" title="Meditação, 27 de julho a 2 de agosto de 2026, 7 de 7 dias com registro feitos">7/7</span></td>
+              <td><span class="cell c2" style="--p:86" title="Meditação, 3 a 9 de agosto de 2026, 6 de 7 dias com registro feitos">6/7</span></td>
+              <td><span class="cell c2" style="--p:83" title="Meditação, 10 a 16 de agosto de 2026, 5 de 6 dias com registro feitos">5/6</span></td>
+              <td><span class="cell c1" style="--p:60" title="Meditação, 17 a 21 de agosto de 2026, 3 de 5 dias com registro feitos">3/5</span></td>
+            </tr>
+            <tr>
+              <th scope="row">Leitura<br><span class="tags">numérico · páginas</span></th>
+              <td><span class="cell c0" style="--p:44" title="Leitura, 23 a 26 de julho de 2026, completude média 44 por cento">44%</span></td>
+              <td><span class="cell c1" style="--p:59" title="Leitura, 27 de julho a 2 de agosto de 2026, completude média 59 por cento">59%</span></td>
+              <td><span class="cell c1" style="--p:66" title="Leitura, 3 a 9 de agosto de 2026, completude média 66 por cento">66%</span></td>
+              <td><span class="cell c2" style="--p:77" title="Leitura, 10 a 16 de agosto de 2026, completude média 77 por cento">77%</span></td>
+              <td><span class="cell c2" style="--p:73" title="Leitura, 17 a 21 de agosto de 2026, completude média 73 por cento">73%</span></td>
+            </tr>
+            <tr class="grouprow"><th scope="col" colspan="6">Inativos</th></tr>
+            <tr class="inactive" style="opacity:.58">
+              <th scope="row">Ciclismo <span class="chip">Inativo</span><br><span class="tags">numérico · km · inativo desde 12 de julho de 2026</span></th>
+              <td><span class="cell cnone">—</span></td><td><span class="cell cnone">—</span></td><td><span class="cell cnone">—</span></td><td><span class="cell cnone">—</span></td><td><span class="cell cnone">—</span></td>
+            </tr>
+          </tbody>
+        </table>
+        </div>
+        <p style="margin:11px 0 0;font-size:11px;color:var(--muted)">Denominador de ambos os formatos: <b>dias com registro</b> no período, não dias corridos. Um dia sem linha materializada não entra nem como falha. A coluna rotula os dias reais sempre que diferem dos dias corridos da semana — "3 dias" evita que "2/3" seja lido como "2/7".</p>
+        <details style="margin-top:11px;border:1px solid var(--line);border-radius:6px;padding:9px 11px;background:var(--surface)">
+          <summary style="font-size:12px;font-weight:700;min-height:44px;display:flex;align-items:center">Tabela equivalente da grade</summary>
+          <table class="eq">
+            <caption>Mesma leitura em formato linear, hábito por hábito e período por período.</caption>
+            <thead><tr><th scope="col">Hábito</th><th scope="col">Período</th><th scope="col">Dias com registro</th><th scope="col">Leitura</th></tr></thead>
+            <tbody>
+              <tr><th scope="row">Corrida</th><td>23–26 jul.</td><td>3</td><td>62%</td></tr>
+              <tr><th scope="row">Corrida</th><td>17–21 ago.</td><td>5</td><td>55%</td></tr>
+              <tr><th scope="row">Alongamento</th><td>23–26 jul.</td><td>0</td><td>Sem registro no período</td></tr>
+              <tr><th scope="row">Meditação</th><td>27 jul.–2 ago.</td><td>7</td><td>7/7 dias feitos</td></tr>
+              <tr><th scope="row">Ciclismo (inativo)</th><td>todo o intervalo</td><td>0</td><td>Sem registro no período</td></tr>
+            </tbody>
+          </table>
+        </details>
+      </section>
+    </div></div>
+  </div></div>
+  <div class="notes" style="margin-top:12px">
+    <div class="note"><b>Readonly, não disabled</b>Todo o histórico está em contraste normal. Nada aqui parece desativado por falta de permissão — é leitura, e a única saída para escrita é "Abrir este dia para edição", que navega para a aba Hoje.</div>
+    <div class="note"><b>Escala do heatmap</b>Sem degraus: cada célula pinta <code>primary</code> com alpha igual à própria completude sobre <code>surface</code> — 71% é literalmente 71% de opacidade. O número herda essa cor um degrau mais escura e recua, deixando a leitura para a mancha. O booleano usa a razão real (<code>5/7</code> pinta a 71%), não o numerador. <b>Exceção nomeada ao piso de contraste</b> (registrada em <code>EXPERIENCE.md.Accessibility Floor</code>): as células ficam abaixo de 4,5:1 por decisão, porque a leitura pretendida é o gradiente da densidade; a tabela equivalente logo abaixo é a leitura acessível de fato. Nenhuma célula fica sem número.</div>
+    <div class="note"><b>Agregação (Q10)</b>Numérico: média simples das contribuições diárias (0–1) dos dias considerados, sem ponderar por peso — a célula é sobre um hábito só, cujo peso não varia dentro da linha. Booleano: dias feitos sobre dias com registro.</div>
+    <div class="note"><b>Gráfico com tabela</b>Eixo único, bandas de FDS/FER como sombreamento com tag textual na legenda, eventos de configuração como lista datada em texto e tabela equivalente permanente na mesma superfície.</div>
+  </div>
+</section>
+
+<!-- ============ F9 · HISTÓRICO COMPACT ============ -->
+<section class="spec">
+  <div class="caption"><h2>F9 · Histórico — compact 390, a grade vira lista por dia</h2><span>recomposição, nunca compressão · mesma informação, sem scroll horizontal</span></div>
+  <div class="mobile-zone">
+    <div class="phonecase">
+      <h3>F9 · lista por dia</h3>
+      <p class="pc">A grade hábitos × períodos é substituída pela lista por dia, com a mesma informação por linha.</p>
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span>▮▮▮</span></div>
+        <div class="mobile-head"><h4>Hábitos</h4><p>Histórico · somente leitura</p></div>
+        <div class="mtabs" role="tablist" aria-label="Seções de Hábitos">
+          <button role="tab" aria-selected="false">Hoje</button>
+          <button role="tab" aria-selected="true">Histórico</button>
+          <button role="tab" aria-selected="false">Config.</button>
+        </div>
+        <div class="mscroll">
+          <div class="mcard" style="padding:11px">
+            <div style="display:flex;gap:6px;align-items:center">
+              <button class="btn-sec" style="min-height:48px" aria-label="Período anterior">‹</button>
+              <span class="rl" style="flex:1;text-align:center;font-size:12px;color:var(--muted)"><b>23 jul. – 21 ago. 2026</b><br>30 dias</span>
+              <button class="btn-sec" style="min-height:48px" aria-label="Próximo período">›</button>
+            </div>
+            <div class="field" style="margin:10px 0 0"><label for="f9-d">Dia em detalhe</label><input class="input" style="min-height:48px" type="date" id="f9-d" value="2026-08-14" min="2026-07-23" max="2026-08-21"></div>
+          </div>
+
+          <div class="mcard">
+            <h3 style="margin:0 0 2px;font-size:14px">Sexta, 14 de agosto de 2026</h3>
+            <p style="margin:0 0 9px;font-size:11px;color:var(--muted)">Dia útil · 73% · pesos efetivos 11,0 · 11 de 11 registros</p>
+            <div class="rogroup" style="margin-top:0">Corpo · 83%</div>
+            <ul class="rolist">
+              <li class="rorow" style="font-size:12px"><span class="ico"><svg width="18" height="18" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-person-simple-run"/></svg></span><span>Corrida</span><span class="v">8,2 / 8 km</span></li>
+              <li class="rorow" style="font-size:12px"><span class="ico"><svg width="18" height="18" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-drop"/></svg></span><span>Água</span><span class="v">2,1 / 2,5 L (84%)</span></li>
+              <li class="rorow" style="font-size:12px"><span class="ico"><svg width="18" height="18" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-barbell"/></svg></span><span>Alongamento</span><span class="v">Não feito</span></li>
+            </ul>
+            <div class="rogroup">Mente · 60%</div>
+            <ul class="rolist">
+              <li class="rorow" style="font-size:12px"><span class="ico"><svg width="18" height="18" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-brain"/></svg></span><span>Meditação</span><span class="v">Feito</span></li>
+              <li class="rorow" style="font-size:12px"><span class="ico"><svg width="18" height="18" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-book-open"/></svg></span><span>Leitura</span><span class="v">21 / 30 pág. (70%)</span></li>
+            </ul>
+            <button class="btn-sec" style="width:100%;min-height:48px;margin-top:11px">Abrir este dia para edição</button>
+          </div>
+
+          <div class="mcard">
+            <h3 style="margin:0 0 2px;font-size:14px">Completude por dia</h3>
+            <p style="margin:0 0 9px;font-size:11px;color:var(--muted)">A grade de períodos vira lista por dia. Cada linha traz data, tipo de dia e a leitura de cada hábito.</p>
+            <ul class="rolist">
+              <li class="rorow" style="font-size:12px;grid-template-columns:minmax(0,1fr) auto"><span><b>21 ago.</b> · Dia útil</span><span class="v">64% · 7/11 registros</span></li>
+              <li class="rorow" style="font-size:12px;grid-template-columns:minmax(0,1fr) auto"><span><b>20 ago.</b> · Dia útil</span><span class="v">88% · 11/11 registros</span></li>
+              <li class="rorow" style="font-size:12px;grid-template-columns:minmax(0,1fr) auto"><span><b>19 ago.</b> · Dia útil</span><span class="v">79% · 11/11 registros</span></li>
+              <li class="rorow" style="font-size:12px;grid-template-columns:minmax(0,1fr) auto"><span><b>18 ago.</b> · <span style="color:var(--warn);font-weight:700">FER</span></span><span class="v">Sem registro neste dia.</span></li>
+              <li class="rorow" style="font-size:12px;grid-template-columns:minmax(0,1fr) auto"><span><b>17 ago.</b> · Dia útil</span><span class="v">41% · 9/11 registros</span></li>
+              <li class="rorow" style="font-size:12px;grid-template-columns:minmax(0,1fr) auto"><span><b>16 ago.</b> · <span style="font-weight:700">FDS</span></span><span class="v">72% · 11/11 registros</span></li>
+              <li class="rorow" style="font-size:12px;grid-template-columns:minmax(0,1fr) auto"><span><b>15 ago.</b> · <span style="font-weight:700">FDS</span></span><span class="v">95% · 11/11 registros</span></li>
+            </ul>
+          </div>
+        </div>
+        <nav class="bottom-nav" aria-label="Navegação principal">
+          <button>Hoje</button><button>Semana</button><button class="on" aria-current="page">Hábitos</button><button>Mais</button>
+        </nav>
+      </div>
+    </div>
+
+    <div class="phonecase">
+      <h3>F11 · Hoje — lente Dia completo (compact)</h3>
+      <p class="pc">Lista densa de todos os hábitos, 48px por linha. Feito e não feito se distinguem por checkbox, nome acessível <b>e</b> opacidade — nunca só por opacidade. Sem repetir o cabeçalho de completude.</p>
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span>▮▮▮</span></div>
+        <div class="mobile-head"><h4>Hoje</h4><p>Sexta, 21 de agosto de 2026 · Dia completo</p></div>
+        <div class="mscroll">
+          <div class="reduced" style="margin-bottom:12px"><h3>Daily Log <span style="font-size:10px;color:var(--muted);font-weight:400">(contexto reduzido)</span></h3><ul><li>Revisar proposta da Marina</li><li>Consulta 15h</li><li>Comprar filtro de água</li></ul></div>
+
+          <section class="mcard" aria-labelledby="f11-h">
+            <div class="gh" style="margin-bottom:4px"><h3 id="f11-h">Hábitos</h3><span class="gw" style="margin-left:auto">11 hábitos</span></div>
+            <ul class="mlist-dense" style="margin:9px -12px 0">
+              <li class="dense feito" style="padding-left:9px;padding-right:9px">
+                <span style="display:grid;place-items:center"><input type="checkbox" checked aria-label="Corrida, feito"></span>
+                <span class="ico"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-person-simple-run"/></svg></span>
+                <span><strong>Corrida</strong><span class="st">Feito</span></span>
+              </li>
+              <li class="dense" style="padding-left:9px;padding-right:9px">
+                <span style="display:grid;place-items:center"><input type="checkbox" aria-label="Água, não feito"></span>
+                <span class="ico"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-drop"/></svg></span>
+                <span><strong>Água</strong><span class="st">Não feito</span></span>
+              </li>
+              <li class="dense" style="padding-left:9px;padding-right:9px">
+                <span style="display:grid;place-items:center"><input type="checkbox" aria-label="Alongamento, não feito"></span>
+                <span class="ico"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-barbell"/></svg></span>
+                <span><strong>Alongamento</strong><span class="st">Não feito</span></span>
+              </li>
+              <li class="dense feito" style="padding-left:9px;padding-right:9px">
+                <span style="display:grid;place-items:center"><input type="checkbox" checked aria-label="Meditação, feito"></span>
+                <span class="ico"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-brain"/></svg></span>
+                <span><strong>Meditação</strong><span class="st">Feito</span></span>
+              </li>
+              <li class="dense" style="padding-left:9px;padding-right:9px">
+                <span style="display:grid;place-items:center"><input type="checkbox" aria-label="Leitura, não feito"></span>
+                <span class="ico"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-book-open"/></svg></span>
+                <span><strong>Leitura</strong><span class="st">Não feito</span></span>
+              </li>
+              <li class="dense" style="padding-left:9px;padding-right:9px">
+                <span style="display:grid;place-items:center"><input type="checkbox" aria-label="Violão, não feito"></span>
+                <span class="ico"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-guitar"/></svg></span>
+                <span><strong>Violão</strong><span class="st">Não feito</span></span>
+              </li>
+              <li class="dense feito" style="padding-left:9px;padding-right:9px">
+                <span style="display:grid;place-items:center"><input type="checkbox" checked aria-label="Vitamina D, feito"></span>
+                <span class="ico"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-pill"/></svg></span>
+                <span><strong>Vitamina D</strong><span class="st">Feito</span></span>
+              </li>
+              <li class="dense" style="padding-left:9px;padding-right:9px">
+                <span style="display:grid;place-items:center"><input type="checkbox" aria-label="Dormir antes das 23h, não feito"></span>
+                <span class="ico"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-moon"/></svg></span>
+                <span><strong>Dormir antes das 23h</strong><span class="st">Não feito</span></span>
+              </li>
+              <li class="dense" style="padding-left:9px;padding-right:9px">
+                <span style="display:grid;place-items:center"><input type="checkbox" aria-label="Sem açúcar, não feito"></span>
+                <span class="ico"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-carrot"/></svg></span>
+                <span><strong>Sem açúcar</strong><span class="st">Não feito</span></span>
+              </li>
+            </ul>
+            <a class="linkish" href="#" style="display:inline-block;margin-top:11px">Ver todos os 11 hábitos</a>
+          </section>
+        </div>
+        <nav class="bottom-nav" aria-label="Navegação principal">
+          <button class="on" aria-current="page">Hoje</button><button>Semana</button><button>Hábitos</button><button>Mais</button>
+        </nav>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ F10 · F12 — INTEGRAÇÃO MÍNIMA COM O HOJE ============ -->
+<section class="spec">
+  <div class="caption"><h2>F10 · F12 · Hoje — só o bloco de Hábitos é desenhado</h2><span>o Daily Log e o resto do Hoje aparecem reduzidos, como contexto · nenhum redesenho do Hoje faz parte desta story</span></div>
+
+  <div class="ov-label" style="margin-bottom:8px">F10 · lente Foco nas tarefas — totalizador navegável</div>
+  <div class="browser" style="margin-bottom:22px"><div class="browserbar"><i class="dot"></i><i class="dot"></i><i class="dot"></i></div>
+  <div class="app h620">
+    <nav class="rail" aria-label="Navegação principal"><div class="brand">B</div>
+      <button class="nav active" aria-current="page"><b aria-hidden="true">◉</b>Hoje</button>
+      <button class="nav"><b aria-hidden="true">▤</b>Semana</button>
+      <button class="nav"><b aria-hidden="true">◈</b>Hábitos</button>
+      <span class="grow"></span><button class="nav"><b aria-hidden="true">⚙</b>Config.</button>
+    </nav>
+    <div class="workspace"><div class="wide1120">
+      <header class="pagehead"><h1>Hoje</h1><p>Sexta-feira, 21 de agosto de 2026 · lente Foco nas tarefas</p></header>
+      <div class="todaywrap">
+        <div class="reduced">
+          <h3>Daily Log <span style="font-size:10px;font-weight:400">(contexto reduzido — fora do escopo desta story)</span></h3>
+          <ul>
+            <li>Revisar a proposta da Marina</li>
+            <li>Consulta às 15h</li>
+            <li>Comprar filtro de água</li>
+            <li>Responder o e-mail da contadora</li>
+          </ul>
+          <p style="margin:12px 0 0;font-size:11px">Sidebar, rail, topbar, bottom nav e o Hoje como superfície permanecem exatamente como aprovados na 13.0.</p>
+        </div>
+        <section class="habitcard" aria-labelledby="f10-h">
+          <div class="hh"><h3 id="f10-h">Hábitos</h3><span style="margin-left:auto;font-size:11px;color:var(--muted)">Totalizador</span></div>
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:9px">
+            <span class="pct" style="font-size:22px">64%</span>
+            <div style="flex:1"><div class="bar" role="img" aria-label="Completude do dia: 64 por cento"><i style="width:64%"></i></div></div>
+          </div>
+          <p class="denom" style="margin:0 0 12px">7 de 11 registros preenchidos · peso efetivo 14,0 · dia útil</p>
+          <a class="linkish" href="#">Abrir Hábitos para registrar</a>
+        </section>
+      </div>
+    </div></div>
+  </div></div>
+
+  <div class="ov-label" style="margin-bottom:8px">F12 · sem hábito ativo e falha isolada do bloco — o Daily Log ao lado permanece íntegro</div>
+  <div class="browser"><div class="browserbar"><i class="dot"></i><i class="dot"></i><i class="dot"></i></div>
+  <div class="app h620">
+    <nav class="rail" aria-label="Navegação principal"><div class="brand">B</div>
+      <button class="nav active" aria-current="page"><b aria-hidden="true">◉</b>Hoje</button>
+      <button class="nav"><b aria-hidden="true">▤</b>Semana</button>
+      <button class="nav"><b aria-hidden="true">◈</b>Hábitos</button>
+      <span class="grow"></span><button class="nav"><b aria-hidden="true">⚙</b>Config.</button>
+    </nav>
+    <div class="workspace"><div class="wide1120">
+      <header class="pagehead"><h1>Hoje</h1><p>Sexta-feira, 21 de agosto de 2026</p></header>
+      <div class="todaywrap">
+        <div class="reduced">
+          <h3>Daily Log <span style="font-size:10px;font-weight:400">(íntegro nos dois casos)</span></h3>
+          <ul>
+            <li>Revisar a proposta da Marina</li>
+            <li>Consulta às 15h</li>
+            <li>Comprar filtro de água</li>
+            <li>Responder o e-mail da contadora</li>
+          </ul>
+          <p style="margin:12px 0 0;font-size:11px">A falha do bloco de Hábitos é local. O Daily Log carrega, aceita captura e edição normalmente.</p>
+        </div>
+        <div style="display:grid;gap:14px">
+          <section class="habitcard" aria-labelledby="f12-a">
+            <div class="hh"><h3 id="f12-a">Hábitos</h3><span style="margin-left:auto;font-size:11px;color:var(--muted)">Sem hábito ativo</span></div>
+            <p class="mini-empty" style="border:1px solid var(--line);border-radius:6px;background:var(--surface);margin:0 0 11px">Nenhum hábito ativo hoje.</p>
+            <a class="linkish" href="#">Abrir a configuração de Hábitos</a>
+          </section>
+          <section class="habitcard" aria-labelledby="f12-b">
+            <div class="hh"><h3 id="f12-b">Hábitos</h3><span style="margin-left:auto;font-size:11px;color:var(--muted)">Falha isolada do bloco</span></div>
+            <p class="banner error" role="alert" style="margin:0 0 11px">Não foi possível carregar. Tente novamente.</p>
+            <button class="btn-sec">Tentar novamente</button>
+            <p style="margin:11px 0 0;font-size:11px;color:var(--muted)">Sem porcentagem, sem barra e sem lista: nada é inferido para preencher o vazio.</p>
+          </section>
+        </div>
+      </div>
+    </div></div>
+  </div></div>
+</section>
+
+<!-- ============ E1–E6 · ESTADOS ============ -->
+<section class="spec">
+  <div class="caption"><h2>E1–E6 · Matriz de estados</h2><span>vazio · loading · saving · erro com retry · offline · falha parcial · nenhum toast de sucesso em nenhuma mutação</span></div>
+  <div class="state-grid">
+    <article class="statecard">
+      <h3>E1 · Loading</h3>
+      <p>Skeleton com a <b>geometria real</b> das linhas: coluna de controle de 44px, glifo de 20px, corpo e campo de 104px. <b>Sem porcentagem</b> — nada de número provisório enquanto o servidor não respondeu.</p>
+      <div class="mini-panel" aria-busy="true">
+        <span class="sk" style="height:22px;width:64px;margin-bottom:9px"></span>
+        <span class="sk" style="height:8px;width:100%;margin-bottom:14px"></span>
+        <div class="skrow"><span class="sk" style="height:20px;width:20px;border-radius:4px;justify-self:center"></span><span class="sk" style="height:20px;width:20px"></span><span><span class="sk" style="height:12px;width:58%;margin-bottom:5px"></span><span class="sk" style="height:10px;width:34%"></span></span><span class="sk" style="height:44px;width:104px;border-radius:6px"></span></div>
+        <div class="skrow"><span class="sk" style="height:20px;width:20px;border-radius:4px;justify-self:center"></span><span class="sk" style="height:20px;width:20px"></span><span><span class="sk" style="height:12px;width:44%;margin-bottom:5px"></span><span class="sk" style="height:10px;width:28%"></span></span><span class="sk" style="height:44px;width:104px;border-radius:6px"></span></div>
+        <div class="skrow" style="border-bottom:0"><span class="sk" style="height:20px;width:20px;border-radius:4px;justify-self:center"></span><span class="sk" style="height:20px;width:20px"></span><span><span class="sk" style="height:12px;width:52%;margin-bottom:5px"></span><span class="sk" style="height:10px;width:22%"></span></span><span></span></div>
+      </div>
+      <p style="margin:0">A altura do bloco é a altura final: a lista não pula quando o dado chega.</p>
+    </article>
+
+    <article class="statecard">
+      <h3>E2 · Saving na linha</h3>
+      <p>Escrita otimista <b>só no valor da linha</b>. A porcentagem do dia e do grupo <b>não muda</b> — reconcilia depois do refetch.</p>
+      <div class="mini-panel">
+        <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:7px"><b style="font-size:13px">Corpo</b><span style="margin-left:auto;font-size:14px;font-weight:800" class="tabular">75%</span></div>
+        <div class="bar g6" role="img" aria-label="Completude do grupo Corpo: 75 por cento"><i style="width:75%"></i></div>
+        <ul class="hrows" style="margin-top:9px">
+          <li class="hrow num" style="border-bottom:0;background:var(--primary-soft)">
+            <span class="ctl"><input type="checkbox" disabled></span>
+            <span class="ico"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-drop"/></svg></span>
+            <span class="bd"><span class="n1"><strong>Água</strong><span class="w">Peso 2</span></span><span class="st" role="status" aria-live="polite">salvando…</span></span>
+            <span class="numfield"><input class="numinput" value="2,1" aria-label="Água, valor em litros"></span>
+          </li>
+        </ul>
+      </div>
+      <p style="margin:0">Sucesso é o valor e a porcentagem mudando. Nenhum toast, nenhuma celebração.</p>
+    </article>
+
+    <article class="statecard">
+      <h3>E3 · Erro de escrita com retry</h3>
+      <p>Rollback do otimista, erro inline junto à linha que falhou, <b>valor digitado preservado</b> no campo. <code>role="alert"</code> e <code>aria-invalid</code> no campo.</p>
+      <div class="mini-panel">
+        <ul class="hrows" style="margin-top:0;border-top:0">
+          <li class="hrow num" style="border-bottom:0">
+            <span class="ctl"><input type="checkbox" disabled></span>
+            <span class="ico"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-drop"/></svg></span>
+            <span class="bd"><span class="n1"><strong>Água</strong><span class="w">Peso 2</span></span>
+              <span class="st">1,8 / 2,5 L (72%) <span style="color:var(--muted)">— valor no servidor</span></span>
+              <span class="errline" role="alert" id="e3-err">Não foi possível salvar. Tente novamente.</span>
+              <button class="retry-inline">Tentar novamente</button>
+            </span>
+            <span class="numfield"><input class="numinput" value="2,1" aria-invalid="true" aria-describedby="e3-err" style="border-color:var(--danger)" aria-label="Água, valor em litros"></span>
+          </li>
+        </ul>
+      </div>
+      <p style="margin:0">O 2,1 digitado continua no campo. A porcentagem volta a refletir o último valor confirmado pelo servidor.</p>
+    </article>
+
+    <article class="statecard">
+      <h3>E4 · Offline</h3>
+      <p>Faixa no topo da superfície + controles desabilitados <b>com motivo acessível</b>. Nenhuma promessa de fila, rascunho local ou sincronização posterior.</p>
+      <div class="banner offline" role="status" id="e4-why">Sem conexão. Registrar e configurar hábitos exige rede.</div>
+      <div class="mini-panel" style="margin-top:9px">
+        <ul class="hrows" style="margin-top:0;border-top:0">
+          <li class="hrow num" style="border-bottom:0;opacity:.72">
+            <span class="ctl"><input type="checkbox" disabled aria-describedby="e4-why"></span>
+            <span class="ico"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-person-simple-run"/></svg></span>
+            <span class="bd"><span class="n1"><strong>Corrida</strong><span class="w">Peso 3</span></span><span class="st">6,0 / 8 km (75%)</span></span>
+            <span class="numfield"><input class="numinput" value="6,0" disabled aria-describedby="e4-why" aria-label="Corrida, valor em km"></span>
+          </li>
+        </ul>
+      </div>
+      <p style="margin:0">O rótulo continua legível: disabled esconde a ação, nunca a informação.</p>
+    </article>
+
+    <article class="statecard">
+      <h3>E5 · Falha parcial</h3>
+      <p>No histórico: a <b>série falha</b> e a <b>grade carrega</b>. Um bloco em erro não derruba os outros. Na configuração, a config de multiplicador falha sem derrubar a lista de hábitos.</p>
+      <div class="mini-panel">
+        <b style="font-size:12px">Evolução por hábito</b>
+        <div class="banner error" role="alert" style="margin-top:7px">Não foi possível carregar. Tente novamente.</div>
+        <button class="retry-inline" style="margin-top:7px">Tentar novamente</button>
+      </div>
+      <div class="mini-panel" style="margin-bottom:0">
+        <b style="font-size:12px">Completude por hábito e período</b>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:3px;margin-top:7px;font-size:10px;text-align:center">
+          <span class="cell c1" style="--p:62" style="padding:8px 0;border:1px solid var(--line2)">62%</span>
+          <span class="cell c3" style="--p:94" style="padding:8px 0;border:1px solid var(--line2)">94%</span>
+          <span class="cell c2" style="--p:81" style="padding:8px 0;border:1px solid var(--line2)">81%</span>
+        </div>
+        <p style="margin:7px 0 0">Carregada e íntegra.</p>
+      </div>
+    </article>
+
+    <article class="statecard">
+      <h3>E6 · Os cinco vazios</h3>
+      <p>Cinco frases distintas, verbatim do módulo vigente. Cada uma diz o que aconteceu, e só duas oferecem ação.</p>
+      <ul class="emptylist">
+        <li><b>Tracker · nenhum hábito ativo</b>Nenhum hábito ativo hoje. <a class="linkish" href="#">Abrir a configuração</a></li>
+        <li><b>Configuração · grupo sem hábitos</b>Nenhum hábito neste grupo.</li>
+        <li><b>Configuração · nenhum grupo</b>Crie um grupo para começar a adicionar hábitos.</li>
+        <li><b>Histórico · intervalo sem registro</b>Nenhum registro no período.</li>
+        <li><b>Histórico · dia-lacuna</b>Sem registro neste dia.</li>
+      </ul>
+      <p style="margin:0">"Nenhum hábito neste grupo." não sugere ação: o grupo vazio é um estado legítimo, não um erro a corrigir.</p>
+    </article>
+  </div>
+</section>
+
+<!-- ============ FAIXA ISOLADA · F13–F15 — STORY 16.2b ============ -->
+<div class="deferred">
+  <div class="warnbar" role="note">
+    <b>⚠ Aprovado no gate 16.0 · NÃO implementável até a Story 16.2b</b>
+    As três leituras abaixo <b>não existem no domínio hoje</b>. Exigem backend novo — agregação calculada no servidor sobre os pesos congelados, incluindo a rota <code>GET /api/habits/history/by-group/?start&amp;end</code>. Nada aqui pode ser calculado no cliente: a regra de nunca inferir completude vale igualmente para agregações. As superfícies F1–F12 são implementáveis nas Stories 16.1/16.2 <b>sem depender de nada disto</b>.
+    <br><br>O limite "sem streaks/gamificação" foi <b>revogado por decisão de produto</b> em 2026-08-21, especificamente para permitir <b>contagem factual</b>. A proibição de celebrar permanece válida: sem chama colorida, sem medalha, sem "não quebre a corrente", sem mudança de cor conforme o número.
+  </div>
+
+  <div class="inner">
+    <div class="caption"><h2>F13 · Série de completude por grupo e por data</h2><span>teto de 4 cores · acima de 4 grupos o gráfico degrada para série única (total do dia) e a leitura por grupo fica íntegra na tabela</span></div>
+    <div class="hblock" style="margin-bottom:0">
+      <p class="sub">Contribuição de cada grupo na completude do dia, mais o total do dia. O filtro de grupos é <b>de leitura</b>: ocultar um grupo tira o segmento e a coluna, mas o total do dia continua sendo o do dia inteiro.</p>
+      <div class="chart" role="img" aria-label="Série de completude por grupo, de 10 a 21 de agosto de 2026, empilhada por Corpo, Mente, Rotina e Alimentação. Total do dia: 74, 81, 52, sem registro, 73, 95, 72, 41, sem registro, 79, 88, 64 por cento.">
+        <div class="spark" style="height:130px">
+          <div class="col"><i class="seg s4" style="height:8%"></i><i class="seg s3" style="height:14%"></i><i class="seg s2" style="height:22%"></i><i class="seg s1" style="height:30%"></i></div>
+          <div class="col"><i class="seg s4" style="height:9%"></i><i class="seg s3" style="height:16%"></i><i class="seg s2" style="height:24%"></i><i class="seg s1" style="height:32%"></i></div>
+          <div class="col"><i class="seg s4" style="height:4%"></i><i class="seg s3" style="height:9%"></i><i class="seg s2" style="height:16%"></i><i class="seg s1" style="height:23%"></i></div>
+          <div class="col" style="background:var(--subtle)"><i class="nul"></i></div>
+          <div class="col"><i class="seg s4" style="height:7%"></i><i class="seg s3" style="height:14%"></i><i class="seg s2" style="height:22%"></i><i class="seg s1" style="height:30%"></i></div>
+          <div class="col" style="background:var(--subtle)"><i class="seg s4" style="height:10%"></i><i class="seg s3" style="height:19%"></i><i class="seg s2" style="height:28%"></i><i class="seg s1" style="height:38%"></i></div>
+          <div class="col" style="background:var(--subtle)"><i class="seg s4" style="height:7%"></i><i class="seg s3" style="height:14%"></i><i class="seg s2" style="height:21%"></i><i class="seg s1" style="height:30%"></i></div>
+          <div class="col"><i class="seg s4" style="height:3%"></i><i class="seg s3" style="height:8%"></i><i class="seg s2" style="height:12%"></i><i class="seg s1" style="height:18%"></i></div>
+          <div class="col" style="background:var(--warn-soft)"><i class="nul"></i></div>
+          <div class="col"><i class="seg s4" style="height:8%"></i><i class="seg s3" style="height:15%"></i><i class="seg s2" style="height:23%"></i><i class="seg s1" style="height:33%"></i></div>
+          <div class="col"><i class="seg s4" style="height:9%"></i><i class="seg s3" style="height:17%"></i><i class="seg s2" style="height:26%"></i><i class="seg s1" style="height:36%"></i></div>
+          <div class="col"><i class="seg s4" style="height:6%"></i><i class="seg s3" style="height:12%"></i><i class="seg s2" style="height:19%"></i><i class="seg s1" style="height:27%"></i></div>
+        </div>
+        <div class="sparkaxis"><span>10</span><span>11</span><span>12</span><span>13</span><span>14</span><span>15</span><span>16</span><span>17</span><span>18</span><span>19</span><span>20</span><span>21</span></div>
+        <div class="leg">
+          <span><i class="s1"></i>Corpo</span><span><i class="s2"></i>Mente</span><span><i class="s3"></i>Rotina</span><span><i class="s4"></i>Alimentação</span>
+          <span><i style="background:var(--subtle)"></i>FDS</span><span><i style="background:var(--warn-soft)"></i>FER</span>
+          <span>Tracejado = <b>sem registro neste dia</b> (dia vem explicitamente nulo do servidor, nunca barra zerada)</span>
+        </div>
+      </div>
+      <table class="eq">
+        <caption>Tabela equivalente — contribuição de cada grupo e total do dia. Permanente na mesma superfície. Acima de 4 grupos, esta tabela é a única leitura por grupo.</caption>
+        <thead><tr><th scope="col">Data</th><th scope="col">Corpo</th><th scope="col">Mente</th><th scope="col">Rotina</th><th scope="col">Alimentação</th><th scope="col">Total do dia</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">10 de agosto</th><td>30%</td><td>22%</td><td>14%</td><td>8%</td><td>74%</td></tr>
+          <tr><th scope="row">11 de agosto</th><td>32%</td><td>24%</td><td>16%</td><td>9%</td><td>81%</td></tr>
+          <tr><th scope="row">12 de agosto</th><td>23%</td><td>16%</td><td>9%</td><td>4%</td><td>52%</td></tr>
+          <tr><th scope="row">13 de agosto</th><td colspan="5">Sem registro neste dia.</td></tr>
+          <tr><th scope="row">14 de agosto</th><td>30%</td><td>22%</td><td>14%</td><td>7%</td><td>73%</td></tr>
+          <tr><th scope="row">18 de agosto</th><td colspan="5">Sem registro neste dia.</td></tr>
+          <tr><th scope="row">21 de agosto</th><td>27%</td><td>19%</td><td>12%</td><td>6%</td><td>64%</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="inner">
+    <div class="caption"><h2>F14 · Contagem de dias com 100% de completude</h2><span>ano = ano civil (1º de janeiro até hoje) · semana começa na segunda · mês civil</span></div>
+    <div class="hblock" style="margin-bottom:0">
+      <p class="sub">Voz factual: quantidade e denominador, sem alvo motivacional e sem mudança de cor conforme o número.</p>
+      <div class="countrow">
+        <div><span class="big tabular">2</span><span class="lab">de 5 dias com registro<br>nesta semana (a partir de segunda)</span></div>
+        <div><span class="big tabular">9</span><span class="lab">de 19 dias com registro<br>em agosto de 2026</span></div>
+        <div><span class="big tabular">64</span><span class="lab">de 198 dias com registro<br>em 2026 (ano civil, até hoje)</span></div>
+      </div>
+      <p style="margin:4px 0 0;font-size:12px;color:var(--muted)">Denominador é <b>dias com registro</b>, não dias corridos: um dia sem linha materializada não entra nem como falha — coerente com "nunca 0% fabricado". Um dia com soma de pesos efetivos igual a zero é <b>excluído</b> da contagem, do numerador e do denominador: dia sem nada exigível não é conquista nem falha.</p>
+      <table class="eq">
+        <caption>Tabela equivalente — dias com 100% de completude por período.</caption>
+        <thead><tr><th scope="col">Período</th><th scope="col">Dias com 100%</th><th scope="col">Dias com registro</th><th scope="col">Dias excluídos (Σ peso 0)</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Semana atual (17–21 ago.)</th><td>2</td><td>5</td><td>0</td></tr>
+          <tr><th scope="row">Agosto de 2026</th><td>9</td><td>19</td><td>1</td></tr>
+          <tr><th scope="row">2026 (ano civil)</th><td>64</td><td>198</td><td>6</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="inner">
+    <div class="caption"><h2>F15 · Sequência por hábito</h2><span>ícone <code>fire</code> monocromático + número · sequência zerada mostra travessão, nunca "0" nem chama</span></div>
+    <div class="hblock" style="margin-bottom:0">
+      <p class="sub">Período de <b>inatividade</b> do hábito não quebra a sequência — o hábito não era exigível, e a sequência atravessa o período inativo. Um dia dentro de período <b>ativo</b> sem registro (dia nunca aberto) quebra. O dia de <b>hoje</b> ainda não registrado é neutro: a sequência atual considera até ontem e incrementa na hora se hoje for feito. Não zera toda manhã.</p>
+      <ul class="seqlist">
+        <li>
+          <span class="ico"><svg width="18" height="18" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-person-simple-run"/></svg></span>
+          <span>Corrida</span>
+          <span class="cur"><svg width="16" height="16" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-fire"/></svg><span class="tabular">6</span><span class="sr">Corrida: sequência atual de 6 dias, considerada até ontem</span></span>
+          <span class="max tabular">maior no período: 11</span>
+        </li>
+        <li>
+          <span class="ico"><svg width="18" height="18" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-brain"/></svg></span>
+          <span>Meditação</span>
+          <span class="cur"><svg width="16" height="16" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-fire"/></svg><span class="tabular">23</span><span class="sr">Meditação: sequência atual de 23 dias, considerada até ontem</span></span>
+          <span class="max tabular">maior no período: 23</span>
+        </li>
+        <li>
+          <span class="ico"><svg width="18" height="18" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-book-open"/></svg></span>
+          <span>Leitura</span>
+          <span class="cur"><span class="dash" aria-hidden="true">—</span><span class="sr">Leitura: sem sequência atual — o último dia registrado não foi feito</span></span>
+          <span class="max tabular">maior no período: 8</span>
+        </li>
+        <li>
+          <span class="ico"><svg width="18" height="18" viewBox="0 0 256 256" aria-hidden="true"><use href="#g-barbell"/></svg></span>
+          <span>Alongamento</span>
+          <span class="cur"><span class="dash" aria-hidden="true">—</span><span class="sr">Alongamento: sem sequência atual</span></span>
+          <span class="max tabular">maior no período: 3</span>
+        </li>
+      </ul>
+      <p style="margin:11px 0 0;font-size:12px;color:var(--muted)">O ícone <code>fire</code> é monocromático em <code>currentColor</code>, do mesmo peso <code>regular</code> de todos os pictogramas do sistema — é um marcador de leitura, não uma chama. Ele nunca aparece sozinho: o número está ao lado e o texto completo está no nome acessível. Sequência zerada exibe travessão, porque "0" leria como falha e a chama sem número leria como celebração.</p>
+    </div>
+  </div>
+
+  <div class="warnbar" role="note">
+    <b>⚠ Fim da faixa isolada — retorno ao escopo implementável</b>
+    F13, F14 e F15 permanecem <b>desenho aprovado, não implementável</b>, junto com a agregação por semana/quinzena da grade de F8. Enquanto a Story 16.2b não existir, nada disto entra em código. A Story 16.0 pode ser aceita e as Stories 16.1/16.2 podem ser implementadas integralmente sem estas três leituras.
+  </div>
+</div>
+
+<!-- ============ NOTAS DE FECHAMENTO ============ -->
+<section class="notes">
+  <div class="note"><b>A interface nunca calcula completude</b>A marcação é otimista <b>só no valor da linha</b>. Porcentagem, peso efetivo e multiplicador só mudam com resposta do servidor. Marcar feriado reescreve o <code>multiplierAtTime</code> das linhas no servidor e a interface refetcha.</div>
+  <div class="note"><b>Sem toast, sem celebração</b>Sucesso é o valor e a porcentagem mudando. Nenhuma mutação emite toast em nenhuma superfície. O movimento se limita a transições de cor de fundo de 120 a 180ms, e <code>prefers-reduced-motion</code> zera as durações.</div>
+  <div class="note"><b>Checkbox indicador (Q9)</b>Na linha numérica o checkbox é <b>saída, não entrada</b>: desabilitado, marcado quando a meta é atingida. Não é disabled por falta de permissão — precisa de nota no catálogo para não ser lido como bloqueio.</div>
+  <div class="note"><b>Excluir não existe</b>O domínio desativa, nunca deleta. Nenhuma superfície oferece exclusão de hábito, e as ações nomeiam a consequência: "Desativar hábito" / "Reativar hábito".</div>
+  <div class="note"><b>Registro em cards é variante canônica (Q4)</b>Não é exceção local a Hábitos: cards de grupo em duas colunas de ~520px em wide, workspace até 1120px, rompendo a coluna única de 800px do padrão Registro. Saúde-Métricas (Story 16.3) tem a mesma forma de dados agrupados e reaproveita. A leitura textual corrida segue em 800px.</div>
+  <div class="note"><b>Nada só por cor</b>Estado tem texto ("Feito", "Não feito", "Sem registro neste dia."), a barra tem porcentagem ao lado, a célula do heatmap tem o número dentro, a grade tem tags textuais FDS e FER, e o hábito inativo tem chip além da opacidade 0,58.</div>
+  <div class="note"><b>Semeadura</b>A primeira abertura do dia materializa uma linha por hábito ativo, congelando peso, meta, bônus, tipo de dia e multiplicador. A interface não cria linhas: ela <b>abre o dia</b>. Sem essa abertura não existe registro — e sem registro não existe porcentagem.</div>
+  <div class="note"><b>Nenhum token novo</b>Todas as medidas e cores vêm do DESIGN.md. Os tons do heatmap são <code>color-mix</code> sobre <code>primary</code>/<code>surface</code>. Nenhum componente novo é proposto — só variantes e composições a documentar no catálogo.</div>
+</section>
+
+</main></body>
+</html>
