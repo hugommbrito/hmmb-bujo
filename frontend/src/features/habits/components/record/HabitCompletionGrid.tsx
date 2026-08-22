@@ -39,6 +39,7 @@ import type { DayType, HabitDayEntry, HabitGroup, HabitHistoryRange, HabitSlim }
 import {
   bucketLabel,
   formatDateMediumBR,
+  formatDecimal,
   gridCell,
   realDaysLabel,
   weeklyBuckets,
@@ -48,6 +49,21 @@ import {
 /** Verbatim do gate. */
 export const EMPTY_RANGE = 'Nenhum registro no período.'
 export const NO_RECORD_DAY = 'Sem registro neste dia.'
+
+/**
+ * Leitura textual de UMA linha num dia, para a recomposição do compact.
+ * Espelha o `cellState` do legado (`HabitHistoryGrid.tsx:25-39`): número com
+ * unidade no numérico, "feito"/"não feito" no booleano — nunca só um glifo.
+ */
+function compactReading(
+  entry: { value?: string | null },
+  habit: { type: 'boolean' | 'numeric'; unit?: string | null },
+): string {
+  if (entry.value == null || entry.value === '') return 'sem registro'
+  if (habit.type === 'boolean') return Number(entry.value) === 1 ? 'feito' : 'não feito'
+  const unit = habit.unit ? ` ${habit.unit}` : ''
+  return `${formatDecimal(entry.value) ?? entry.value}${unit}`
+}
 
 /** Tag textual curta do tipo de dia (nunca só cor). */
 const DAY_TYPE_TAG: Record<DayType, string> = {
@@ -152,14 +168,15 @@ export function HabitCompletionGrid({
                 key={day.date}
                 sx={{
                   display: 'flex',
-                  gap: 'var(--ds-space-2)',
-                  justifyContent: 'space-between',
+                  flexDirection: 'column',
+                  gap: 'var(--ds-space-1)',
                   borderBottom: '1px solid var(--ds-border)',
                   py: 'var(--ds-space-2)',
                   ...typography.meta,
                   color: 'var(--ds-ink)',
                 }}
               >
+                <Box sx={{ display: 'flex', gap: 'var(--ds-space-2)', justifyContent: 'space-between' }}>
                 <Box component="span">
                   {formatDateBR(day.date)}
                   {tag ? ` · ${tag}` : ` · ${DAY_TYPE_LABEL[day.dayType]}`}
@@ -169,6 +186,45 @@ export function HabitCompletionGrid({
                     ? `${day.totalCompletion}% · ${filled}/${day.entries.length} registros`
                     : NO_RECORD_DAY}
                 </Box>
+                </Box>
+                {/* RECOMPOSIÇÃO, não compressão: a leitura POR HÁBITO é a
+                    informação que a grade wide carrega e que o compact não pode
+                    perder (paridade com `HabitHistoryGrid.tsx:86-118`, que
+                    renderiza uma linha por hábito por dia). O agregado do dia
+                    acima é resumo; estas linhas são o dado. */}
+                {hasRecord && (
+                  <Box
+                    component="ul"
+                    sx={{ listStyle: 'none', margin: 0, padding: 0, pl: 'var(--ds-space-3)' }}
+                  >
+                    {habits.map((habit) => {
+                      const entry = entriesByHabit.get(habit.id)?.get(day.date)
+                      if (entry == null) return null
+                      const inactive = inactiveHabitIds?.has(habit.id) ?? false
+                      return (
+                        <Box
+                          component="li"
+                          key={habit.id}
+                          sx={{
+                            display: 'flex',
+                            gap: 'var(--ds-space-2)',
+                            justifyContent: 'space-between',
+                            ...typography.meta,
+                            color: 'var(--ds-ink-muted)',
+                          }}
+                        >
+                          <Box component="span">
+                            {habit.name}
+                            {inactive ? ' · Inativo' : ''}
+                          </Box>
+                          <Box component="span" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+                            {compactReading(entry, habit)}
+                          </Box>
+                        </Box>
+                      )
+                    })}
+                  </Box>
+                )}
               </Box>
             )
           })}
@@ -212,9 +268,9 @@ export function HabitCompletionGrid({
           >
             Completude por hábito e semana, de {formatDateMediumBR(data.start)} a{' '}
             {formatDateMediumBR(data.end)}. Booleano mostra dias feitos sobre dias com registro;
-            numérico mostra o percentual médio da meta no período. Célula tracejada com travessão
-            indica período sem nenhum registro. FDS marca semana com fim de semana e FER marca
-            semana com feriado.
+            numérico mostra o percentual médio da meta no período, ou a média dos valores quando
+            nenhuma meta estava configurada. Célula tracejada com travessão indica período sem
+            nenhum registro. FDS marca semana com fim de semana e FER marca semana com feriado.
           </Box>
           <thead>
             <tr>
@@ -262,7 +318,14 @@ export function HabitCompletionGrid({
                       component="span"
                       sx={{ display: 'block', ...typography.meta, color: 'var(--ds-ink-muted)' }}
                     >
-                      {realDaysLabel(bucket.dates.length)}
+                      {/* Dias com REGISTRO no bucket — não dias corridos. As
+                          células leem "2/3" sobre esse mesmo denominador; contar
+                          dias corridos aqui ("7 dias" sobre "2/3") é exatamente
+                          a leitura errada que este rótulo existe para evitar. */}
+                      {realDaysLabel(
+                        bucket.dates.filter((date) => (dayByDate.get(date)?.entries.length ?? 0) > 0)
+                          .length,
+                      )}
                       {tags.size > 0 ? ` · ${[...tags].join(' ')}` : ''}
                     </Box>
                   </Box>
@@ -277,7 +340,7 @@ export function HabitCompletionGrid({
                   <tr>
                     <Box
                       component="th"
-                      scope="colgroup"
+                      scope="col"
                       colSpan={columnCount}
                       sx={{
                         ...typography.label,
@@ -342,7 +405,13 @@ export function HabitCompletionGrid({
                         sx={{
                           p: 0,
                           textAlign: 'center',
-                          border: cell.percent == null ? '1px dashed var(--ds-border-strong)' : '1px solid var(--ds-border)',
+                          // Tracejada é a marca do período SEM NENHUM registro.
+                          // Uma célula com registro mas sem razão de completude
+                          // (numérico sem meta congelada) é sólida: ela tem
+                          // número, só não tem tom.
+                          border: cell.hasRecord
+                            ? '1px solid var(--ds-border)'
+                            : '1px dashed var(--ds-border-strong)',
                         }}
                       >
                         <Box

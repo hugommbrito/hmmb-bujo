@@ -171,9 +171,26 @@ test('grade acessível hábitos × dias: tabela com feriado rotulado e lacuna ho
   // Tag textual FER na coluna da semana com o feriado semeado (não só cor).
   await expect(grid.getByRole('columnheader', { name: /FER/ })).toBeVisible()
 
-  // Nenhuma célula sem número: "célula sem número é bug, não variante".
-  for (const cell of await grid.getByRole('cell').all()) {
+  // Célula sem número é bug, não variante — E a leitura tem de ser REAL.
+  // `not.toHaveText('')` sozinho é satisfeito por um travessão e é vacuoso se o
+  // locator não casar nada: re-chavear o índice `entriesByHabit` por `entry.id`
+  // derrubaria toda célula para "—" e o laço passaria igual.
+  const cells = grid.getByRole('cell')
+  const cellCount = await cells.count()
+  expect(cellCount).toBeGreaterThan(0)
+  for (const cell of await cells.all()) {
     await expect(cell).not.toHaveText('')
+  }
+  // Toda LINHA de hábito semeado tem pelo menos um período com leitura real:
+  // se a fiação entrada→bucket quebrar, sobram só travessões e isto falha.
+  for (const row of await grid.getByRole('row').all()) {
+    const header = row.getByRole('rowheader')
+    if ((await header.count()) === 0) continue
+    const texts = await row.getByRole('cell').allInnerTexts()
+    expect(
+      texts.some((text) => text.trim() !== '' && !text.trim().startsWith('\u2014')),
+      `linha "${await header.innerText()}" só tem células sem registro`,
+    ).toBe(true)
   }
 
   // Tabela equivalente da grade: `<details>` na MESMA superfície (mockup F8).

@@ -18,7 +18,7 @@ import { Box } from '@mui/material'
 
 import { typography } from '../../../../shared/design/tokens'
 import { DAY_TYPE_LABEL } from '../historyUtils'
-import type { HabitDayEntry, HabitDayGroup } from '../../types'
+import type { DayType, HabitDayEntry, HabitDayGroup } from '../../types'
 import { CompletionBar } from './CompletionBar'
 import { HabitTrackerRow } from './HabitTrackerRow'
 import { formatDecimal, formatEffectiveWeight, sumEffectiveWeights } from './habitsSurface'
@@ -34,6 +34,13 @@ export interface HabitGroupCardProps {
   disabled?: boolean
   disabledReasonId?: string
   headingId: string
+  /**
+   * Tipo do dia vindo do DIA (`HabitDay.dayType`), não da linha. O updater
+   * otimista de feriado reescreve só `data.dayType`; derivar daqui de
+   * `entries[0].dayType` abria uma janela em que o chip do dia dizia "Feriado"
+   * e a legenda do grupo ainda dizia "Dia útil".
+   */
+  dayType?: DayType
 }
 
 export function HabitGroupCard({
@@ -44,11 +51,12 @@ export function HabitGroupCard({
   disabled,
   disabledReasonId,
   headingId,
+  dayType: dayTypeProp,
 }: HabitGroupCardProps) {
   const effectiveWeight = sumEffectiveWeights(entries)
   const first = entries[0]
   const multiplier = first?.multiplierAtTime
-  const dayType = first?.dayType
+  const dayType = dayTypeProp ?? first?.dayType
   const showLegend =
     dayType != null && dayType !== 'weekday' && multiplier != null && Number(multiplier) !== 1
 

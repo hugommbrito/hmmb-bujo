@@ -20,6 +20,7 @@ import {
   isUnchangedDecimal,
   isoLocalToday,
   metaPercent,
+  minDate,
   mondayOf,
   parseDecimalInput,
   parseTabSlug,
@@ -160,6 +161,14 @@ describe('estado textual da linha — nulo é "Não feito", nunca ausência', ()
   })
 })
 
+describe('minDate — teto de data sem construir Date', () => {
+  it('devolve a menor das duas datas ISO, comparando como string', () => {
+    expect(minDate('2026-08-22', '2026-08-30')).toBe('2026-08-22')
+    expect(minDate('2026-09-01', '2026-08-31')).toBe('2026-08-31')
+    expect(minDate('2026-08-22', '2026-08-22')).toBe('2026-08-22')
+  })
+})
+
 describe('datas — sem desvio de fuso', () => {
   it('formata por extenso a partir do split da string', () => {
     expect(formatDateLongBR('2026-08-21')).toBe('Sexta-feira, 21 de agosto de 2026')
@@ -245,6 +254,31 @@ describe('célula da grade — tom contínuo pela razão REAL', () => {
     expect(cell.daysWithRecord).toBe(2)
   })
 
+  // A meta é OPCIONAL no cadastro. Exigir `metaAtTime` para contar o dia como
+  // medido fazia um hábito numérico sem meta renderizar "—" em TODA célula,
+  // mesmo em dias com valor real — a apresentação de "período sem linha"
+  // aplicada a um período que tem linhas.
+  it('numérico SEM meta congelada ainda mostra número (média dos valores), sem inventar razão', () => {
+    const cell = gridCell({
+      type: 'numeric',
+      entries: [{ value: '2', metaAtTime: null }, { value: '3', metaAtTime: null }],
+    })
+    expect(cell.display).toBe('2,5')
+    expect(cell.hasRecord).toBe(true)
+    expect(cell.daysWithRecord).toBe(2)
+    // Sem meta não existe razão de completude: o tom fica SEM pintar (em vez de
+    // pintar 0, que leria como "falhou tudo").
+    expect(cell.percent).toBeNull()
+    expect(cell.reading).toBe('média 2,5 em 2 dias com registro · sem meta configurada no período')
+  })
+
+  it('numérico sem meta E sem valor nenhum continua sendo "sem registro"', () => {
+    const cell = gridCell({ type: 'numeric', entries: [{ value: null, metaAtTime: null }] })
+    expect(cell.display).toBe('—')
+    expect(cell.hasRecord).toBe(false)
+    expect(cell.percent).toBeNull()
+  })
+
   it('período sem nenhuma linha é travessão, nunca 0% fabricado', () => {
     const cell = gridCell({ type: 'numeric', entries: [] })
     expect(cell.display).toBe('—')
@@ -256,13 +290,23 @@ describe('célula da grade — tom contínuo pela razão REAL', () => {
     const boolCell = gridCell({ type: 'boolean', entries: [{ value: null }] })
     expect(boolCell.display).toBe('0/1')
     expect(boolCell.percent).toBe(0)
+    expect(boolCell.hasRecord).toBe(true)
+    // `hasRecord` é o que autoriza travessão e borda tracejada — e SÓ o caso
+    // genuíno de período vazio o tem em `false`.
+    expect(gridCell({ type: 'boolean', entries: [] }).hasRecord).toBe(false)
   })
 })
 
 describe('contribuição diária de UM hábito (nunca a completude do dia)', () => {
   it('booleano é 1 quando feito, 0 quando aberto e não feito, nulo sem linha', () => {
     expect(contributionFactor('boolean', '1', null, null)).toBe(1)
-    expect(contributionFactor('boolean', null, null, null)).toBeNull()
+    // Linha MATERIALIZADA com valor nulo é "não feito" ⇒ 0. Devolver lacuna
+    // aqui fazia a visão "contribuição" discordar da visão "valor diário" do
+    // mesmo dia (que já desenha 0) e escondia um "não feito" real.
+    expect(contributionFactor('boolean', null, null, null)).toBe(0)
+    expect(contributionFactor('boolean', '', null, null)).toBe(0)
+    // Nulo SÓ quando o dia não tem ponto nenhum.
+    expect(contributionFactor('boolean', null, null, null, false)).toBeNull()
   })
 
   it('numérico na meta é 1 (ganha o bônus); abaixo, aplica a penalidade do bônus', () => {

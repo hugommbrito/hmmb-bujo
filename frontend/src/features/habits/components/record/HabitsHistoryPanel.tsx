@@ -37,6 +37,7 @@ import { HabitsHistorySkeleton } from './HabitsSkeleton'
 import { Field } from './HabitsFormControls'
 import { SECONDARY_BUTTON_SX, controlStyle } from './habitsFormStyles'
 import {
+  RETRY_LABEL,
   addDays,
   clampDate,
   contributionFactor,
@@ -46,6 +47,7 @@ import {
   formatEffectiveWeight,
   isoLocalToday,
   metaPercent,
+  minDate,
   rowStateText,
   sumEffectiveWeights,
 } from './habitsSurface'
@@ -59,12 +61,34 @@ export const OPEN_FOR_EDIT = 'Abrir este dia para edição'
 /** Últimos 30 dias, inclusive — paridade com `HabitHistory.tsx:16`. */
 const DEFAULT_SPAN = 29
 
+/**
+ * Motivo escrito de `Próximo período ›` indisponível. O histórico não avança
+ * para o futuro: `GET /api/habits/history/` não materializa nada, mas oferecer
+ * períodos futuros só renderizaria colunas vazias e sugeriria que existe
+ * registro por vir.
+ */
+export const LATEST_PERIOD_NOTE = 'Este é o período mais recente.'
+
 function defaultRange() {
   const end = isoLocalToday()
   return { start: addDays(end, -DEFAULT_SPAN), end }
 }
 
 const SERIES_VIEWS: HabitSeriesView[] = ['value', 'metaPercent', 'contribution']
+
+/**
+ * Visões OFERECIDAS para o hábito selecionado.
+ *
+ * `% da meta` não existe para hábito **booleano**: `metaAtTime` é sempre nulo,
+ * `metaPercent` devolveria `null` em TODO ponto e a tabela equivalente imprimiria
+ * "Sem registro neste dia." em dias que TÊM registro — absência fabricada, o
+ * inverso exato do princípio "nunca 0% fabricado". A visão não é oferecida em vez
+ * de ser oferecida e mentir.
+ */
+function viewsFor(type: 'boolean' | 'numeric' | undefined): HabitSeriesView[] {
+  if (type === 'boolean') return SERIES_VIEWS.filter((option) => option !== 'metaPercent')
+  return SERIES_VIEWS
+}
 
 const BLOCK_SX = {
   backgroundColor: 'var(--ds-surface)',
@@ -85,7 +109,7 @@ function BlockError({ onRetry }: { onRetry: () => void }) {
         {READ_ERROR}
       </Box>
       <Button onClick={onRetry} sx={SECONDARY_BUTTON_SX}>
-        Tentar de novo
+        {RETRY_LABEL}
       </Button>
     </Box>
   )
@@ -211,7 +235,7 @@ export function HabitsHistoryPanel({ compact, onOpenDayForEdit }: HabitsHistoryP
   const [range, setRange] = useState(defaultRange)
   const [selectedDate, setSelectedDate] = useState(() => defaultRange().end)
   const [selectedHabitId, setSelectedHabitId] = useState('')
-  const [view, setView] = useState<HabitSeriesView>('value')
+  const [rawView, setView] = useState<HabitSeriesView>('value')
   const reactId = useId()
 
   const history = useHabitHistoryQuery(range)
@@ -240,6 +264,8 @@ export function HabitsHistoryPanel({ compact, onOpenDayForEdit }: HabitsHistoryP
 
   const viewSeries: HabitSeries | null = useMemo(() => {
     if (!series.data) return null
+    // Visão efetiva: booleano nunca entra em `% da meta` (ver `viewsFor`).
+    const view = viewsFor(series.data.habit.type).includes(rawView) ? rawView : 'value'
     if (view === 'value') return series.data
     return {
       ...series.data,
@@ -254,26 +280,44 @@ export function HabitsHistoryPanel({ compact, onOpenDayForEdit }: HabitsHistoryP
                   point.value,
                   frozen?.metaAtTime,
                   frozen?.bonusAtTime,
+                  // O ponto EXISTE (estamos mapeando `points`): booleano com
+                  // valor nulo é "não feito" ⇒ 0, nunca lacuna.
+                  true,
                 )
                 return factor == null ? null : Math.round(factor * 100)
               })()
         return { ...point, value: derived == null ? null : String(derived) }
       }),
     }
-  }, [series.data, view, frozenByDate])
+  }, [series.data, rawView, frozenByDate])
+
+  const selectedHabitType = series.data?.habit.type
+  const availableViews = viewsFor(selectedHabitType)
+  // Trocar de hábito numérico → booleano com `% da meta` ativa não deve deixar a
+  // superfície numa visão que não se aplica ao hábito exibido.
+  const effectiveView = availableViews.includes(rawView) ? rawView : 'value'
+
+  const today = isoLocalToday()
+  // O período mais recente é o que TERMINA hoje — não existe período futuro.
+  const atLatestPeriod = range.end >= today
 
   function updateRange(next: { start: string; end: string }) {
     if (next.start > next.end) return
-    setRange(next)
-    setSelectedDate((prev) => clampDate(prev, next.start, next.end))
+    // Teto DURO em hoje, aplicado no ponto único de escrita do intervalo: nem
+    // `shiftPeriod` nem um chamador futuro conseguem passar disso.
+    const end = next.end > today ? today : next.end
+    const clamped = { start: next.start > end ? end : next.start, end }
+    setRange(clamped)
+    setSelectedDate((prev) => clampDate(prev, clamped.start, clamped.end))
   }
 
   function shiftPeriod(direction: -1 | 1) {
+    if (direction === 1 && atLatestPeriod) return
     const span = DEFAULT_SPAN + 1
-    updateRange({
-      start: addDays(range.start, direction * span),
-      end: addDays(range.end, direction * span),
-    })
+    // Avançando, o fim para em hoje e o início acompanha para preservar a
+    // janela de 30 dias (senão o último período viria truncado sem motivo).
+    const end = direction === 1 ? minDate(addDays(range.end, span), today) : addDays(range.end, -span)
+    updateRange({ start: addDays(end, -DEFAULT_SPAN), end })
   }
 
   if (history.isPending) return <HabitsHistorySkeleton />
@@ -283,6 +327,7 @@ export function HabitsHistoryPanel({ compact, onOpenDayForEdit }: HabitsHistoryP
   const dateFieldId = `habits-history-date-${reactId}`
   const habitFieldId = `habits-history-habit-${reactId}`
   const viewFieldId = `habits-history-view-${reactId}`
+  const latestPeriodNoteId = `habits-history-latest-${reactId}`
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 'var(--ds-space-4)' }}>
@@ -310,9 +355,23 @@ export function HabitsHistoryPanel({ compact, onOpenDayForEdit }: HabitsHistoryP
           {formatDateMediumBR(range.start)} a {formatDateMediumBR(range.end)} ·{' '}
           {DEFAULT_SPAN + 1} dias
         </Box>
-        <Button onClick={() => shiftPeriod(1)} sx={SECONDARY_BUTTON_SX}>
+        <Button
+          onClick={() => shiftPeriod(1)}
+          disabled={atLatestPeriod}
+          aria-describedby={atLatestPeriod ? latestPeriodNoteId : undefined}
+          sx={SECONDARY_BUTTON_SX}
+        >
           Próximo período ›
         </Button>
+        {atLatestPeriod && (
+          <Box
+            id={latestPeriodNoteId}
+            role="note"
+            sx={{ ...typography.meta, color: 'var(--ds-ink-muted)', alignSelf: 'center' }}
+          >
+            {LATEST_PERIOD_NOTE}
+          </Box>
+        )}
         <Box sx={{ marginLeft: 'auto', minWidth: 0 }}>
           <Field id={dateFieldId} label="Dia em detalhe">
             <input
@@ -375,11 +434,11 @@ export function HabitsHistoryPanel({ compact, onOpenDayForEdit }: HabitsHistoryP
               <Field id={viewFieldId} label="Visão">
                 <select
                   id={viewFieldId}
-                  value={view}
+                  value={effectiveView}
                   onChange={(event) => setView(event.target.value as HabitSeriesView)}
                   style={controlStyle(false)}
                 >
-                  {SERIES_VIEWS.map((option) => (
+                  {availableViews.map((option) => (
                     <option key={option} value={option}>
                       {HABIT_SERIES_VIEW_LABEL[option]}
                     </option>
@@ -401,9 +460,9 @@ export function HabitsHistoryPanel({ compact, onOpenDayForEdit }: HabitsHistoryP
               <BlockError onRetry={() => series.refetch()} />
             ) : (
               <>
-                <HabitEvolutionChart series={viewSeries} view={view} />
+                <HabitEvolutionChart series={viewSeries} view={effectiveView} />
                 {/* TABELA EQUIVALENTE PERMANENTE — nunca atrás de disclosure. */}
-                <SeriesEquivalentTable series={viewSeries} view={view} />
+                <SeriesEquivalentTable series={viewSeries} view={effectiveView} />
               </>
             )}
           </Box>

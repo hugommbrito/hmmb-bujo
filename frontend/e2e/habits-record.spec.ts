@@ -255,10 +255,26 @@ test('histórico é readonly, leva o dia para a aba Hoje e traz grade + tabela e
     page.getByRole('table', { name: /Mesma leitura em formato linear/ }),
   ).toBeVisible()
 
-  // Célula sem número é bug, não variante: toda célula tem conteúdo.
+  // Célula sem número é bug, não variante — E a leitura tem de ser REAL.
+  // `not.toHaveText('')` sozinho é satisfeito por um travessão e é vacuoso se o
+  // locator não casar nada: re-chavear o índice `entriesByHabit` por `entry.id`
+  // derrubaria toda célula para "—" e o laço passaria igual.
   const cells = grid.getByRole('cell')
+  const cellCount = await cells.count()
+  expect(cellCount).toBeGreaterThan(0)
   for (const cell of await cells.all()) {
     await expect(cell).not.toHaveText('')
+  }
+  // Toda LINHA de hábito semeado tem pelo menos um período com leitura real:
+  // se a fiação entrada→bucket quebrar, sobram só travessões e isto falha.
+  for (const row of await grid.getByRole('row').all()) {
+    const header = row.getByRole('rowheader')
+    if ((await header.count()) === 0) continue
+    const texts = await row.getByRole('cell').allInnerTexts()
+    expect(
+      texts.some((text) => text.trim() !== '' && !text.trim().startsWith('\u2014')),
+      `linha "${await header.innerText()}" só tem células sem registro`,
+    ).toBe(true)
   }
 
   // A única saída para escrita é levar o dia para a aba Hoje.

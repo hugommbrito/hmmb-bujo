@@ -71,6 +71,15 @@ export function tabLabelOf(tab: HabitTabDefinition, compact: boolean): string {
   return compact ? tab.compactLabel : tab.label
 }
 
+/**
+ * Rótulo ÚNICO da affordance de retry em toda a superfície de Hábitos (leitura
+ * E escrita). Antes existiam duas frases para a mesma ação ("Tentar de novo" nos
+ * blocos de leitura, "Tentar novamente" nos de escrita), o que fazia o mesmo
+ * comando ter dois nomes acessíveis na mesma tela. A spec (Task 8) nomeia
+ * "Tentar de novo".
+ */
+export const RETRY_LABEL = 'Tentar de novo'
+
 // ─── Números e datas ─────────────────────────────────────────────────────────
 
 const numberFormat = new Intl.NumberFormat('pt-BR')
@@ -189,6 +198,15 @@ export function isoLocalToday(now: Date = new Date()): string {
 export function addDays(iso: string, n: number): string {
   const [y, m, d] = iso.split('-').map(Number)
   return isoLocalToday(new Date(y, m - 1, d + n))
+}
+
+/**
+ * A menor de duas datas ISO. Comparação LEXICOGRÁFICA de `YYYY-MM-DD` — mesmo
+ * truque de `clampDate`: nenhum `Date` é construído, então não há como um fuso
+ * deslocar o dia.
+ */
+export function minDate(a: string, b: string): string {
+  return a < b ? a : b
 }
 
 export function clampDate(iso: string, start: string, end: string): string {
@@ -389,9 +407,20 @@ export interface GridCellInput {
 export interface GridCell {
   /** `"5/7"` (booleano), `"71%"` (numérico) ou `"—"` (sem registro no período). */
   display: string
-  /** `--p` da escala contínua de tom: 0–100, ou `null` quando não há registro. */
+  /**
+   * `--p` da escala contínua de tom: 0–100, ou `null` quando NÃO há razão de
+   * completude para pintar. `null` **não** implica ausência de registro: um
+   * hábito numérico sem meta congelada tem registro e número, mas nenhuma razão
+   * — ver `hasRecord`.
+   */
   percent: number | null
   daysWithRecord: number
+  /**
+   * `false` SÓ no caso genuíno de período sem nenhuma linha materializada — é
+   * o que autoriza o travessão e a borda tracejada. Uma célula com registro
+   * nunca lê `—` ("célula sem número é bug, não variante").
+   */
+  hasRecord: boolean
   /** Leitura por extenso (título/tabela equivalente). */
   reading: string
 }
@@ -400,6 +429,7 @@ const NO_RECORD_CELL: GridCell = {
   display: '—',
   percent: null,
   daysWithRecord: 0,
+  hasRecord: false,
   reading: 'Sem registro no período',
 }
 
@@ -427,22 +457,45 @@ export function gridCell({ type, entries }: GridCellInput): GridCell {
       display: `${done}/${daysWithRecord}`,
       percent: Math.round((done / daysWithRecord) * 100),
       daysWithRecord,
+      hasRecord: true,
       reading: `${done} de ${daysWithRecord} dias com registro feitos`,
     }
   }
 
   // Numérico: só o dia MEDIDO entra (linha aberta sem valor = sem medição).
-  const measured = entries.filter(
-    (entry) => entry.value != null && entry.value !== '' && entry.metaAtTime != null,
+  const withValue = entries.filter((entry) => entry.value != null && entry.value !== '')
+  if (withValue.length === 0) return NO_RECORD_CELL
+
+  // META É OPCIONAL no cadastro: um hábito numérico pode ter valores e NENHUMA
+  // meta congelada. Sem meta não existe "percentual da meta" — mas existe
+  // registro, e registro sem número seria a apresentação de "período sem
+  // linha" aplicada a um período que TEM linhas. Mostra a média dos valores
+  // CRUS e deixa o tom sem pintar (nenhuma razão inventada).
+  const measured = withValue.filter(
+    (entry) => entry.metaAtTime != null && entry.metaAtTime !== '',
   )
-  if (measured.length === 0) return NO_RECORD_CELL
+  const days = (count: number) => `${count} ${count === 1 ? 'dia' : 'dias'}`
+  if (measured.length === 0) {
+    const sum = withValue.reduce((total, entry) => total + (Number(entry.value) || 0), 0)
+    const mean = sum / withValue.length
+    const display = formatDecimal(mean) ?? '0'
+    return {
+      display,
+      percent: null,
+      daysWithRecord: withValue.length,
+      hasRecord: true,
+      reading: `média ${display} em ${days(withValue.length)} com registro · sem meta configurada no período`,
+    }
+  }
+
   const total = measured.reduce((sum, entry) => sum + (metaPercent(entry.value, entry.metaAtTime) ?? 0), 0)
   const average = Math.round(total / measured.length)
   return {
     display: `${average}%`,
     percent: average,
     daysWithRecord: measured.length,
-    reading: `${average}% do percentual médio da meta em ${measured.length} ${measured.length === 1 ? 'dia' : 'dias'} com registro`,
+    hasRecord: true,
+    reading: `${average}% do percentual médio da meta em ${days(measured.length)} com registro`,
   }
 }
 
@@ -459,9 +512,17 @@ export function contributionFactor(
   value: string | null | undefined,
   meta: string | null | undefined,
   bonus: string | null | undefined,
+  /**
+   * `false` só quando o dia NÃO tem ponto/linha nenhuma. Booleano com linha
+   * materializada e valor nulo é "não feito" ⇒ contribuição **0**, nunca
+   * lacuna: a visão "valor diário" do `HabitEvolutionChart` já desenha esse
+   * mesmo dia como 0, e devolver `null` aqui fazia as duas visões discordarem
+   * do mesmo dia — escondendo um "não feito" real atrás de um buraco na série.
+   */
+  hasRecord = true,
 ): number | null {
   if (type === 'boolean') {
-    if (value == null || value === '') return null
+    if (!hasRecord) return null
     return isBooleanDone(value) ? 1 : 0
   }
   if (value == null || value === '' || meta == null || meta === '') return null

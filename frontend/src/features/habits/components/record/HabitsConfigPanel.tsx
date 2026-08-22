@@ -24,7 +24,7 @@
 //
 // [Source: EXPERIENCE.md#Hábitos §Configuração; mockup F5/F6/F7; spec Task 5]
 // ─────────────────────────────────────────────────────────────────────────────
-import { useId, useState, type FormEvent } from 'react'
+import { useId, useRef, useState, type FormEvent } from 'react'
 import { Box, Button, Checkbox, FormControlLabel } from '@mui/material'
 
 import { typography } from '../../../../shared/design/tokens'
@@ -43,7 +43,13 @@ import type { Habit, HabitGroup, HabitType } from '../../types'
 import { HabitsConfigSkeleton } from './HabitsSkeleton'
 import { Field, FieldPair, ProspectiveNotice } from './HabitsFormControls'
 import { PRIMARY_BUTTON_SX, SECONDARY_BUTTON_SX, controlStyle } from './habitsFormStyles'
-import { decimalInputValue, formatDecimal, parseDecimalInput } from './habitsSurface'
+import {
+  RETRY_LABEL,
+  decimalInputValue,
+  formatDecimal,
+  isUnchangedDecimal,
+  parseDecimalInput,
+} from './habitsSurface'
 
 /** Textos verbatim do gate. */
 export const NO_GROUP_REASON = 'Crie um grupo para começar a adicionar hábitos.'
@@ -51,7 +57,7 @@ export const EMPTY_GROUP = 'Nenhum hábito neste grupo.'
 export const SAVE_ERROR = 'Não foi possível salvar. Tente novamente.'
 export const READ_ERROR = 'Não foi possível carregar. Tente novamente.'
 export const MULTIPLIER_PRECEDENCE =
-  'Precedência: feriado > fim de semana > dia útil. Dia útil vale 1,00 e nunca é armazenado. Campo vazio remove a configuração e a leitura volta a 1,00.'
+  'Precedência: feriado > fim de semana > dia útil. Dia útil vale 1,00 e nunca é armazenado. Campo vazio salva 1,00: a leitura volta a 1,00 e o campo aparece vazio de novo.'
 export const SHOW_INACTIVE = 'Mostrar inativos'
 
 const HABIT_TYPE_LABEL: Record<HabitType, string> = {
@@ -111,7 +117,7 @@ function GroupMultiplierBlock({ group, disabled, disabledReasonId }: GroupMultip
           onClick={() => query.refetch()}
           sx={{ ...SECONDARY_BUTTON_SX, color: 'var(--ds-danger)', borderColor: 'var(--ds-danger)' }}
         >
-          Tentar novamente
+          {RETRY_LABEL}
         </Button>
       </Box>
     )
@@ -145,11 +151,27 @@ interface GroupMultiplierFormProps {
  * então "sem configuração" e "configurado em 1,00" são indistinguíveis no
  * contrato — e semanticamente idênticos ("dia útil é 1,00 implícito, nunca
  * armazenado"). Mostrar o campo vazio com placeholder `1,00` é o que o gate
- * desenhou e o que torna "limpar o campo remove a configuração" reversível.
+ * desenhou e o que torna "limpar o campo" reversível.
  */
 function multiplierFieldValue(raw: string): string {
   return Number(raw) === 1 ? '' : decimalInputValue(raw)
 }
+
+/**
+ * Campo vazio vira **`1.00`**, nunca `null`.
+ *
+ * `SetGroupMultipliersSerializer.validate` REJEITA (400) o corpo com os dois
+ * campos nulos — e o `PUT` IGNORA (`if value is not None`) o campo nulo
+ * isolado. Ou seja, enviar `null`: (a) 400 no caso mais comum, o grupo sem
+ * config nenhuma (os dois campos nascem vazios); e (b) silenciosamente NÃO
+ * remove o multiplicador quando só um campo é limpo — o usuário limpa
+ * "Feriado ×0,2", não vê erro, recarrega e o 0,2 ainda está lá.
+ *
+ * `1.00` produz exatamente o contrato observável da I/O Matrix ("a leitura
+ * volta a 1,00") sem endpoint novo: o servidor grava 1,00, a leitura devolve
+ * 1,00 e `multiplierFieldValue` mostra o campo vazio de novo.
+ */
+const NEUTRAL_MULTIPLIER = '1.00'
 
 function GroupMultiplierForm({
   group,
@@ -175,7 +197,11 @@ function GroupMultiplierForm({
       return
     }
     setInvalid(false)
-    save.mutate({ groupId: group.id, weekend: parsedWeekend.value, holiday: parsedHoliday.value })
+    save.mutate({
+      groupId: group.id,
+      weekend: parsedWeekend.value ?? NEUTRAL_MULTIPLIER,
+      holiday: parsedHoliday.value ?? NEUTRAL_MULTIPLIER,
+    })
   }
 
   return (
@@ -280,7 +306,7 @@ function HabitEditBlock({ habit, groups, onClose, disabled, disabledReasonId }: 
     bonus: `habit-edit-bonus-${reactId}`,
   }
 
-  function handleSave(event: FormEvent) {
+  async function handleSave(event: FormEvent) {
     event.preventDefault()
     const parsedWeight = parseDecimalInput(weight)
     const parsedMeta = parseDecimalInput(meta)
@@ -292,11 +318,15 @@ function HabitEditBlock({ habit, groups, onClose, disabled, disabledReasonId }: 
     setInvalid(false)
 
     // ── VERSIONADO: peso/meta/bônus abrem versão com vigência de HOJE.
-    addVersion.mutate({
-      habitId: habit.id,
-      weight: parsedWeight.value,
-      ...(isNumeric ? { meta: parsedMeta.value, bonus: parsedBonus.value } : {}),
-    })
+    // SÓ quando algum deles realmente mudou, comparado por VALOR (`3` e `3,00`
+    // são o mesmo peso). `add_habit_version` faz `update_or_create` na versão
+    // de HOJE, então disparar sem mudança cria uma versão espúria — e num
+    // hábito INATIVO isso reescreve o `effective_from`, fazendo o resumo dizer
+    // "inativo desde <hoje>" em vez da data real da desativação.
+    const versionedChanged =
+      !isUnchangedDecimal(parsedWeight.value, habit.weight ?? null) ||
+      (isNumeric && !isUnchangedDecimal(parsedMeta.value, habit.meta ?? null)) ||
+      (isNumeric && !isUnchangedDecimal(parsedBonus.value, habit.bonus ?? null))
 
     // ── IDENTIDADE: UPDATE direto, vale para todo o histórico. Só dispara se
     // algum campo de identidade realmente mudou (duas mutações distintas).
@@ -304,8 +334,25 @@ function HabitEditBlock({ habit, groups, onClose, disabled, disabledReasonId }: 
     if (name.trim() !== habit.name) identity.name = name.trim()
     if (isNumeric && unit.trim() !== (habit.unit ?? '')) identity.unit = unit.trim()
     if (group !== habit.group) identity.group = group
-    if (Object.keys(identity).length > 0) {
-      updateIdentity.mutate({ habitId: habit.id, ...identity })
+
+    try {
+      if (versionedChanged) {
+        await addVersion.mutateAsync({
+          habitId: habit.id,
+          weight: parsedWeight.value,
+          ...(isNumeric ? { meta: parsedMeta.value, bonus: parsedBonus.value } : {}),
+        })
+      }
+      if (Object.keys(identity).length > 0) {
+        await updateIdentity.mutateAsync({ habitId: habit.id, ...identity })
+      }
+      // Fecha no SUCESSO (paridade com `HabitsManager.tsx:136-138`) — inclusive
+      // quando nada mudou, que é sucesso trivial. Em falha o bloco permanece
+      // aberto com o que foi digitado, e o `role="alert"` abaixo explica.
+      onClose()
+    } catch {
+      // O estado de erro das próprias mutações já pinta o alerta; engolir a
+      // rejeição aqui evita um unhandled rejection sem esconder nada.
     }
   }
 
@@ -456,7 +503,7 @@ function HabitEditBlock({ habit, groups, onClose, disabled, disabledReasonId }: 
       <Box sx={{ display: 'flex', gap: 'var(--ds-space-2)', alignItems: 'center', flexWrap: 'wrap' }}>
         <Button
           type="submit"
-          disabled={disabled || addVersion.isPending}
+          disabled={disabled || addVersion.isPending || updateIdentity.isPending}
           aria-describedby={disabled ? disabledReasonId : undefined}
           sx={PRIMARY_BUTTON_SX}
         >
@@ -494,8 +541,11 @@ export function HabitsConfigPanel({ disabled = false, disabledReasonId }: Habits
   const createHabit = useCreateHabitMutation()
   const addVersion = useAddHabitVersionMutation()
   const reactId = useId()
+  const lastHabits = useRef<Habit[] | undefined>(undefined)
 
   const [editingId, setEditingId] = useState<string | null>(null)
+  // Última ativação/desativação disparada — o retry reenvia a MESMA escrita.
+  const [lastToggle, setLastToggle] = useState<{ habitId: string; active: boolean } | null>(null)
   const [groupName, setGroupName] = useState('')
   const [newName, setNewName] = useState('')
   const [newGroup, setNewGroup] = useState('')
@@ -516,7 +566,14 @@ export function HabitsConfigPanel({ disabled = false, disabledReasonId }: Habits
     reason: `habit-no-group-reason-${reactId}`,
   }
 
-  if (groupsQuery.isPending || habitsQuery.isPending) return <HabitsConfigSkeleton />
+  // "Mostrar inativos" TROCA a chave de `useHabitsQuery`, então `data` volta a
+  // `undefined` enquanto a nova página carrega. Sem esta memória, o skeleton
+  // substituiria o painel INTEIRO e desmontaria um `HabitEditBlock` aberto,
+  // jogando fora o que o usuário tinha digitado. Guardamos a última lista
+  // conhecida e seguimos renderizando enquanto a nova chega — o padrão de
+  // `placeholderData` sem tocar `api.ts` (que a story não pode alterar).
+  if (habitsQuery.data !== undefined) lastHabits.current = habitsQuery.data
+  const knownHabits = habitsQuery.data ?? lastHabits.current
 
   if (groupsQuery.isError || habitsQuery.isError) {
     return (
@@ -538,14 +595,18 @@ export function HabitsConfigPanel({ disabled = false, disabledReasonId }: Habits
           }}
           sx={PRIMARY_BUTTON_SX}
         >
-          Tentar de novo
+          {RETRY_LABEL}
         </Button>
       </Box>
     )
   }
 
-  const groups = groupsQuery.data ?? []
-  const habits = habitsQuery.data ?? []
+  if (groupsQuery.data === undefined || knownHabits === undefined) {
+    return <HabitsConfigSkeleton />
+  }
+
+  const groups = groupsQuery.data
+  const habits = knownHabits
   const hasGroups = groups.length > 0
   const creationDisabled = disabled || !hasGroups
   const creationReasonId = !hasGroups ? ids.reason : disabled ? disabledReasonId : undefined
@@ -590,7 +651,12 @@ export function HabitsConfigPanel({ disabled = false, disabledReasonId }: Habits
   }
 
   function toggleActive(habit: Habit) {
-    addVersion.mutate({ habitId: habit.id, active: !habit.active })
+    // `addVersion` do PAINEL serve só ao toggle (o bloco de edição tem a sua
+    // própria instância), então `addVersion.isError` identifica sem ambiguidade
+    // a falha desta ação.
+    const variables = { habitId: habit.id, active: !habit.active }
+    setLastToggle(variables)
+    addVersion.mutate(variables)
   }
 
   return (
@@ -627,6 +693,32 @@ export function HabitsConfigPanel({ disabled = false, disabledReasonId }: Habits
           sx={{ ...typography.body, color: 'var(--ds-ink-muted)' }}
         >
           {NO_GROUP_REASON}
+        </Box>
+      )}
+
+      {/* Falha de Desativar/Reativar: a ação é por linha, mas a mutação é do
+          painel — o alerta e o retry moram aqui, na mesma forma que toda outra
+          escrita desta superfície. Antes esta falha era completamente muda. */}
+      {addVersion.isError && (
+        <Box
+          data-testid="habit-activation-error"
+          sx={{
+            display: 'flex',
+            gap: 'var(--ds-space-2)',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+          }}
+        >
+          <Box role="alert" sx={{ ...typography.meta, color: 'var(--ds-danger)' }}>
+            {SAVE_ERROR}
+          </Box>
+          <Button
+            onClick={() => lastToggle && addVersion.mutate(lastToggle)}
+            disabled={disabled || addVersion.isPending}
+            sx={{ ...SECONDARY_BUTTON_SX, color: 'var(--ds-danger)', borderColor: 'var(--ds-danger)' }}
+          >
+            {RETRY_LABEL}
+          </Button>
         </Box>
       )}
 

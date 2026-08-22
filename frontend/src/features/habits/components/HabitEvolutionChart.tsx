@@ -117,7 +117,12 @@ export function HabitEvolutionChart({ series, view = 'value' }: HabitEvolutionCh
     } else if (point.value != null) {
       value = Number(point.value)
     } else {
-      value = isBoolean && !isPercentView ? 0 : null
+      // Booleano COM linha e valor nulo é "aberto, não feito" ⇒ 0 em TODAS as
+      // visões. `contributionFactor` (habitsSurface.ts) já devolve 0 para esse
+      // mesmo dia, e a tabela equivalente logo abaixo imprime esse 0: desenhar
+      // lacuna aqui fazia o gráfico e a tabela discordarem do MESMO dia,
+      // escondendo um "não feito" real atrás de um buraco na série.
+      value = isBoolean ? 0 : null
     }
     return {
       date: dt.date,

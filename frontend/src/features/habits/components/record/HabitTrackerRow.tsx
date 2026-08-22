@@ -28,7 +28,7 @@
 // [Source: DESIGN.md#Hábitos L710-712; EXPERIENCE.md#Hábitos; mockup F1/F2/F4,
 //  E2/E3/E4; spec 16.1 Task 3 e I/O Matrix]
 // ─────────────────────────────────────────────────────────────────────────────
-import { useId, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useId, useRef, useState, type CSSProperties } from 'react'
 import { Box, Button, Checkbox } from '@mui/material'
 
 import { ItemRowBase } from '../../../bujo'
@@ -36,6 +36,7 @@ import { typography } from '../../../../shared/design/tokens'
 import { useMarkHabitEntryMutation } from '../../api'
 import type { HabitDayEntry } from '../../types'
 import {
+  RETRY_LABEL,
   decimalInputValue,
   formatFrozenFactors,
   isBooleanDone,
@@ -81,11 +82,18 @@ export function HabitTrackerRow({
   const stateId = `habit-row-state-${reactId}`
   const errorId = `habit-row-error-${reactId}`
 
-  // Valor DIGITADO. Nunca é ressincronizado a partir do servidor: é o que
-  // garante "erro de escrita preserva o valor no campo" (I/O Matrix). A troca
-  // de dia/linha remonta o componente (`key={entry.id}` em quem chama).
+  // Valor DIGITADO. NÃO é ressincronizado enquanto há escrita pendente, erro de
+  // escrita ou entrada inválida — é o que garante "erro de escrita preserva o
+  // valor no campo" (I/O Matrix). A troca de dia/linha remonta o componente
+  // (`key={entry.id}` em quem chama).
   const [draft, setDraft] = useState(() => decimalInputValue(entry.value))
   const [invalid, setInvalid] = useState(false)
+  // Espelho do último `entry.value` já refletido no campo. Quando o servidor
+  // devolve um valor diferente do que o campo mostra E não há nada pendente
+  // (outra aba/dispositivo gravou, ou o servidor normalizou o número), o campo
+  // precisa contar a verdade: continuar exibindo o antigo faria o próximo blur
+  // ser tratado como "inalterado" e NADA seria enviado.
+  const syncedValueRef = useRef(entry.value ?? null)
   // Última variável enviada — o retry reenvia exatamente a mesma escrita.
   const lastValueRef = useRef<string | null>(null)
 
@@ -100,6 +108,16 @@ export function HabitTrackerRow({
   })
   const factors = formatFrozenFactors(entry.weightAtTime, entry.multiplierAtTime)
   const showError = mark.isError || invalid
+
+  const serverValue = entry.value ?? null
+  useEffect(() => {
+    if (serverValue === syncedValueRef.current) return
+    syncedValueRef.current = serverValue
+    // Só ressincroniza quando não há nada em voo nem erro/entrada inválida a
+    // preservar — a preservação do valor digitado em falha vem primeiro.
+    if (mark.isPending || mark.isError || invalid) return
+    setDraft(decimalInputValue(entry.value))
+  }, [serverValue, mark.isPending, mark.isError, invalid, entry.value])
 
   function submit(value: string | null) {
     lastValueRef.current = value
@@ -208,7 +226,13 @@ export function HabitTrackerRow({
       aria-label={`Valor de ${entry.name}`}
       aria-invalid={showError || undefined}
       aria-describedby={describedBy || undefined}
-      onChange={(event) => setDraft(event.target.value)}
+      onChange={(event) => {
+        setDraft(event.target.value)
+        // O erro de FORMATO morre assim que o usuário volta a digitar: manter
+        // `aria-invalid`/`INVALID_NUMBER` sobre um texto que já mudou faria o
+        // leitor de tela anunciar inválido um valor possivelmente válido.
+        if (invalid) setInvalid(false)
+      }}
       onBlur={commitNumeric}
       onKeyDown={(event) => {
         if (event.key === 'Enter') {
@@ -299,7 +323,7 @@ export function HabitTrackerRow({
               disabled={disabled || mark.isPending}
               sx={RETRY_BUTTON_SX}
             >
-              Tentar novamente
+              {RETRY_LABEL}
             </Button>
           )}
         </Box>

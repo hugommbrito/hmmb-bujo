@@ -2,7 +2,7 @@
 title: 'Story 16.1 — Hábitos no sistema novo'
 type: 'feature'
 created: '2026-08-22'
-status: 'in-progress'
+status: 'done'
 baseline_revision: 'd990d3bb528ec6341b65fd8e2addcb70d4cc5082'
 review_loop_iteration: 0
 followup_review_recommended: false
@@ -141,6 +141,49 @@ deferred: []
 
 ## Review Triage Log
 
+**Ciclo de review 1 (registrado)** — 3 camadas (blind-hunter, edge-case-hunter, verification-gap)
+contra o diff de `d990d3b`..árvore de trabalho. Nota: o `16-habits-parity-checklist.md` § J
+descreve um passe anterior de 15 patches que **nunca foi registrado aqui** (a sessão expirou antes;
+commit `81be411 "implementação até o timeout"`). Este é o primeiro ciclo com trilha de auditoria.
+
+### Mantidos → `patch`
+
+| # | Achado | Consequência verificada | Sev |
+|---|---|---|---|
+| P1 | `% da meta` num hábito **booleano** zera a série inteira | `metaAtTime` é sempre nulo em booleano ⇒ `metaPercent` devolve `null` em todo ponto; a tabela equivalente imprime `Sem registro neste dia.` em dias **que têm** registro. É absência fabricada — o inverso do princípio "nunca 0% fabricado". `HabitsHistoryPanel.tsx:259`, `:519` | high |
+| P2 | Gráfico × tabela discordam do mesmo dia | Booleano com linha materializada e valor nulo: `contributionFactor` devolve `0` (tabela mostra leitura) mas `HabitEvolutionChart.tsx:120` desenha **lacuna** nas visões `%`/contribuição. O comentário em `habitsSurface.ts:515-521` afirma que essa classe de bug foi corrigida — o conserto só entrou no lado da tabela | high |
+| P3 | Cabeçalho da coluna da grade conta dias **corridos** | `realDaysLabel(bucket.dates.length)` em `HabitCompletionGrid.tsx:265`, mas o parâmetro é `daysWithRecord` e a Task 2 pede "dias reais": a coluna diz "7 dias" sobre células "2/3" — a leitura errada que o rótulo existe para evitar. `GridCell.daysWithRecord` existe e não é usado no cabeçalho | high |
+| P4 | Regressão de paridade no **compact** da grade | Legado (`HabitHistoryGrid.tsx:86-118`) renderiza uma linha **por hábito por dia**; o novo compact (`HabitCompletionGrid.tsx:135-177`) só agrega por dia, e a tabela equivalente em `details` está **depois** do `return` do compact ⇒ no compact o usuário perde a leitura por hábito **e** a tabela equivalente. `HB-E-07` registra como paridade plena, sem DIV | high |
+| P5 | Navegação de data não desabilitada offline | Controles de escrita são corretamente `disabled`, mas `‹ Anterior`/`Próximo ›` não (`HabitsTodayPanel.tsx:201` só trata `atToday`) ⇒ navegar offline cai em erro de leitura com um retry que não pode funcionar | medium |
+| P6 | `selectTab` empurra sempre | `HabitsRecordPage.tsx:82-87` faz `push` mesmo quando o slug já é o selecionado ⇒ clicar duas vezes na mesma aba empilha entradas idênticas e o primeiro `back` não muda de aba, contrariando a AC | medium |
+| P7 | Legenda do grupo × chip do dia | `HabitGroupCard.tsx:49-53` deriva `dayType` de `entries[0]`; o chip usa o `dayType` do dia. O updater otimista de feriado muda só `data.dayType` ⇒ janela em que o chip diz "Feriado" e a legenda ainda diz "Dia útil" | medium |
+| P8 | `scope="colgroup"` sem `<colgroup>` | `HabitCompletionGrid.tsx:280` — banda de seção usando um escopo que não se aplica, justamente no componente cuja exceção de contraste se sustenta na redundância semântica | medium |
+| P9 | `Adicionar grupo` sem nenhum teste que submeta | Única saída do estado "zero grupos" (com o form de hábito todo `disabled`). A string só aparece em `HabitsRecordPage.test.tsx:1131`, dentro do teste que a assere **`disabled`** offline. `HB-C-02` cita como evidência testes de outro comportamento | medium |
+| P10 | Criação numérica e move de grupo sem asserção de payload | O único teste de criação (`:1180`) é **booleano**; nada assere `meta`/`bonus`/`unit` no `POST`, nem `group` no `PATCH` de identidade. O backend 400 em `meta` para booleano, e um move de grupo silenciosamente no-op passariam verdes | medium |
+| P11 | `draft` do campo numérico nunca ressincroniza | `HabitTrackerRow.tsx:88` inicializa uma vez; refetch com valor diferente (outra aba/normalização do servidor) deixa o campo mostrando o que não está gravado, e o próximo blur é tratado como "inalterado" ⇒ nada é enviado | medium |
+| P12 | `--ds-record-cards-columns-wide` emitido sem consumidor | `tokens.ts:597` emite e `tokens.test.ts` assere **a emissão**; nenhum consumidor real (só um comentário em `HabitsTodayPanel.tsx:343`). É o padrão de asserção vácua que `HB-G-08` dizia ter corrigido | low |
+| P13 | Citações obsoletas no checklist de paridade | `HB-C-08`/`HB-C-09` citam `RecordPage::multiplicador vazio remove a configuração (envia null)…`; o teste real é `:898 multiplicador vazio salva 1,00 (nunca null)…`. `HB-C-02`/`C-03`/`C-19` citam testes de outro comportamento | low |
+
+### Descartados (verificação refutou a consequência)
+
+| Achado | Por que cai |
+|---|---|
+| `weeklyBuckets` mesclaria semanas distintas | A entrada é ordenada em `habitsSurface.ts:340` (`[...dates].sort()`) ⇒ uma chave de segunda não pode reaparecer depois de outra; a comparação com a chave anterior é equivalente a indexar por semana |
+| `var(--ds-*)` não resolveria em atributo de apresentação SVG (gráfico invisível/preto) | **Medido em Chromium real**: `stroke="var(--ds-primary)"` computa `rgb(51,102,204)`, idêntico à via CSS. O gráfico pinta certo. (A lacuna de *verificação* — nenhum teste observa a pintura — permanece como observação, não como defeito) |
+| `--p` fora de 0..100 invalidaria o `color-mix` e apagaria o tom | **Medido em Chromium real**: o navegador **satura** — `--p:105` → primary cheio, `--p:-20` → surface cheio. Nenhuma célula perde fundo |
+| `Nenhum hábito neste grupo.` seria tratamento divergente | `backend/habits/services.py:331-335` deriva `groups` **das** entries ⇒ grupo no payload sempre tem ≥1 linha. O ramo é inalcançável contra o backend real (só vive em payload sintético de teste); não é defeito de comportamento |
+| Spec diz "remove a configuração" mas o código grava `1.00` | O conserto seria editar a spec desta build ⇒ descartado por regra do workflow. O código é o comportamento correto e o checklist já documenta a decisão |
+| `addDays` reusa `isoLocalToday` (acoplamento de nome) | Nenhuma consequência para o consumidor; estilo |
+
+### `defer` (pré-existente, fora do diff desta story)
+
+Registrados em `deferred-work.md`: updater otimista de feriado destrói a distinção de fim de semana
+(`api.ts:292`, arquivo que a story deliberadamente não toca — diff zero confirmado); `useOverrideDayWorkdayMutation`
+sem `onSettled`/invalidate ⇒ falha parcial do `Promise.all` deixa a UI com multiplicadores velhos
+(`api.ts:308-315`); `HabitEvolutionChart.tsx` e `habitSeriesView.ts` fora do `SOURCES` dos dois
+guards de literais; `handle.title` morto na rota de redirect `settings/habits`.
+
+
 ## Design Notes
 
 **Rota única × abas internas (decisão de implementação).** O spine é explícito: "principal única, sem rail de contexto, dividida em três abas" (`EXPERIENCE.md#Hábitos`), enquanto o legado usa três rotas em duas árvores diferentes. O caminho escolhido é o precedente já vivo no `ArchivePage`: **uma página, abas com estado na querystring**, e as rotas antigas viram redirect. Isso preserva deep link, o link de `SettingsPage` e os specs e2e que navegam por URL, sem inflar o manifest nem criar rota nova (o gate proíbe rota nova). `habits/history` **permanece** no `routes[]` do manifest — só o componente muda para o redirect — porque `shellRouting.test.ts` exige que toda rota do registry tenha entrada em `shellRoutes`, e `shellDestinations` deriva o destino de `routes[0]` (que continua sendo `habits`).
@@ -179,3 +222,80 @@ Booleano "5/7" pinta a **71%** (a razão real), nunca 5%. Essa é a **única exc
 
 **Manual checks:**
 - Comparar o resultado com `mockups/key-habitos.html` frames **F1–F9** e **E1–E6** (F10–F15, O1 e O2 estão fora do escopo desta story) e registrar cada divergência no checklist de paridade.
+
+## Suggested Review Order
+
+**A composição da superfície (comece aqui)**
+
+- Entrada do design: uma rota, três abas em `?tab=`, um único `<main>`.
+  [`HabitsRecordPage.tsx:82`](../../frontend/src/pages/habits/HabitsRecordPage.tsx#L82)
+
+- Rotas antigas viram redirect; manifest preservado para o `shellRouting.test`.
+  [`registry.ts:96`](../../frontend/src/app/collections/registry.ts#L96)
+
+- `surfaceMigrated: true` nas três rotas — é o que remove o `LegacySeamNotice`.
+  [`shellRouting.ts:85`](../../frontend/src/app/layout/shell/shellRouting.ts#L85)
+
+**Aritmética e derivações puras (o coração testável)**
+
+- Fatores congelados, parser decimal, buckets: nada aqui calcula completude.
+  [`habitsSurface.ts:117`](../../frontend/src/features/habits/components/record/habitsSurface.ts#L117)
+
+- Célula da grade: booleano usa a razão real; sem meta, tom não pinta.
+  [`habitsSurface.ts:453`](../../frontend/src/features/habits/components/record/habitsSurface.ts#L453)
+
+- `contributionFactor`: booleano com linha e valor nulo é 0, nunca lacuna.
+  [`habitsSurface.ts:510`](../../frontend/src/features/habits/components/record/habitsSurface.ts#L510)
+
+**Registro do dia (aba Hoje)**
+
+- Otimismo restrito ao valor da linha; porcentagem só muda no refetch.
+  [`HabitTrackerRow.tsx:116`](../../frontend/src/features/habits/components/record/HabitTrackerRow.tsx#L116)
+
+- **Patch:** campo ressincroniza com o servidor sem pisar em erro pendente.
+  [`HabitTrackerRow.tsx:104`](../../frontend/src/features/habits/components/record/HabitTrackerRow.tsx#L104)
+
+- **Patch:** navegação de data indisponível offline (leitura impossível).
+  [`HabitsTodayPanel.tsx:190`](../../frontend/src/features/habits/components/record/HabitsTodayPanel.tsx#L190)
+
+- **Patch:** legenda do grupo vem do `dayType` do dia, não de `entries[0]`.
+  [`HabitGroupCard.tsx:52`](../../frontend/src/features/habits/components/record/HabitGroupCard.tsx#L52)
+
+**Histórico: gráfico, grade e a exceção de contraste**
+
+- **Patch:** `% da meta` não é oferecida para booleano (série seria toda nula).
+  [`HabitsHistoryPanel.tsx:77`](../../frontend/src/features/habits/components/record/HabitsHistoryPanel.tsx#L77)
+
+- **Patch:** regra de nulo do gráfico alinhada à da tabela equivalente.
+  [`HabitEvolutionChart.tsx:120`](../../frontend/src/features/habits/components/HabitEvolutionChart.tsx#L120)
+
+- **Patch:** cabeçalho da coluna conta dias com registro, não dias corridos.
+  [`HabitCompletionGrid.tsx:265`](../../frontend/src/features/habits/components/record/HabitCompletionGrid.tsx#L265)
+
+- **Patch:** compact recupera a leitura por hábito (paridade com o legado).
+  [`HabitCompletionGrid.tsx:152`](../../frontend/src/features/habits/components/record/HabitCompletionGrid.tsx#L152)
+
+- Escala contínua de tom + tabela equivalente que sustenta a exceção.
+  [`HabitCompletionGrid.tsx:399`](../../frontend/src/features/habits/components/record/HabitCompletionGrid.tsx#L399)
+
+**Configuração: identidade × versionado**
+
+- Um formulário, duas mutações distintas — a armadilha do legado.
+  [`HabitsConfigPanel.tsx:290`](../../frontend/src/features/habits/components/record/HabitsConfigPanel.tsx#L290)
+
+- Multiplicador vazio grava `1,00` (não remove) — divergência documentada.
+  [`HabitsConfigPanel.tsx:174`](../../frontend/src/features/habits/components/record/HabitsConfigPanel.tsx#L174)
+
+**Tokens e periféricos**
+
+- Os 4 blocos de geometria do gate, emitidos como `--ds-*`.
+  [`tokens.ts:290`](../../frontend/src/shared/design/tokens.ts#L290)
+
+- Testes de regressão do ciclo de review (2 verificados por sabotagem).
+  [`HabitsRecordPage.test.tsx:341`](../../frontend/src/pages/habits/HabitsRecordPage.test.tsx#L341)
+
+- Guard estrutural de literais da subpasta nova, com não-vacuidade.
+  [`noLiteralTokens.test.ts:1`](../../frontend/src/features/habits/components/record/noLiteralTokens.test.ts#L1)
+
+- E2E das três abas contra o backend real.
+  [`habits-record.spec.ts:1`](../../frontend/e2e/habits-record.spec.ts#L1)

@@ -52,7 +52,7 @@
 # - Épicos 1–9 e 11 são HISTÓRICO (MVP) — não entram na fila.
 
 generated: 2026-06-22
-last_updated: 2026-08-22  # story 16-0 -> done: gate UX de Habitos aprovado por Hugo a partir do handoff Claude Design (docs/ux-handoffs/16-0). Promovido a DESIGN.md (Habitos (Registro), Selecao de pictograma, Grid/Calendar continuo) e EXPERIENCE.md (Habitos, Fluxo 9, State Patterns, excecao nomeada de contraste). 12 decisoes ratificadas: emoji SAI da interface (16.2 ganha migracao de dado), sem limite de retroatividade, Registro em cards vira variante canonica, limite "sem streaks" revogado como proibicao de metrica agregada -> Story 16.2b NOVA. Reviewer Gate (rubric walker): 0 critical, 3 high todos corrigidos. Heatmap: tom vira canal primario em escala continua, criando a unica excecao ao piso de 4,5:1 do produto. Libera 16.1-16.2.
+last_updated: 2026-08-22
 project: hmmb-bujo
 project_key: NOKEY
 tracking_system: file-system
@@ -199,7 +199,7 @@ development_status:
   # Lotes de automação: 16.0 → [16.1–16.2] · 16.3 → [16.4–16.9] · 16.10 → [16.11–16.14]
   epic-16: in-progress
   16-0-ux-mockup-de-habitos-no-sistema-novo: done  # ✅ gate UX do lote 1 aprovado por Hugo em 2026-08-22 (rito bmad-ux); promovido a DESIGN/EXPERIENCE; 16.1–16.2 DESBLOQUEADAS
-  16-1-habitos-no-sistema-novo: backlog
+  16-1-habitos-no-sistema-novo: review
   16-2-campo-icon-key-e-catalogo-phosphor: backlog
   16-2b-leituras-agregadas-de-habitos: backlog  # aprovada no gate 16.0 (2026-08-21); depende de 16.1/16.2; exige backend novo (agregacoes + GET /api/habits/history/by-group/)
   16-3-ux-mockups-de-saude-metricas-e-medicamentos: backlog  # ⛔ gate UX do lote 2 (rito bmad-ux, mesma sessão — NUNCA dev-story/automator); bloqueia 16.4–16.9

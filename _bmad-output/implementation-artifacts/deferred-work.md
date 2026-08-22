@@ -461,3 +461,35 @@ severity: low
 reason: The follow-up-review damping cap (limits.max_followup_reviews = 1) was spent with the story finalized (status: done, verify green) while the review pass still recommended an independent follow-up. The work was committed by bmad-loop run 20260804-091035-18f0; this entry preserves the lingering recommendation for a deliberate later review.
 status: done 2026-08-04
 resolution: already resolved: já resolvida: DW-52 (deferred-work.md:391), DW-53 (:399) e DW-54 (:407) têm origin 'review (follow-up review pass) of spec-dw-32-exception-handler-set-rollback.md, 2026-08-04', e a spec registra três passes (:173, :192, :204 — a terceira com triage 6 patch / 2 defer / 19 reject); a DW-53 é literalmente uma pass posterior corrigindo achado da anterior, prova mais forte não existe.
+
+### DW-56: Updater otimista de feriado destrói a distinção de fim de semana
+origin: review (bmad-build step-04, ciclo 1) of 16-1-habitos-no-sistema-novo.md, 2026-08-22
+location: frontend/src/features/habits/api.ts:290-293
+source_spec: `_bmad-output/implementation-artifacts/16-1-habitos-no-sistema-novo.md`
+severity: medium
+reason: O updater faz `dayType: isHoliday ? 'holiday' : 'weekday'`. Desmarcar feriado num sábado/domingo mostra "Dia útil" (e esconde o botão de override) até o refetch chegar. Pré-existente: `api.ts` tem diff ZERO nesta story (o domínio é reuso integral por contrato da spec), e o mesmo updater já servia o `HabitTracker` legado. A story 16.1 apenas passa a exibir o chip de tipo de dia de forma mais proeminente, tornando a janela visível.
+status: open
+
+### DW-57: `useOverrideDayWorkdayMutation` sem invalidate em falha parcial
+origin: review (bmad-build step-04, ciclo 1) of 16-1-habitos-no-sistema-novo.md, 2026-08-22
+location: frontend/src/features/habits/api.ts:308-315
+source_spec: `_bmad-output/implementation-artifacts/16-1-habitos-no-sistema-novo.md`
+severity: medium
+reason: O override dispara N PATCH via `Promise.all` e só invalida em `onSuccess`. Se o Promise.all rejeitar no meio, parte das linhas já foi sobrescrita no servidor mas a UI mostra erro com os multiplicadores antigos — e a legenda do grupo (derivada de `entries[0]`) pode afirmar ×0,5 para um grupo cuja primeira linha já foi para 1,00. A própria I/O Matrix da 16.1 prevê "falha parcial → erro agregado com retry", mas o conserto é em `api.ts` (diff zero por contrato). Sugestão: `onSettled` invalidando `keys.habits.day(date)`.
+status: open
+
+### DW-58: `HabitEvolutionChart.tsx` e `habitSeriesView.ts` fora dos guards de literais
+origin: review (bmad-build step-04, ciclo 1) of 16-1-habitos-no-sistema-novo.md, 2026-08-22
+location: frontend/src/features/habits/components/record/noLiteralTokens.test.ts (SOURCES)
+source_spec: `_bmad-output/implementation-artifacts/16-1-habitos-no-sistema-novo.md`
+severity: low
+reason: A 16.1 converteu `HabitEvolutionChart.tsx` para `var(--ds-*)` e criou `habitSeriesView.ts`, mas nenhum dos dois entra no `SOURCES` dos dois `noLiteralTokens.test.ts` — o guard que sustenta o "zero literal" não cobre o componente de gráfico que a superfície nova monta (restam `fontSize: 11`, `fillOpacity: 0.06`, `strokeWidth: 2`). Ficam fora da subpasta `record/` que a spec escopou ao guard, daí o defer.
+status: open
+
+### DW-59: `handle.title` morto na rota de redirect `settings/habits`
+origin: review (bmad-build step-04, ciclo 1) of 16-1-habitos-no-sistema-novo.md, 2026-08-22
+location: frontend/src/app/router.tsx:205-210
+source_spec: `_bmad-output/implementation-artifacts/16-1-habitos-no-sistema-novo.md`
+severity: low
+reason: A rota virou `<Navigate>` mas conservou `handle: { title: 'Configurações — Hábitos' }`. Como a rota nunca renderiza conteúdo, o `RouteAnnouncer` jamais usa esse título — sobra um título morto no manifest de rotas. Inofensivo hoje; limpeza natural quando o Épico 18 aposentar o chrome legado.
+status: open

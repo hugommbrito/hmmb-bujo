@@ -13,6 +13,14 @@
 //     pesos congelados DAQUELE dia. Sem limite de retroatividade (gate 16.0,
 //     Q5) — a interface não cria linhas, ela abre o dia.
 //
+//   ▶ O FUTURO NÃO É DESTINO. A retroatividade é ilimitada; a prospectividade
+//     não existe. `GET /api/habits/days/?date=` chama `seed_habit_day`
+//     incondicionalmente (`backend/habits/views.py`), então ABRIR um dia futuro
+//     MATERIALIZA as linhas dele com os pesos/meta/multiplicador de hoje
+//     congelados — e esse dia passaria a contar como "dia com registro" na
+//     grade do Histórico, derrubando as razões booleanas (5/7 viraria 5/12).
+//     Por isso `Próximo ›` para em HOJE, com o motivo escrito.
+//
 // [Source: mockup key-habitos.html F1/F2/F3/F4; spec 16.1 Task 4 e I/O Matrix]
 // ─────────────────────────────────────────────────────────────────────────────
 import { useId } from 'react'
@@ -29,6 +37,7 @@ import { CompletionBar } from './CompletionBar'
 import { HabitGroupCard } from './HabitGroupCard'
 import { HabitsTodaySkeleton } from './HabitsSkeleton'
 import {
+  RETRY_LABEL,
   addDays,
   formatDateLongBR,
   formatEffectiveWeight,
@@ -43,6 +52,12 @@ export const WRITE_ERROR = 'Não foi possível salvar. Tente novamente.'
 export const OVERRIDE_LABEL = 'Tratar este dia como dia útil (peso cheio)'
 export const HOLIDAY_LABEL = 'Marcar este dia como feriado'
 export const PRECEDENCE_TEXT = 'Precedência: feriado > fim de semana > dia útil.'
+/**
+ * Motivo ESCRITO de `Próximo ›` indisponível em hoje — nunca só um botão
+ * apagado (mesma regra do "criar hábito sem grupo").
+ */
+export const NO_FUTURE_REASON =
+  'Hoje é o último dia registrável: abrir um dia futuro materializaria as linhas dele com os pesos de hoje.'
 
 const RETRY_BUTTON_SX = {
   minHeight: 'var(--ds-touch-target-min)',
@@ -83,6 +98,10 @@ export function HabitsTodayPanel({
   const overrideDay = useOverrideDayWorkdayMutation(date)
   const reactId = useId()
   const dayHeadingId = `habits-day-${reactId}`
+  const noFutureReasonId = `habits-no-future-${reactId}`
+  // A data visível nunca passa de hoje: a navegação não oferece o caminho e o
+  // `changeDate` de `HabitsRecordPage` clampa qualquer chamador em hoje.
+  const atToday = date >= today
 
   if (habitDay.isPending) return <HabitsTodaySkeleton />
 
@@ -100,7 +119,7 @@ export function HabitsTodayPanel({
           {READ_ERROR}
         </Box>
         <Button onClick={() => habitDay.refetch()} sx={RETRY_BUTTON_SX}>
-          Tentar de novo
+          {RETRY_LABEL}
         </Button>
       </Box>
     )
@@ -167,21 +186,53 @@ export function HabitsTodayPanel({
               alignItems: 'center',
             }}
           >
-            <Button onClick={() => onChangeDate(addDays(date, -1))} sx={STEP_BUTTON_SX}>
+            {/* Offline a navegação de data também para: trocar de dia dispara
+                uma LEITURA que não pode completar, e o usuário cairia no erro de
+                leitura com um retry que não tem como funcionar. O motivo é o
+                mesmo da faixa (`disabledReasonId`). */}
+            <Button
+              onClick={() => onChangeDate(addDays(date, -1))}
+              disabled={disabled}
+              aria-describedby={disabled ? disabledReasonId : undefined}
+              sx={STEP_BUTTON_SX}
+            >
               ‹ Anterior
             </Button>
             <Button
               onClick={() => onChangeDate(today)}
               aria-pressed={date === today}
+              disabled={disabled}
+              aria-describedby={disabled ? disabledReasonId : undefined}
               sx={STEP_BUTTON_SX}
             >
               Hoje
             </Button>
-            <Button onClick={() => onChangeDate(addDays(date, 1))} sx={STEP_BUTTON_SX}>
+            <Button
+              onClick={() => onChangeDate(addDays(date, 1))}
+              disabled={atToday || disabled}
+              // Os dois motivos podem valer ao mesmo tempo (hoje E offline):
+              // anunciar os dois, na ordem em que o usuário os encontra.
+              aria-describedby={
+                [atToday ? noFutureReasonId : null, disabled ? disabledReasonId : null]
+                  .filter(Boolean)
+                  .join(' ') || undefined
+              }
+              sx={STEP_BUTTON_SX}
+            >
               Próximo ›
             </Button>
           </Box>
         </Box>
+
+        {atToday && (
+          <Box
+            id={noFutureReasonId}
+            role="note"
+            sx={{ ...typography.meta, color: 'var(--ds-ink-muted)' }}
+          >
+            {NO_FUTURE_REASON}
+          </Box>
+        )}
 
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 'var(--ds-space-3)' }}>
           <Box
@@ -286,7 +337,7 @@ export function HabitsTodayPanel({
               }}
               sx={{ ...STEP_BUTTON_SX, color: 'var(--ds-danger)', borderColor: 'var(--ds-danger)' }}
             >
-              Tentar novamente
+              {RETRY_LABEL}
             </Button>
           </Box>
         )}
@@ -302,8 +353,20 @@ export function HabitsTodayPanel({
             display: 'grid',
             gap: 'var(--ds-record-cards-gap)',
             alignItems: 'start',
+            // `auto-fit` + o PISO do card: duas colunas só se formam quando
+            // cada card cabe em `--ds-record-cards-card-min-width`. Com o
+            // `--ds-record-cards-max-width` do container (aplicado em
+            // `HabitsRecordPage`), o teto natural é
+            // `--ds-record-cards-columns-wide` colunas. A forma anterior
+            // (`repeat(<colunas>, 1fr)`) ignorava o piso e podia entregar dois
+            // cards abaixo dele — exatamente o que o token existe para evitar.
+            //
+            // O teto de colunas é DECLARADO (não emergente da aritmética entre
+            // max-width, piso e gap): o container nunca passa de
+            // `--ds-record-cards-columns-wide` cards por faixa, e o piso do card
+            // continua mandando quando o espaço não dá para tantos.
             gridTemplateColumns: wide
-              ? 'repeat(var(--ds-record-cards-columns-wide), minmax(0, 1fr))'
+              ? `repeat(auto-fit, minmax(max(min(100%, var(--ds-record-cards-card-min-width)), calc((100% - (var(--ds-record-cards-columns-wide) - 1) * var(--ds-record-cards-gap)) / var(--ds-record-cards-columns-wide))), 1fr))`
               : 'minmax(0, 1fr)',
           }}
         >
@@ -317,6 +380,7 @@ export function HabitsTodayPanel({
               disabled={disabled}
               disabledReasonId={disabledReasonId}
               headingId={`habits-group-${group.id}`}
+              dayType={dayType}
             />
           ))}
         </Box>

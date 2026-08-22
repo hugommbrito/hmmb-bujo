@@ -66,7 +66,24 @@ export function HabitsRecordPage() {
   // específico para cá ("Abrir este dia para edição").
   const [date, setDate] = useState(() => isoLocalToday())
 
+  /**
+   * Ponto ÚNICO de troca de data, e o lugar onde o teto vive: nenhum chamador
+   * pode levar a superfície para o futuro. `GET /api/habits/days/?date=`
+   * MATERIALIZA o dia pedido (`seed_habit_day`), então abrir um dia futuro
+   * criaria linhas com os pesos de hoje congelados nele — e esse dia entraria
+   * como "dia com registro" na grade do Histórico. Retroatividade é ilimitada
+   * (gate 16.0, Q5); prospectividade não existe.
+   */
+  function changeDate(next: string) {
+    const today = isoLocalToday()
+    setDate(next > today ? today : next)
+  }
+
   function selectTab(next: HabitTabSlug) {
+    // Reselecionar a aba ATUAL não é navegação: empurrar aqui empilharia
+    // entradas idênticas e o primeiro `back` não mudaria de aba — contrariando
+    // a AC ("o back do navegador volta à aba anterior").
+    if (next === tab) return
     const params = new URLSearchParams(searchParams)
     params.set('tab', next)
     // `push` (não `replace`): o back do navegador volta à aba anterior.
@@ -93,7 +110,7 @@ export function HabitsRecordPage() {
   }
 
   function openDayForEdit(nextDate: string) {
-    setDate(nextDate)
+    changeDate(nextDate)
     selectTab('hoje')
   }
 
@@ -197,7 +214,7 @@ export function HabitsRecordPage() {
         {tab === 'hoje' && (
           <HabitsTodayPanel
             date={date}
-            onChangeDate={setDate}
+            onChangeDate={changeDate}
             compact={compact}
             wide={isWide}
             disabled={!isOnline}
