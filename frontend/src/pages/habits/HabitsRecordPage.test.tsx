@@ -527,9 +527,9 @@ describe('Aba Hoje — cabeçalho do dia e completude do servidor', () => {
     mockApi()
     renderPage()
     expect(await screen.findByTestId('habits-day-type-chip')).toHaveTextContent('Dia útil')
-    expect(screen.getByRole('button', { name: '‹ Anterior' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Dia anterior' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Hoje' })).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByRole('button', { name: 'Próximo ›' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Próximo dia' })).toBeInTheDocument()
   })
 
   it('vazio: "Nenhum hábito ativo hoje."', async () => {
@@ -689,11 +689,43 @@ describe('Aba Hoje — linhas (I/O Matrix)', () => {
     expect(field).toHaveAttribute('aria-invalid', 'true')
     // A porcentagem volta ao último valor confirmado pelo servidor.
     expect(screen.getByTestId('habits-day-percent')).toHaveTextContent('64%')
+    // E3: o campo mostra o DIGITADO e o estado o CONFIRMADO — a linha diz qual
+    // é qual, em vez de exibir dois números que se contradizem em silêncio.
+    expect(screen.getByText(/— valor no servidor/)).toBeInTheDocument()
 
     const calls = mockPatch.mock.calls.length
     await user.click(screen.getByRole('button', { name: 'Tentar de novo' }))
     expect(mockPatch.mock.calls.length).toBe(calls + 1)
     expect(mockPatch).toHaveBeenLastCalledWith('/api/habits/days/e2/', { value: '7.5' })
+  })
+
+  // E2: durante a escrita a linha recebe o tom suave do primário e o texto
+  // "salvando…". O estado é curtíssimo, então a altura tem de estar RESERVADA
+  // desde antes — a linha não pode crescer e encolher no caminho.
+  it('E2: linha ganha fundo e "salvando…" sem mudar de altura', async () => {
+    const user = userEvent.setup()
+    mockApi()
+    // Escrita que não resolve: o estado pendente fica observável.
+    mockPatch.mockReturnValue(new Promise(() => {}))
+    renderPage()
+    const checkbox = await screen.findByRole('checkbox', { name: 'Alongamento' })
+    const row = screen.getAllByTestId('habit-tracker-row')[0]
+
+    // O slot do estado transitório existe ANTES de qualquer escrita, com altura
+    // mínima reservada — é isso que impede o pulo. (jsdom não faz layout, então
+    // a prova é estrutural: o slot está montado e reserva medida por token.)
+    const slotBefore = row.querySelector('[data-testid="habit-row-transient"]')
+    expect(slotBefore).not.toBeNull()
+    expect(slotBefore).toBeEmptyDOMElement()
+
+    await user.click(checkbox)
+
+    const saving = await screen.findByText('salvando…')
+    expect(saving).toHaveAttribute('role', 'status')
+    // O texto entra DENTRO do slot já existente — nenhum nó novo acima/abaixo.
+    expect(row.querySelector('[data-testid="habit-row-transient"]')).toContainElement(saving)
+    // E2: a linha inteira recebe o tom suave do primário durante a escrita.
+    expect(row).toHaveStyle({ backgroundColor: 'var(--ds-primary-soft)' })
   })
 })
 
@@ -770,16 +802,14 @@ describe('Aba Hoje — feriado, override e dias passados', () => {
   // um dia futuro MATERIALIZA linhas nele com os pesos de hoje congelados — e
   // esse dia passa a contar como "dia com registro" na grade (5/7 viraria
   // 5/12). A I/O Matrix só contempla dia PASSADO: o futuro não é destino.
-  it('o futuro não é navegável: "Próximo ›" para em hoje, com o motivo escrito', async () => {
+  it('o futuro não é navegável: "Próximo dia" para em hoje (botão desabilitado basta)', async () => {
     mockApi()
     renderPage()
     await screen.findByTestId('habits-day-percent')
 
-    const next = screen.getByRole('button', { name: 'Próximo ›' })
+    const next = screen.getByRole('button', { name: 'Próximo dia' })
     expect(next).toBeDisabled()
-    const reason = screen.getByText(/Hoje é o último dia registrável/)
-    expect(reason).toHaveAttribute('role', 'note')
-    expect(next).toHaveAttribute('aria-describedby', reason.id)
+    expect(screen.queryByText(/último dia registrável/)).not.toBeInTheDocument()
 
     // `fireEvent` (não `userEvent`): queremos provar que nem um clique
     // sintético atravessa o `disabled` — `userEvent` recusaria antes, no
@@ -793,16 +823,16 @@ describe('Aba Hoje — feriado, override e dias passados', () => {
     for (const requested of requestedDates) expect(requested <= TODAY).toBe(true)
   })
 
-  it('voltando ao passado, "Próximo ›" volta a existir (o teto é hoje, não a navegação)', async () => {
+  it('voltando ao passado, "Próximo dia" volta a existir (o teto é hoje, não a navegação)', async () => {
     const user = userEvent.setup()
     mockApi()
     renderPage()
     await screen.findByTestId('habits-day-percent')
-    await user.click(screen.getByRole('button', { name: '‹ Anterior' }))
+    await user.click(screen.getByRole('button', { name: 'Dia anterior' }))
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Próximo ›' })).toBeEnabled(),
+      expect(screen.getByRole('button', { name: 'Próximo dia' })).toBeEnabled(),
     )
-    expect(screen.queryByText(/Hoje é o último dia registrável/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/último dia registrável/)).not.toBeInTheDocument()
   })
 
   it('feriado que FALHA: alerta + retry da MESMA escrita, sem mexer na porcentagem', async () => {
@@ -872,7 +902,7 @@ describe('Aba Hoje — feriado, override e dias passados', () => {
     mockApi()
     renderPage()
     await screen.findByTestId('habits-day-percent')
-    await user.click(screen.getByRole('button', { name: '‹ Anterior' }))
+    await user.click(screen.getByRole('button', { name: 'Dia anterior' }))
     await waitFor(() =>
       expect(mockGet).toHaveBeenCalledWith('/api/habits/days/', { params: { date: yesterday } }),
     )
@@ -912,7 +942,7 @@ describe('Aba Hoje — offline', () => {
     mockApi()
     renderPage()
     const banner = await screen.findByRole('status')
-    for (const name of ['‹ Anterior', 'Hoje', 'Próximo ›']) {
+    for (const name of ['Dia anterior', 'Hoje', 'Próximo dia']) {
       const button = screen.getByRole('button', { name })
       expect(button).toBeDisabled()
       expect(button.getAttribute('aria-describedby')).toContain(banner.id)
@@ -1550,9 +1580,8 @@ describe('Aba Histórico', () => {
     renderPage('/habits?tab=historico')
     const next = await screen.findByRole('button', { name: 'Próximo período ›' })
     expect(next).toBeDisabled()
-    const note = screen.getByText('Este é o período mais recente.')
-    expect(note).toHaveAttribute('role', 'note')
-    expect(next).toHaveAttribute('aria-describedby', note.id)
+    // A nota redundante saiu: o botão desabilitado é o contrato.
+    expect(screen.queryByText('Este é o período mais recente.')).not.toBeInTheDocument()
 
     // Recuando um período, avançar volta a existir — e não passa de hoje.
     await user.click(screen.getByRole('button', { name: '‹ Período anterior' }))

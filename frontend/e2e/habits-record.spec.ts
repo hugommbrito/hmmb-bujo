@@ -189,8 +189,8 @@ test('dia passado é editável com os pesos congelados dele (sem limite de retro
   await expect(page.getByTestId('habits-day-percent')).toBeVisible(RECONCILE)
 
   // Navega dois dias para trás até o dia âncora (60% no seed).
-  await page.getByRole('button', { name: '‹ Anterior' }).click()
-  await page.getByRole('button', { name: '‹ Anterior' }).click()
+  await page.getByRole('button', { name: 'Dia anterior' }).click()
+  await page.getByRole('button', { name: 'Dia anterior' }).click()
   await expect(page.getByTestId('habits-day-percent')).toHaveText('60%', RECONCILE)
   await expect(page.getByText('2.500 / 5.000 passos (50%)')).toBeVisible()
 

@@ -56,9 +56,6 @@ export const PRECEDENCE_TEXT = 'Precedência: feriado > fim de semana > dia úti
  * Motivo ESCRITO de `Próximo ›` indisponível em hoje — nunca só um botão
  * apagado (mesma regra do "criar hábito sem grupo").
  */
-export const NO_FUTURE_REASON =
-  'Hoje é o último dia registrável: abrir um dia futuro materializaria as linhas dele com os pesos de hoje.'
-
 const RETRY_BUTTON_SX = {
   minHeight: 'var(--ds-touch-target-min)',
   backgroundColor: 'var(--ds-primary)',
@@ -98,7 +95,6 @@ export function HabitsTodayPanel({
   const overrideDay = useOverrideDayWorkdayMutation(date)
   const reactId = useId()
   const dayHeadingId = `habits-day-${reactId}`
-  const noFutureReasonId = `habits-no-future-${reactId}`
   // A data visível nunca passa de hoje: a navegação não oferece o caminho e o
   // `changeDate` de `HabitsRecordPage` clampa qualquer chamador em hoje.
   const atToday = date >= today
@@ -194,9 +190,10 @@ export function HabitsTodayPanel({
               onClick={() => onChangeDate(addDays(date, -1))}
               disabled={disabled}
               aria-describedby={disabled ? disabledReasonId : undefined}
+              aria-label="Dia anterior"
               sx={STEP_BUTTON_SX}
             >
-              ‹ Anterior
+              ‹
             </Button>
             <Button
               onClick={() => onChangeDate(today)}
@@ -210,29 +207,14 @@ export function HabitsTodayPanel({
             <Button
               onClick={() => onChangeDate(addDays(date, 1))}
               disabled={atToday || disabled}
-              // Os dois motivos podem valer ao mesmo tempo (hoje E offline):
-              // anunciar os dois, na ordem em que o usuário os encontra.
-              aria-describedby={
-                [atToday ? noFutureReasonId : null, disabled ? disabledReasonId : null]
-                  .filter(Boolean)
-                  .join(' ') || undefined
-              }
+              aria-describedby={disabled ? disabledReasonId : undefined}
+              aria-label="Próximo dia"
               sx={STEP_BUTTON_SX}
             >
-              Próximo ›
+              ›
             </Button>
           </Box>
         </Box>
-
-        {atToday && (
-          <Box
-            id={noFutureReasonId}
-            role="note"
-            sx={{ ...typography.meta, color: 'var(--ds-ink-muted)' }}
-          >
-            {NO_FUTURE_REASON}
-          </Box>
-        )}
 
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 'var(--ds-space-3)' }}>
           <Box

@@ -221,6 +221,32 @@
 | DIV-HB-09 | Sem matriz axe por viewport e sem story de fechamento de a11y | retro do Épico 15 (verificação formal de a11y descontinuada) | Teclado, foco, alvo de toque e contraste vêm herdados dos tokens/componentes compartilhados; os contratos semânticos são asseridos por `role`/`aria-*` nos testes acima |
 | DIV-HB-10 | F10–F12 (bloco de Hábitos nas duas lentes do Daily) e F13–F15 (sequência, dias 100%, série por grupo) não entram | spec 16.1 Never; mockup `key-habitos.html:1768` | `DailyPage.tsx:110` segue com o `HabitTracker` legado, intacto; as leituras agregadas exigem backend novo (**Story 16.2b**) |
 
+## K. Ajustes da homologação em dev (2026-08-22)
+
+> 12 apontamentos do Hugo sobre a instância de dev, todos aplicados. Onde havia
+> fonte da verdade, a referência foi o `mockups/key-habitos.html` — não o gosto
+> de quem implementou.
+
+| Frame | Apontamento | O que mudou |
+|---|---|---|
+| F1–F4 | Remover a nota "Hoje é o último dia registrável…" | Constante e `role="note"` removidos; o botão desabilitado é o contrato. `aria-describedby` do "Próximo" limpo |
+| F3–F4 | Navegação de dia só com as setas | `‹` / `›` no visual, com `aria-label` `Dia anterior` / `Próximo dia` — sem texto visível a seta sozinha não se anunciaria |
+| F5 | Conferir maiúsculas/minúsculas | A Configuração já seguia o mockup (`Booleano`/`Numérico`); a **grade** usava minúsculas — alinhada a `Booleano · Peso N` |
+| F8 | Card superior: alinhamento vertical e negritos | `alignItems` unificado em `center` (havia `flex-end` no container contra `center` no texto); intervalo passou a `body-strong` por ser a informação principal |
+| F8 | Remover "Este é o período mais recente" | Nota e `aria-describedby` removidos; botão desabilitado basta |
+| F8 | Remover "Leva o dia selecionado para a aba Hoje…" | Removida — o rótulo do botão já diz |
+| F8 | Grade: negritos e tamanhos de fonte | Nome do hábito é `th scope="row"`: passou de `body` para `body-strong`, coerente com o papel de cabeçalho |
+| F8 | Grade: números não centralizados | `flex` + `center` nos dois eixos, em vez de `lineHeight` fingindo altura — o tom pinta o bloco todo, o número tem de estar no meio dele |
+| F8 | Tabela equivalente: head sem destaque | `backgroundColor: var(--ds-surface-subtle)`, como o head da grade |
+| E2 | Fundo verde não aparecia no salvamento | A linha recebe `var(--ds-primary-soft)` enquanto `isPending` (mockup `:1579`) |
+| E2 | Altura pulava no estado curto | Estado transitório virou slot **sempre montado** (`habit-row-transient`) com `minHeight` reservada, dentro do corpo da linha — antes `salvando…`/erro eram nós criados ABAIXO da linha |
+| E3 | Comportamento errado no erro de escrita | Erro e retry passaram para dentro da linha, e o estado ganhou o sufixo `— valor no servidor`: no erro o campo mostra o **digitado** e o estado o **confirmado**, e sem esse rótulo a linha exibia dois números contraditórios (mockup `:1599`) |
+
+**Cobertura nova:** `RecordPage::E2: linha ganha fundo e "salvando…" sem mudar de altura`
+(sensibilidade confirmada por sabotagem) e a asserção de `— valor no servidor` no teste
+de erro de escrita. O estado de salvamento **não tinha teste nenhum** antes — foi por isso
+que o fundo ausente e o pulo de altura passaram pelas três camadas de review.
+
 ## J. Verificação executada nesta rodada
 
 > **Terceira passada (ciclo de review 1 REGISTRADO, 2026-08-22).** As duas passadas

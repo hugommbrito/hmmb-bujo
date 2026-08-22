@@ -247,7 +247,11 @@ export function HabitTrackerRow({
   const row = (
     <ItemRowBase
       title={entry.name}
-      subline={stateText}
+      // E3: no erro de escrita o campo mostra o DIGITADO e o estado mostra o
+      // CONFIRMADO — dois números diferentes na mesma linha. Sem dizer qual é
+      // qual, a linha parece estar se contradizendo (mockup
+      // `key-habitos.html:1599`: "1,8 / 2,5 L (72%) — valor no servidor").
+      subline={mark.isError ? `${stateText} — valor no servidor` : stateText}
       sublineId={stateId}
       categoryBorder={false}
       leadingSlot={leadingSlot}
@@ -263,8 +267,54 @@ export function HabitTrackerRow({
     />
   )
 
+  // Altura RESERVADA para o estado transitório: sem isto a linha crescia ao
+  // entrar em "salvando…" e encolhia ao sair — pulo num estado curtíssimo.
+  const transient = (
+    <Box
+      data-testid="habit-row-transient"
+      sx={{
+        minHeight: 'var(--ds-space-4)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 'var(--ds-space-1)',
+      }}
+    >
+      {mark.isPending && (
+        <Box role="status" aria-live="polite" sx={{ ...typography.meta, color: 'var(--ds-ink-muted)' }}>
+          salvando…
+        </Box>
+      )}
+      {showError && (
+        <>
+          <Box id={errorId} role="alert" sx={{ ...typography.meta, color: 'var(--ds-danger)' }}>
+            {invalid ? INVALID_NUMBER : SAVE_ERROR}
+          </Box>
+          {!invalid && (
+            <Button
+              onClick={() => submit(lastValueRef.current)}
+              disabled={disabled || mark.isPending}
+              sx={RETRY_BUTTON_SX}
+            >
+              {RETRY_LABEL}
+            </Button>
+          )}
+        </>
+      )}
+    </Box>
+  )
+
   return (
-    <Box component="li" data-testid="habit-tracker-row" sx={{ listStyle: 'none' }}>
+    <Box
+      component="li"
+      data-testid="habit-tracker-row"
+      sx={{
+        listStyle: 'none',
+        // E2: durante a escrita a linha inteira recebe o tom suave do primário
+        // (mockup `key-habitos.html:1579`) — feedback sem toast e sem realocar.
+        backgroundColor: mark.isPending ? 'var(--ds-primary-soft)' : undefined,
+        borderRadius: 'var(--ds-radius-xs)',
+      }}
+    >
       {compact && !isNumeric ? (
         // Compact booleano: a linha inteira é o alvo (rótulo clicável). O
         // `aria-label` do input VENCE o conteúdo do `<label>`, então o nome
@@ -283,6 +333,17 @@ export function HabitTrackerRow({
         row
       )}
 
+      {/* Estado transitório alinhado à COLUNA DO CORPO (mesma indentação do
+          campo numérico no compact), para ler como continuação da linha. */}
+      <Box
+        sx={{
+          pl: 'calc(var(--ds-habit-tracker-row-control-column) + var(--ds-domain-icon-size-default) + var(--ds-space-4))',
+          pr: 'var(--ds-space-3)',
+        }}
+      >
+        {transient}
+      </Box>
+
       {compact && isNumeric && (
         <Box
           sx={{
@@ -295,39 +356,6 @@ export function HabitTrackerRow({
         </Box>
       )}
 
-      {mark.isPending && (
-        <Box
-          role="status"
-          sx={{ ...typography.meta, color: 'var(--ds-ink-muted)', pl: 'var(--ds-space-2)' }}
-        >
-          Salvando…
-        </Box>
-      )}
-
-      {showError && (
-        <Box
-          sx={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 'var(--ds-space-1)',
-            pl: 'var(--ds-space-2)',
-            pb: 'var(--ds-space-1)',
-          }}
-        >
-          <Box id={errorId} role="alert" sx={{ ...typography.meta, color: 'var(--ds-danger)' }}>
-            {invalid ? INVALID_NUMBER : SAVE_ERROR}
-          </Box>
-          {!invalid && (
-            <Button
-              onClick={() => submit(lastValueRef.current)}
-              disabled={disabled || mark.isPending}
-              sx={RETRY_BUTTON_SX}
-            >
-              {RETRY_LABEL}
-            </Button>
-          )}
-        </Box>
-      )}
     </Box>
   )
 }

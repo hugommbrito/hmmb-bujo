@@ -361,7 +361,7 @@ export function HabitCompletionGrid({
                       component="th"
                       scope="row"
                       sx={{
-                        ...typography.body,
+                        ...typography['body-strong'],
                         textAlign: 'left',
                         p: 'var(--ds-space-2)',
                         border: '1px solid var(--ds-border)',
@@ -394,7 +394,7 @@ export function HabitCompletionGrid({
                         component="span"
                         sx={{ display: 'block', ...typography.meta, color: 'var(--ds-ink-muted)' }}
                       >
-                        {row.habit.type === 'boolean' ? 'booleano' : 'numérico'}
+                        {row.habit.type === 'boolean' ? 'Booleano' : 'Numérico'}
                         {row.habit.unit ? ` · ${row.habit.unit}` : ''}
                       </Box>
                     </Box>
@@ -424,9 +424,14 @@ export function HabitCompletionGrid({
                               : ({ ['--p' as string]: String(cell.percent) } as CSSProperties)
                           }
                           sx={{
-                            display: 'block',
+                            // Centragem nos DOIS eixos: `flex` + `center` em
+                            // vez de `lineHeight` fingindo altura de linha —
+                            // o tom pinta o bloco inteiro, então o número
+                            // precisa estar no meio dele de verdade.
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
                             minHeight: 'var(--ds-touch-target-min)',
-                            lineHeight: 'var(--ds-touch-target-min)',
                             ...typography['body-strong'],
                             fontVariantNumeric: 'tabular-nums',
                             ...(cell.percent == null
@@ -500,6 +505,7 @@ export function HabitCompletionGrid({
                     textAlign: 'left',
                     p: 'var(--ds-space-1)',
                     border: '1px solid var(--ds-border)',
+                    backgroundColor: 'var(--ds-surface-subtle)',
                     color: 'var(--ds-ink)',
                   }}
                 >

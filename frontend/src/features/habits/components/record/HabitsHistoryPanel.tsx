@@ -67,7 +67,6 @@ const DEFAULT_SPAN = 29
  * períodos futuros só renderizaria colunas vazias e sugeriria que existe
  * registro por vir.
  */
-export const LATEST_PERIOD_NOTE = 'Este é o período mais recente.'
 
 function defaultRange() {
   const end = isoLocalToday()
@@ -214,10 +213,6 @@ function DayDetail({
         <Button onClick={onOpenForEdit} sx={SECONDARY_BUTTON_SX}>
           {OPEN_FOR_EDIT}
         </Button>
-        <Box sx={{ ...typography.meta, color: 'var(--ds-ink-muted)' }}>
-          Leva o dia selecionado para a aba Hoje. Não há nenhum controle de escrita nesta
-          superfície.
-        </Box>
       </Box>
     </Box>
   )
@@ -327,7 +322,6 @@ export function HabitsHistoryPanel({ compact, onOpenDayForEdit }: HabitsHistoryP
   const dateFieldId = `habits-history-date-${reactId}`
   const habitFieldId = `habits-history-habit-${reactId}`
   const viewFieldId = `habits-history-view-${reactId}`
-  const latestPeriodNoteId = `habits-history-latest-${reactId}`
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 'var(--ds-space-4)' }}>
@@ -336,7 +330,9 @@ export function HabitsHistoryPanel({ compact, onOpenDayForEdit }: HabitsHistoryP
         sx={{
           ...BLOCK_SX,
           flexDirection: 'row',
-          alignItems: 'flex-end',
+          // Um só eixo de alinhamento para todos os filhos: o `flex-end` daqui
+          // contra o `center` do texto do intervalo era o desalinhamento.
+          alignItems: 'center',
           flexWrap: 'wrap',
           gap: 'var(--ds-space-2)',
         }}
@@ -346,9 +342,8 @@ export function HabitsHistoryPanel({ compact, onOpenDayForEdit }: HabitsHistoryP
         </Button>
         <Box
           sx={{
-            ...typography.meta,
-            color: 'var(--ds-ink-muted)',
-            alignSelf: 'center',
+            ...typography['body-strong'],
+            color: 'var(--ds-ink)',
             fontVariantNumeric: 'tabular-nums',
           }}
         >
@@ -358,20 +353,10 @@ export function HabitsHistoryPanel({ compact, onOpenDayForEdit }: HabitsHistoryP
         <Button
           onClick={() => shiftPeriod(1)}
           disabled={atLatestPeriod}
-          aria-describedby={atLatestPeriod ? latestPeriodNoteId : undefined}
           sx={SECONDARY_BUTTON_SX}
         >
           Próximo período ›
         </Button>
-        {atLatestPeriod && (
-          <Box
-            id={latestPeriodNoteId}
-            role="note"
-            sx={{ ...typography.meta, color: 'var(--ds-ink-muted)', alignSelf: 'center' }}
-          >
-            {LATEST_PERIOD_NOTE}
-          </Box>
-        )}
         <Box sx={{ marginLeft: 'auto', minWidth: 0 }}>
           <Field id={dateFieldId} label="Dia em detalhe">
             <input
