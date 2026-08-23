@@ -23,6 +23,9 @@ const BOOLEAN_ENTRY: HabitDayEntry = {
   habitId: 'h-ler',
   name: 'Ler',
   emoticon: '📖',
+  // Story 16.2: `iconKey` entrou no contrato de leitura; esta superfície legado
+  // não o renderiza (o emoji sai da UI só na superfície nova).
+  iconKey: null,
   type: 'boolean',
   group: 'g-saude',
   unit: '',
@@ -39,6 +42,9 @@ const NUMERIC_ENTRY: HabitDayEntry = {
   habitId: 'h-passos',
   name: 'Passos',
   emoticon: '🏃',
+  // Story 16.2: `iconKey` entrou no contrato de leitura; esta superfície legado
+  // não o renderiza (o emoji sai da UI só na superfície nova).
+  iconKey: null,
   type: 'numeric',
   group: 'g-saude',
   unit: 'passos',

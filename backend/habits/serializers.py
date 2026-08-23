@@ -10,6 +10,7 @@ pela camada de serviço.
 
 from rest_framework import serializers
 
+from core.phosphor import validate_icon_key
 from habits.models import DayType, Habit, HabitDayEntry, HabitGroup, HabitVersion
 
 
@@ -55,7 +56,7 @@ class HabitSerializer(serializers.ModelSerializer):
     class Meta:
         model = Habit
         fields = [
-            "id", "name", "emoticon", "group", "type", "unit",
+            "id", "name", "emoticon", "icon_key", "group", "type", "unit",
             "weight", "active", "meta", "bonus", "effective_from",
         ]
 
@@ -64,6 +65,13 @@ class HabitCreateSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=200)
     emoticon = serializers.CharField(max_length=16, required=False, allow_blank=True, default="")
     unit = serializers.CharField(max_length=32, required=False, allow_blank=True, default="")
+    # `icon_key`: CharField + `validate_icon_key`, nunca ChoiceField (catálogo de
+    # 1512 nomes não vira enum no contrato). `allow_null` porque hábito sem
+    # pictograma é estado válido; sem `default`, para que "não enviou" não vire
+    # um `icon_key=None` explícito nos kwargs do service.
+    icon_key = serializers.CharField(
+        max_length=64, required=False, allow_null=True
+    )
     group = serializers.UUIDField()
     type = serializers.ChoiceField(choices=Habit.Type.choices)
     weight = serializers.DecimalField(max_digits=6, decimal_places=2)
@@ -73,6 +81,9 @@ class HabitCreateSerializer(serializers.Serializer):
     bonus = serializers.DecimalField(
         max_digits=5, decimal_places=2, required=False, allow_null=True
     )
+
+    # `icon_key` é validado contra o catálogo Phosphor (`core.phosphor`) → 400.
+    validate_icon_key = staticmethod(validate_icon_key)
 
     def validate(self, attrs):
         if attrs["type"] != Habit.Type.NUMERIC and (
@@ -90,7 +101,13 @@ class HabitUpdateSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=200, required=False)
     emoticon = serializers.CharField(max_length=16, required=False, allow_blank=True)
     unit = serializers.CharField(max_length=32, required=False, allow_blank=True)
+    # `allow_null`: PATCH `{iconKey: null}` LIMPA o pictograma (volta a nulo) —
+    # é o caminho suportado de remoção, não um erro de validação.
+    icon_key = serializers.CharField(max_length=64, required=False, allow_null=True)
     group = serializers.UUIDField(required=False)
+
+    # `icon_key` é validado contra o catálogo Phosphor (`core.phosphor`) → 400.
+    validate_icon_key = staticmethod(validate_icon_key)
 
     def validate(self, attrs):
         if "type" in self.initial_data:
@@ -122,7 +139,7 @@ class HabitVersionCreateSerializer(serializers.Serializer):
 class HabitDayEntrySerializer(serializers.ModelSerializer):
     """Uma linha do tracker do dia: identidade do hábito + snapshot congelado.
 
-    Expõe a identidade do hábito (``name``/``emoticon``/``type``/``group``/``unit``)
+    Expõe a identidade do hábito (``name``/``emoticon``/``icon_key``/``type``/``group``/``unit``)
     junto do estado do dia (``value``/``*_at_time``). ``type`` reusa ``HabitTypeEnum``
     via ``ChoiceField`` (mesmo override de enum da 6.1).
     """
@@ -130,6 +147,9 @@ class HabitDayEntrySerializer(serializers.ModelSerializer):
     habit_id = serializers.UUIDField(source="habit.id", read_only=True)
     name = serializers.CharField(source="habit.name", read_only=True)
     emoticon = serializers.CharField(source="habit.emoticon", read_only=True)
+    icon_key = serializers.CharField(
+        source="habit.icon_key", read_only=True, allow_null=True
+    )
     unit = serializers.CharField(source="habit.unit", read_only=True)
     type = serializers.ChoiceField(
         choices=Habit.Type.choices, source="habit.type", read_only=True
@@ -141,7 +161,7 @@ class HabitDayEntrySerializer(serializers.ModelSerializer):
     class Meta:
         model = HabitDayEntry
         fields = [
-            "id", "habit_id", "name", "emoticon", "type", "group", "unit",
+            "id", "habit_id", "name", "emoticon", "icon_key", "type", "group", "unit",
             "value", "weight_at_time", "meta_at_time", "bonus_at_time",
             "day_type", "multiplier_at_time",
         ]
@@ -273,7 +293,7 @@ class HabitSlimSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Habit
-        fields = ["id", "name", "emoticon", "type", "unit", "group"]
+        fields = ["id", "name", "emoticon", "icon_key", "type", "unit", "group"]
 
 
 class HabitHistoryDaySerializer(serializers.Serializer):

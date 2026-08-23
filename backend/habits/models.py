@@ -6,8 +6,8 @@ Esta story (6.1) implementa APENAS a configuração prospectiva de AD-06
 Regra de ouro (AD-06 item 6): **mudança de config = INSERT de versão** — o estado
 de um hábito no dia D é a ``HabitVersion`` com ``max(effective_from) <= D``. Peso,
 ``active``, ``meta`` e ``bonus`` são versionados (afetam a contribuição histórica);
-``name``/``emoticon``/``group``/``type`` são identidade/cosmético (UPDATE direto, não
-versionado). ``type`` é imutável após a criação.
+``name``/``emoticon``/``icon_key``/``group``/``type`` são identidade/cosmético (UPDATE
+direto, não versionado). ``type`` é imutável após a criação.
 """
 
 from decimal import Decimal
@@ -67,6 +67,16 @@ class Habit(TenantModel):
     # (não versionada, cosmético como name/emoticon) — só numéricos a usam, mas
     # o campo mora em Habit por ser identidade. Story 6.2, decisão da unit.
     unit = models.CharField(max_length=32, blank=True)
+    # Nome do glifo Phosphor em kebab-case (ex. "barbell") — nunca componente
+    # React nem SVG (Story 16.2). Identidade, como `name`/`unit`: trocar o
+    # pictograma vale para todo o histórico. Sem `CheckConstraint`: o catálogo é
+    # aberto (~1.5k nomes da versão instalada) e não cabe num constraint; quem
+    # valida existência é o serializer (`core.phosphor`), com 400.
+    # `noqa: DJ001`: a regra desaconselha `null=True` em CharField por criar dois
+    # "vazios" (NULL e ""). Aqui NULL é o único e é semântico — "sem pictograma",
+    # o que a I/O Matrix pede na leitura e no `PATCH {iconKey: null}`. O
+    # serializer rejeita `""` (sem `allow_blank`), então a ambiguidade não existe.
+    icon_key = models.CharField(max_length=64, null=True, blank=True)  # noqa: DJ001
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

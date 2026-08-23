@@ -4,8 +4,8 @@ Funções de módulo (nunca classes de serviço); ``user`` é sempre o primeiro
 kwarg keyword-only; toda escrita é ``@transaction.atomic``; scoping implícito via
 ``TenantManager``. Regra de ouro (AD-06): mudança de ``weight``/``active``/``meta``/
 ``bonus`` = INSERT de ``HabitVersion`` com ``effective_from = today_for(user)``
-(prospectivo); identidade (``name``/``emoticon``/``group``) é UPDATE direto sem versão;
-``type`` é imutável.
+(prospectivo); identidade (``name``/``emoticon``/``icon_key``/``group``) é UPDATE
+direto sem versão; ``type`` é imutável.
 """
 
 from datetime import timedelta
@@ -24,8 +24,11 @@ from habits.models import (
     HabitVersion,
 )
 
-# Campos de identidade (UPDATE direto no `habits`, não versionados).
-_IDENTITY_FIELDS = ("name", "emoticon", "group_id", "unit")
+# Campos de identidade (UPDATE direto no `habits`, não versionados). `icon_key`
+# (Story 16.2) precisa estar AQUI: `update_habit_identity` faz `continue` em tudo
+# que não está na tupla, então um campo de fora seria descartado em silêncio pelo
+# PATCH — 200 sem persistir nada.
+_IDENTITY_FIELDS = ("name", "emoticon", "icon_key", "group_id", "unit")
 
 # Sentinela para distinguir "não passou value" de "passou value=None (desmarcar)".
 _UNSET = object()
@@ -97,7 +100,8 @@ def list_habits(*, user, include_inactive=False):
 
 @transaction.atomic
 def create_habit(
-    *, user, name, group_id, type, weight, emoticon="", unit="", meta=None, bonus=None
+    *, user, name, group_id, type, weight, emoticon="", unit="", icon_key=None,
+    meta=None, bonus=None,
 ) -> Habit:
     """Cria ``Habit`` + a primeira ``HabitVersion`` (``active=True``,
     ``effective_from = hoje``) numa transação. ``meta``/``bonus`` só se aplicam a
@@ -110,7 +114,8 @@ def create_habit(
         bonus = None
 
     habit = Habit.objects.create(
-        name=name, emoticon=emoticon, group=group, type=type, unit=unit
+        name=name, emoticon=emoticon, group=group, type=type, unit=unit,
+        icon_key=icon_key,
     )
     version = HabitVersion.objects.create(
         habit=habit,
@@ -126,8 +131,8 @@ def create_habit(
 
 @transaction.atomic
 def update_habit_identity(*, user, habit_id, **fields) -> Habit:
-    """Atualiza identidade (``name``/``emoticon``/``group``) com UPDATE direto — não
-    cria versão. ``type`` é imutável: passá-lo levanta ``DomainError``."""
+    """Atualiza identidade (``name``/``emoticon``/``icon_key``/``group``) com UPDATE
+    direto — não cria versão. ``type`` é imutável: passá-lo levanta ``DomainError``."""
     if "type" in fields:
         raise DomainError("O tipo do hábito é imutável.")
 

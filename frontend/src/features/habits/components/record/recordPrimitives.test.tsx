@@ -37,6 +37,9 @@ function entry(overrides: Partial<HabitDayEntry> = {}): HabitDayEntry {
     name: 'Alongamento',
     // A API AINDA devolve `emoticon`; nenhum primitivo o renderiza.
     emoticon: '🧘',
+    // Story 16.2 trouxe `iconKey` ao contrato; a RENDERIZAÇÃO é DW-60. Nulo
+    // aqui é o estado real desta fase: a coluna do glifo segue vazia.
+    iconKey: null,
     type: 'boolean',
     group: 'g1',
     unit: '',

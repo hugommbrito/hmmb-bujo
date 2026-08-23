@@ -493,3 +493,35 @@ source_spec: `_bmad-output/implementation-artifacts/16-1-habitos-no-sistema-novo
 severity: low
 reason: A rota virou `<Navigate>` mas conservou `handle: { title: 'Configurações — Hábitos' }`. Como a rota nunca renderiza conteúdo, o `RouteAnnouncer` jamais usa esse título — sobra um título morto no manifest de rotas. Inofensivo hoje; limpeza natural quando o Épico 18 aposentar o chrome legado.
 status: open
+
+### DW-60: Pictograma na UI de Hábitos — renderização por `iconKey` e seletor Phosphor
+origin: split (bmad-build step-02) of 16-2-campo-icon-key-e-catalogo-phosphor.md, 2026-08-22
+location: frontend/src/features/habits/components/record/ (HabitTrackerRow, HabitsConfigPanel, HabitCompletionGrid, HabitsHistoryPanel)
+source_spec: `_bmad-output/implementation-artifacts/16-2-campo-icon-key-e-catalogo-phosphor.md`
+severity: high
+reason: A Story 16.2 foi dividida em contrato (backend) e apresentação (frontend) porque a spec unificada chegou a ~5.500 tokens — mais de 3× o teto de 1.600 — com risco de context-rot nas 23 tarefas. O mesmo padrão que o Épico 16 já impõe na 16.6→16.7 ("backend e frontend nunca no mesmo diff"). O backend fica nesta story; o frontend cobre: chunk lazy do catálogo Phosphor (`phosphorCatalog.ts` via `import()`, para manter os 13MB de defs fora do bundle inicial), módulo puro `iconKey.ts` (conversão kebab⇄Pascal, busca por substring, ordenação usados-primeiro, cálculo da janela virtual), `DomainIcon.tsx` (renderização decorativa com coluna vazia para chave nula/órfã), `PictogramPicker.tsx` (Drawer/Dialog no molde de `DestinationPicker.tsx:436-452`, busca com contagem em `aria-live`, grade virtualizada de tiles `role="radio"` sem controle desenhado), preenchimento do slot em `HabitTrackerRow.tsx:190-199`, seletor no bloco Identidade de `HabitsConfigPanel.tsx:399-431`, glifo compact em grade e histórico, `iconKey?` nas interfaces de `api.ts:106-115,129-135`, registro dos arquivos novos em `SOURCES` do guard, inversão de `recordPrimitives.test.tsx:110-117` e `HabitsRecordPage.test.tsx:571,:1280`, e E2E `habits-record.spec.ts:138-143`. Decisões já fechadas com Hugo: chunk lazy separado, janela de virtualização própria (sem dep nova), chave em kebab-case. **Até que isto rode, a coluna do glifo permanece vazia — que é o estado válido entregue pela 16.1.**
+status: open
+
+### DW-61: 7 testes de frontend falhando em `bujo`/`planner` (pré-existentes)
+origin: review (bmad-build step-04, ciclo 1) of 16-2-campo-icon-key-e-catalogo-phosphor.md, 2026-08-22
+location: frontend/src/features/bujo/components/TaskDestinationDialog.test.tsx (5), frontend/src/features/bujo/components/TaskDetailPanel.test.tsx (1), frontend/src/pages/planner/FuturePage.test.tsx (1)
+source_spec: `_bmad-output/implementation-artifacts/16-2-campo-icon-key-e-catalogo-phosphor.md`
+severity: medium
+reason: A suíte do frontend fecha em 2214 passed | 7 failed. Confirmado que são ANTERIORES a esta story: as mesmas 7 falham em worktree limpo no baseline `901464a`, sem nenhuma linha do diff da 16.2 — que não toca `features/bujo/` nem `pages/planner/`. Falhas em torno do seletor de destino e da migração ("clicar um dia não migra ainda", "toggle" do dia selecionado, "trocar de aba não reseta o estado", "onClose encadeado", "confirmar sem preencher a data"). Um `npm run test:run` vermelho é ruído permanente que mascara regressões novas — daí a severidade. Registradas aqui porque o padrão de defer documentado só em prosa vira órfão.
+status: open
+
+### DW-62: gates de artefato do CI não são protegidos contra remoção silenciosa
+origin: review (bmad-build step-04, ciclo 1) of 16-2-campo-icon-key-e-catalogo-phosphor.md, 2026-08-22
+location: .github/workflows/ci.yml (steps de `schema.yaml`, `types.gen.ts` e o novo do catálogo Phosphor)
+source_spec: `_bmad-output/implementation-artifacts/16-2-campo-icon-key-e-catalogo-phosphor.md`
+severity: low
+reason: O step "Verificar catálogo Phosphor está atualizado" é a ÚNICA coisa que amarra `backend/habits/phosphor_catalog.json` ao pacote instalado. Se for apagado, ganhar `continue-on-error` ou tiver o exit code engolido, o backend passa a validar `icon_key` contra catálogo velho e nenhum teste falha. O repo já decidiu que esse risco vale guarda: `backend/core/tests/test_prod_settings.py:281` parseia o `ci.yml` para garantir que os dois deploy-checks continuem lá. Vale estender o mesmo parse aos três gates de artefato. Pré-existente em forma (os gates de `schema.yaml`/`types.gen.ts` têm a mesma exposição); entra no ledger porque o gate novo protege uma decisão de runtime (400 × aceitar), não só um artefato gerado.
+status: open
+
+### DW-63: `@phosphor-icons/react` em range de caret com catálogo de versão exata
+origin: review (bmad-build step-04, ciclo 1) of 16-2-campo-icon-key-e-catalogo-phosphor.md, 2026-08-22
+location: frontend/package.json ("@phosphor-icons/react": "^2.1.10")
+source_spec: `_bmad-output/implementation-artifacts/16-2-campo-icon-key-e-catalogo-phosphor.md`
+severity: low
+reason: O catálogo commitado embute a versão exata (2.1.10) e `core/phosphor.py` a exibe na mensagem de 400. Um `npm update` dentro do caret desloca catálogo, texto de erro e a asserção de contagem de uma vez — o gate de CI pega (falha ruidosa, que é o desejado), mas obriga um passe manual de regeneração. Pinar exato alinharia a dependência ao tratamento que o artefato recebe em todo o resto do diff. Decisão de política de dependências, fora do escopo desta story.
+status: open

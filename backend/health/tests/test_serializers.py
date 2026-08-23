@@ -106,6 +106,10 @@ def test_read_serializer_exposes_expected_fields():
     serializer = HealthFieldDefinitionSerializer()
     assert set(serializer.fields) == {
         "id", "name", "field_type", "enum_options", "active", "display_order",
+        # Story 16.2: só o campo, sem UI (a apresentação de Saúde está atrás do
+        # gate UX 16.3). Este é o ÚNICO serializer de leitura da app, reusado por
+        # daily/history/series — o campo propaga às 4 superfícies de uma vez.
+        "icon_key",
     }
 
 

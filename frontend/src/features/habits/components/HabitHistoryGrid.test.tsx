@@ -12,6 +12,9 @@ const ENTRY_DONE: HabitDayEntry = {
   habitId: 'h1',
   name: 'Ler',
   emoticon: '📖',
+  // Story 16.2: `iconKey` entrou no contrato de leitura; nenhuma superfície o
+  // renderiza ainda (DW-60) — a coluna do glifo segue vazia.
+  iconKey: null,
   type: 'boolean',
   group: 'g1',
   unit: '',

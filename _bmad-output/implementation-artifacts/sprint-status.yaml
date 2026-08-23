@@ -200,7 +200,7 @@ development_status:
   epic-16: in-progress
   16-0-ux-mockup-de-habitos-no-sistema-novo: done  # ✅ gate UX do lote 1 aprovado por Hugo em 2026-08-22 (rito bmad-ux); promovido a DESIGN/EXPERIENCE; 16.1–16.2 DESBLOQUEADAS
   16-1-habitos-no-sistema-novo: review
-  16-2-campo-icon-key-e-catalogo-phosphor: backlog
+  16-2-campo-icon-key-e-catalogo-phosphor: review
   16-2b-leituras-agregadas-de-habitos: backlog  # aprovada no gate 16.0 (2026-08-21); depende de 16.1/16.2; exige backend novo (agregacoes + GET /api/habits/history/by-group/)
   16-3-ux-mockups-de-saude-metricas-e-medicamentos: backlog  # ⛔ gate UX do lote 2 (rito bmad-ux, mesma sessão — NUNCA dev-story/automator); bloqueia 16.4–16.9
   16-4-saude-metricas-no-sistema-novo: backlog

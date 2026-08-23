@@ -1718,6 +1718,7 @@ export interface components {
             readonly id: string;
             name: string;
             emoticon?: string;
+            iconKey?: string | null;
             /** Format: uuid */
             group: string;
             type: components["schemas"]["HabitTypeEnum"];
@@ -1749,6 +1750,7 @@ export interface components {
             emoticon: string;
             /** @default  */
             unit: string;
+            iconKey?: string | null;
             /** Format: uuid */
             group: string;
             type: components["schemas"]["HabitTypeEnum"];
@@ -1771,7 +1773,7 @@ export interface components {
         /**
          * @description Uma linha do tracker do dia: identidade do hábito + snapshot congelado.
          *
-         *     Expõe a identidade do hábito (``name``/``emoticon``/``type``/``group``/``unit``)
+         *     Expõe a identidade do hábito (``name``/``emoticon``/``icon_key``/``type``/``group``/``unit``)
          *     junto do estado do dia (``value``/``*_at_time``). ``type`` reusa ``HabitTypeEnum``
          *     via ``ChoiceField`` (mesmo override de enum da 6.1).
          */
@@ -1782,6 +1784,7 @@ export interface components {
             readonly habitId: string;
             readonly name: string;
             readonly emoticon: string;
+            readonly iconKey: string | null;
             readonly type: components["schemas"]["HabitTypeEnum"];
             /** Format: uuid */
             readonly group: string;
@@ -1877,6 +1880,7 @@ export interface components {
             readonly id: string;
             name: string;
             emoticon?: string;
+            iconKey?: string | null;
             readonly type: components["schemas"]["HabitTypeEnum"];
             unit?: string;
             /** Format: uuid */
@@ -1951,6 +1955,7 @@ export interface components {
             fieldType: components["schemas"]["HealthFieldTypeEnum"];
             enumOptions?: string[];
             displayOrder?: number;
+            iconKey?: string | null;
         };
         /** @description Saída: a definição de campo. ``field_type`` emite ``HealthFieldTypeEnum``. */
         HealthFieldDefinition: {
@@ -1961,6 +1966,7 @@ export interface components {
             readonly enumOptions: string[];
             active?: boolean;
             displayOrder?: number;
+            iconKey?: string | null;
         };
         /**
          * @description Payload de ``GET /api/health-logs/series/``: a definição do campo + a série.
@@ -2363,20 +2369,23 @@ export interface components {
             name?: string;
             emoticon?: string;
             unit?: string;
+            iconKey?: string | null;
             /** Format: uuid */
             group?: string;
         };
         /**
          * @description Entrada de edição (AC2, AC4): ``name``/``enum_options``/``display_order``/
-         *     ``active``. ``field_type`` é **imutável** — enviá-lo é rejeitado (400). A regra
-         *     enum⇔opções no update é validada na camada de serviço contra o ``field_type``
-         *     atual (imutável), pois o serializer não conhece o tipo persistido.
+         *     ``active``/``icon_key``. ``field_type`` é **imutável** — enviá-lo é rejeitado
+         *     (400). A regra enum⇔opções no update é validada na camada de serviço contra o
+         *     ``field_type`` atual (imutável), pois o serializer não conhece o tipo
+         *     persistido.
          */
         PatchedHealthFieldUpdate: {
             name?: string;
             enumOptions?: string[];
             displayOrder?: number;
             active?: boolean;
+            iconKey?: string | null;
         };
         /** @description Entrada de edição do slot (AC7): só ``title`` (identidade, não versionada). */
         PatchedMedicationUpdate: {
