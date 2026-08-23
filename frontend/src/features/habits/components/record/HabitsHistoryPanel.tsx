@@ -12,6 +12,11 @@
 //   ▶ DIA-LACUNA: "Sem registro neste dia." + a nota de que nenhuma linha foi
 //     materializada. NENHUMA porcentagem — 0% fabricado seria mentira.
 //
+//   ▶ PICTOGRAMA (DW-60) em tamanho `compact` antes do nome de cada entrada do
+//     detalhe do dia. `HabitDayEntry.iconKey` JÁ vem no contrato; chave nula ou
+//     órfã simplesmente não rende glifo. O `<select>` de "Evolução por hábito"
+//     NÃO recebe pictograma: `<option>` não aceita SVG.
+//
 //   ▶ FALHA PARCIAL: a série falha e a grade carrega; cada bloco tem erro e
 //     retry PRÓPRIOS. "Sem hábito selecionado ⇒ nada é buscado"
 //     (`useHabitSeriesQuery` já traz `enabled: habitId !== ''`).
@@ -32,6 +37,7 @@ import { DAY_TYPE_LABEL, formatDateBR } from '../historyUtils'
 import { HabitEvolutionChart } from '../HabitEvolutionChart'
 import { HABIT_SERIES_VIEW_LABEL, type HabitSeriesView } from '../habitSeriesView'
 import type { HabitDayEntry, HabitHistoryDay, HabitSeries } from '../../types'
+import { DomainIcon } from './DomainIcon'
 import { EMPTY_RANGE, HabitCompletionGrid, NO_RECORD_DAY } from './HabitCompletionGrid'
 import { HabitsHistorySkeleton } from './HabitsSkeleton'
 import { Field } from './HabitsFormControls'
@@ -179,13 +185,22 @@ function DayDetail({
                         color: 'var(--ds-ink)',
                       }}
                     >
-                      <Box component="span">
+                      <Box
+                        component="span"
+                        sx={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 'var(--ds-space-1)',
+                        }}
+                      >
+                        <DomainIcon iconKey={entry.iconKey} size="compact" />
                         {entry.name}
                         <Box
                           component="span"
                           sx={{ ...typography.meta, color: 'var(--ds-ink-muted)' }}
                         >
-                          {' '}
+                          {/* O espaço antes do "·" virou `gap` do `inline-flex`
+                              — um `{' '}` aqui somaria duas separações. */}
                           · Peso {formatDecimal(entry.weightAtTime) ?? '0'}
                         </Box>
                       </Box>

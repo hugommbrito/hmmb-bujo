@@ -11,6 +11,7 @@ import { describe, expect, it } from 'vitest'
 // `ShellSidebar` × `ShellBottomNav`). Ele mora lá, e não aqui, porque o lint
 // proíbe `features/` importar de `pages/`.
 import completionBarSource from './CompletionBar.tsx?raw'
+import domainIconSource from './DomainIcon.tsx?raw'
 import habitCompletionGridSource from './HabitCompletionGrid.tsx?raw'
 import habitGroupCardSource from './HabitGroupCard.tsx?raw'
 import habitTrackerRowSource from './HabitTrackerRow.tsx?raw'
@@ -50,6 +51,9 @@ const FORBIDDEN_LITERALS = [
 
 const SOURCES: Record<string, string> = {
   'CompletionBar.tsx': completionBarSource,
+  // DW-60: novo arquivo da subpasta ⇒ entra no guard no MESMO diff. Guard
+  // assimétrico é falsa cobertura (lição da Retro do Épico 13).
+  'DomainIcon.tsx': domainIconSource,
   'HabitCompletionGrid.tsx': habitCompletionGridSource,
   'HabitGroupCard.tsx': habitGroupCardSource,
   'HabitTrackerRow.tsx': habitTrackerRowSource,

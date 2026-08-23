@@ -7,11 +7,13 @@
 //   ▶ `CompletionBar` é LEITURA (`role="img"`), nunca `progressbar`.
 //   ▶ `HabitTrackerRow` mantém o estado TEXTUAL ligado ao checkbox por
 //     `aria-describedby` — a marca nunca é canal único.
-//   ▶ A coluna do pictograma EXISTE e fica VAZIA (gate 16.0 Q2).
+//   ▶ A coluna do pictograma resolve o glifo do `iconKey` (DW-60), e AUSÊNCIA
+//     (chave nula, órfã ou malformada) é estado válido: coluna vazia, nunca
+//     tofu, quadrado ou glifo de erro (gate 16.0 Q2).
 //   ▶ O checkbox do numérico é INDICADOR (`disabled` mesmo online).
 //   ▶ `HabitGroupCard` só mostra a legenda de multiplicador quando o dia não é
 //     útil E o multiplicador difere de 1 (paridade `HabitTracker.tsx:164-167`).
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ThemeProvider } from '@mui/material'
@@ -26,6 +28,7 @@ import { createBujoTheme } from '../../../../theme'
 import type { HabitDayEntry } from '../../types'
 import { CompletionBar } from './CompletionBar'
 import { EMPTY_GROUP, HabitGroupCard } from './HabitGroupCard'
+import { DomainIcon } from './DomainIcon'
 import { HabitTrackerRow, INVALID_NUMBER } from './HabitTrackerRow'
 
 const mockPatch = client.patch as ReturnType<typeof vi.fn>
@@ -37,8 +40,9 @@ function entry(overrides: Partial<HabitDayEntry> = {}): HabitDayEntry {
     name: 'Alongamento',
     // A API AINDA devolve `emoticon`; nenhum primitivo o renderiza.
     emoticon: '🧘',
-    // Story 16.2 trouxe `iconKey` ao contrato; a RENDERIZAÇÃO é DW-60. Nulo
-    // aqui é o estado real desta fase: a coluna do glifo segue vazia.
+    // Nulo é o DEFAULT das fixtures de propósito: a maioria dos casos desta
+    // suíte não é sobre pictograma, e ausência tem de ser inofensiva. Os testes
+    // de glifo passam `iconKey` explicitamente (DW-60).
     iconKey: null,
     type: 'boolean',
     group: 'g1',
@@ -110,12 +114,89 @@ describe('HabitTrackerRow — anatomia e canais redundantes', () => {
     expect(document.getElementById(stateId)).toHaveTextContent('Não feito')
   })
 
-  it('a coluna do pictograma EXISTE e fica VAZIA, sem emoji em lugar nenhum', () => {
-    const { container } = renderWithQuery(<HabitTrackerRow entry={entry()} compact={false} />)
+  it('chave VÁLIDA: o pictograma aparece na coluna, decorativo e em currentColor', async () => {
+    const { container } = renderWithQuery(
+      <HabitTrackerRow entry={entry({ iconKey: 'barbell' })} compact={false} />,
+    )
+    const glyph = screen.getByTestId('habit-glyph-column')
+    // A coluna segue `aria-hidden`: o nome do hábito é o label visível e o
+    // glifo NUNCA duplica nome acessível.
+    expect(glyph).toHaveAttribute('aria-hidden', 'true')
+    const svg = await waitFor(() => {
+      const found = glyph.querySelector('svg')
+      expect(found).not.toBeNull()
+      return found!
+    })
+    expect(svg).toHaveAttribute('fill', 'currentColor')
+    // A medida vem do token, nunca de um número cru.
+    expect(svg.getAttribute('style')).toContain('var(--ds-domain-icon-size-default)')
+    // O emoji saiu da interface, mesmo com o `emoticon` ainda no contrato.
+    expect(container.textContent).not.toContain('🧘')
+  })
+
+  it('chave NULA: a coluna existe e fica VAZIA — layout idêntico ao da 16.1', async () => {
+    const { container } = renderWithQuery(
+      <>
+        <HabitTrackerRow entry={entry()} compact={false} />
+        <span data-testid="relogio">
+          {/* Chave nunca usada antes nesta suíte: o relógio passa pelo import
+              de verdade, então esperá-lo mede a janela real de resolução. */}
+          <DomainIcon iconKey="alarm" />
+        </span>
+      </>,
+    )
     const glyph = screen.getByTestId('habit-glyph-column')
     expect(glyph).toBeEmptyDOMElement()
     expect(glyph).toHaveAttribute('aria-hidden', 'true')
+    // Passada a janela de resolução (o relógio ao lado já resolveu), a coluna
+    // CONTINUA vazia: ausência não é estado transitório de loading.
+    await waitFor(() =>
+      expect(screen.getByTestId('relogio').querySelector('svg')).not.toBeNull(),
+    )
+    expect(glyph).toBeEmptyDOMElement()
     expect(container.textContent).not.toContain('🧘')
+  })
+
+  it('trocar `iconKey` troca o glifo: chave órfã limpa a coluna, chave nova resolve', async () => {
+    // O `DomainIcon` é montado DIRETO (sem remontar a árvore em volta) para que
+    // o `rerender` exercite a MESMA instância — é a troca de chave que muda o
+    // resultado, não uma remontagem. (O frame intermediário é indefensável em
+    // teste: o `act` do RTL libera o effect junto com o render.)
+    const { rerender } = render(<DomainIcon iconKey="barbell" />)
+    await waitFor(() => expect(document.querySelector('svg')).not.toBeNull())
+
+    // Chave nova ÓRFÃ: pictograma errado por um frame é pior que coluna vazia.
+    rerender(<DomainIcon iconKey="glifo-que-saiu" />)
+    expect(document.querySelector('svg')).toBeNull()
+
+    // Chave nova VÁLIDA: resolve o glifo dela.
+    rerender(<DomainIcon iconKey="acorn" />)
+    await waitFor(() => expect(document.querySelector('svg')).not.toBeNull())
+  })
+
+  it('chave ÓRFÃ ou em PascalCase: coluna vazia, sem tofu, quadrado ou glifo de erro', async () => {
+    // Um `DomainIcon` com chave válida AINDA NÃO usada nesta suíte monta ao lado
+    // como RELÓGIO: ele passa pelo import de verdade, então quando resolve a
+    // janela já passou — só aí a coluna vazia prova ausência, e não "ainda não
+    // chegou". Chave já cacheada não serviria: resolveria SÍNCRONA e o relógio
+    // adiantaria, deixando o teste passar mesmo com um fallback a caminho.
+    const relogios = ['airplane', 'anchor', 'archive']
+    for (const [index, iconKey] of ['glifo-que-saiu', 'AddressBook', 'nao_kebab'].entries()) {
+      const { unmount } = renderWithQuery(
+        <>
+          <HabitTrackerRow entry={entry({ iconKey })} compact={false} />
+          <span data-testid="relogio">
+            <DomainIcon iconKey={relogios[index]} />
+          </span>
+        </>,
+      )
+      await waitFor(() =>
+        expect(screen.getByTestId('relogio').querySelector('svg')).not.toBeNull(),
+      )
+      const glyph = screen.getByTestId('habit-glyph-column')
+      expect(glyph, iconKey).toBeEmptyDOMElement()
+      unmount()
+    }
   })
 
   it('numérico: o checkbox é INDICADOR de meta e continua disabled mesmo online', () => {

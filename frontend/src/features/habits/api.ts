@@ -106,6 +106,14 @@ export function useHabitSeriesQuery(habitId: string, range: HistoryRange) {
 interface CreateHabitVariables {
   name: string
   emoticon?: string
+  /**
+   * Nome do glifo Phosphor em kebab-case (Story 16.2). O tipo entra aqui para o
+   * contrato do cliente ficar completo e coerente com `types.gen.ts`
+   * (`Habit.iconKey`); a ESCRITA — seletor + campo na Configuração — é da DW-64.
+   * `null` limpa o pictograma; nome inexistente é rejeitado com 400 pelo
+   * servidor (`core/phosphor.validate_icon_key`).
+   */
+  iconKey?: string | null
   unit?: string
   group: string
   type: HabitType
@@ -131,6 +139,8 @@ interface UpdateHabitIdentityVariables {
   habitId: string
   name?: string
   emoticon?: string
+  /** Ver `CreateHabitVariables.iconKey`: identidade, vale para todo o histórico. */
+  iconKey?: string | null
   unit?: string
   group?: string
 }

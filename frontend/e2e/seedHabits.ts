@@ -19,9 +19,9 @@ export interface SeedHabitAnchorResult {
 }
 
 // Cria o "exemplo âncora" da matemática de completude (Dev Notes da story 6.2):
-// grupo "Saúde" com um hábito booleano (peso 1) e um numérico (peso 2, meta
-// 5000, bonus 20%, unidade "passos"). Marcar o booleano + registrar 2500 no
-// numérico → (1×1 + 0.4×2) / (1+2) = 60%. Versões vigentes a partir de HOJE, então
+// grupo "Saúde" com um hábito booleano (peso 1, `icon_key="barbell"`) e um
+// numérico (peso 2, meta 5000, bonus 20%, unidade "passos", SEM pictograma).
+// Marcar o booleano + registrar 2500 no numérico → (1×1 + 0.4×2) / (1+2) = 60%. Versões vigentes a partir de HOJE, então
 // o tracker de hoje as materializa na 1ª abertura. Para o usuário já cadastrado
 // via UI (fixture `email`).
 export function seedHabitAnchor(email: string): SeedHabitAnchorResult {
@@ -35,7 +35,12 @@ user = User.objects.get(email=${JSON.stringify(email)})
 
 with tenant_context(user):
     group = create_habit_group(user=user, name="Saúde")
-    create_habit(user=user, name="Meditar", group_id=group.id, type="boolean", weight="1")
+    # DW-60: "Meditar" nasce COM pictograma e "Passos" SEM — o mesmo cenário
+    # cobre glifo presente e coluna vazia numa só abertura da página.
+    create_habit(
+        user=user, name="Meditar", group_id=group.id, type="boolean", weight="1",
+        icon_key="barbell",
+    )
     create_habit(
         user=user, name="Passos", group_id=group.id, type="numeric",
         weight="2", meta="5000", bonus="20", unit="passos",

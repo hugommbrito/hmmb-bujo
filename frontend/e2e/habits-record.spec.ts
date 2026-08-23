@@ -13,6 +13,8 @@ import { mainNav } from './shellHelpers'
 //    inclusive pelo link de Configurações) redirecionam para as abas.
 //  - Registro: booleano + numérico com persistência real, dia passado editável,
 //    feriado/override, grade e tabela equivalente.
+//  - DW-60: o pictograma do `iconKey` no tracker, com a AUSÊNCIA (hábito sem
+//    chave) como estado válido de mesma largura — nunca tofu ou quadrado.
 //
 // Determinismo de tempo: o tracker abre HOJE e o tipo de dia real varia com o
 // dia da execução — por isso o toggle de FERIADO é a alavanca (precedência
@@ -135,12 +137,48 @@ test('registro booleano e numérico persistem; nenhum emoji é exibido', async (
   await expect(page.getByTestId('habits-day-percent')).toHaveText('100%', RECONCILE)
   await expect(page.getByRole('checkbox', { name: 'Meditar' })).toBeChecked()
 
-  // Nenhum emoji, e a coluna do glifo existe VAZIA.
+  // DW-60 — o pictograma. "Meditar" foi semeado com `icon_key="barbell"` e
+  // "Passos" sem chave: o MESMO cenário prova o glifo presente e a ausência
+  // como estado válido, contra o backend real (a migração da 16.2 já rodou no
+  // banco do E2E).
   const glyphColumns = page.getByTestId('habit-glyph-column')
-  await expect(glyphColumns.first()).toBeAttached()
-  for (const column of await glyphColumns.all()) {
-    await expect(column).toHaveText('')
-  }
+  await expect(glyphColumns).toHaveCount(2)
+  // Nenhum emoji em lugar nenhum (o `emoticon` segue no contrato de leitura).
+  await expect(page.getByRole('main')).not.toContainText('🧘')
+
+  // A ordem das linhas NÃO é contrato: ancoramos cada coluna na LINHA do
+  // respectivo hábito (o `habit-tracker-row` que contém o controle nomeado).
+  const rowOf = (control: ReturnType<typeof page.getByRole>) =>
+    page.getByTestId('habit-tracker-row').filter({ has: control })
+  const meditarGlyph = rowOf(page.getByRole('checkbox', { name: 'Meditar' })).getByTestId(
+    'habit-glyph-column',
+  )
+  const passosGlyph = rowOf(page.getByRole('textbox', { name: 'Valor de Passos' })).getByTestId(
+    'habit-glyph-column',
+  )
+
+  // Glifo presente: um `svg` decorativo, medido pelo token e em `currentColor`.
+  const svg = meditarGlyph.locator('svg')
+  await expect(svg).toHaveCount(1)
+  await expect(svg).toHaveAttribute('fill', 'currentColor')
+  expect(await svg.getAttribute('style')).toContain('var(--ds-domain-icon-size-default)')
+  // A coluna continua `aria-hidden`: o nome do hábito é o label visível.
+  await expect(meditarGlyph).toHaveAttribute('aria-hidden', 'true')
+
+  // Ausência: coluna VAZIA, com a MESMA largura — nunca tofu, quadrado ou
+  // glifo de erro. Mesma largura é o que garante o layout inalterado da 16.1.
+  await expect(passosGlyph.locator('svg')).toHaveCount(0)
+  await expect(passosGlyph).toHaveText('')
+  const [comGlifo, semGlifo] = await Promise.all([
+    meditarGlyph.boundingBox(),
+    passosGlyph.boundingBox(),
+  ])
+  // Box nulo (elemento fora do layout) NÃO pode passar por "larguras iguais":
+  // sem estas duas asserções, `comGlifo?.width` viria `undefined` e a falha
+  // apontaria comparação de tipos, não a deriva de layout que o teste mede.
+  expect(comGlifo, 'a coluna com glifo tem de estar no layout').not.toBeNull()
+  expect(semGlifo, 'a coluna sem glifo tem de estar no layout').not.toBeNull()
+  expect(comGlifo!.width).toBeCloseTo(semGlifo!.width, 1)
 
   expect(consoleErrors).toEqual([])
 })

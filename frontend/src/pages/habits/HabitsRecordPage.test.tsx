@@ -566,14 +566,47 @@ describe('Aba Hoje — cabeçalho do dia e completude do servidor', () => {
 describe('Aba Hoje — linhas (I/O Matrix)', () => {
   beforeEach(baseSetup)
 
-  it('nenhum emoji é renderizado e a coluna do glifo existe VAZIA', async () => {
+  it('nenhum emoji é renderizado; a coluna do glifo existe e fica VAZIA sem `iconKey`', async () => {
     mockApi()
     renderPage()
     await screen.findByTestId('habits-day-percent')
     expect(screen.getByRole('main').textContent).not.toContain('🧘')
     const columns = screen.getAllByTestId('habit-glyph-column')
     expect(columns).toHaveLength(2)
-    for (const column of columns) expect(column).toBeEmptyDOMElement()
+    // Fixture default = `iconKey: null` nas duas linhas: layout da 16.1 intacto.
+    // Nada de `waitFor` aqui: sem chave não há nada em voo para esperar.
+    for (const column of columns) {
+      expect(column).toBeEmptyDOMElement()
+      expect(column).toHaveAttribute('aria-hidden', 'true')
+    }
+  })
+
+  it('DW-60: `iconKey` válido rende o glifo no tracker; chave ÓRFÃ deixa a coluna vazia', async () => {
+    mockApi({
+      day: habitDay({
+        entries: [
+          entry({ iconKey: 'barbell' }),
+          { ...NUMERIC_ENTRY, iconKey: 'glifo-que-saiu-numa-atualizacao' },
+        ],
+      }),
+    })
+    renderPage()
+    await screen.findByTestId('habits-day-percent')
+    const [comGlifo, orfa] = screen.getAllByTestId('habit-glyph-column')
+
+    const svg = await waitFor(() => {
+      const found = comGlifo.querySelector('svg')
+      expect(found).not.toBeNull()
+      return found!
+    })
+    // Decorativo (a coluna é `aria-hidden`), monocromático e medido por token.
+    expect(svg).toHaveAttribute('fill', 'currentColor')
+    expect(svg.getAttribute('style')).toContain('var(--ds-domain-icon-size-default)')
+    // Chave órfã: ausência, NUNCA tofu/quadrado/glifo de erro. A asserção vem
+    // DEPOIS de a chave válida já ter resolvido — a janela de resolução passou,
+    // então a coluna vazia é prova de ausência, não de "ainda não chegou".
+    expect(orfa).toBeEmptyDOMElement()
+    expect(orfa.querySelector('svg')).toBeNull()
   })
 
   it('a linha mostra o estado textual e os fatores congelados', async () => {
@@ -1482,6 +1515,68 @@ describe('Aba Histórico', () => {
     expect(headers.some((text) => text.includes('2 dias'))).toBe(false)
   })
 
+  // DW-60 — o MESMO `iconKey` nas três superfícies. O tracker é coberto na aba
+  // Hoje; aqui ficam as duas leituras do Histórico (detalhe do dia e grade), e
+  // a prova de que a TABELA EQUIVALENTE — a representação de acessibilidade —
+  // continua só texto.
+  it('DW-60: o glifo aparece no detalhe do dia e na grade, e NUNCA na tabela equivalente', async () => {
+    mockApi({
+      historyRange: {
+        ...history(),
+        habits: [
+          { id: 'h1', name: 'Alongamento', emoticon: null, iconKey: 'barbell', type: 'boolean', unit: '', group: 'g1' },
+        ],
+        // O detalhe abre em HOJE, então a entrada com glifo tem de morar em HOJE.
+        days: [
+          {
+            date: TODAY,
+            dayType: 'weekday' as const,
+            totalCompletion: 50,
+            groups: [{ id: 'g1', name: 'Corpo', completion: 50 }],
+            entries: [entry({ id: 'he1', value: '1', iconKey: 'barbell' })],
+          },
+        ],
+      },
+    })
+    renderPage('/habits?tab=historico')
+
+    // Detalhe do dia: glifo `compact` antes do nome da entrada.
+    const detailHeading = await screen.findByRole('heading', {
+      name: /^\w+, \d{1,2} de \w+ de \d{4}$/,
+    })
+    const detail = detailHeading.closest('section')!
+    const detailGlyph = await waitFor(() => {
+      const found = detail.querySelector('svg')
+      expect(found).not.toBeNull()
+      return found!
+    })
+    expect(detailGlyph.getAttribute('style')).toContain('var(--ds-domain-icon-size-compact)')
+    expect(detailGlyph).toHaveAttribute('fill', 'currentColor')
+
+    // Grade wide: o glifo mora DENTRO do `th scope="row"`.
+    const grid = screen.getByRole('table', { name: /Completude por hábito e semana/ })
+    const rowHeader = within(grid).getByRole('rowheader', { name: /Alongamento/ })
+    await waitFor(() => expect(rowHeader.querySelector('svg')).not.toBeNull())
+    expect(rowHeader.querySelector('svg')!.getAttribute('style')).toContain(
+      'var(--ds-domain-icon-size-compact)',
+    )
+
+    // Tabela equivalente: SÓ TEXTO. Glifo ali seria ruído sem informação nova.
+    const equivalent = screen.getByRole('table', { name: /Mesma leitura em formato linear/ })
+    expect(equivalent.querySelectorAll('svg')).toHaveLength(0)
+  })
+
+  it('DW-60: sem `iconKey`, o Histórico não rende glifo nenhum (estado da 16.1)', async () => {
+    mockApi()
+    renderPage('/habits?tab=historico')
+    const grid = await screen.findByRole('table', { name: /Completude por hábito e semana/ })
+    const rowHeader = within(grid).getByRole('rowheader', { name: /Alongamento/ })
+    await waitFor(() => expect(rowHeader).toHaveTextContent('Alongamento'))
+    // Sem `iconKey` no payload, nenhum import é disparado — não há janela de
+    // resolução a esperar, e a ausência é imediata e definitiva.
+    expect(rowHeader.querySelector('svg')).toBeNull()
+  })
+
   it('a grade traz caption, th scope, tags de tipo de dia e a tabela equivalente', async () => {
     mockApi()
     renderPage('/habits?tab=historico')
@@ -1617,6 +1712,78 @@ describe('Aba Histórico', () => {
     expect(
       screen.queryByRole('table', { name: /Completude por hábito e semana/ }),
     ).not.toBeInTheDocument()
+  })
+
+  // DW-60 no COMPACT. A faixa compact é um branch SEPARADO da grade (lista por
+  // dia, não tabela): sem um caso próprio, apagar o `DomainIcon` de lá deixa a
+  // suíte inteira verde — verificado por mutação.
+  it('DW-60: no compact o glifo aparece na linha do hábito, em tamanho `compact`', async () => {
+    mockCompactFaixa()
+    mockApi({
+      historyRange: {
+        ...history(),
+        habits: [
+          {
+            id: 'h1',
+            name: 'Alongamento',
+            emoticon: null,
+            iconKey: 'barbell',
+            type: 'boolean',
+            unit: '',
+            group: 'g1',
+          },
+          {
+            id: 'h2',
+            name: 'Corrida',
+            emoticon: null,
+            iconKey: 'glifo-que-saiu',
+            type: 'boolean',
+            unit: '',
+            group: 'g1',
+          },
+        ],
+        days: [
+          {
+            date: addDays(TODAY, -1),
+            dayType: 'weekday' as const,
+            totalCompletion: 50,
+            groups: [{ id: 'g1', name: 'Corpo', completion: 50 }],
+            entries: [
+              entry({ id: 'he1', habitId: 'h1', value: '1' }),
+              entry({ id: 'he2', habitId: 'h2', name: 'Corrida', value: '1' }),
+            ],
+          },
+        ],
+      },
+    })
+    renderPage('/habits?tab=historico')
+    await screen.findByText('Completude por dia')
+
+    // A lista do compact é ANINHADA (um `li` por dia, com um `ul` de hábitos
+    // dentro), então buscar por `li` que contenha o nome pegaria o do DIA — que
+    // contém o glifo do outro hábito. Só as FOLHAS são linhas de hábito.
+    const habitRow = (name: string) => {
+      const rows = screen
+        .getAllByRole('listitem')
+        .filter((li) => li.querySelector('li') == null && li.textContent?.includes(name))
+      expect(rows, name).toHaveLength(1)
+      return rows[0]
+    }
+
+    // A linha do hábito COM chave: o glifo mora lá, medido pelo token COMPACT.
+    // Sem a checagem do `style`, trocar `size="compact"` por `"default"`
+    // passaria — o `svg` existiria do mesmo jeito.
+    const comChave = await waitFor(() => {
+      const svg = habitRow('Alongamento').querySelector('svg')
+      expect(svg).not.toBeNull()
+      return svg!
+    })
+    expect(comChave.getAttribute('style')).toContain('var(--ds-domain-icon-size-compact)')
+    expect(comChave.getAttribute('style')).not.toContain('var(--ds-domain-icon-size-default)')
+
+    // A linha do hábito com chave ÓRFÃ: nenhum glifo. A asserção vem DEPOIS de a
+    // chave válida ter resolvido, então a janela de resolução já passou.
+    expect(habitRow('Corrida').querySelector('svg')).toBeNull()
   })
 
   // PARIDADE com `HabitHistoryGrid.tsx:86-118`: o legado renderiva uma linha por

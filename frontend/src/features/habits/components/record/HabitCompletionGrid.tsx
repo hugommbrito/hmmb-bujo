@@ -25,6 +25,11 @@
 //   ▶ COMPACT: a grade vira LISTA POR DIA — recomposição, nunca compressão, e
 //     nunca scroll horizontal de página.
 //
+//   ▶ PICTOGRAMA (DW-60) só nas DUAS faixas de leitura visual — lista compact e
+//     `th scope="row"` do wide, em tamanho `compact`. A **tabela equivalente
+//     permanente** em `details` é a representação de ACESSIBILIDADE e fica só
+//     texto: glifo ali seria ruído sem informação nova.
+//
 //   ▶ AS LEITURAS AGREGADAS DE SERVIDOR (sequência, dias 100%, série por grupo,
 //     e a agregação por bucket calculada no backend) são da **Story 16.2b**.
 //     O que esta grade faz é contar/mediar o que o servidor JÁ devolveu por
@@ -36,6 +41,7 @@ import { Box } from '@mui/material'
 import { typography } from '../../../../shared/design/tokens'
 import { DAY_TYPE_LABEL, formatDateBR } from '../historyUtils'
 import type { DayType, HabitDayEntry, HabitGroup, HabitHistoryRange, HabitSlim } from '../../types'
+import { DomainIcon } from './DomainIcon'
 import {
   bucketLabel,
   formatDateMediumBR,
@@ -213,7 +219,15 @@ export function HabitCompletionGrid({
                             color: 'var(--ds-ink-muted)',
                           }}
                         >
-                          <Box component="span">
+                          <Box
+                            component="span"
+                            sx={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 'var(--ds-space-1)',
+                            }}
+                          >
+                            <DomainIcon iconKey={habit.iconKey} size="compact" />
                             {habit.name}
                             {inactive ? ' · Inativo' : ''}
                           </Box>
@@ -371,7 +385,19 @@ export function HabitCompletionGrid({
                         left: 0,
                       }}
                     >
-                      {row.habit.name}
+                      {/* Wrapper `inline-flex`: sem ele o `svg` do pictograma
+                          herdaria o baseline do texto dentro do `th` sticky. */}
+                      <Box
+                        component="span"
+                        sx={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 'var(--ds-space-1)',
+                        }}
+                      >
+                        <DomainIcon iconKey={row.habit.iconKey} size="compact" />
+                        {row.habit.name}
+                      </Box>
                       {row.inactive && (
                         <Box
                           component="span"

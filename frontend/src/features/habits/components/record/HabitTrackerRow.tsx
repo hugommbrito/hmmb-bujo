@@ -7,11 +7,15 @@
 //     (`leadingSlot`, `titleTrailing`, `categoryBorder={false}`) nasceram nesta
 //     story como props OPT-IN — Recorrentes e Brain Dump seguem idênticos.
 //
-//   ▶ COLUNA DO GLIFO EXISTE E FICA VAZIA. O pictograma (`iconKey`, seletor,
-//     migração `emoticon` → `iconKey`) é a **Story 16.2**. Aqui a coluna é um
-//     espaçador de `--ds-domain-icon-size-default`, `aria-hidden`, SEM
-//     conteúdo — nada de quadrado, tofu ou glifo de erro (gate 16.0, Q2). O
-//     `emoticon` que a API ainda devolve NÃO é renderizado em lugar nenhum.
+//   ▶ COLUNA DO GLIFO: largura fixa de `--ds-domain-icon-size-default`,
+//     `aria-hidden`, com o pictograma do hábito dentro (`DomainIcon`, DW-60).
+//     AUSÊNCIA É ESTADO VÁLIDO: `iconKey` nulo, malformado ou ÓRFÃO deixa a
+//     coluna VAZIA, com o layout idêntico ao da 16.1 — nada de quadrado, tofu
+//     ou glifo de erro (gate 16.0, Q2). A largura NÃO pode mudar: a indentação
+//     do estado transitório e do campo numérico no compact é calculada a partir
+//     dela. O `emoticon` que a API ainda devolve NÃO é renderizado em lugar
+//     nenhum (a 16.2 converteu cada um em `iconKey`). A ESCOLHA do pictograma
+//     (seletor + campo na Configuração) é a DW-64.
 //
 //   ▶ A COLUNA DE CONTROLE ABRIGA DOIS OBJETOS OPOSTOS:
 //       booleano → checkbox INTERATIVO (entrada);
@@ -35,6 +39,7 @@ import { ItemRowBase } from '../../../bujo'
 import { typography } from '../../../../shared/design/tokens'
 import { useMarkHabitEntryMutation } from '../../api'
 import type { HabitDayEntry } from '../../types'
+import { DomainIcon } from './DomainIcon'
 import {
   RETRY_LABEL,
   decimalInputValue,
@@ -187,7 +192,9 @@ export function HabitTrackerRow({
       >
         {control}
       </Box>
-      {/* Coluna do pictograma: EXISTE e fica VAZIA até a Story 16.2. */}
+      {/* Coluna do pictograma. A largura é FIXA com ou sem glifo (`:340,350`
+          indentam a partir dela); a centralização flex existe porque sem ela o
+          `svg` herdaria o baseline do texto. */}
       <Box
         aria-hidden
         data-testid="habit-glyph-column"
@@ -195,8 +202,13 @@ export function HabitTrackerRow({
           flex: '0 0 auto',
           width: 'var(--ds-domain-icon-size-default)',
           height: 'var(--ds-domain-icon-size-default)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
         }}
-      />
+      >
+        <DomainIcon iconKey={entry.iconKey} />
+      </Box>
     </>
   )
 
