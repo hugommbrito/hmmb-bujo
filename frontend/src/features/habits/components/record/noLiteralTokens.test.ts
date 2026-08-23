@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-// Guard ESTRUTURAL da subpasta `record/` (Story 16.1, molde byte-a-byte de
+// Guard ESTRUTURAL da subpasta `record/` (Story 16.1 e DW-64, molde byte-a-byte de
 // `bujo/components/recurring/noLiteralTokens.test.ts`): `?raw` traz o
 // código-fonte como string e prova que nenhum arquivo novo escreve cor
 // hexadecimal nem medida que TEM token e CSS var próprios.
@@ -20,6 +20,7 @@ import habitsFormControlsSource from './HabitsFormControls.tsx?raw'
 import habitsFormStylesSource from './habitsFormStyles.ts?raw'
 import habitsHistoryPanelSource from './HabitsHistoryPanel.tsx?raw'
 import habitsSkeletonSource from './HabitsSkeleton.tsx?raw'
+import pictogramPickerSource from './PictogramPicker.tsx?raw'
 import habitsSurfaceSource from './habitsSurface.ts?raw'
 import habitsTodayPanelSource from './HabitsTodayPanel.tsx?raw'
 
@@ -34,6 +35,8 @@ import habitsTodayPanelSource from './HabitsTodayPanel.tsx?raw'
 //   `48px`   = `--ds-task-row-min-height-touch`
 //   `20px`   = `--ds-domain-icon-size-default`
 //   `18px`   = `--ds-domain-icon-size-compact`
+//   `64px`   = `--ds-pictogram-picker-tile-height-dialog`  (DW-64)
+//   `72px`   = `--ds-pictogram-picker-tile-height-sheet`   (DW-64)
 //   `0.58`   = `--ds-task-row-terminal-opacity`
 const FORBIDDEN_LITERALS = [
   '44px',
@@ -46,6 +49,10 @@ const FORBIDDEN_LITERALS = [
   '48px',
   '20px',
   '18px',
+  // DW-64: ganharam token E var na mesma story em que nasceram; sem entrar aqui,
+  // o próximo arquivo da subpasta pode hardcodá-los sem nada ficar vermelho.
+  '64px',
+  '72px',
   '0.58',
 ]
 
@@ -62,6 +69,9 @@ const SOURCES: Record<string, string> = {
   'habitsFormStyles.ts': habitsFormStylesSource,
   'HabitsHistoryPanel.tsx': habitsHistoryPanelSource,
   'HabitsSkeleton.tsx': habitsSkeletonSource,
+  // DW-64: novo arquivo da subpasta ⇒ entra no guard no MESMO diff. Guard
+  // assimétrico é falsa cobertura (lição da Retro do Épico 13).
+  'PictogramPicker.tsx': pictogramPickerSource,
   'habitsSurface.ts': habitsSurfaceSource,
   'HabitsTodayPanel.tsx': habitsTodayPanelSource,
 }
@@ -84,7 +94,7 @@ const SOURCES: Record<string, string> = {
 //    'none'`). Emprestá-los seria acoplamento acidental.
 // 3. `12rem`/`14rem`/`18rem` nos `minmax()` de grid são pontos de quebra
 //    RELATIVOS ao tamanho do texto, não medidas de design system.
-describe('Story 16.1 — zero literal estrutural/cromático na subpasta `record/`', () => {
+describe('Story 16.1 + DW-64 — zero literal estrutural/cromático na subpasta `record/`', () => {
   for (const [name, source] of Object.entries(SOURCES)) {
     it(`${name} não escreve nenhum dos literais reservados a tokens`, () => {
       for (const literal of FORBIDDEN_LITERALS) {
@@ -108,13 +118,22 @@ describe('Story 16.1 — zero literal estrutural/cromático na subpasta `record/
 
 // O guard da 14.6 levou achado ALTO por NUNCA pegar nada. Estes testes são a
 // prova de NÃO-VACUIDADE: o mecanismo reprova de fato quando o literal existe.
-describe('Story 16.1 — o guard não é vacuoso', () => {
+describe('Story 16.1 + DW-64 — o guard não é vacuoso', () => {
   it('reprova uma fonte que escreve uma medida com token (44px)', () => {
     const violador = "sx={{ width: '44px' }}"
     const pegou = FORBIDDEN_LITERALS.some((literal) =>
       new RegExp(`\\b${literal.replace('.', '\\.')}\\b`).test(violador),
     )
     expect(pegou).toBe(true)
+  })
+
+  it('reprova a altura do tile do seletor escrita à mão (DW-64)', () => {
+    for (const violador of ["gridAutoRows: '64px'", "minHeight: '72px'"]) {
+      const pegou = FORBIDDEN_LITERALS.some((literal) =>
+        new RegExp(`\\b${literal.replace('.', '\\.')}\\b`).test(violador),
+      )
+      expect(pegou, violador).toBe(true)
+    }
   })
 
   it('reprova uma fonte que escreve cor hexadecimal', () => {
@@ -138,7 +157,7 @@ describe('Story 16.1 — a escala contínua de tom da grade existe', () => {
 
 // Emoji: proibição do gate 16.0 (Q2). Nenhuma fonte da superfície nova pode
 // LER o campo `emoticon` — nem para exibir, nem para enviar na criação.
-describe('Story 16.1 — o emoji saiu da interface de Hábitos', () => {
+describe('Story 16.1 + DW-64 — o emoji saiu da interface de Hábitos', () => {
   for (const [name, source] of Object.entries(SOURCES)) {
     it(`${name} não lê nem escreve o campo emoticon`, () => {
       // Só menções em COMENTÁRIO são aceitas (documentam a decisão).

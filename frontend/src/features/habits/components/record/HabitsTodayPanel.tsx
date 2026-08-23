@@ -23,7 +23,7 @@
 //
 // [Source: mockup key-habitos.html F1/F2/F3/F4; spec 16.1 Task 4 e I/O Matrix]
 // ─────────────────────────────────────────────────────────────────────────────
-import { useId } from 'react'
+import { useEffect, useId } from 'react'
 import { Box, Button, Checkbox, FormControlLabel } from '@mui/material'
 
 import { typography } from '../../../../shared/design/tokens'
@@ -34,6 +34,7 @@ import {
 } from '../../api'
 import { DAY_TYPE_LABEL } from '../historyUtils'
 import { CompletionBar } from './CompletionBar'
+import { prefetchGlyphs } from './DomainIcon'
 import { HabitGroupCard } from './HabitGroupCard'
 import { HabitsTodaySkeleton } from './HabitsSkeleton'
 import {
@@ -95,6 +96,15 @@ export function HabitsTodayPanel({
   const overrideDay = useOverrideDayWorkdayMutation(date)
   const reactId = useId()
   const dayHeadingId = `habits-day-${reactId}`
+
+  // DW-65 — PRÉ-CARGA dos glifos do dia. Dispara quando o PAYLOAD chega, antes
+  // de as linhas montarem: numa só passada, um `import()` por chave DISTINTA.
+  // Encolhe a janela em que a coluna vazia é ambígua (resolvendo × sem glifo) e
+  // aquece o cache para a grade e o detalhe do dia. Nada muda visualmente.
+  const dayEntries = habitDay.data?.entries
+  useEffect(() => {
+    if (dayEntries != null) void prefetchGlyphs(dayEntries.map((item) => item.iconKey))
+  }, [dayEntries])
   // A data visível nunca passa de hoje: a navegação não oferece o caminho e o
   // `changeDate` de `HabitsRecordPage` clampa qualquer chamador em hoje.
   const atToday = date >= today

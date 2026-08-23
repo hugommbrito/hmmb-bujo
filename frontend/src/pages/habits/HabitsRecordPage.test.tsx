@@ -9,6 +9,23 @@ vi.mock('../../api/client', () => ({
   default: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), put: vi.fn(), delete: vi.fn() },
 }))
 
+// DW-64 — o catálogo do seletor de pictograma vem de um chunk PRÓPRIO (1512
+// módulos do Phosphor). Aqui ele é mockado: esta suíte prova o CAMPO e o corpo
+// da escrita, não o catálogo — a blindagem do catálogo real vive em
+// `features/habits/phosphorCatalog.test.ts`. Função simples (não `vi.fn()`)
+// porque `baseSetup` chama `vi.resetAllMocks()` antes de cada teste.
+vi.mock('../../features/habits/phosphorCatalog', () => {
+  const NAMES = ['barbell', 'brain', 'drop', 'drop-half']
+  const Glyph = () => null
+  return {
+    loadPhosphorCatalog: () =>
+      Promise.resolve({
+        names: NAMES,
+        get: (kebab: string) => (NAMES.includes(kebab) ? Glyph : null),
+      }),
+  }
+})
+
 import client from '../../api/client'
 import { createBujoTheme } from '../../theme'
 import { mediaQueries } from '../../shared/design/tokens'
@@ -84,6 +101,9 @@ function habit(overrides: Partial<Habit> = {}): Habit {
     id: 'h1',
     name: 'Alongamento',
     emoticon: '🧘',
+    // DW-64: `iconKey` é IDENTIDADE e agora é ESCRITO pela Configuração. Nulo é
+    // o default do fixture — os testes do campo o sobrescrevem.
+    iconKey: null,
     group: 'g1',
     type: 'boolean',
     unit: '',
@@ -1375,6 +1395,191 @@ describe('Aba Configuração', () => {
     await user.type(await screen.findByLabelText('Nome do grupo'), '   ')
     await user.click(screen.getByRole('button', { name: 'Adicionar grupo' }))
     expect(mockPost).not.toHaveBeenCalledWith('/api/habit-groups/', expect.anything())
+  })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // DW-64 — o campo Pictograma no cartão Identidade
+  // ───────────────────────────────────────────────────────────────────────────
+
+  it('o Pictograma entra no cartão Identidade DEPOIS do Nome, e o gatilho abre um dialog', async () => {
+    const user = userEvent.setup()
+    mockApi({ habits: [habit({ iconKey: 'barbell' })] })
+    renderPage('/habits?tab=configuracao')
+
+    // Criação: sem escolha, o gatilho diz a ausência com palavras.
+    const creation = await screen.findByRole('button', { name: /Nenhum pictograma escolhido/ })
+    expect(creation).toHaveAttribute('aria-haspopup', 'dialog')
+
+    await user.click((await screen.findAllByRole('button', { name: /^Editar / }))[0])
+    const block = screen.getByTestId('habit-edit-block')
+    // Ordem do mockup F5: nome → pictograma → (unidade) → grupo.
+    const labels = Array.from(block.querySelectorAll('label'), (label) => label.textContent)
+    expect(labels.slice(0, 3)).toEqual([
+      'Nome',
+      'Pictograma',
+      'Grupo',
+    ])
+    // O NOME DO GLIFO nunca aparece fora do seletor.
+    expect(within(block).getByRole('button', { name: /Pictograma escolhido/ })).toBeInTheDocument()
+    expect(within(block).queryByText('barbell')).not.toBeInTheDocument()
+  })
+
+  it('o gatilho DESENHA o glifo da chave vigente e diz o estado no nome acessível', async () => {
+    const user = userEvent.setup()
+    mockApi({ habits: [habit({ iconKey: 'barbell' })] })
+    renderPage('/habits?tab=configuracao')
+    await user.click((await screen.findAllByRole('button', { name: /^Editar / }))[0])
+    const block = screen.getByTestId('habit-edit-block')
+
+    // O GLIFO, não só o texto: apagar o `<DomainIcon>` do gatilho deixaria o
+    // campo dizendo "Pictograma escolhido" ao lado de um vazio.
+    const slot = within(block).getByTestId('pictogram-trigger-glyph')
+    await waitFor(() => expect(slot.querySelector('svg')).not.toBeNull())
+    expect(slot).toHaveAttribute('aria-hidden', 'true')
+
+    // Nome acessível = rótulo do campo + ESTADO + AÇÃO, e `aria-expanded` fecha
+    // o par com `aria-haspopup`. Nunca o nome do glifo.
+    const trigger = within(block).getByRole('button', { name: 'Pictograma: Pictograma escolhido. Trocar' })
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    await user.click(trigger)
+    await screen.findByRole('dialog', { name: 'Escolher pictograma' })
+    expect(trigger).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  // O FIO painel → seletor. Sem estes dois, remover `compact={compact}` de
+  // `HabitsRecordPage.tsx` (default `false`) abre um Dialog de 6 colunas no
+  // celular, e trocar `item.iconKey` em `usedIconKeys` deixa a lista puramente
+  // alfabética — nas duas mutações a suíte inteira continuava verde.
+  it('no compact o seletor abre em 4 colunas (a faixa vem do call-site)', async () => {
+    const user = userEvent.setup()
+    vi.resetAllMocks()
+    mockCompactFaixa()
+    setOnline(true)
+    mockApi()
+    renderPage('/habits?tab=configuracao')
+    await user.click(await screen.findByRole('button', { name: /Nenhum pictograma escolhido/ }))
+    const dialog = await screen.findByRole('dialog', { name: 'Escolher pictograma' })
+    expect(within(dialog).getByRole('radiogroup')).toHaveAttribute('data-columns', '4')
+  })
+
+  it('a lista abre pelas chaves JÁ USADAS pelos hábitos, não em ordem alfabética', async () => {
+    const user = userEvent.setup()
+    // `drop` é a chave em uso; `barbell` é a primeira do catálogo em ordem
+    // alfabética. Se a lista abrisse alfabética, o primeiro tile seria `barbell`.
+    mockApi({ habits: [habit({ iconKey: 'drop' })] })
+    renderPage('/habits?tab=configuracao')
+    await user.click(await screen.findByRole('button', { name: /Nenhum pictograma escolhido/ }))
+    const dialog = await screen.findByRole('dialog', { name: 'Escolher pictograma' })
+    const radios = within(dialog).getAllByRole('radio')
+    expect(radios[0]).toHaveTextContent('drop')
+    expect(radios.map((radio) => radio.textContent)).toEqual([
+      'drop',
+      'barbell',
+      'brain',
+      'drop-half',
+    ])
+  })
+
+  it('escolher pictograma vai no PATCH de IDENTIDADE e NÃO cria versão', async () => {
+    const user = userEvent.setup()
+    mockApi({ habits: [habit()] })
+    renderPage('/habits?tab=configuracao')
+    await user.click((await screen.findAllByRole('button', { name: /^Editar / }))[0])
+    const block = screen.getByTestId('habit-edit-block')
+
+    await user.click(within(block).getByRole('button', { name: /Nenhum pictograma escolhido/ }))
+    const dialog = await screen.findByRole('dialog', { name: 'Escolher pictograma' })
+    await user.click(within(dialog).getByRole('radio', { name: 'drop' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Usar pictograma drop' }))
+    // O overlay fecha e o gatilho passa a dizer que há escolha.
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(within(block).getByRole('button', { name: /Pictograma escolhido/ })).toBeInTheDocument()
+    // CONFIRMAR também devolve o foco ao gatilho — não só Esc/Cancelar. Sem
+    // isto o teclado ficaria órfão no `body` depois de escolher.
+    await waitFor(() =>
+      expect(within(block).getByRole('button', { name: /Pictograma escolhido/ })).toHaveFocus(),
+    )
+
+    await user.click(within(block).getByRole('button', { name: 'Salvar alterações' }))
+    // UM único PATCH, com SÓ o campo que mudou.
+    await waitFor(() =>
+      expect(mockPatch).toHaveBeenCalledWith('/api/habits/h1/', { iconKey: 'drop' }),
+    )
+    expect(mockPatch).toHaveBeenCalledTimes(1)
+    // Identidade vale para TODO o histórico: nenhuma versão é aberta.
+    expect(mockPost).not.toHaveBeenCalledWith('/api/habits/h1/versions/', expect.anything())
+  })
+
+  it('remover o pictograma envia `iconKey: null` no PATCH de identidade', async () => {
+    const user = userEvent.setup()
+    mockApi({ habits: [habit({ iconKey: 'barbell' })] })
+    renderPage('/habits?tab=configuracao')
+    await user.click((await screen.findAllByRole('button', { name: /^Editar / }))[0])
+    const block = screen.getByTestId('habit-edit-block')
+
+    await user.click(within(block).getByRole('button', { name: /Pictograma escolhido/ }))
+    const dialog = await screen.findByRole('dialog', { name: 'Escolher pictograma' })
+    await user.click(within(dialog).getByRole('button', { name: 'Remover pictograma' }))
+    await waitFor(() =>
+      expect(within(block).getByRole('button', { name: /Nenhum pictograma escolhido/ })).toBeInTheDocument(),
+    )
+
+    await user.click(within(block).getByRole('button', { name: 'Salvar alterações' }))
+    await waitFor(() =>
+      expect(mockPatch).toHaveBeenCalledWith('/api/habits/h1/', { iconKey: null }),
+    )
+  })
+
+  it('Cancelar no seletor NÃO aplica a escolha; Esc devolve o foco ao gatilho', async () => {
+    const user = userEvent.setup()
+    mockApi({ habits: [habit()] })
+    renderPage('/habits?tab=configuracao')
+    await user.click((await screen.findAllByRole('button', { name: /^Editar / }))[0])
+    const block = screen.getByTestId('habit-edit-block')
+    const trigger = within(block).getByRole('button', { name: /Nenhum pictograma escolhido/ })
+
+    await user.click(trigger)
+    let dialog = await screen.findByRole('dialog', { name: 'Escolher pictograma' })
+    await user.click(within(dialog).getByRole('radio', { name: 'drop' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Cancelar' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    // Rascunho intocado — o gatilho continua dizendo a ausência.
+    expect(within(block).getByRole('button', { name: /Nenhum pictograma escolhido/ })).toBeInTheDocument()
+
+    await user.click(trigger)
+    dialog = await screen.findByRole('dialog', { name: 'Escolher pictograma' })
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    await waitFor(() =>
+      expect(within(block).getByRole('button', { name: /Nenhum pictograma escolhido/ })).toHaveFocus(),
+    )
+  })
+
+  it('criar hábito COM pictograma envia a chave; salvar sem tocar o campo não a envia', async () => {
+    const user = userEvent.setup()
+    mockApi()
+    renderPage('/habits?tab=configuracao')
+    await user.type(await screen.findByLabelText(/^Nome \(obrigatório\)$/), 'Caminhada')
+    await user.selectOptions(screen.getByLabelText(/^Grupo \(obrigatório\)$/), 'g1')
+
+    await user.click(screen.getByRole('button', { name: /Nenhum pictograma escolhido/ }))
+    const dialog = await screen.findByRole('dialog', { name: 'Escolher pictograma' })
+    await user.click(within(dialog).getByRole('radio', { name: 'brain' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Usar pictograma brain' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+
+    await user.click(screen.getByRole('button', { name: 'Adicionar hábito' }))
+    expect(mockPost).toHaveBeenCalledWith('/api/habits/', {
+      name: 'Caminhada',
+      group: 'g1',
+      type: 'boolean',
+      weight: '1',
+      iconKey: 'brain',
+    })
+    // O sucesso RESETA o campo: o próximo hábito não herda o pictograma.
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Nenhum pictograma escolhido/ })).toBeInTheDocument(),
+    )
   })
 
   it('mover hábito de grupo vai no PATCH de IDENTIDADE', async () => {

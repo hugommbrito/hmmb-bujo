@@ -46,3 +46,36 @@ export function toPascalCase(value: unknown): string | null {
     .map((part) => part[0].toUpperCase() + part.slice(1))
     .join('')
 }
+
+/**
+ * Grafia PascalCase dos exports do pacote: um ou mais segmentos que começam com
+ * MAIÚSCULA e seguem em minúsculas — inclusive segmentos de UMA letra só
+ * (`ArrowUUpLeft`, `FileCSharp`, `SmileyXEyes`, `X`). Rejeita dígito, hífen,
+ * underscore, espaço e início minúsculo.
+ */
+const PASCAL_CASE = /^(?:[A-Z][a-z]*)+$/
+
+/** `true` se `value` respeita a grafia PascalCase dos exports do Phosphor. */
+export function isPascalIconName(value: unknown): value is string {
+  return typeof value === 'string' && PASCAL_CASE.test(value)
+}
+
+/**
+ * `AddressBook` → `address-book`. INVERSO ESTRITO de `toPascalCase`: devolve
+ * `null` para qualquer coisa fora do PascalCase — inclusive o próprio kebab de
+ * entrada, para que uma chave já convertida nunca seja "convertida de novo".
+ *
+ * O catálogo do seletor (DW-64) NASCE em PascalCase (são os exports do pacote) e
+ * tudo a jusante — grade, wire, persistência — é kebab. A bijeção é o contrato:
+ * se ela quebrasse, o seletor ofereceria uma chave que o servidor rejeita com
+ * 400 (`validate_icon_key`). Medida sobre os 1512 nomes de `dist/csr/*.es.js`:
+ * zero colisões e round-trip exato nos dois sentidos.
+ */
+export function toKebabCase(value: unknown): string | null {
+  if (!isPascalIconName(value)) return null
+  // Sem grupo de captura, o callback recebe (match, offset, input) — o `index`
+  // distingue a PRIMEIRA maiúscula (sem hífen) das demais.
+  return value.replace(/[A-Z]/g, (char, index: number) =>
+    (index === 0 ? '' : '-') + char.toLowerCase(),
+  )
+}

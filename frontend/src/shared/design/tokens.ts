@@ -330,18 +330,25 @@ export const habitTrackerRow = {
 /**
  * `{components.pictogram-picker}` — seletor de pictograma.
  *
- *   ▶ SEM CONSUMIDOR na 16.1 por decisão do gate: o seletor (frames O1/O2) é da
- *     **Story 16.2**, junto com `iconKey` e a migração `emoticon` → `iconKey`.
- *     O bloco nasce aqui porque o gate 16.0 promoveu os QUATRO blocos de
- *     geometria de uma vez e dividi-los deixaria a 16.2 inventando medidas.
+ *   ▶ NASCEU SEM CONSUMIDOR na 16.1 (o gate 16.0 promoveu os QUATRO blocos de
+ *     geometria de uma vez, e dividi-los deixaria a story seguinte inventando
+ *     medidas). O PRIMEIRO consumidor é a **DW-64**: `PictogramPicker`, o
+ *     overlay O1/O2.
  *   ▶ `tileMinSize` é ALIAS de `appShell.touchTargetMin`: consome
  *     `--ds-touch-target-min`, sem var própria (duplicar a mesma medida em duas
  *     vars deixaria as duas divergirem).
+ *   ▶ `tileHeightDialog`/`tileHeightSheet` são a ALTURA da linha da grade,
+ *     verbatim do mockup (`.tile{min-height:64px}` em O1, `min-height:72px` em
+ *     O2) e distintas de `tileMinSize`, que é o piso de ALVO DE TOQUE. A janela
+ *     virtual precisa do passo da linha em NÚMERO: derivá-lo do token é o que
+ *     mantém o magic number fora do componente e o guard de literais verde.
  */
 export const pictogramPicker = {
   columnsDialog: 6,
   columnsSheet: 4,
   tileMinSize: appShell.touchTargetMin,
+  tileHeightDialog: '64px',
+  tileHeightSheet: '72px',
 } as const
 
 /** `{components.panel}` — painel diário/pool e cartões do rail. */
@@ -604,6 +611,8 @@ const structuralCssVariables: Readonly<Record<string, string>> = {
   '--ds-habit-tracker-row-numeric-field-width': habitTrackerRow.numericFieldWidth,
   '--ds-pictogram-picker-columns-dialog': String(pictogramPicker.columnsDialog),
   '--ds-pictogram-picker-columns-sheet': String(pictogramPicker.columnsSheet),
+  '--ds-pictogram-picker-tile-height-dialog': pictogramPicker.tileHeightDialog,
+  '--ds-pictogram-picker-tile-height-sheet': pictogramPicker.tileHeightSheet,
   ...Object.fromEntries(
     Object.entries(spacing).map(([step, value]) => [`--ds-space-${step}`, value]),
   ),

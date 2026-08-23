@@ -97,6 +97,25 @@ function pickExport(mod: Record<string, unknown>, pascal: string): Icon | null {
 }
 
 /**
+ * Quantas vezes um `loader()` do glob foi REALMENTE invocado (um `import()` de
+ * verdade). Existe SÓ para ser asserido em teste: o dedupe in-flight é
+ * invisível de fora — `resolveGlyph` devolve uma Promise tanto para a chave que
+ * ele acabou de pedir quanto para a que já estava em voo, então contar Promises
+ * não distingue "deduplicou" de "pediu duas vezes".
+ *
+ * Exportamos o CONTADOR, não os loaders: expor o mapa convidaria a burlar a
+ * resolução por chave (mesmo racional de `GLYPH_CATALOG_SIZE`).
+ */
+let glyphLoadCount = 0
+
+/** Leitura do contador de `import()`s disparados (test-only). */
+// Mesmo racional do `prefetchGlyphs`: o contador e os caches são deste módulo.
+// eslint-disable-next-line react-refresh/only-export-components
+export function glyphLoadsStarted(): number {
+  return glyphLoadCount
+}
+
+/**
  * Resolve o componente do glifo de uma chave kebab-case.
  *
  * Nunca lança e nunca loga: chave órfã é fluxo NORMAL (o glifo pode ter saído
@@ -120,8 +139,10 @@ function resolveGlyph(iconKey: string): Icon | null | Promise<Icon | null> {
     return null
   }
 
+  const alreadyInFlight = pending.get(iconKey)
   const inFlight =
-    pending.get(iconKey) ??
+    alreadyInFlight ??
+    ((glyphLoadCount += 1),
     loader()
       .then((mod) => {
         const component = pickExport(mod, pascal)
@@ -136,9 +157,66 @@ function resolveGlyph(iconKey: string): Icon | null | Promise<Icon | null> {
       })
       .finally(() => {
         pending.delete(iconKey)
-      })
+      }))
   pending.set(iconKey, inFlight)
   return inFlight
+}
+
+/**
+ * PRÉ-CARGA das chaves que o payload já nomeou (DW-65).
+ *
+ *   ▶ O PROBLEMA: cada glifo resolve como módulo próprio, então a coluna vazia
+ *     DURANTE a resolução é indistinguível da ausência legítima. A janela é
+ *     curta, mas existe — e na primeira pintura da grade e do detalhe do dia ela
+ *     aparece em todas as linhas ao mesmo tempo.
+ *
+ *   ▶ POR QUE MORA NOS PAINÉIS, e não dentro do componente: as linhas já
+ *     disparam seus imports em paralelo no MESMO commit de render, então
+ *     antecipá-las de dentro do `DomainIcon` não renderia nada. O ganho está em
+ *     disparar quando o PAYLOAD chega — antes do commit — e em aquecer o cache
+ *     para as outras superfícies (tracker → grade → detalhe), que passam a
+ *     renderizar síncronas na primeira pintura (o inicializador do `useState`
+ *     LÊ o cache).
+ *
+ *   ▶ NADA MUDA VISUALMENTE. Nenhum skeleton, nenhuma piscada, nenhum CLS,
+ *     nenhum estado de loading novo: só o `import()` acontece mais cedo. É
+ *     pré-carga, não garantia — em rede ruim a coluna vazia transitória continua
+ *     possível, e continua sendo o estado válido do gate 16.0.
+ *
+ * Reusa o dedupe in-flight de `resolveGlyph`: N ocorrências da mesma chave fazem
+ * UM import, e chave nula/malformada/órfã nem chega a pedir módulo.
+ *
+ * Devolve as chaves cuja resolução ainda não estava em cache — INCLUINDO as que
+ * já estavam em voo por outro chamador (`resolveGlyph` devolve a promise
+ * pendente, e daqui isso é indistinguível de um pedido novo). Não é, portanto,
+ * a contagem de `import()`s: quem conta invocação real de loader é
+ * `glyphLoadsStarted()`.
+ *
+ * Os call-sites descartam o retorno com `void`; ele existe para o teste poder
+ * ESPERAR a carga — sem isso a pré-carga poderia virar no-op sem nada ficar
+ * vermelho.
+ */
+// A pré-carga PRECISA morar aqui: `resolveGlyph` e os caches `resolved`/`pending`
+// são deste módulo, e mover a função para um arquivo de dados exigiria exportá-los
+// — o que convidaria a burlar a resolução por chave.
+// eslint-disable-next-line react-refresh/only-export-components
+export async function prefetchGlyphs(
+  keys: Iterable<string | null | undefined>,
+): Promise<readonly string[]> {
+  const started: string[] = []
+  const inFlight: Promise<unknown>[] = []
+  const seen = new Set<string>()
+  for (const key of keys) {
+    if (key == null || key === '' || seen.has(key)) continue
+    seen.add(key)
+    const outcome = resolveGlyph(key)
+    if (outcome instanceof Promise) {
+      started.push(key)
+      inFlight.push(outcome)
+    }
+  }
+  await Promise.all(inFlight)
+  return started
 }
 
 export type DomainIconSize = 'default' | 'compact'

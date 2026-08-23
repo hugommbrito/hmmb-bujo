@@ -2,7 +2,7 @@ import { test, expect } from './fixtures'
 import { seedHabitAnchor } from './seedHabits'
 import { seedHabitHistory } from './seedHabitHistory'
 import { seedMultiplierScenario } from './seedMultiplierScenario'
-import { mainNav } from './shellHelpers'
+import { mainNav, waitForDialogSettled } from './shellHelpers'
 
 // Story 16.1 (M12) — superfície de REGISTRO de Hábitos no sistema novo, contra
 // o backend real, sem mocks de rede:
@@ -15,6 +15,9 @@ import { mainNav } from './shellHelpers'
 //    feriado/override, grade e tabela equivalente.
 //  - DW-60: o pictograma do `iconKey` no tracker, com a AUSÊNCIA (hábito sem
 //    chave) como estado válido de mesma largura — nunca tofu ou quadrado.
+//  - DW-64: a ESCOLHA do pictograma — gatilho no cartão Identidade, overlay com
+//    busca por substring, navegação por setas e PATCH de identidade aceito pelo
+//    servidor (a validação da chave contra o pacote instalado é dele).
 //
 // Determinismo de tempo: o tracker abre HOJE e o tipo de dia real varia com o
 // dia da execução — por isso o toggle de FERIADO é a alavanca (precedência
@@ -376,6 +379,106 @@ test('configuração: identidade × versionado, desativar/reativar e multiplicad
   await expect(
     page.getByRole('textbox', { name: 'Multiplicador de feriado de Saúde' }),
   ).toHaveValue('0,2', RECONCILE)
+})
+
+test('DW-64 — trocar o pictograma de Meditar pelo seletor, com validação real da chave', async ({
+  page,
+  email,
+}) => {
+  test.setTimeout(120_000)
+
+  const consoleErrors: string[] = []
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') consoleErrors.push(msg.text())
+  })
+  page.on('pageerror', (err) => consoleErrors.push(err.message))
+
+  // "Meditar" nasce com `icon_key="barbell"` — o fluxo de TROCA não precisa de
+  // seed novo.
+  seedHabitAnchor(email)
+
+  // ── O glifo ANTES, no tracker ─────────────────────────────────────────────
+  await page.goto('/habits')
+  await expect(page.getByTestId('habits-day-percent')).toBeVisible(RECONCILE)
+  const meditarGlyph = page
+    .getByTestId('habit-tracker-row')
+    .filter({ has: page.getByRole('checkbox', { name: 'Meditar' }) })
+    .getByTestId('habit-glyph-column')
+  await expect(meditarGlyph.locator('svg')).toHaveCount(1)
+  const glifoAntes = (await meditarGlyph.locator('svg').innerHTML()).trim()
+  expect(glifoAntes).not.toBe('')
+
+  // ── O seletor, na Configuração ────────────────────────────────────────────
+  await page.goto('/habits?tab=configuracao')
+  await page.getByRole('button', { name: 'Editar Meditar' }).click()
+  // O gatilho NUNCA diz o nome do glifo — só que há pictograma escolhido.
+  const trigger = page.getByRole('button', {
+    name: 'Pictograma: Pictograma escolhido. Trocar',
+  })
+  await expect(trigger).toBeVisible()
+  await trigger.click()
+
+  const dialog = page.getByRole('dialog', { name: 'Escolher pictograma' })
+  await expect(dialog).toBeVisible()
+  await waitForDialogSettled(page)
+  // Uma única profundidade de overlay no módulo.
+  await expect(page.getByRole('dialog')).toHaveCount(1)
+
+  // Busca por substring sobre o catálogo ABERTO (chunk próprio, carregado só
+  // aqui): a contagem filtrada é ANUNCIADA.
+  const search = dialog.getByLabel('Buscar pictograma')
+  await search.fill('drop')
+  const status = dialog.getByRole('status')
+  await expect(status).toContainText(/ícones cont[eê]m "drop"/, RECONCILE)
+  // Os NÚMEROS, não só a frase: um catálogo VAZIO satisfaria o regex acima
+  // ("0 de 0 ícones contêm "drop"") e o cenário passaria com a grade em branco.
+  // Sem fixar 1.512 — a contagem exata já é gate de CI da Story 16.2, e um bump
+  // do pacote não deve reprovar aqui também.
+  const [, filtrados, total] = /([\d.]+) de ([\d.]+) ícones/.exec(
+    (await status.textContent()) ?? '',
+  ) ?? []
+  const asNumber = (raw: string | undefined) => Number((raw ?? '').replace(/\./g, ''))
+  expect(asNumber(filtrados), 'a busca por "drop" tem de casar algo').toBeGreaterThan(0)
+  expect(asNumber(total), 'o catálogo aberto tem de estar na ordem de milhar').toBeGreaterThan(1000)
+  // E a grade montou tiles de verdade — virtualizada, não o catálogo inteiro.
+  const radios = dialog.getByRole('radio')
+  expect(await radios.count()).toBeGreaterThan(0)
+
+  // Escolha pelas SETAS, com select-follows-focus: Tab sai da busca para o único
+  // tab stop da grade, a seta anda e a seleção segue o foco.
+  await search.press('Tab')
+  await page.keyboard.press('ArrowRight')
+  const chosen = dialog.getByRole('radio', { checked: true })
+  await expect(chosen).toHaveCount(1)
+  const chosenKey = ((await chosen.textContent()) ?? '').trim()
+  expect(chosenKey).not.toBe('')
+  expect(chosenKey).toContain('drop')
+
+  // A ação de confirmar NOMEIA a chave.
+  await dialog.getByRole('button', { name: `Usar pictograma ${chosenKey}` }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+
+  // ── Salvar: UM PATCH de identidade, aceito pelo servidor ──────────────────
+  const [patch] = await Promise.all([
+    page.waitForResponse(
+      (r) => /\/api\/habits\/[^/]+\/$/.test(r.url()) && r.request().method() === 'PATCH',
+    ),
+    page.getByRole('button', { name: 'Salvar alterações' }).click(),
+  ])
+  // 400 aqui significaria chave que o pacote instalado não tem — é exatamente a
+  // validação server-side que este cenário existe para exercitar.
+  expect(patch.ok(), await patch.text()).toBe(true)
+  expect(JSON.parse(patch.request().postData() ?? '{}')).toEqual({ iconKey: chosenKey })
+
+  // ── O tracker passa a mostrar o glifo NOVO ────────────────────────────────
+  await page.goto('/habits')
+  await expect(page.getByTestId('habits-day-percent')).toBeVisible(RECONCILE)
+  await expect(meditarGlyph.locator('svg')).toHaveCount(1)
+  await expect
+    .poll(async () => (await meditarGlyph.locator('svg').innerHTML()).trim(), RECONCILE)
+    .not.toBe(glifoAntes)
+
+  expect(consoleErrors).toEqual([])
 })
 
 test('sem grupo cadastrado, criar hábito fica indisponível com o motivo escrito', async ({

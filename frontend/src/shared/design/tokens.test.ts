@@ -273,6 +273,10 @@ describe('tokens — componentes do Épico 16 (Story 16.1, gate 16.0)', () => {
     expect(pictogramPicker.columnsSheet).toBe(4)
     // ALIAS do alvo de toque mínimo, não medida própria.
     expect(pictogramPicker.tileMinSize).toBe(appShell.touchTargetMin)
+    // DW-64: altura da LINHA da grade, verbatim do mockup O1/O2 — outra coisa
+    // que o piso de alvo de toque (44px), e a base do passo da janela virtual.
+    expect(pictogramPicker.tileHeightDialog).toBe('64px')
+    expect(pictogramPicker.tileHeightSheet).toBe('72px')
   })
 
   it('test_cada_medida_de_geometria_da_16_1_aparece_em_shellCssVariables', () => {
@@ -292,6 +296,10 @@ describe('tokens — componentes do Épico 16 (Story 16.1, gate 16.0)', () => {
       String(pictogramPicker.columnsDialog),
     )
     expect(vars['--ds-pictogram-picker-columns-sheet']).toBe(String(pictogramPicker.columnsSheet))
+    expect(vars['--ds-pictogram-picker-tile-height-dialog']).toBe(
+      pictogramPicker.tileHeightDialog,
+    )
+    expect(vars['--ds-pictogram-picker-tile-height-sheet']).toBe(pictogramPicker.tileHeightSheet)
   })
 
   it('test_o_que_reusa_var_existente_nao_ganha_var_propria', () => {

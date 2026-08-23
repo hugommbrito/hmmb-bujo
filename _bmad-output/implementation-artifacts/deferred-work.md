@@ -541,3 +541,51 @@ source_spec: `_bmad-output/implementation-artifacts/spec-dw-60-pictograma-na-ui-
 severity: medium
 reason: A DW-60 resolve cada glifo como MÓDULO PRÓPRIO (`import.meta.glob` lazy), então cada `iconKey` distinto tem sua própria latência de primeira pintura. Por decisão de design da spec, "ainda não resolveu" e "não tem glifo" compartilham a MESMA renderização (coluna vazia, sem skeleton, para não haver CLS) — o que torna carregamento lento indistinguível da ausência legítima do gate 16.0. **Medido no E2E:** um run marcou `1 flaky` exatamente no cenário do glifo — `toHaveCount(1)` no `svg` falhou por 10s (24 polls, 0 elementos) SEM nenhum erro de console, e passou no retry; o run seguinte deu 9/9 limpo. É cold start do Vite dev compilando 1 dos 1512 módulos sob demanda. Em produção são chunks pré-buildados de ~4 kB (a suíte de unidade e o build não reproduzem), mas o mecanismo mantém a propriedade: em cache frio ou rede ruim, o usuário vê coluna vazia onde há pictograma escolhido. Fora do escopo da DW-60 (cuja Boundary manda justamente não ter estado de loading) e melhor decidido JUNTO com a DW-64, que revisita o mecanismo do catálogo — as duas usam mecanismos diferentes de propósito. Opções a pesar lá: pré-carregar as chaves do payload do dia numa só passada, aceitar a latência como cosmética em glifo decorativo, ou (se a DW-64 já baixar o barrel) reusar o catálogo já em memória.
 status: open
+
+### DW-66: Nada automatizado defende o AC de bundle do catálogo Phosphor
+origin: review (bmad-build step-04, ciclo 1) of spec-dw-64-dw-65-seletor-de-pictograma.md, 2026-08-23
+location: frontend/vite.config.ts (alias `phosphor-catalog-bundle`), frontend/package.json (nenhum orçamento de bundle), .github/workflows/ci.yml (job `frontend`)
+source_spec: `_bmad-output/implementation-artifacts/spec-dw-64-dw-65-seletor-de-pictograma.md`
+severity: medium
+reason: O desenho inteiro da DW-64 depende de dois números que só um humano lendo `ls -la dist/assets` observa: o chunk de ENTRADA em ~1,08 MB e o catálogo isolado em chunk próprio. **Demonstrado pela camada verification-gap:** trocar o alias por `import * as … from '@phosphor-icons/react'` — exatamente a "simplificação" que o KEEP do Spec Change Log existe para impedir — deixa `typecheck`, `lint`, `build`, a suíte Vitese (que tem alias próprio para o barrel) e o E2E TODOS verdes, e multiplica por 4,7 o caminho crítico de toda rota (1,08 MB → 6,16 MB). A metade barata do guard entrou na DW-64 (P14: nenhum arquivo importa `./phosphorCatalog` estaticamente); o que falta é o TETO de tamanho, lendo `dist/.vite/manifest.json` e falhando acima de um limite — no molde "regenera e diffa" que o repo já usa para `schema.yaml`/`types.gen.ts`/`phosphor_catalog.json`. É infra nova de build, fora do escopo da spec do seletor.
+status: open
+
+### DW-67: Retry do catálogo do seletor pode não recuperar — `import()` rejeitado fica cacheado
+origin: review (bmad-build step-04, ciclo 1) of spec-dw-64-dw-65-seletor-de-pictograma.md, 2026-08-23
+location: frontend/src/features/habits/components/record/PictogramPicker.tsx (efeito de carga do catálogo + botão "Tentar de novo")
+source_spec: `_bmad-output/implementation-artifacts/spec-dw-64-dw-65-seletor-de-pictograma.md`
+severity: medium
+reason: A I/O Matrix da DW-64 exige `role="alert"` + retry quando o chunk do catálogo falha, e o botão existe. Mas o grafo de módulos do browser CACHEIA a rejeição de um `import()`: reincrementar a tentativa re-aguarda a MESMA rejeição, então "Tentar de novo" provavelmente nunca recupera de uma falha de rede real — só de uma falha dentro de `loadPhosphorCatalog()`. O teste da matriz não pega porque mocka `../../phosphorCatalog` e faz `loadPhosphorCatalog()` rejeitar, deixando o `import()` sempre resolvido. Recuperar de verdade exige cache-busting no specifier (que o Vite não expõe para módulo interno) ou recarregar a superfície — decisão de mecanismo, não correção de linha. Enquanto isso o usuário tem um botão que parece prometer recuperação e, no caso comum de queda de rede, não entrega.
+status: open
+
+### DW-68: CI não roda os testes de unidade do frontend nem o Playwright
+origin: review (bmad-build step-04, ciclo 1) of spec-dw-64-dw-65-seletor-de-pictograma.md, 2026-08-23
+location: .github/workflows/ci.yml (job `frontend`: typecheck, lint, build — sem `npm run test:run`; nenhum job de Playwright)
+source_spec: `_bmad-output/implementation-artifacts/spec-dw-64-dw-65-seletor-de-pictograma.md`
+severity: medium
+reason: PRÉ-EXISTENTE, exposto ao medir a cobertura da DW-64. O job `frontend` do CI roda só `typecheck`, `lint` e `build`; os ~2.300 testes de unidade e os E2E dependem inteiramente de alguém rodá-los localmente. Contraste com o backend, cujo `uv run pytest` roda sem scoping no push (memória do projeto registra isso como o gate cross-app). Consequência: toda verificação discutida nos reviews da 16.x — inclusive os guards de literais e de catálogo, cuja razão de existir é falhar ruidosamente — pode ser burlada por um push que ninguém rodou local. Fora do escopo de qualquer story de feature; é decisão de pipeline (custo de minutos de CI × Postgres/Playwright no runner).
+status: open
+
+### DW-69: Janela virtual do seletor não é remedida em resize/rotação
+origin: review (bmad-build step-04, ciclo 1) of spec-dw-64-dw-65-seletor-de-pictograma.md, 2026-08-23
+location: frontend/src/features/habits/components/record/PictogramPicker.tsx (efeito que mede `clientHeight`, deps `[catalog, compact]`)
+source_spec: `_bmad-output/implementation-artifacts/spec-dw-64-dw-65-seletor-de-pictograma.md`
+severity: low
+reason: A altura da viewport da grade é medida quando o catálogo chega e quando a faixa troca, mais a cada evento de `scroll`. Redimensionar a janela ou girar o dispositivo com o overlay ABERTO deixa a janela calculada obsoleta até o próximo scroll: menos linhas renderizadas do que o espaço agora comporta (faixa vazia no fim) ou mais do que o necessário. Cosmético e autocorrige no primeiro scroll. A correção certa é `ResizeObserver` no contêiner de rolagem — maquinaria nova para um caso que se conserta sozinho, então não entrou no ciclo de patch.
+status: open
+
+### DW-70: Grade do seletor não tem Home/End/PageUp/PageDown nem typeahead
+origin: review (bmad-build step-04, ciclo 1) of spec-dw-64-dw-65-seletor-de-pictograma.md, 2026-08-23
+location: frontend/src/features/habits/components/record/PictogramPicker.tsx (`handleGridKeyDown`)
+source_spec: `_bmad-output/implementation-artifacts/spec-dw-64-dw-65-seletor-de-pictograma.md`
+severity: low
+reason: O gate 16.0 especifica apenas "setas percorrem o `radiogroup`; Enter/Espaço seleciona; Esc fecha", e a busca é o mecanismo de travessia projetado — então isto NÃO é desvio de spec. Mas num catálogo de ~1.512 itens as setas são o único movimento de teclado dentro da grade, sem caminho para o fim da lista; `DestinationDialog.tsx:492-508`, o molde de roving tabindex do próprio repo, já trata Home/End. Vale decidir junto de qualquer passe futuro de teclado do seletor (o de Saúde, que reusa o mesmo componente na 16.4).
+status: open
+
+### DW-71: Vitest exercita o barrel ESM do Phosphor; dev/produção usam o bundle CJS
+origin: review (bmad-build step-04, ciclo 1) of spec-dw-64-dw-65-seletor-de-pictograma.md, 2026-08-23
+location: frontend/vitest.config.ts (alias `phosphor-catalog-bundle` → `@phosphor-icons/react`) × frontend/vite.config.ts (→ `dist/index.cjs.js`)
+source_spec: `_bmad-output/implementation-artifacts/spec-dw-64-dw-65-seletor-de-pictograma.md`
+severity: low
+reason: Divergência DECLARADA e aceita no Spec Change Log da DW-64 (o Node recusa um `.js` CommonJS dentro de um pacote `"type": "module"`, então o Vitest não consegue carregar o bundle de produção). Depois da correção P1 os NOMES passam a sair de `dist/csr/*.es.js` — idêntico nos dois artefatos —, então a divergência encolhe para a busca do COMPONENTE, cuja forma de export foi verificada igual (`exports.XIcon = …` no CJS, export nomeado no ESM). O artefato de produção é exercitado pelo E2E contra o servidor de dev, mas só na faixa wide: `playwright.config.ts` tem um único projeto `chromium`/Desktop Chrome, então o caminho Drawer/compact nunca roda contra ele. Fechar isso exige projeto mobile no Playwright ou um teste de nó que carregue o CJS via esbuild — infra, não linha de código.
+status: open

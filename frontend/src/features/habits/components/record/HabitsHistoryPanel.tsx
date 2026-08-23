@@ -23,7 +23,7 @@
 //
 // [Source: mockup F8/F9 + E5; spec 16.1 Task 6]
 // ─────────────────────────────────────────────────────────────────────────────
-import { useId, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import { Box, Button } from '@mui/material'
 
 import { typography } from '../../../../shared/design/tokens'
@@ -37,7 +37,7 @@ import { DAY_TYPE_LABEL, formatDateBR } from '../historyUtils'
 import { HabitEvolutionChart } from '../HabitEvolutionChart'
 import { HABIT_SERIES_VIEW_LABEL, type HabitSeriesView } from '../habitSeriesView'
 import type { HabitDayEntry, HabitHistoryDay, HabitSeries } from '../../types'
-import { DomainIcon } from './DomainIcon'
+import { DomainIcon, prefetchGlyphs } from './DomainIcon'
 import { EMPTY_RANGE, HabitCompletionGrid, NO_RECORD_DAY } from './HabitCompletionGrid'
 import { HabitsHistorySkeleton } from './HabitsSkeleton'
 import { Field } from './HabitsFormControls'
@@ -255,6 +255,14 @@ export function HabitsHistoryPanel({ compact, onOpenDayForEdit }: HabitsHistoryP
   // degrada para lista sem grupos, nunca para erro.
   const groupsQuery = useHabitGroupsQuery()
   const habitsQuery = useHabitsQuery({ includeInactive: true })
+
+  // DW-65 — mesma pré-carga da aba Hoje, na lista de hábitos do período: a
+  // grade E o detalhe do dia se alimentam dela, então uma passada aquece as
+  // duas superfícies antes da primeira pintura das linhas.
+  const historyHabits = history.data?.habits
+  useEffect(() => {
+    if (historyHabits != null) void prefetchGlyphs(historyHabits.map((item) => item.iconKey))
+  }, [historyHabits])
 
   const inactiveHabitIds = useMemo(
     () => new Set((habitsQuery.data ?? []).filter((h) => !h.active).map((h) => h.id)),

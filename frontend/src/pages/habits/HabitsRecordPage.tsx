@@ -226,6 +226,7 @@ export function HabitsRecordPage() {
         )}
         {tab === 'configuracao' && (
           <HabitsConfigPanel
+            compact={compact}
             disabled={!isOnline}
             disabledReasonId={!isOnline ? offlineId : undefined}
           />

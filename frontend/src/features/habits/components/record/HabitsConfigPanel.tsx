@@ -40,8 +40,10 @@ import {
 } from '../../api'
 import { formatDateBR } from '../historyUtils'
 import type { Habit, HabitGroup, HabitType } from '../../types'
+import { isKebabIconKey } from '../../iconKey'
 import { HabitsConfigSkeleton } from './HabitsSkeleton'
 import { Field, FieldPair, ProspectiveNotice } from './HabitsFormControls'
+import { PictogramField } from './PictogramPicker'
 import { PRIMARY_BUTTON_SX, SECONDARY_BUTTON_SX, controlStyle } from './habitsFormStyles'
 import {
   RETRY_LABEL,
@@ -278,18 +280,34 @@ function GroupMultiplierForm({
 interface HabitEditBlockProps {
   habit: Habit
   groups: HabitGroup[]
+  /** Faixa do call-site: decide Dialog × Drawer no seletor de pictograma. */
+  compact: boolean
+  /** Chaves já usadas pelos hábitos existentes — abrem a lista do seletor. */
+  usedIconKeys: readonly string[]
   onClose: () => void
   disabled?: boolean
   disabledReasonId?: string
 }
 
-function HabitEditBlock({ habit, groups, onClose, disabled, disabledReasonId }: HabitEditBlockProps) {
+function HabitEditBlock({
+  habit,
+  groups,
+  compact,
+  usedIconKeys,
+  onClose,
+  disabled,
+  disabledReasonId,
+}: HabitEditBlockProps) {
   const addVersion = useAddHabitVersionMutation()
   const updateIdentity = useUpdateHabitIdentityMutation()
   const isNumeric = habit.type === 'numeric'
   const reactId = useId()
 
   const [name, setName] = useState(habit.name)
+  // `iconKey` é OPCIONAL em `types.gen.ts`, então `undefined` e `null` chegam
+  // pelo mesmo campo; normalizamos para `null` (o valor do wire para "sem
+  // pictograma") para que o diff compare maçãs com maçãs.
+  const [iconKey, setIconKey] = useState<string | null>(habit.iconKey ?? null)
   const [unit, setUnit] = useState(habit.unit ?? '')
   const [group, setGroup] = useState(habit.group)
   const [weight, setWeight] = useState(() => decimalInputValue(habit.weight))
@@ -299,6 +317,7 @@ function HabitEditBlock({ habit, groups, onClose, disabled, disabledReasonId }: 
 
   const ids = {
     name: `habit-edit-name-${reactId}`,
+    icon: `habit-edit-icon-${reactId}`,
     unit: `habit-edit-unit-${reactId}`,
     group: `habit-edit-group-${reactId}`,
     weight: `habit-edit-weight-${reactId}`,
@@ -330,10 +349,15 @@ function HabitEditBlock({ habit, groups, onClose, disabled, disabledReasonId }: 
 
     // ── IDENTIDADE: UPDATE direto, vale para todo o histórico. Só dispara se
     // algum campo de identidade realmente mudou (duas mutações distintas).
-    const identity: { name?: string; unit?: string; group?: string } = {}
+    const identity: { name?: string; unit?: string; group?: string; iconKey?: string | null } = {}
     if (name.trim() !== habit.name) identity.name = name.trim()
     if (isNumeric && unit.trim() !== (habit.unit ?? '')) identity.unit = unit.trim()
     if (group !== habit.group) identity.group = group
+    // O PICTOGRAMA É IDENTIDADE: vale para todo o histórico e NÃO cria versão.
+    // Comparado contra `habit.iconKey ?? null` porque o campo é opcional no
+    // contrato — sem o `?? null`, remover o pictograma de um hábito que nunca
+    // teve um (`undefined`) enviaria `iconKey: null` sem necessidade.
+    if (iconKey !== (habit.iconKey ?? null)) identity.iconKey = iconKey
 
     try {
       if (versionedChanged) {
@@ -410,6 +434,16 @@ function HabitEditBlock({ habit, groups, onClose, disabled, disabledReasonId }: 
               style={controlStyle(disabled)}
             />
           </Field>
+          {/* Ordem do mockup (F5): nome → pictograma → unidade/grupo. */}
+          <PictogramField
+            id={ids.icon}
+            value={iconKey}
+            onChange={setIconKey}
+            compact={compact}
+            usedKeys={usedIconKeys}
+            disabled={disabled}
+            disabledReasonId={disabledReasonId}
+          />
           {isNumeric && (
             <Field id={ids.unit} label="Unidade">
               <input
@@ -529,11 +563,18 @@ function HabitEditBlock({ habit, groups, onClose, disabled, disabledReasonId }: 
 // ─── Painel ──────────────────────────────────────────────────────────────────
 
 export interface HabitsConfigPanelProps {
+  /** Faixa do call-site (`HabitsRecordPage` já calcula `!isTabletUp`): sem ela
+   *  o seletor de pictograma abriria como Dialog no celular. */
+  compact?: boolean
   disabled?: boolean
   disabledReasonId?: string
 }
 
-export function HabitsConfigPanel({ disabled = false, disabledReasonId }: HabitsConfigPanelProps) {
+export function HabitsConfigPanel({
+  compact = false,
+  disabled = false,
+  disabledReasonId,
+}: HabitsConfigPanelProps) {
   const [showInactive, setShowInactive] = useState(false)
   const groupsQuery = useHabitGroupsQuery()
   const habitsQuery = useHabitsQuery({ includeInactive: showInactive })
@@ -548,6 +589,7 @@ export function HabitsConfigPanel({ disabled = false, disabledReasonId }: Habits
   const [lastToggle, setLastToggle] = useState<{ habitId: string; active: boolean } | null>(null)
   const [groupName, setGroupName] = useState('')
   const [newName, setNewName] = useState('')
+  const [newIconKey, setNewIconKey] = useState<string | null>(null)
   const [newGroup, setNewGroup] = useState('')
   const [newType, setNewType] = useState<HabitType>('boolean')
   const [newWeight, setNewWeight] = useState('1')
@@ -558,6 +600,7 @@ export function HabitsConfigPanel({ disabled = false, disabledReasonId }: Habits
   const ids = {
     groupName: `habit-new-group-${reactId}`,
     name: `habit-new-name-${reactId}`,
+    icon: `habit-new-icon-${reactId}`,
     group: `habit-new-habit-group-${reactId}`,
     weight: `habit-new-weight-${reactId}`,
     unit: `habit-new-unit-${reactId}`,
@@ -607,6 +650,12 @@ export function HabitsConfigPanel({ disabled = false, disabledReasonId }: Habits
 
   const groups = groupsQuery.data
   const habits = knownHabits
+  // Sem busca, o seletor abre pelas chaves JÁ USADAS pelos hábitos existentes,
+  // seguidas do catálogo alfabético (`EXPERIENCE.md`). Chave malformada/nula não
+  // entra: a lista é de escolhas OFERECÍVEIS.
+  const usedIconKeys = [
+    ...new Set(habits.map((item) => item.iconKey).filter((key) => isKebabIconKey(key))),
+  ].sort()
   const hasGroups = groups.length > 0
   const creationDisabled = disabled || !hasGroups
   const creationReasonId = !hasGroups ? ids.reason : disabled ? disabledReasonId : undefined
@@ -632,7 +681,11 @@ export function HabitsConfigPanel({ disabled = false, disabledReasonId }: Habits
         type: newType,
         weight: parsedWeight.value,
         // `emoticon` NÃO é enviado: o emoji saiu da interface de Hábitos
-        // (gate 16.0, Q2); `iconKey` é a Story 16.2.
+        // (gate 16.0, Q2). `iconKey` só entra quando o usuário ESCOLHEU — a
+        // chave ausente é OMITIDA, nunca enviada como `null`: o corpo do POST é
+        // comparado por igualdade EXATA em teste, e o backend já trata a
+        // ausência como "sem pictograma".
+        ...(newIconKey != null ? { iconKey: newIconKey } : {}),
         ...(newType === 'numeric'
           ? { meta: parsedMeta.value, bonus: parsedBonus.value, unit: newUnit.trim() }
           : {}),
@@ -640,6 +693,7 @@ export function HabitsConfigPanel({ disabled = false, disabledReasonId }: Habits
       {
         onSuccess: () => {
           setNewName('')
+          setNewIconKey(null)
           setNewWeight('1')
           setNewMeta('')
           setNewBonus('')
@@ -851,6 +905,8 @@ export function HabitsConfigPanel({ disabled = false, disabledReasonId }: Habits
                         key={habit.id}
                         habit={habit}
                         groups={groups}
+                        compact={compact}
+                        usedIconKeys={usedIconKeys}
                         onClose={() => setEditingId(null)}
                         disabled={disabled}
                         disabledReasonId={disabledReasonId}
@@ -919,6 +975,16 @@ export function HabitsConfigPanel({ disabled = false, disabledReasonId }: Habits
             </select>
           </Field>
         </FieldPair>
+
+        <PictogramField
+          id={ids.icon}
+          value={newIconKey}
+          onChange={setNewIconKey}
+          compact={compact}
+          usedKeys={usedIconKeys}
+          disabled={creationDisabled}
+          disabledReasonId={creationReasonId}
+        />
 
         {/* Tipo em `radiogroup`, IMUTÁVEL depois da criação. */}
         <Box
