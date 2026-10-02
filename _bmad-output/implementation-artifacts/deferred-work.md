@@ -589,3 +589,63 @@ source_spec: `_bmad-output/implementation-artifacts/spec-dw-64-dw-65-seletor-de-
 severity: low
 reason: Divergência DECLARADA e aceita no Spec Change Log da DW-64 (o Node recusa um `.js` CommonJS dentro de um pacote `"type": "module"`, então o Vitest não consegue carregar o bundle de produção). Depois da correção P1 os NOMES passam a sair de `dist/csr/*.es.js` — idêntico nos dois artefatos —, então a divergência encolhe para a busca do COMPONENTE, cuja forma de export foi verificada igual (`exports.XIcon = …` no CJS, export nomeado no ESM). O artefato de produção é exercitado pelo E2E contra o servidor de dev, mas só na faixa wide: `playwright.config.ts` tem um único projeto `chromium`/Desktop Chrome, então o caminho Drawer/compact nunca roda contra ele. Fechar isso exige projeto mobile no Playwright ou um teste de nó que carregue o CJS via esbuild — infra, não linha de código.
 status: open
+
+### DW-72: Fila unificada e aliases legados listam subtarefa órfã sem o contexto do pai
+origin: review (bmad-build step-04, ciclo 1) of spec-14-11-regularizacao-atrasada-do-ciclo-mensal.md, 2026-10-01
+location: backend/bujo/services/migration.py (`unified_migration_queue`), backend/bujo/serializers.py (`UnifiedMigrationQueueSerializer`/`CatchUpQueueSerializer` — itens via `TaskSerializer`), frontend/src/pages/MigrationRitualPage.tsx
+source_spec: `_bmad-output/implementation-artifacts/spec-14-11-regularizacao-atrasada-do-ciclo-mensal.md`
+severity: medium
+summary: Fila unificada e aliases legados listam subtarefa órfã sem o contexto do pai.
+reason: A fila passou a listar cabeças abertas (subtarefa aberta sob pai disposto) para não esconder o que trava o gate de finalizar, mas o item sai só como `Task` — a UI de Migração/Catch-Up (14.9) e os banners do Daily legado mostram "Marcar retorno" como se fosse raiz solta.
+evidence: Causado pela 14.11, mas o Code Map da spec restringiu `parent_title` ao `RitualTaskItemSerializer`; um campo aditivo nos itens da fila exige mudança de contrato das 3 respostas e adoção na UI da 14.9 (fora do escopo de um patch).
+status: open
+
+### DW-73: Páginas do ritual SEMANAL engolem o 409 de ciclo e gateiam "Finalizar semana anterior" pela contagem local
+origin: review (bmad-build step-04, ciclo 1) of spec-14-11-regularizacao-atrasada-do-ciclo-mensal.md, 2026-10-01
+location: frontend/src/pages/planner/WeeklyPlanningPage.tsx (cycleAction.mutate sem onError), frontend/src/pages/planner/WeeklyBoardPage.tsx (open_planning_target sem callbacks), frontend/src/features/bujo/components/weekly/WeeklyContextRail.tsx (visibilidade por `previousWeeklyPendingCount === 0`)
+source_spec: `_bmad-output/implementation-artifacts/spec-14-11-regularizacao-atrasada-do-ciclo-mensal.md`
+severity: medium
+summary: Páginas do ritual SEMANAL engolem o 409 de ciclo e gateiam "Finalizar semana anterior" pela contagem local.
+reason: O backend agora devolve `{detail, code}` legíveis também para os gates semanais, mas a UI semanal não os exibe (botões mudos no 409) nem lê `readiness.finalize` para a visibilidade/motivo de Finalizar, como o rail mensal passou a fazer.
+evidence: Pré-existente (a 14.11 só mudou as superfícies mensais); a mecânica de cabeças abertas já corrige o beco sem saída semanal no backend. Reaplicar `domainErrorMessage`/`runCycleAction` e o painel de gates de Finalizar nos irmãos semanais.
+status: open
+
+### DW-74: `destination: 'month'` legado (sem `month_first`) não valida `scheduled_date` dentro do mês corrente
+origin: review (bmad-build step-04, ciclo 1) of spec-14-11-regularizacao-atrasada-do-ciclo-mensal.md, 2026-10-01
+location: backend/bujo/views.py (`TaskMigrateView`, ramo `month_first is None`), backend/bujo/serializers.py (`TaskMigrateSerializer._validate_month_target` só roda com `month_first`)
+source_spec: `_bmad-output/implementation-artifacts/spec-14-11-regularizacao-atrasada-do-ciclo-mensal.md`
+severity: low
+summary: `destination: 'month'` legado (sem `month_first`) não valida `scheduled_date` dentro do mês corrente.
+reason: Um POST `'month'` sem `monthFirst` e com `scheduledDate` de outro mês grava o sucessor no log do mês corrente com um dia fora dele.
+evidence: Pré-existente (caminho legado intacto por decisão da spec); a view conhece o mês corrente e pode aplicar a mesma checagem de mesmo-mês do ramo explícito.
+status: open
+
+### DW-75: Filas de review legadas (`weekly-review/queue/`, `monthly-review/queue/`) continuam só com raízes
+origin: review (bmad-build step-04, ciclo 1) of spec-14-11-regularizacao-atrasada-do-ciclo-mensal.md, 2026-10-01
+location: backend/bujo/views.py (`WeeklyReviewQueueView`/`MonthlyReviewQueueView`, `parent_task__isnull=True`)
+source_spec: `_bmad-output/implementation-artifacts/spec-14-11-regularizacao-atrasada-do-ciclo-mensal.md`
+severity: low
+summary: Filas de review legadas (`weekly-review/queue/`, `monthly-review/queue/`) continuam só com raízes.
+reason: Os banners legados do Daily ("Revisar semana/mês anterior") não mostram a subtarefa aberta sob pai disposto que a fonte bloqueante e a fila unificada agora listam.
+evidence: Pré-existente; superfícies legadas substituídas pelo ritual do shell (14.9) e removidas no Épico 18 — trocar para `undisposed_heads` é uma linha, mas exige revisar os testes de caracterização `*_so_traz_raizes_*`.
+status: open
+
+### DW-76: 400 de `monthFirst` quando o alvo de planejamento avança em outra sessão mostra só o erro genérico e o retry repete o alvo obsoleto
+origin: review (bmad-build step-04, ciclo 1) of spec-14-11-regularizacao-atrasada-do-ciclo-mensal.md, 2026-10-01
+location: frontend/src/pages/planner/MonthlyPlanningPage.tsx (onError dos 3 fluxos de migrate; `retryActionsRef` guarda o closure com o `targetMonthFirst` antigo)
+source_spec: `_bmad-output/implementation-artifacts/spec-14-11-regularizacao-atrasada-do-ciclo-mensal.md`
+severity: low
+summary: 400 de `monthFirst` quando o alvo de planejamento avança em outra sessão mostra só o erro genérico e o retry repete o alvo obsoleto.
+reason: Com duas sessões, iniciar o alvo numa delas faz a outra enviar `'month'` + `monthFirst` abaixo do novo piso; o 400 `fields.monthFirst` vira "Não foi possível migrar" e o retry replica o mesmo payload até recarregar.
+evidence: Caso raro (multi-sessão); a correção certa é um leitor de erro de campo (`fields`) + refetch da readiness antes do retry, fora do escopo do patch.
+status: open
+
+### DW-77: `HabitsRecordPage.test.tsx` › "DW-60: o glifo aparece no detalhe do dia e na grade" falha no baseline
+origin: review (bmad-build step-04, ciclo 1) of spec-14-11-regularizacao-atrasada-do-ciclo-mensal.md, 2026-10-01
+location: frontend/src/pages/habits/HabitsRecordPage.test.tsx (Aba Histórico)
+source_spec: `_bmad-output/implementation-artifacts/spec-14-11-regularizacao-atrasada-do-ciclo-mensal.md`
+severity: medium
+summary: `HabitsRecordPage.test.tsx` › "DW-60: o glifo aparece no detalhe do dia e na grade" falha no baseline.
+reason: `npm run test:run` fecha em 2368 passed | 8 failed: 7 são as da DW-61 e esta 8ª é de Hábitos. Confirmado pré-existente: falha isolada também num worktree limpo no baseline `32429a37c29458c3ad9532afb6ee89b06b4acb34`, sem nenhuma linha da 14.11 (que não toca `pages/habits`).
+evidence: Suíte vermelha mascara regressões novas (mesma razão da DW-61); provavelmente regressão da DW-64/DW-65 (seletor/pré-carga de glifos) sobre a asserção da DW-60.
+status: open

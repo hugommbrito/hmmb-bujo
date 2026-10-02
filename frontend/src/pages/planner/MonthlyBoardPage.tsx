@@ -23,16 +23,24 @@
 //     de uma linha se o Product Owner quiser essa restrição ativa aqui.
 //   ▶ `onMove` de `TaskDetailCard` está CABEADO desde DW-27 (o gap da 14.5/14.6
 //     foi fechado nos dois boards): o botão abre o `DestinationDialog` com os
-//     destinos nomeados desta superfície. A oferta do mês EM FOCO mapeia para
-//     `'future'` + `monthFirst` quando o foco é posterior ao mês corrente, e
-//     aparece INDISPONÍVEL com motivo quando é anterior — `POST /migrate/` não
-//     tem combinação que grave num mês já passado (mesmo racional de
-//     `monthWouldBeRejectedAsFuture()` em `MonthlyPlanningPage`).
+//     destinos nomeados desta superfície. A oferta do mês EM FOCO passa pelo
+//     adaptador único `migrateFieldsForMonth` (Story 14.11): posterior ao
+//     corrente ⇒ `'future'` + `monthFirst`; na faixa `[alvo de planejamento,
+//     corrente]` ⇒ `'month'` + `monthFirst` explícito (o servidor aceita); abaixo
+//     do alvo ⇒ INDISPONÍVEL com motivo (ali não se escreve mais).
+//   ▶ Story 14.11 — os botões de ciclo NOMEIAM o mês-alvo ("Continuar
+//     planejamento de Setembro de 2026" / "Planejar Outubro de 2026"; o alvo
+//     previsto espelha `next_monthly_target`: `planning` → `active + 1` → mês
+//     corrente), uma linha de regularização atrasada aparece quando o alvo é
+//     anterior ao corrente, a prontidão em erro ganha retry, e o 409 de
+//     `open_planning_target` vira `role="alert"` com o `detail` do servidor.
 // ─────────────────────────────────────────────────────────────────────────────
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Box, Button, useMediaQuery } from '@mui/material'
 import { Link as RouterLink } from 'react-router-dom'
+
+import { domainErrorMessage } from '../../api/errors'
 
 import {
   DestinationDialog,
@@ -57,16 +65,17 @@ import type {
   TaskStatus,
 } from '../../features/bujo'
 import { MonthlyCalendarGrid } from '../../features/bujo/components/monthly/MonthlyCalendarGrid'
+import { migrateFieldsForMonth } from '../../features/bujo/components/monthly/monthlyRitualSources'
 // Reuso deliberado (AD-21/"zero recriação"): `WeeklyTaskPanel` é uma
 // composição genérica (header + contagem + lista rolável + criação
 // contextual + reordenação) sem nada Weekly-específico — serve tanto o pool
 // "Sem dia definido" quanto a lista completa de um dia em compact, sem fork.
 import { WeeklyTaskPanel } from '../../features/bujo/components/weekly/WeeklyTaskPanel'
 import { PlannerSkeleton } from '../../features/bujo/components/PlannerSkeleton'
-import { capitalize, MONTH_NAMES_PT } from '../../features/bujo/monthNames'
+import { capitalize, formatMonthTitle } from '../../features/bujo/monthNames'
 import { navIconFor } from '../../app/layout/shell/navIcons'
 import { mediaQueries, typography } from '../../shared/design/tokens'
-import { formatDayLabel, mondayIsoOf, monthGridWeeks, parseLocalDate } from '../../shared/date'
+import { addMonthsIso, formatDayLabel, mondayIsoOf, monthGridWeeks, monthsBetweenIso, parseLocalDate } from '../../shared/date'
 import { useOnlineStatus } from '../../shared/hooks/useOnlineStatus'
 
 type StatusFilterKey = 'pending' | 'started' | 'completed' | 'migrated-postponed' | 'cancelled'
@@ -78,16 +87,17 @@ const CYCLE_STATUS_LABEL: Record<Exclude<CycleStatus, null>, string> = {
 }
 
 // ── "Mover tarefa" (DW-27) ────────────────────────────────────────────────────
-/** `POST /migrate/` não tem combinação que grave num mês ANTERIOR ao corrente:
- * `'month'` resolve sempre para o mês corrente no servidor e `'future'` exige
- * `monthFirst` estritamente posterior. Mesmo texto de `STALE_TARGET_MIGRATE_ERROR`
- * em `MonthlyPlanningPage`, encurtado para caber no nome acessível da oferta. */
-const PAST_MONTH_UNAVAILABLE_REASON = 'este mês já é anterior ao mês atual'
+/** Story 14.11: `POST /migrate/` grava com `'month'` + `monthFirst` em qualquer
+ * mês da faixa `[alvo de planejamento mensal, corrente]`; ABAIXO do alvo não
+ * se escreve mais (400 "Anterior ao alvo de planejamento mensal."). */
+const PAST_MONTH_UNAVAILABLE_REASON = 'este mês é anterior ao alvo de planejamento mensal'
 
 /** `'future'` recusa o mês corrente ("Use 'month' para o mês corrente."). */
 const FUTURE_MONTH_REJECTED_REASON = 'Este Mês atende o mês corrente — escolha essa opção.'
 
 const MOVE_ERROR = 'Não foi possível mover a tarefa. Tente novamente.'
+
+const OPEN_PLANNING_ERROR = 'Não foi possível abrir o planejamento. Tente novamente.'
 
 /** Ids das ofertas — o chamador é quem traduz `meta.offerId` no `destination`
  * do POST (o diálogo é agnóstico de domínio). */
@@ -133,17 +143,6 @@ function groupTasksByDate(tasks: Task[]): { byDate: Map<string, Task[]>; unsched
   return { byDate, unscheduled }
 }
 
-function formatMonthTitle(monthFirst: string): string {
-  const [year, month] = monthFirst.split('-').map(Number)
-  return `${capitalize(MONTH_NAMES_PT[month - 1])} de ${year}`
-}
-
-function addMonthsIso(monthFirstIso: string, delta: number): string {
-  const [year, month] = monthFirstIso.split('-').map(Number)
-  const date = new Date(year, month - 1 + delta, 1)
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-01`
-}
-
 export function MonthlyBoardPage() {
   const queryClient = useQueryClient()
   const [explicitMonthFirst, setExplicitMonthFirst] = useState<string | undefined>(undefined)
@@ -153,12 +152,21 @@ export function MonthlyBoardPage() {
   const [compactSelection, setCompactSelection] = useState<string | 'undated' | null>(null)
   const [movingTaskId, setMovingTaskId] = useState<string | null>(null)
   const [moveError, setMoveError] = useState<string | null>(null)
+  // Story 14.11: motivo do último `open_planning_target` rejeitado (409 →
+  // `detail` do servidor; outro erro → fallback). Limpo no próximo sucesso.
+  const [cycleError, setCycleError] = useState<string | null>(null)
 
   const monthlyLog = useMonthlyLogQuery(explicitMonthFirst)
   // Dedup automático com a query acima quando `explicitMonthFirst` é `undefined`.
   const currentMonthLog = useMonthlyLogQuery()
   const todayLog = useTodayLogQuery()
   const readiness = useMonthlyCycleReadinessQuery()
+  // Assim que um alvo em planejamento existe, o erro de "Planejar" perdeu o
+  // objeto (review): limpa, para não ficar preso ao navegar/recarregar.
+  const planningTargetFromReadiness = readiness.data?.planning?.monthFirst ?? null
+  useEffect(() => {
+    if (planningTargetFromReadiness) setCycleError(null)
+  }, [planningTargetFromReadiness])
   const createTask = useCreateMonthlyTaskMutation()
   const transitionTask = useTransitionTaskMutation()
   const reorderTask = useReorderTaskMutation()
@@ -221,7 +229,32 @@ export function MonthlyBoardPage() {
   // do servidor (Convenção #8), como já faz `BrainDumpDestinationPicker`.
   const currentMonthFirst = currentMonthLog.data?.monthFirst ?? null
   const currentWeekStart = todayIso ? mondayIsoOf(todayIso) : null
-  const boardMonthIsPast = Boolean(currentMonthFirst && monthFirst < currentMonthFirst)
+
+  // ── Alvo do ciclo (Story 14.11) ──────────────────────────────────────────
+  // `planning` é o alvo quando existe; senão o PREVISTO espelha
+  // `next_monthly_target` do servidor: mês seguinte ao `active`, ou o corrente.
+  const planningTarget = readiness.data?.planning?.monthFirst ?? null
+  const predictedTarget = readiness.data
+    ? readiness.data.active
+      ? addMonthsIso(readiness.data.active.monthFirst, 1)
+      : currentMonthFirst
+    : null
+  const cycleTarget = planningTarget ?? predictedTarget
+  // Regularização atrasada: o alvo (em planejamento ou previsto) é anterior ao
+  // mês corrente — faltam `catchUpMonths` meses, materializados um por vez.
+  const catchUpMonths =
+    cycleTarget && currentMonthFirst && cycleTarget < currentMonthFirst
+      ? monthsBetweenIso(cycleTarget, currentMonthFirst)
+      : 0
+  // Piso de escrita de `'month'` + `monthFirst`: espelha o servidor
+  // (`min(next_monthly_target, corrente)` em `TaskMigrateView`) — o alvo em
+  // planejamento OU o previsto (`active + 1`), quando anterior ao corrente;
+  // senão o próprio corrente. Abaixo dele a oferta do mês em foco fica indisponível.
+  const writableFloor =
+    currentMonthFirst && (cycleTarget && cycleTarget < currentMonthFirst ? cycleTarget : currentMonthFirst)
+  // Sem prontidão (pendente/erro) o piso é desconhecido: NÃO marcar a oferta
+  // como indisponível — o servidor valida, e um 400 vira `MOVE_ERROR` (review).
+  const boardMonthBelowFloor = Boolean(readiness.data && writableFloor && monthFirst < writableFloor)
 
   const moveOffers: DestinationOffer[] = [
     {
@@ -253,8 +286,9 @@ export function MonthlyBoardPage() {
         ]
       : []),
     // O mês NAVEGADO só é destino distinto quando não é o corrente. Posterior ⇒
-    // `'future'` + `monthFirst`; anterior ⇒ visível e INDISPONÍVEL com o motivo,
-    // nunca um 400 cru do servidor.
+    // `'future'` + `monthFirst`; entre o alvo de planejamento e o corrente ⇒
+    // `'month'` + `monthFirst` (Story 14.11); abaixo do alvo ⇒ visível e
+    // INDISPONÍVEL com o motivo, nunca um 400 cru do servidor.
     ...(currentMonthFirst && monthFirst !== currentMonthFirst
       ? [
           {
@@ -263,7 +297,7 @@ export function MonthlyBoardPage() {
             icon: navIconFor('planner-month'),
             day: { kind: 'month' as const, monthFirst },
             undated: {},
-            unavailableReason: boardMonthIsPast ? PAST_MONTH_UNAVAILABLE_REASON : null,
+            unavailableReason: boardMonthBelowFloor ? PAST_MONTH_UNAVAILABLE_REASON : null,
           },
         ]
       : []),
@@ -308,21 +342,21 @@ export function MonthlyBoardPage() {
     return `Mover para ${formatDayLabel(scheduledDate, 'day-month')}`
   }
 
-  /** `meta.offerId` → contrato de `POST /migrate/`. `'month'` sempre grava no
-   * mês CORRENTE (o servidor calcula `month_first`), então o mês NAVEGADO só é
-   * alcançável por `'future'` — e apenas quando é posterior ao corrente. */
+  /** `meta.offerId` → contrato de `POST /migrate/`. "Este Mês" sem `monthFirst`
+   * é o legado (o servidor resolve o corrente); o mês NAVEGADO passa pelo
+   * adaptador único `migrateFieldsForMonth` (Story 14.11). */
   function migrateFieldsFor(
     offerId: string,
     scheduledDate: string | null,
     selectionMonthFirst: string,
-  ): { destination: MigrationDestination; monthFirst?: string; scheduledDate?: string } | null {
+  ): { destination: MigrationDestination; monthFirst?: string; scheduledDate?: string | null } | null {
     const day = scheduledDate ?? undefined
     if (offerId === MOVE_OFFER.today) return { destination: 'today' }
     if (offerId === MOVE_OFFER.currentWeek) return { destination: 'week', scheduledDate: day }
     if (offerId === MOVE_OFFER.currentMonth) return { destination: 'month', scheduledDate: day }
     if (offerId === MOVE_OFFER.boardMonth) {
-      if (boardMonthIsPast) return null
-      return { destination: 'future', monthFirst, scheduledDate: day }
+      if (boardMonthBelowFloor || !currentMonthFirst) return null
+      return migrateFieldsForMonth(monthFirst, scheduledDate, currentMonthFirst)
     }
     if (offerId === MOVE_OFFER.future) {
       return { destination: 'future', monthFirst: selectionMonthFirst, scheduledDate: day }
@@ -362,11 +396,16 @@ export function MonthlyBoardPage() {
 
   function handleOpenPlanning() {
     // `open_planning_target` é determinístico no servidor (M07: sem escolha,
-    // sem campo de data) — nenhum `monthFirst` precisa ser enviado.
-    cycleAction.mutate({ action: 'open_planning_target' })
+    // sem campo de data) — nenhum `monthFirst` precisa ser enviado. Um 409
+    // (disputa de alvo, gate) vira texto em `role="alert"` (Story 14.11).
+    cycleAction.mutate(
+      { action: 'open_planning_target' },
+      {
+        onSuccess: () => setCycleError(null),
+        onError: (error) => setCycleError(domainErrorMessage(error, OPEN_PLANNING_ERROR)),
+      },
+    )
   }
-
-  const planningTarget = readiness.data?.planning?.monthFirst
 
   const poolPanel = (
     <WeeklyTaskPanel
@@ -449,21 +488,52 @@ export function MonthlyBoardPage() {
                 to="/planner/month/planning"
                 sx={{ backgroundColor: 'var(--ds-primary)', color: 'var(--ds-on-primary)' }}
               >
-                Continuar planejamento
+                Continuar planejamento de {formatMonthTitle(planningTarget)}
               </Button>
-              <Button component={RouterLink} to="/planner/month/planning" variant="text">
+              {/* Cor EXPLÍCITA (mesmo achado do axe da DW-16): sem override o MUI
+                  aplica o teal legado de `theme.palette.primary`, abaixo do piso AA
+                  sobre a superfície — pego pelo axe do board em regularização atrasada. */}
+              <Button
+                component={RouterLink}
+                to="/planner/month/planning"
+                variant="text"
+                sx={{ color: 'var(--ds-primary)' }}
+              >
                 Mês em planejamento
               </Button>
             </>
           ) : (
             <Button
               onClick={handleOpenPlanning}
+              disabled={cycleAction.isPending}
               sx={{ backgroundColor: 'var(--ds-primary)', color: 'var(--ds-on-primary)' }}
             >
-              Planejar próximo mês
+              {predictedTarget ? `Planejar ${formatMonthTitle(predictedTarget)}` : 'Planejar próximo mês'}
             </Button>
           )}
+          {readiness.isError && (
+            <Box role="alert" sx={{ ...typography.meta, color: 'var(--ds-danger)', display: 'flex', alignItems: 'center', gap: 'var(--ds-space-1)' }}>
+              Não foi possível carregar o ciclo mensal.
+              <Button size="small" onClick={() => readiness.refetch()} sx={{ color: 'var(--ds-primary)' }}>
+                Tentar novamente
+              </Button>
+            </Box>
+          )}
         </Box>
+
+        {catchUpMonths > 0 && cycleTarget && currentMonthFirst && (
+          <Box role="status" sx={{ ...typography.meta, color: 'var(--ds-warning)' }}>
+            Regularização atrasada: {formatMonthTitle(cycleTarget)} é anterior ao mês corrente —{' '}
+            {catchUpMonths === 1 ? 'falta 1 mês' : `faltam ${catchUpMonths} meses`} para alcançar{' '}
+            {formatMonthTitle(currentMonthFirst)}, um por vez.
+          </Box>
+        )}
+
+        {cycleError && !planningTarget && (
+          <Box role="alert" sx={{ ...typography.body, color: 'var(--ds-danger)', backgroundColor: 'var(--ds-danger-soft)', padding: 'var(--ds-space-2)', borderRadius: 'var(--ds-radius-sm)' }}>
+            {cycleError}
+          </Box>
+        )}
 
         <Box role="group" aria-label="Filtros por status" sx={{ display: 'flex', gap: 'var(--ds-space-1)', flexWrap: 'wrap', alignItems: 'center' }}>
           <FilterButton active={statusFilter === null} onClick={() => setStatusFilter(null)} label={`${totals.all} registros`} />

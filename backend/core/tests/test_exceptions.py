@@ -34,6 +34,39 @@ def test_invalid_transition_builds_message():
     assert "open" in str(exc) and "done" in str(exc)
 
 
+def test_invalid_transition_com_reason_e_code_usa_o_reason_como_mensagem():
+    """Story 14.11: `reason`/`code` são aditivos — o `str()` vira o motivo legível
+    (o `detail` do 409) e `code` é a chave do gate; sem eles, mensagem genérica."""
+    exc = InvalidTransition(
+        "planning", "active", reason="Finalize o mês anterior.", code="previous_finalized"
+    )
+    assert str(exc) == "Finalize o mês anterior."
+    assert exc.code == "previous_finalized"
+    assert exc.reason == "Finalize o mês anterior."
+    assert (exc.from_status, exc.to_status) == ("planning", "active")
+
+    generico = InvalidTransition("planning", "active")
+    assert generico.code is None
+    assert str(generico) == "Invalid transition: planning -> active"
+
+
+def test_handler_409_inclui_code_so_quando_a_excecao_o_carrega():
+    """Story 14.11: `{"detail", "code"}` para gates de ciclo; todo outro 409
+    mantém EXATAMENTE a forma `{"detail"}` de sempre."""
+    com_code = custom_exception_handler(
+        InvalidTransition(
+            "active", "finalized", reason="Há subtarefas abertas.", code="no_open_tasks"
+        ),
+        {},
+    )
+    assert com_code.status_code == status.HTTP_409_CONFLICT
+    assert com_code.data == {"detail": "Há subtarefas abertas.", "code": "no_open_tasks"}
+
+    sem_code = custom_exception_handler(InvalidTransition("a", "b"), {})
+    assert sem_code.status_code == status.HTTP_409_CONFLICT
+    assert sem_code.data == {"detail": "Invalid transition: a -> b"}
+
+
 def test_tenant_scope_violation_maps_to_opaque_500(caplog):
     response = custom_exception_handler(TenantScopeViolation(), {})
 

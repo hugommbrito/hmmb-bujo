@@ -1597,6 +1597,11 @@ describe('invalidateRitualQueries (Story 14.6, AC9) — estendida com os 4 prefi
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'ritualMonthlySource'] })
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'ritualMonthlyDensity'] })
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['bujo', 'taskDensity'] })
+    // Story 14.11: decidir uma cabeça aberta pelo ritual re-deriva a fila
+    // unificada e os dois aliases finos.
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.bujo.migrationQueue() })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.bujo.unifiedMigrationQueue() })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.bujo.catchUpQueue() })
   })
 })
 

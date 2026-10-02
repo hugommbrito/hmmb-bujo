@@ -11,6 +11,8 @@ import { useWeeklyDensityQuery } from '../../api'
 import { formatDayLabel } from '../../../../shared/date'
 import { typography } from '../../../../shared/design/tokens'
 import type { WeeklyCycleReadiness } from '../../types'
+// Story 14.11: `GateRow` compartilhada (extraída daqui e do rail mensal).
+import { GateRow } from '../GateRow'
 import { WEEKLY_RITUAL_SOURCE_LABEL, type WeeklyRitualSourceId } from './weeklyRitualSources'
 
 export interface WeeklyProgressSourceInput {
@@ -329,15 +331,6 @@ export function WeeklyContextRail({
           </Box>
         )}
       </Box>
-    </Box>
-  )
-}
-
-function GateRow({ label, ok }: { label: string; ok: boolean }) {
-  return (
-    <Box sx={{ ...typography.body, display: 'flex', gap: 'var(--ds-space-1)', color: ok ? 'var(--ds-success)' : 'var(--ds-danger)' }}>
-      <span aria-hidden>{ok ? '✓' : '✗'}</span>
-      <span>{label}</span>
     </Box>
   )
 }

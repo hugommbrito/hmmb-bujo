@@ -2523,6 +2523,7 @@ export interface components {
         RitualTaskItem: {
             task: components["schemas"]["Task"];
             decision: string | null;
+            parentTitle?: string | null;
         };
         RitualTemplateItem: {
             template: components["schemas"]["RecurringTaskTemplate"];
@@ -2670,7 +2671,10 @@ export interface components {
         };
         TaskMigrate: {
             destination: components["schemas"]["TaskMigrateDestinationEnum"];
-            /** Format: date */
+            /**
+             * Format: date
+             * @description Dia 1 do mês de destino. Obrigatório em 'future' (estritamente posterior ao mês corrente). Opcional em 'month' (Story 14.11, regularização atrasada): entre o alvo de planejamento mensal e o mês corrente, inclusive; ausente = mês corrente. Ignorado nos demais destinos.
+             */
             monthFirst?: string;
             /** Format: date */
             scheduledDate?: string | null;

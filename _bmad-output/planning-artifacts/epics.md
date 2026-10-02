@@ -2380,6 +2380,20 @@ Para que o histórico permaneça legível com a linhagem intacta (FR-4.13 parida
 **Então** filtros/período → lista → detalhe readonly; conteúdo com contraste normal (nunca aparência disabled); "Fechado"/"Somente leitura" textuais; mutações ausentes,
 **E** a seta de linhagem navega ao sucessor entre períodos sem perder filtro/posição (paridade com 11.11).
 
+### Story 14.11: Regularização atrasada do ciclo mensal — destravar e explicar
+
+Como Hugo,
+Quero regularizar meses pulados pela própria UI, vendo qual mês é o alvo e qual gate está bloqueando,
+Para que entrar num mês sem tê-lo planejado nunca vire um beco sem saída (M07 mantido: materialização sequencial, um mês por vez).
+
+**Critérios de Aceitação:**
+
+**Dado que** o Monthly anterior tem uma subtarefa aberta sob um pai já concluído,
+**Quando** o ritual mensal carrega a fonte "Monthly anterior",
+**Então** a subtarefa aparece como item bloqueante e `readyToFinalize` só fica verdadeiro quando ela for decidida (fonte e gate de finalizar nunca divergem),
+**E** os gates de Finalizar e de Iniciar são exibidos individualmente (✓/✗ + motivo), todo 409 de ciclo aparece como texto, e o board/ritual nomeiam o mês-alvo com uma faixa de "regularização atrasada" quando ele é anterior ao mês corrente,
+**E** migrar/adiar durante a regularização alcança o próprio alvo (`destination: 'month'` com `monthFirst` entre o alvo e o mês corrente), sem novo valor de destino e sem relaxar o Future Log.
+
 ---
 
 ## Epic 15: Onda 4 — Captura no Sistema Novo

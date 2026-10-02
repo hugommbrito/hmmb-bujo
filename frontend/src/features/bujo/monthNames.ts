@@ -35,3 +35,13 @@ export const MONTH_ABBREV_PT = [
 export function capitalize(word: string): string {
   return word.charAt(0).toUpperCase() + word.slice(1)
 }
+
+/** "Setembro de 2026" a partir de "AAAA-MM-01". Story 14.11: UMA cópia — antes
+ * vivia duplicada em `MonthlyPlanningPage.tsx` e `MonthlyBoardPage.tsx`; agora
+ * os botões nomeados ("Continuar planejamento de Setembro de 2026"), a faixa de
+ * regularização e os títulos "Já alocados em …" partem do mesmo texto. */
+export function formatMonthTitle(monthFirst: string): string {
+  const [year, month] = monthFirst.split('-').map(Number)
+  return `${capitalize(MONTH_NAMES_PT[month - 1])} de ${year}`
+}
+

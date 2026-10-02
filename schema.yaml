@@ -4457,6 +4457,9 @@ components:
         decision:
           type: string
           nullable: true
+        parentTitle:
+          type: string
+          nullable: true
       required:
       - decision
       - task
@@ -4803,6 +4806,10 @@ components:
         monthFirst:
           type: string
           format: date
+          description: 'Dia 1 do mês de destino. Obrigatório em ''future'' (estritamente
+            posterior ao mês corrente). Opcional em ''month'' (Story 14.11, regularização
+            atrasada): entre o alvo de planejamento mensal e o mês corrente, inclusive;
+            ausente = mês corrente. Ignorado nos demais destinos.'
         scheduledDate:
           type: string
           format: date

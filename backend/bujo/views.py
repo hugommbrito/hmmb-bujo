@@ -67,6 +67,7 @@ from bujo.services.cycles import (
     finalize_monthly,
     finalize_weekly,
     monthly_cycle_readiness,
+    next_monthly_target,
     open_monthly_planning_target,
     open_weekly_planning_target,
     start_monthly,
@@ -770,7 +771,27 @@ class TaskMigrateView(APIView):
         month_first = validated.get("month_first")
         current_month_first = today_for(request.user).replace(day=1)
         if destination == "month":
-            month_first = current_month_first
+            if month_first is None:
+                # Legado: `'month'` sem `month_first` continua sendo o mês corrente.
+                month_first = current_month_first
+            else:
+                # Story 14.11 — faixa `[min(alvo de planejamento, corrente), corrente]`.
+                # O piso reusa `next_monthly_target` (o alvo do ritual: o mês mais
+                # antigo em que ainda se escreve). A faixa INCLUI os meses
+                # intermediários entre o alvo e o corrente (alvo m−2, corrente m,
+                # `month_first` = m−1): ali o log nasce/segue `NULL` e será o próximo
+                # alvo da sequência — é exatamente o "Adiar" a partir do alvo. O teto
+                # é o corrente; acima dele o destino é `'future'`, inalterado. Nenhum
+                # valor novo no enum de `destination`.
+                floor = min(next_monthly_target(user=request.user), current_month_first)
+                if month_first < floor:
+                    raise serializers.ValidationError(
+                        {"month_first": "Anterior ao alvo de planejamento mensal."}
+                    )
+                if month_first > current_month_first:
+                    raise serializers.ValidationError(
+                        {"month_first": "Use 'future' para meses após o corrente."}
+                    )
         elif (
             destination == "future"
             and month_first is not None

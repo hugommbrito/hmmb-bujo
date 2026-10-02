@@ -5,6 +5,7 @@ import { expectNoAxeViolations, waitForLayoutSettled } from './axeHelper'
 import { countRitualContainers } from './countRitualContainers'
 import { expectVisibleWithoutScrolling, mainNav, waitForDialogSettled } from './shellHelpers'
 import { seedMonthlyPlanningScenario } from './seedMonthlyPlanningScenario'
+import { monthTitle, seedMonthlyCatchUpScenario } from './seedMonthlyCatchUpScenario'
 
 // Cobre o ritual de planejamento mensal do sistema novo (Story 14.6, AC5/AC9)
 // contra o backend REAL da branch Neon `e2e`. `/planner/month/planning` é a
@@ -294,6 +295,124 @@ test.describe('Monthly Planning Ritual — wide 1440×900', () => {
     await page.setViewportSize({ width: 800, height: 720 })
     await waitForLayoutSettled(page)
     expect(await trackCount()).toBe(1)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Story 14.11 — regularização atrasada, ponta a ponta contra o backend real:
+// o cenário da produção (m−2 `active` com subtarefa `started` sob pai
+// `completed`; m−1 `planning` já concluído; hoje em m) destrava pela própria UI,
+// na ordem do M07, sem salto nem lote.
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('Monthly Planning Ritual — regularização atrasada (Story 14.11) — wide 1440×900', () => {
+  test.use({ viewport: { width: 1440, height: 900 } })
+
+  test('cenário-âncora: subtarefa órfã listada → migrar p/ alvo passado → Finalizar → Iniciar → board oferece o mês corrente', async ({
+    page,
+    email,
+  }) => {
+    test.setTimeout(120_000)
+    const { currentMonthFirst, targetMonthFirst, previousMonthFirst } = seedMonthlyCatchUpScenario(email)
+
+    // Board: o botão NOMEIA o alvo em planejamento e a linha de regularização aparece.
+    await page.getByRole('button', { name: 'Este Mês' }).click()
+    await expect(page.getByRole('main', { name: 'Este Mês' })).toBeVisible()
+    await expect(page.getByRole('status').filter({ hasText: 'Regularização atrasada' })).toContainText(
+      `${monthTitle(targetMonthFirst)} é anterior ao mês corrente`,
+    )
+    await page.getByRole('link', { name: `Continuar planejamento de ${monthTitle(targetMonthFirst)}` }).click()
+    await expect(page.getByRole('main', { name: `Planejar ${monthTitle(targetMonthFirst)}` })).toBeVisible()
+
+    // Faixa: o próximo passo é finalizar m−2 (a subtarefa ainda está aberta).
+    const banner = page.getByRole('status', { name: 'Regularização atrasada' })
+    await expect(banner).toContainText(`Próximo passo: Finalizar ${monthTitle(previousMonthFirst)}`)
+
+    // Fonte bloqueante lista a SUBTAREFA (cabeça aberta), nomeando o pai —
+    // antes da story: 0 itens e "pronto para finalizar" com o botão mudo.
+    const sourceRail = page.getByRole('navigation', { name: 'Fontes do planejamento mensal' })
+    await sourceRail.getByRole('button', { name: /Monthly anterior/ }).click()
+    await expect(page.getByText('Marcar retorno')).toBeVisible()
+    await expect(page.getByText('Subtarefa de Cardiologista')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Finalizar mês anterior' })).toHaveAttribute('aria-disabled', 'true')
+
+    // Migrar PARA o alvo já passado: `destination: 'month'` + `monthFirst` = alvo.
+    const migrateResponse = page.waitForResponse(
+      (r) => r.url().includes('/migrate/') && r.request().method() === 'POST',
+    )
+    await page.getByRole('button', { name: 'Escolher destino…' }).click()
+    const picker = page.getByRole('dialog', { name: 'Escolher destino' })
+    await expect(picker).toBeVisible()
+    await waitForDialogSettled(page)
+    await picker.getByLabel('Número do dia').fill('10')
+    await picker.getByRole('button', { name: /^Migrar para 10 de / }).click()
+    const response = await migrateResponse
+    expect(response.status()).toBe(200)
+    const payload = response.request().postDataJSON()
+    expect(payload.destination).toBe('month')
+    expect(payload.monthFirst).toBe(targetMonthFirst)
+    expect(payload.scheduledDate).toBe(`${targetMonthFirst.slice(0, 8)}10`)
+    await expect(picker).toHaveCount(0)
+
+    // Fonte zera e o gate concorda (verdade do servidor): Finalizar habilita.
+    await expect(page.getByText('Mês anterior pronto para finalizar.')).toBeVisible()
+    const finalizeButton = page.getByRole('button', { name: 'Finalizar mês anterior' })
+    await expect(finalizeButton).toHaveAttribute('aria-disabled', 'false')
+    await finalizeButton.click()
+    await expect(page.getByRole('alertdialog', { name: /irreversível/ })).toBeVisible()
+    await page.getByRole('button', { name: 'Confirmar' }).click()
+
+    // Iniciar habilita (data ✓, planejamento ✓, anterior finalizado ✓) e inicia.
+    const panel = page.getByRole('region', { name: 'Painel de verificação — Iniciar mês' })
+    const startButton = panel.getByRole('button', { name: 'Iniciar mês', exact: true })
+    await expect(startButton).toHaveAttribute('aria-disabled', 'false')
+    await startButton.click()
+
+    // Sem alvo em planejamento: link de volta, e o board oferece o mês corrente.
+    await expect(page.getByText('Nenhum mês em planejamento no momento.')).toBeVisible()
+    await page.getByRole('link', { name: 'Ir para Este Mês' }).click()
+    await expect(page.getByRole('main', { name: 'Este Mês' })).toBeVisible()
+    await expect(page.getByRole('button', { name: `Planejar ${monthTitle(currentMonthFirst)}` })).toBeVisible()
+  })
+
+  test('409 de ciclo (simulado via page.route) aparece como alerta com o detail do servidor; nenhum botão fica mudo', async ({
+    page,
+    email,
+  }) => {
+    seedMonthlyCatchUpScenario(email)
+    await page.route('**/api/bujo/logs/monthly/cycle/', async (route) => {
+      if (route.request().method() !== 'POST') {
+        await route.continue()
+        return
+      }
+      await route.fulfill({
+        status: 409,
+        contentType: 'application/json',
+        body: JSON.stringify({ detail: 'Simulado: o gate recusou esta ação.', code: 'previous_finalized' }),
+      })
+    })
+
+    await page.goto('/planner/month/planning')
+    await expect(page.getByRole('main', { name: /Planejar/ })).toBeVisible()
+
+    // O planejamento do alvo já está concluído no seed ⇒ o botão lê "Revisar".
+    const button = page.getByRole('button', { name: 'Revisar planejamento' })
+    await button.click()
+    await expect(page.getByRole('alert').filter({ hasText: 'Simulado: o gate recusou esta ação.' })).toBeVisible()
+    await expect(button).toBeEnabled()
+  })
+
+  test('axe sem exclude: main com a faixa de regularização atrasada', async ({ page, email }) => {
+    seedMonthlyCatchUpScenario(email)
+    await page.goto('/planner/month/planning')
+    await expect(page.getByRole('status', { name: 'Regularização atrasada' })).toBeVisible()
+    // Não usa `waitForRitualHydrated`: neste cenário a ÚNICA pendência é a do
+    // Monthly anterior, que o rail de avisos anuncia como "pendência(s)" (alerta
+    // bloqueante), não como "pendente(s)" (lista das fontes não bloqueantes).
+    await expect(page.getByRole('region', { name: /Decisões —/ })).toBeVisible()
+    await expect(page.getByRole('button', { name: /Monthly anterior: 1 pendência\(s\)/ })).toBeVisible()
+    await waitForLayoutSettled(page)
+
+    await expectNoAxeViolations(page, { label: 'wide · /planner/month/planning · regularização atrasada' })
   })
 })
 
