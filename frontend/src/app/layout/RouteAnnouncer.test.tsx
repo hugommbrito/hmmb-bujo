@@ -66,6 +66,8 @@ vi.mock('../../features/habits', () => ({
   useGroupMultipliersQuery: () => habitsQueryStub,
   useMarkHabitEntryMutation: () => habitsMutationStub,
   useSetHolidayMutation: () => habitsMutationStub,
+  // Story 16.2c — `HabitsTodayPanel` chama o hook do dia "não registrado" no mount.
+  useSetUntrackedDayMutation: () => habitsMutationStub,
   useOverrideDayWorkdayMutation: () => habitsMutationStub,
   useCreateHabitMutation: () => habitsMutationStub,
   useCreateHabitGroupMutation: () => habitsMutationStub,
@@ -89,6 +91,8 @@ vi.mock('../../features/habits/api', () => ({
   useGroupMultipliersQuery: () => habitsQueryStub,
   useMarkHabitEntryMutation: () => habitsMutationStub,
   useSetHolidayMutation: () => habitsMutationStub,
+  // Story 16.2c — `HabitsTodayPanel` chama o hook do dia "não registrado" no mount.
+  useSetUntrackedDayMutation: () => habitsMutationStub,
   useOverrideDayWorkdayMutation: () => habitsMutationStub,
   useCreateHabitMutation: () => habitsMutationStub,
   useCreateHabitGroupMutation: () => habitsMutationStub,

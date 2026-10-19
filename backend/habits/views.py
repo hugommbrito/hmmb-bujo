@@ -9,6 +9,9 @@ from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from accounts.models import UntrackedCollection
+from accounts.serializers import SetUntrackedDaySerializer, UntrackedDayResultSerializer
+from accounts.services import is_untracked, set_untracked_day
 from core.calendar import resolve_day_type, today_for
 from core.exceptions import DomainError
 from habits.models import Habit, HabitDayEntry, HabitGroup
@@ -33,10 +36,10 @@ from habits.serializers import (
 )
 from habits.services import (
     add_habit_version,
-    compute_day_completeness,
     create_habit,
     create_habit_group,
     current_multipliers_of,
+    get_day_completeness,
     get_habit_history_range,
     get_habit_series,
     list_habit_groups,
@@ -187,7 +190,10 @@ class HabitDayView(APIView):
     """Tracker do dia (snapshot realizado, Story 6.2).
 
     ``GET`` materializa (idempotente) as linhas do dia via ``seed_habit_day`` e
-    retorna ``{date, totalCompletion, groups, entries}`` (default = hoje).
+    retorna ``{date, totalCompletion, dayType, untracked, groups, entries}``
+    (default = hoje). Dia marcado "não registrado" (Story 16.2c) semeia como
+    antes e devolve ``untracked=True`` com completude nula — as linhas seguem
+    presentes e editáveis.
     """
 
     @extend_schema(
@@ -212,7 +218,7 @@ class HabitDayView(APIView):
             day = today_for(request.user)
 
         seed_habit_day(user=request.user, date=day)
-        completeness = compute_day_completeness(user=request.user, date=day)
+        completeness = get_day_completeness(user=request.user, date=day)
         entries = HabitDayEntry.objects.filter(date=day).select_related(
             "habit", "habit__group"
         )
@@ -220,6 +226,7 @@ class HabitDayView(APIView):
             "date": day,
             "total_completion": completeness["total"],
             "day_type": resolve_day_type(request.user, day),
+            "untracked": completeness["untracked"],
             "groups": completeness["groups"],
             "entries": entries,
         }
@@ -300,12 +307,50 @@ class HabitHolidayView(APIView):
     patch = post
 
 
+class HabitUntrackedDayView(APIView):
+    """Marca/desmarca um dia de Hábitos como "não registrado" (Story 16.2c).
+
+    Escreve ``accounts.UntrackedDay`` com ``collection=habits`` fixada aqui (nunca
+    no payload). Idempotente; data futura → ``DomainError`` do serviço convertido
+    em ``ValidationError({"date": ...})`` → 400 ``{detail, fields: {date: [...]}}``
+    (erro de CAMPO, não o 409 default do handler nem o ``{"detail": ...}`` de
+    ``HabitGroupMultipliersView.put``). ``POST``/``PATCH`` são equivalentes.
+    Nenhuma linha de ``habit_day_entries`` é tocada.
+    """
+
+    @extend_schema(request=SetUntrackedDaySerializer, responses=UntrackedDayResultSerializer)
+    def post(self, request):
+        body = SetUntrackedDaySerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        day = body.validated_data["date"]
+        try:
+            set_untracked_day(
+                user=request.user, date=day,
+                collection=UntrackedCollection.HABITS,
+                untracked=body.validated_data["untracked"],
+            )
+        except DomainError as exc:
+            raise serializers.ValidationError({"date": str(exc)}) from None
+        result = {
+            "date": day,
+            "untracked": is_untracked(
+                user=request.user, date=day, collection=UntrackedCollection.HABITS
+            ),
+        }
+        return Response(UntrackedDayResultSerializer(result).data)
+
+    patch = post
+
+
 class HabitHistoryRangeView(APIView):
     """Histórico por-data no intervalo (Story 6.4) — GET puro, read-only, não-semeador.
 
     Alimenta a grade hábitos × dias **e** o detalhe por-data (fatia do mesmo payload).
     **Nunca** materializa (não chama ``seed_habit_day``): dias nunca abertos são
-    lacunas honestas (``totalCompletion=null``), não 0% fabricado (AC1).
+    lacunas honestas (``totalCompletion=null``), não 0% fabricado (AC1). Um dia
+    marcado "não registrado" (Story 16.2c) chega como a mesma lacuna
+    (``entries: []``, ``groups: []``, ``totalCompletion: null``) com
+    ``untracked: true`` — as linhas dele continuam no banco, só não entram aqui.
     """
 
     @extend_schema(
@@ -325,7 +370,9 @@ class HabitSeriesView(APIView):
 
     Série diária derivada on-read de ``habit_day_entries``; eventos derivados do stream
     de ``habit_versions``; ritmo (day_type) para o sombreamento. ``Habit.DoesNotExist``
-    (inclusive cross-tenant) → 404, como as views existentes.
+    (inclusive cross-tenant) → 404, como as views existentes. O ponto de um dia
+    marcado "não registrado" (Story 16.2c) é **omitido** de ``points`` (vira
+    lacuna no gráfico); ``dayTypes`` continua cobrindo o range inteiro.
     """
 
     @extend_schema(parameters=_HISTORY_RANGE_PARAMS, responses=HabitSeriesSerializer)

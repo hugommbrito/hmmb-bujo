@@ -21,16 +21,27 @@
 //     grade do Histórico, derrubando as razões booleanas (5/7 viraria 5/12).
 //     Por isso `Próximo ›` para em HOJE, com o motivo escrito.
 //
-// [Source: mockup key-habitos.html F1/F2/F3/F4; spec 16.1 Task 4 e I/O Matrix]
+//   ▶ DIA "NÃO REGISTRADO" (Story 16.2c). Um checkbox ao lado do de feriado
+//     marca o dia como fora das estatísticas de Hábitos. O servidor devolve
+//     `untracked: true` com `totalCompletion`/`groups[].completion` NULOS; a
+//     interface escreve "Não registrado" no lugar da porcentagem (sem barra,
+//     nunca só cor), põe o estado num chip e troca o denominador por uma nota.
+//     As linhas continuam editáveis e o dia NUNCA desmarca sozinho ao editar.
+//     Nulo transiente (desmarcou, refetch ainda não voltou) lê "—".
+//
+// [Source: mockup key-habitos.html F1/F2/F3/F4; spec 16.1 Task 4 e I/O Matrix;
+//  spec 16.2c I/O Matrix "UI Hoje marcado"]
 // ─────────────────────────────────────────────────────────────────────────────
 import { useEffect, useId } from 'react'
 import { Box, Button, Checkbox, FormControlLabel } from '@mui/material'
 
+import { fieldErrorMessage } from '../../../../api/errors'
 import { typography } from '../../../../shared/design/tokens'
 import {
   useHabitDayQuery,
   useOverrideDayWorkdayMutation,
   useSetHolidayMutation,
+  useSetUntrackedDayMutation,
 } from '../../api'
 import { DAY_TYPE_LABEL } from '../historyUtils'
 import { CompletionBar } from './CompletionBar'
@@ -39,6 +50,7 @@ import { HabitGroupCard } from './HabitGroupCard'
 import { HabitsTodaySkeleton } from './HabitsSkeleton'
 import {
   RETRY_LABEL,
+  UNTRACKED_PERCENT,
   addDays,
   formatDateLongBR,
   formatEffectiveWeight,
@@ -53,6 +65,14 @@ export const WRITE_ERROR = 'Não foi possível salvar. Tente novamente.'
 export const OVERRIDE_LABEL = 'Tratar este dia como dia útil (peso cheio)'
 export const HOLIDAY_LABEL = 'Marcar este dia como feriado'
 export const PRECEDENCE_TEXT = 'Precedência: feriado > fim de semana > dia útil.'
+/** Story 16.2c — dia "não registrado" (fora das estatísticas de Hábitos). */
+export const UNTRACKED_LABEL = 'Marcar este dia como não registrado'
+export { UNTRACKED_PERCENT }
+export const UNTRACKED_STATE = 'Dia não registrado — fora das estatísticas'
+export const UNTRACKED_NOTE =
+  'Este dia não entra em nenhuma média, sequência ou grade. As linhas continuam editáveis e o dia só volta às estatísticas quando for desmarcado.'
+/** Nulo TRANSIENTE: desmarcou e a porcentagem real ainda não voltou do servidor. */
+export const PENDING_PERCENT = '—'
 /**
  * Motivo ESCRITO de `Próximo ›` indisponível em hoje — nunca só um botão
  * apagado (mesma regra do "criar hábito sem grupo").
@@ -93,8 +113,16 @@ export function HabitsTodayPanel({
   const today = isoLocalToday()
   const habitDay = useHabitDayQuery(date)
   const setHoliday = useSetHolidayMutation(date)
+  const setUntracked = useSetUntrackedDayMutation(date)
   const overrideDay = useOverrideDayWorkdayMutation(date)
   const reactId = useId()
+  // A prop `date` muda SEM remontar o painel: um erro de D1 não pode sobreviver
+  // à navegação para D2 (o alerta falaria de outro dia e o retry escreveria
+  // nele). `reset` do TanStack é estável; o effect zera o estado por data.
+  const { reset: resetUntracked } = setUntracked
+  useEffect(() => {
+    resetUntracked()
+  }, [date, resetUntracked])
   const dayHeadingId = `habits-day-${reactId}`
 
   // DW-65 — PRÉ-CARGA dos glifos do dia. Dispara quando o PAYLOAD chega, antes
@@ -131,11 +159,29 @@ export function HabitsTodayPanel({
     )
   }
 
-  const { date: dayIso, totalCompletion, dayType, groups, entries } = habitDay.data
+  const { date: dayIso, totalCompletion, dayType, untracked, groups, entries } = habitDay.data
   const effectiveWeightSum = sumEffectiveWeights(entries)
   const filled = entries.filter((entry) => entry.value != null).length
   const isHoliday = dayType === 'holiday'
-  const writeError = setHoliday.isError || overrideDay.isError
+  // 400 de CAMPO no toggle (ex.: o "hoje" do navegador passou o `today_for`
+  // do perfil → "dia futuro"): a mensagem do servidor é a explicação e o retry
+  // nunca passaria — mostra ELA e não oferece retry. Qualquer outro erro do
+  // toggle cai no genérico + retry, junto com feriado/override.
+  const untrackedFieldError = setUntracked.isError
+    ? fieldErrorMessage(setUntracked.error, 'date')
+    : null
+  const writeError =
+    setHoliday.isError ||
+    overrideDay.isError ||
+    (setUntracked.isError && untrackedFieldError == null)
+  // O slot da porcentagem é SEMPRE texto: "Não registrado" (dia marcado), "—"
+  // (nulo transiente) ou o número do servidor. A barra só existe com número.
+  const percentText = untracked
+    ? UNTRACKED_PERCENT
+    : totalCompletion == null
+      ? PENDING_PERCENT
+      : `${totalCompletion}%`
+  const showBar = !untracked && totalCompletion != null
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 'var(--ds-space-4)' }}>
@@ -184,6 +230,24 @@ export function HabitsTodayPanel({
           >
             {DAY_TYPE_LABEL[dayType]}
           </Box>
+          {untracked && (
+            <Box
+              data-testid="habits-day-untracked-chip"
+              sx={{
+                ...typography.label,
+                minHeight: 'var(--ds-chip-height)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                px: 'var(--ds-space-2)',
+                borderRadius: 'var(--ds-radius-sm)',
+                border: '1px solid var(--ds-border)',
+                backgroundColor: 'var(--ds-surface-subtle)',
+                color: 'var(--ds-ink-muted)',
+              }}
+            >
+              {UNTRACKED_STATE}
+            </Box>
+          )}
           <Box
             sx={{
               marginLeft: 'auto',
@@ -235,18 +299,21 @@ export function HabitsTodayPanel({
               fontVariantNumeric: 'tabular-nums',
             }}
           >
-            {totalCompletion}%
+            {percentText}
           </Box>
-          <Box sx={{ flex: 1, minWidth: 0 }}>
-            <CompletionBar
-              scope="day"
-              percent={totalCompletion}
-              label={`Completude do dia: ${totalCompletion} por cento`}
-            />
-          </Box>
+          {showBar && (
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <CompletionBar
+                scope="day"
+                percent={totalCompletion}
+                label={`Completude do dia: ${totalCompletion} por cento`}
+              />
+            </Box>
+          )}
         </Box>
 
-        {/* Denominador NOMEADO — explicita o que estava exigível. */}
+        {/* Denominador NOMEADO — explicita o que estava exigível. Num dia
+            marcado, a nota ocupa o lugar dele: não há denominador a nomear. */}
         <Box
           sx={{
             ...typography.meta,
@@ -254,8 +321,9 @@ export function HabitsTodayPanel({
             fontVariantNumeric: 'tabular-nums',
           }}
         >
-          Soma dos pesos efetivos do dia: {formatEffectiveWeight(effectiveWeightSum)} · {filled} de{' '}
-          {entries.length} registros preenchidos
+          {untracked
+            ? UNTRACKED_NOTE
+            : `Soma dos pesos efetivos do dia: ${formatEffectiveWeight(effectiveWeightSum)} · ${filled} de ${entries.length} registros preenchidos`}
         </Box>
 
         <Box
@@ -290,6 +358,30 @@ export function HabitsTodayPanel({
             label={HOLIDAY_LABEL}
           />
           <Box sx={{ ...typography.meta, color: 'var(--ds-ink-muted)' }}>{PRECEDENCE_TEXT}</Box>
+          {/* Dia "não registrado" (16.2c): mesmo controle do feriado — rótulo
+              estável + estado nativo `checked`, nunca só um botão apagado.
+              Vem DEPOIS da frase de precedência: ela pertence ao feriado. */}
+          <FormControlLabel
+            sx={{ margin: 0, ...typography.body, color: 'var(--ds-ink)' }}
+            control={
+              <Checkbox
+                checked={untracked}
+                disabled={disabled}
+                onChange={(event) =>
+                  setUntracked.mutate({ date: dayIso, untracked: event.target.checked })
+                }
+                inputProps={{
+                  'aria-label': UNTRACKED_LABEL,
+                  'aria-describedby': disabled ? disabledReasonId : undefined,
+                }}
+                sx={{
+                  color: 'var(--ds-control-border)',
+                  '&.Mui-checked': { color: 'var(--ds-primary)' },
+                }}
+              />
+            }
+            label={UNTRACKED_LABEL}
+          />
           {/* Override avulso: só quando o dia NÃO é útil. Grava
               `multiplierAtTime = 1,00` nas linhas DO DIA VISÍVEL; a
               configuração dos grupos fica intocada. */}
@@ -310,6 +402,16 @@ export function HabitsTodayPanel({
           )}
         </Box>
 
+        {untrackedFieldError != null && (
+          <Box
+            role="alert"
+            data-testid="habits-untracked-field-error"
+            sx={{ ...typography.meta, color: 'var(--ds-danger)' }}
+          >
+            {untrackedFieldError}
+          </Box>
+        )}
+
         {writeError && (
           <Box
             sx={{
@@ -325,6 +427,12 @@ export function HabitsTodayPanel({
             <Button
               onClick={() => {
                 if (setHoliday.isError) setHoliday.mutate({ date: dayIso, isHoliday: !isHoliday })
+                // Reenvia a ESCRITA EXATA que falhou (`variables`), nunca algo
+                // derivado do estado atual — depois do rollback e de qualquer
+                // outra mudança, só as variáveis dizem o que o usuário pediu.
+                if (setUntracked.isError && setUntracked.variables) {
+                  setUntracked.mutate(setUntracked.variables)
+                }
                 if (overrideDay.isError) overrideDay.mutate(entries.map((entry) => entry.id))
               }}
               sx={{ ...STEP_BUTTON_SX, color: 'var(--ds-danger)', borderColor: 'var(--ds-danger)' }}
@@ -373,6 +481,7 @@ export function HabitsTodayPanel({
               disabledReasonId={disabledReasonId}
               headingId={`habits-group-${group.id}`}
               dayType={dayType}
+              untracked={untracked}
             />
           ))}
         </Box>

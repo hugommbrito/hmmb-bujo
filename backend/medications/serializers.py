@@ -236,11 +236,14 @@ class MedicationDayBlockSerializer(serializers.Serializer):
 
 
 class MedicationDaySerializer(serializers.Serializer):
-    """Payload da superfície diária: blocos agendados + seção avulso/PRN (AC4/AC7)."""
+    """Payload da superfície diária: blocos agendados + seção avulso/PRN (AC4/AC7).
+    ``untracked`` (Story 16.2c): dia marcado "não registrado" na collection
+    ``medications`` — blocos/linhas inalterados, só o rótulo muda na UI."""
 
     date = serializers.DateField()
     blocks = MedicationDayBlockSerializer(many=True)
     ad_hoc = MedicationDayEntrySerializer(many=True)
+    untracked = serializers.BooleanField()
 
 
 class EntryConfirmSerializer(serializers.Serializer):

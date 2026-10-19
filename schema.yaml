@@ -1457,7 +1457,9 @@ paths:
 
         Série diária derivada on-read de ``habit_day_entries``; eventos derivados do stream
         de ``habit_versions``; ritmo (day_type) para o sombreamento. ``Habit.DoesNotExist``
-        (inclusive cross-tenant) → 404, como as views existentes.
+        (inclusive cross-tenant) → 404, como as views existentes. O ponto de um dia
+        marcado "não registrado" (Story 16.2c) é **omitido** de ``points`` (vira
+        lacuna no gráfico); ``dayTypes`` continua cobrindo o range inteiro.
       parameters:
       - in: query
         name: end
@@ -1519,7 +1521,10 @@ paths:
         Tracker do dia (snapshot realizado, Story 6.2).
 
         ``GET`` materializa (idempotente) as linhas do dia via ``seed_habit_day`` e
-        retorna ``{date, totalCompletion, groups, entries}`` (default = hoje).
+        retorna ``{date, totalCompletion, dayType, untracked, groups, entries}``
+        (default = hoje). Dia marcado "não registrado" (Story 16.2c) semeia como
+        antes e devolve ``untracked=True`` com completude nula — as linhas seguem
+        presentes e editáveis.
       parameters:
       - in: query
         name: date
@@ -1573,7 +1578,10 @@ paths:
 
         Alimenta a grade hábitos × dias **e** o detalhe por-data (fatia do mesmo payload).
         **Nunca** materializa (não chama ``seed_habit_day``): dias nunca abertos são
-        lacunas honestas (``totalCompletion=null``), não 0% fabricado (AC1).
+        lacunas honestas (``totalCompletion=null``), não 0% fabricado (AC1). Um dia
+        marcado "não registrado" (Story 16.2c) chega como a mesma lacuna
+        (``entries: []``, ``groups: []``, ``totalCompletion: null``) com
+        ``untracked: true`` — as linhas dele continuam no banco, só não entram aqui.
       parameters:
       - in: query
         name: end
@@ -1639,6 +1647,62 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HolidayResult'
+          description: ''
+  /api/habits/untracked-days/:
+    post:
+      operationId: habits_untracked_days_create
+      description: |-
+        Marca/desmarca um dia de Hábitos como "não registrado" (Story 16.2c).
+
+        Escreve ``accounts.UntrackedDay`` com ``collection=habits`` fixada aqui (nunca
+        no payload). Idempotente; data futura → ``DomainError`` do serviço convertido
+        em ``ValidationError({"date": ...})`` → 400 ``{detail, fields: {date: [...]}}``
+        (erro de CAMPO, não o 409 default do handler nem o ``{"detail": ...}`` de
+        ``HabitGroupMultipliersView.put``). ``POST``/``PATCH`` são equivalentes.
+        Nenhuma linha de ``habit_day_entries`` é tocada.
+      tags:
+      - habits
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetUntrackedDay'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UntrackedDayResult'
+          description: ''
+    patch:
+      operationId: habits_untracked_days_partial_update
+      description: |-
+        Marca/desmarca um dia de Hábitos como "não registrado" (Story 16.2c).
+
+        Escreve ``accounts.UntrackedDay`` com ``collection=habits`` fixada aqui (nunca
+        no payload). Idempotente; data futura → ``DomainError`` do serviço convertido
+        em ``ValidationError({"date": ...})`` → 400 ``{detail, fields: {date: [...]}}``
+        (erro de CAMPO, não o 409 default do handler nem o ``{"detail": ...}`` de
+        ``HabitGroupMultipliersView.put``). ``POST``/``PATCH`` são equivalentes.
+        Nenhuma linha de ``habit_day_entries`` é tocada.
+      tags:
+      - habits
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedSetUntrackedDay'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UntrackedDayResult'
           description: ''
   /api/health-field-definitions/:
     get:
@@ -2080,6 +2144,62 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/MedicationDay'
+          description: ''
+  /api/medications/untracked-days/:
+    post:
+      operationId: medications_untracked_days_create
+      description: |-
+        Marca/desmarca um dia de Medicamentos como "não registrado" (Story 16.2c).
+
+        Paridade de contrato com ``habits.HabitUntrackedDayView``: escreve
+        ``accounts.UntrackedDay`` com ``collection=medications`` fixada aqui (nunca no
+        payload); idempotente; data futura → ``DomainError`` convertido em
+        ``ValidationError({"date": ...})`` → 400 ``{detail, fields: {date: [...]}}``
+        (erro de CAMPO, não o 409 default do handler). Nenhuma linha de
+        ``medication_day_entries`` é tocada. ``POST``/``PATCH`` são equivalentes.
+      tags:
+      - medications
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetUntrackedDay'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UntrackedDayResult'
+          description: ''
+    patch:
+      operationId: medications_untracked_days_partial_update
+      description: |-
+        Marca/desmarca um dia de Medicamentos como "não registrado" (Story 16.2c).
+
+        Paridade de contrato com ``habits.HabitUntrackedDayView``: escreve
+        ``accounts.UntrackedDay`` com ``collection=medications`` fixada aqui (nunca no
+        payload); idempotente; data futura → ``DomainError`` convertido em
+        ``ValidationError({"date": ...})`` → 400 ``{detail, fields: {date: [...]}}``
+        (erro de CAMPO, não o 409 default do handler). Nenhuma linha de
+        ``medication_day_entries`` é tocada. ``POST``/``PATCH`` são equivalentes.
+      tags:
+      - medications
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedSetUntrackedDay'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UntrackedDayResult'
           description: ''
   /api/summary/today:
     get:
@@ -2831,16 +2951,23 @@ components:
       - weight
     HabitDay:
       type: object
-      description: 'Payload do tracker do dia: % total, % por grupo, tipo do dia e
-        as linhas.'
+      description: |-
+        Payload do tracker do dia: % total, % por grupo, tipo do dia e as linhas.
+
+        ``total_completion`` **allow_null** + ``untracked`` (Story 16.2c): dia marcado
+        "não registrado" vem com ``untracked=True`` e completude nula — as ``entries``
+        continuam presentes e PATCH-áveis.
       properties:
         date:
           type: string
           format: date
         totalCompletion:
           type: integer
+          nullable: true
         dayType:
           $ref: '#/components/schemas/DayTypeEnum'
+        untracked:
+          type: boolean
         groups:
           type: array
           items:
@@ -2855,6 +2982,7 @@ components:
       - entries
       - groups
       - totalCompletion
+      - untracked
     HabitDayEntry:
       type: object
       description: |-
@@ -2933,7 +3061,12 @@ components:
       - weightAtTime
     HabitDayGroup:
       type: object
-      description: 'Cabeçalho de grupo do tracker: nome + % ponderado do grupo.'
+      description: |-
+        Cabeçalho de grupo do tracker: nome + % ponderado do grupo.
+
+        ``completion`` **allow_null** (Story 16.2c): num dia marcado "não registrado" a
+        aba Hoje ainda lista os grupos (o dia é editável), mas a completude é nula — a
+        interface escreve "Não registrado", nunca uma barra em 0.
       properties:
         id:
           type: string
@@ -2942,6 +3075,7 @@ components:
           type: string
         completion:
           type: integer
+          nullable: true
       required:
       - completion
       - id
@@ -2990,6 +3124,8 @@ components:
       description: |-
         Um dia no range de histórico. ``total_completion`` **allow_null** = lacuna
         honesta (dia nunca aberto); ``groups`` traz o % ponderado POR GRUPO (AC1).
+        ``untracked`` (Story 16.2c): dia marcado "não registrado" chega como lacuna
+        (``entries=[]``) com esta flag ligada, para a interface nomear o estado.
       properties:
         date:
           type: string
@@ -2999,6 +3135,8 @@ components:
         totalCompletion:
           type: integer
           nullable: true
+        untracked:
+          type: boolean
         groups:
           type: array
           items:
@@ -3013,6 +3151,7 @@ components:
       - entries
       - groups
       - totalCompletion
+      - untracked
     HabitHistoryRange:
       type: object
       description: 'Payload do intervalo: alimenta a grade hábitos × dias e o detalhe
@@ -3577,8 +3716,10 @@ components:
       - title
     MedicationDay:
       type: object
-      description: 'Payload da superfície diária: blocos agendados + seção avulso/PRN
-        (AC4/AC7).'
+      description: |-
+        Payload da superfície diária: blocos agendados + seção avulso/PRN (AC4/AC7).
+        ``untracked`` (Story 16.2c): dia marcado "não registrado" na collection
+        ``medications`` — blocos/linhas inalterados, só o rótulo muda na UI.
       properties:
         date:
           type: string
@@ -3591,10 +3732,13 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/MedicationDayEntry'
+        untracked:
+          type: boolean
       required:
       - adHoc
       - blocks
       - date
+      - untracked
     MedicationDayBlock:
       type: object
       description: |-
@@ -4201,6 +4345,17 @@ components:
           format: date
         isHoliday:
           type: boolean
+    PatchedSetUntrackedDay:
+      type: object
+      description: |-
+        Marca/desmarca um dia como não registrado (write). ``date`` ≤ hoje do
+        usuário (a regra mora em ``accounts.services.set_untracked_day``).
+      properties:
+        date:
+          type: string
+          format: date
+        untracked:
+          type: boolean
     PatchedTaskUpdate:
       type: object
       properties:
@@ -4533,6 +4688,20 @@ components:
       required:
       - date
       - isHoliday
+    SetUntrackedDay:
+      type: object
+      description: |-
+        Marca/desmarca um dia como não registrado (write). ``date`` ≤ hoje do
+        usuário (a regra mora em ``accounts.services.set_untracked_day``).
+      properties:
+        date:
+          type: string
+          format: date
+        untracked:
+          type: boolean
+      required:
+      - date
+      - untracked
     Signup:
       type: object
       properties:
@@ -5002,6 +5171,18 @@ components:
       - count
       - groups
       - sourceId
+    UntrackedDayResult:
+      type: object
+      description: 'Resultado do toggle: a data + o estado efetivo após a escrita.'
+      properties:
+        date:
+          type: string
+          format: date
+        untracked:
+          type: boolean
+      required:
+      - date
+      - untracked
     WeeklyCycle:
       type: object
       properties:

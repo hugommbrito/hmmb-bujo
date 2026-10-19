@@ -17,6 +17,7 @@ from medications.views import (
     MedicationListCreateView,
     MedicationScheduleVersionCreateView,
     MedicationSubstanceVersionCreateView,
+    MedicationUntrackedDayView,
 )
 
 urlpatterns = [
@@ -35,6 +36,13 @@ urlpatterns = [
         "days/<uuid:pk>/",
         MedicationDayEntryDetailView.as_view(),
         name="medication-day-entry-detail",
+    ),
+    # Story 16.2c — dia "não registrado" (collection `medications` fixada na view).
+    # Rota estática antes de `<uuid:pk>/` (mesma convenção de `days/…`).
+    path(
+        "untracked-days/",
+        MedicationUntrackedDayView.as_view(),
+        name="medication-untracked-day",
     ),
     path("<uuid:pk>/", MedicationDetailView.as_view(), name="medication-detail"),
     path(

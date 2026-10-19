@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { AxiosError, AxiosHeaders, type AxiosResponse } from 'axios'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ThemeProvider } from '@mui/material'
 import { MemoryRouter, useLocation } from 'react-router-dom'
@@ -88,6 +89,7 @@ function habitDay(overrides: Partial<HabitDay> = {}): HabitDay {
     date: TODAY,
     totalCompletion: 64,
     dayType: 'weekday',
+    untracked: false,
     groups: [{ id: 'g1', name: 'Corpo', completion: 75 }],
     entries: [entry(), NUMERIC_ENTRY],
     ...overrides,
@@ -128,6 +130,7 @@ function history(overrides: Partial<HabitHistoryRange> = {}): HabitHistoryRange 
         date: addDays(TODAY, -1),
         dayType: 'weekday',
         totalCompletion: 50,
+        untracked: false,
         groups: [{ id: 'g1', name: 'Corpo', completion: 50 }],
         entries: [entry({ id: 'he1', value: '1' })],
       },
@@ -135,6 +138,7 @@ function history(overrides: Partial<HabitHistoryRange> = {}): HabitHistoryRange 
         date: TODAY,
         dayType: 'weekday',
         totalCompletion: null,
+        untracked: false,
         groups: [],
         entries: [],
       },
@@ -169,6 +173,7 @@ function twoWeekHistory(): HabitHistoryRange {
         date,
         dayType: 'weekday' as const,
         totalCompletion: 50,
+        untracked: false,
         groups: [{ id: 'g1', name: 'Corpo', completion: 50 }],
         entries: [
           // 5 feitos, 2 abertos e não feitos ⇒ 5/7 (a razão REAL).
@@ -205,6 +210,7 @@ function twoWeekHistory(): HabitHistoryRange {
         date,
         dayType: 'weekday' as const,
         totalCompletion: null,
+        untracked: false,
         groups: [],
         entries: [],
       })),
@@ -1737,6 +1743,7 @@ describe('Aba Histórico', () => {
             date: TODAY,
             dayType: 'weekday' as const,
             totalCompletion: 50,
+            untracked: false,
             groups: [{ id: 'g1', name: 'Corpo', completion: 50 }],
             entries: [entry({ id: 'he1', value: '1', iconKey: 'barbell' })],
           },
@@ -1952,6 +1959,7 @@ describe('Aba Histórico', () => {
             date: addDays(TODAY, -1),
             dayType: 'weekday' as const,
             totalCompletion: 50,
+            untracked: false,
             groups: [{ id: 'g1', name: 'Corpo', completion: 50 }],
             entries: [
               entry({ id: 'he1', habitId: 'h1', value: '1' }),
@@ -2003,5 +2011,329 @@ describe('Aba Histórico', () => {
     const items = await screen.findAllByText(/Alongamento/)
     expect(items.length).toBeGreaterThan(0)
     expect(screen.getAllByText(/feito|não feito|sem registro/).length).toBeGreaterThan(0)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Story 16.2c — dia "não registrado" (aba Hoje e aba Histórico)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const UNTRACKED_DAY_PAYLOAD = () =>
+  habitDay({
+    untracked: true,
+    totalCompletion: null,
+    groups: [{ id: 'g1', name: 'Corpo', completion: null }],
+  })
+
+const FUTURE_DAY_MESSAGE = 'Não é possível marcar um dia futuro como não registrado.'
+
+/** 400 do handler central: `{detail, fields}` num `AxiosError` real. */
+function validationError400(fields: Record<string, string[]>): AxiosError {
+  const response = {
+    status: 400,
+    data: { detail: 'Validation failed', fields },
+    statusText: '',
+    headers: {},
+    config: { headers: new AxiosHeaders() },
+  } as AxiosResponse
+  return new AxiosError('Request failed', 'ERR_BAD_REQUEST', response.config, undefined, response)
+}
+
+describe('Aba Hoje — dia não registrado (16.2c)', () => {
+  beforeEach(baseSetup)
+
+  it('marcado: "Não registrado" no lugar do %, SEM barra, chip, nota, checkbox marcado e linhas editáveis', async () => {
+    mockApi({ day: UNTRACKED_DAY_PAYLOAD() })
+    renderPage()
+    expect(await screen.findByTestId('habits-day-percent')).toHaveTextContent('Não registrado')
+    expect(screen.getByTestId('habits-day-percent').textContent).not.toMatch(/%/)
+    expect(screen.queryByTestId('completion-bar-day')).not.toBeInTheDocument()
+    expect(screen.queryByRole('img', { name: /Completude do dia/ })).not.toBeInTheDocument()
+    expect(screen.getByTestId('habits-day-untracked-chip')).toHaveTextContent(
+      'Dia não registrado — fora das estatísticas',
+    )
+    // A nota ocupa o lugar do denominador nomeado.
+    expect(screen.queryByText(/Soma dos pesos efetivos do dia/)).not.toBeInTheDocument()
+    expect(screen.getByText(/não entra em nenhuma média, sequência ou grade/)).toBeInTheDocument()
+    expect(
+      screen.getByRole('checkbox', { name: 'Marcar este dia como não registrado' }),
+    ).toBeChecked()
+    // Card de grupo: "Não registrado" sem barra.
+    expect(screen.getByTestId('habit-group-percent')).toHaveTextContent('Não registrado')
+    expect(screen.queryByTestId('completion-bar-group')).not.toBeInTheDocument()
+    // As linhas seguem EDITÁVEIS.
+    expect(screen.getByRole('checkbox', { name: 'Alongamento' })).toBeEnabled()
+    expect(screen.getByRole('textbox', { name: 'Valor de Corrida' })).toBeEnabled()
+  })
+
+  it('marcar chama POST /api/habits/untracked-days/ e escreve "Não registrado" otimista', async () => {
+    const user = userEvent.setup()
+    mockApi()
+    mockPost.mockReturnValue(new Promise(() => {}))
+    renderPage()
+    expect(await screen.findByTestId('habits-day-percent')).toHaveTextContent('64%')
+    const checkbox = screen.getByRole('checkbox', { name: 'Marcar este dia como não registrado' })
+    expect(checkbox).not.toBeChecked()
+    await user.click(checkbox)
+    expect(mockPost).toHaveBeenCalledWith('/api/habits/untracked-days/', {
+      date: TODAY,
+      untracked: true,
+    })
+    await waitFor(() =>
+      expect(screen.getByTestId('habits-day-percent')).toHaveTextContent('Não registrado'),
+    )
+    expect(screen.queryByTestId('completion-bar-day')).not.toBeInTheDocument()
+    expect(screen.getByTestId('habits-day-untracked-chip')).toBeInTheDocument()
+    expect(screen.getByTestId('habit-group-percent')).toHaveTextContent('Não registrado')
+    // O feriado é um controle IRMÃO, intocado.
+    expect(screen.getByRole('checkbox', { name: 'Marcar este dia como feriado' })).not.toBeChecked()
+  })
+
+  it('desmarcar: nulo TRANSIENTE lê "—" (sem barra) até o refetch trazer o % real', async () => {
+    mockApi({ day: habitDay({ untracked: false, totalCompletion: null, groups: [{ id: 'g1', name: 'Corpo', completion: null }] }) })
+    renderPage()
+    expect(await screen.findByTestId('habits-day-percent')).toHaveTextContent('—')
+    expect(screen.queryByTestId('completion-bar-day')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('habits-day-untracked-chip')).not.toBeInTheDocument()
+    expect(screen.getByTestId('habit-group-percent')).toHaveTextContent('—')
+  })
+
+  it('marcação que FALHA: rollback do %, alerta + retry da MESMA escrita', async () => {
+    const user = userEvent.setup()
+    mockApi()
+    mockPost.mockRejectedValue(new Error('nope'))
+    renderPage()
+    await screen.findByTestId('habits-day-percent')
+    await user.click(screen.getByRole('checkbox', { name: 'Marcar este dia como não registrado' }))
+
+    await waitFor(() =>
+      expect(screen.getByText('Não foi possível salvar. Tente novamente.')).toHaveAttribute(
+        'role',
+        'alert',
+      ),
+    )
+    // Rollback: a porcentagem do servidor volta e o checkbox volta a desmarcado.
+    expect(screen.getByTestId('habits-day-percent')).toHaveTextContent('64%')
+    expect(
+      screen.getByRole('checkbox', { name: 'Marcar este dia como não registrado' }),
+    ).not.toBeChecked()
+
+    const before = mockPost.mock.calls.length
+    await user.click(screen.getByRole('button', { name: 'Tentar de novo' }))
+    await waitFor(() => expect(mockPost.mock.calls.length).toBe(before + 1))
+    expect(mockPost).toHaveBeenLastCalledWith('/api/habits/untracked-days/', {
+      date: TODAY,
+      untracked: true,
+    })
+  })
+
+  it('offline: o checkbox fica desabilitado apontando para a faixa (igual feriado)', async () => {
+    setOnline(false)
+    mockApi()
+    renderPage()
+    const banner = await screen.findByRole('status')
+    const checkbox = await screen.findByRole('checkbox', {
+      name: 'Marcar este dia como não registrado',
+    })
+    expect(checkbox).toBeDisabled()
+    expect(checkbox.getAttribute('aria-describedby')).toContain(banner.id)
+  })
+
+  it('desmarcar um dia marcado envia {date, untracked: false}', async () => {
+    const user = userEvent.setup()
+    mockApi({ day: UNTRACKED_DAY_PAYLOAD() })
+    // POST pendente: isola o otimismo da reconciliação (o GET mockado devolveria
+    // o dia MARCADO de novo no refetch do onSettled).
+    mockPost.mockReturnValue(new Promise(() => {}))
+    renderPage()
+    const checkbox = await screen.findByRole('checkbox', {
+      name: 'Marcar este dia como não registrado',
+    })
+    expect(checkbox).toBeChecked()
+    await user.click(checkbox)
+    expect(mockPost).toHaveBeenCalledWith('/api/habits/untracked-days/', {
+      date: TODAY,
+      untracked: false,
+    })
+    // Só a flag flipa otimista; o % segue NULO ("—") até o refetch.
+    await waitFor(() => expect(checkbox).not.toBeChecked())
+    expect(screen.getByTestId('habits-day-percent')).toHaveTextContent('—')
+  })
+
+  // P1 — "hoje" do navegador (`isoLocalToday`) pode passar o `today_for` do
+  // perfil: o servidor responde 400 de CAMPO, cuja mensagem é a explicação e
+  // cujo retry nunca passaria.
+  it('400 de campo `date`: mostra a mensagem do servidor e NÃO oferece retry', async () => {
+    const user = userEvent.setup()
+    mockApi()
+    mockPost.mockRejectedValue(validationError400({ date: [FUTURE_DAY_MESSAGE] }))
+    renderPage()
+    await screen.findByTestId('habits-day-percent')
+    await user.click(screen.getByRole('checkbox', { name: 'Marcar este dia como não registrado' }))
+
+    const alert = await screen.findByTestId('habits-untracked-field-error')
+    expect(alert).toHaveAttribute('role', 'alert')
+    expect(alert).toHaveTextContent(FUTURE_DAY_MESSAGE)
+    expect(screen.queryByText('Não foi possível salvar. Tente novamente.')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Tentar de novo' })).not.toBeInTheDocument()
+    // Rollback: o checkbox volta, a porcentagem do servidor permanece.
+    expect(
+      screen.getByRole('checkbox', { name: 'Marcar este dia como não registrado' }),
+    ).not.toBeChecked()
+    expect(screen.getByTestId('habits-day-percent')).toHaveTextContent('64%')
+  })
+
+  it('400 SEM o campo `date` cai no genérico + retry (como qualquer outro erro)', async () => {
+    const user = userEvent.setup()
+    mockApi()
+    mockPost.mockRejectedValue(validationError400({ untracked: ['Este campo é obrigatório.'] }))
+    renderPage()
+    await screen.findByTestId('habits-day-percent')
+    await user.click(screen.getByRole('checkbox', { name: 'Marcar este dia como não registrado' }))
+    await waitFor(() =>
+      expect(screen.getByText('Não foi possível salvar. Tente novamente.')).toHaveAttribute(
+        'role',
+        'alert',
+      ),
+    )
+    expect(screen.queryByTestId('habits-untracked-field-error')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Tentar de novo' })).toBeInTheDocument()
+  })
+
+  // P2 — a prop `date` muda sem remontar o painel: o erro de D1 não pode
+  // sobreviver em D2, e o retry reenvia as VARIÁVEIS da falha, nunca algo
+  // derivado do estado atual.
+  it('erro em D1 + navegar para D2: nenhum alerta sobrevive à troca de data', async () => {
+    const user = userEvent.setup()
+    mockApi()
+    mockPost.mockRejectedValue(new Error('nope'))
+    renderPage()
+    await screen.findByTestId('habits-day-percent')
+    await user.click(screen.getByRole('checkbox', { name: 'Marcar este dia como não registrado' }))
+    await screen.findByText('Não foi possível salvar. Tente novamente.')
+
+    await user.click(screen.getByRole('button', { name: 'Dia anterior' }))
+    await waitFor(() =>
+      expect(mockGet).toHaveBeenCalledWith('/api/habits/days/', {
+        params: { date: addDays(TODAY, -1) },
+      }),
+    )
+    await waitFor(() =>
+      expect(screen.queryByText('Não foi possível salvar. Tente novamente.')).not.toBeInTheDocument(),
+    )
+    expect(screen.queryByRole('button', { name: 'Tentar de novo' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('retry reenvia as MESMAS variáveis da falha (não o oposto do estado atual)', async () => {
+    const user = userEvent.setup()
+    // Dia já MARCADO: a escrita que falha é `untracked: false`.
+    mockApi({ day: UNTRACKED_DAY_PAYLOAD() })
+    mockPost.mockRejectedValue(new Error('nope'))
+    renderPage()
+    const checkbox = await screen.findByRole('checkbox', {
+      name: 'Marcar este dia como não registrado',
+    })
+    await user.click(checkbox)
+    await screen.findByText('Não foi possível salvar. Tente novamente.')
+    expect(mockPost).toHaveBeenLastCalledWith('/api/habits/untracked-days/', {
+      date: TODAY,
+      untracked: false,
+    })
+
+    const before = mockPost.mock.calls.length
+    await user.click(screen.getByRole('button', { name: 'Tentar de novo' }))
+    await waitFor(() => expect(mockPost.mock.calls.length).toBe(before + 1))
+    expect(mockPost).toHaveBeenLastCalledWith('/api/habits/untracked-days/', {
+      date: TODAY,
+      untracked: false,
+    })
+  })
+
+  it('a frase de precedência fica ADJACENTE ao feriado; o não-registrado vem depois dela', async () => {
+    mockApi()
+    renderPage()
+    const holiday = await screen.findByRole('checkbox', { name: 'Marcar este dia como feriado' })
+    const precedence = screen.getByText(/Precedência: feriado > fim de semana > dia útil/)
+    const untracked = screen.getByRole('checkbox', { name: 'Marcar este dia como não registrado' })
+    // DOCUMENT_POSITION_FOLLOWING = 4: `b` vem DEPOIS de `a` no DOM.
+    expect(holiday.compareDocumentPosition(precedence) & 4).toBeTruthy()
+    expect(precedence.compareDocumentPosition(untracked) & 4).toBeTruthy()
+  })
+})
+
+describe('Aba Histórico — dia não registrado (16.2c)', () => {
+  beforeEach(baseSetup)
+
+  function untrackedHistory(): HabitHistoryRange {
+    const base = twoWeekHistory()
+    // O ÚLTIMO dia da semana 1 (não feito no fixture) foi marcado: o servidor o
+    // devolve como lacuna + flag. Era 5/7 ⇒ passa a 5/6; a coluna, "6 dias".
+    const marked = WEEK_1[6]
+    return {
+      ...base,
+      days: base.days.map((day) =>
+        day.date === marked
+          ? { ...day, untracked: true, totalCompletion: null, groups: [], entries: [] }
+          : day,
+      ),
+    }
+  }
+
+  it('detalhe do dia marcado nomeia o estado e NÃO mostra porcentagem', async () => {
+    const user = userEvent.setup()
+    // O range do painel é "hoje − 29 … hoje": o dia marcado precisa caber nele.
+    const marked = addDays(TODAY, -2)
+    mockApi({
+      historyRange: history({
+        days: [
+          {
+            date: marked,
+            dayType: 'weekday',
+            totalCompletion: null,
+            untracked: true,
+            groups: [],
+            entries: [],
+          },
+          { date: TODAY, dayType: 'weekday', totalCompletion: null, untracked: false, groups: [], entries: [] },
+        ],
+      }),
+    })
+    renderPage('/habits?tab=historico')
+    const dateInput = await screen.findByLabelText(/Dia em detalhe/)
+    await user.clear(dateInput)
+    fireEvent.change(dateInput, { target: { value: marked } })
+
+    expect(await screen.findByTestId('habits-history-untracked')).toHaveTextContent(
+      'Dia não registrado — fora das estatísticas.',
+    )
+    expect(screen.getByText(/foi marcado como não registrado/)).toBeInTheDocument()
+    const section = screen.getByTestId('habits-history-untracked').closest('section')
+    expect(section?.textContent).not.toMatch(/completude \d+%/)
+    expect(section?.textContent).not.toContain('Sem registro neste dia.')
+  })
+
+  it('a célula semanal e o cabeçalho da coluna EXCLUEM o dia marcado do denominador', async () => {
+    mockApi({ historyRange: untrackedHistory() })
+    renderPage('/habits?tab=historico')
+    const table = await screen.findByRole('table', { name: /Completude por hábito e semana/ })
+    const headers = within(table)
+      .getAllByRole('columnheader')
+      .map((cell) => cell.textContent ?? '')
+    expect(headers.some((text) => text.includes('6 dias'))).toBe(true)
+    expect(headers.some((text) => text.includes('7 dias'))).toBe(false)
+    // 5 feitos sobre 6 dias COM registro (o marcado saiu do denominador).
+    expect(within(table).getAllByText('5/6').length).toBeGreaterThan(0)
+    expect(within(table).queryByText('5/7')).not.toBeInTheDocument()
+  })
+
+  it('compact: a lista por dia escreve "Não registrado" no dia marcado', async () => {
+    mockCompactFaixa()
+    mockApi({ historyRange: untrackedHistory() })
+    renderPage('/habits?tab=historico')
+    await screen.findByRole('heading', { name: 'Completude por dia' })
+    // Nove dias no fixture: 7 da semana 1 (um marcado) + 2 lacunas da semana 2.
+    expect(screen.getAllByText('Não registrado')).toHaveLength(1)
+    expect(screen.getAllByText('Sem registro neste dia.').length).toBeGreaterThanOrEqual(2)
   })
 })

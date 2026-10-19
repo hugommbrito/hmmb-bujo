@@ -28,6 +28,7 @@ import { createBujoTheme } from '../../../../theme'
 import type { HabitDayEntry } from '../../types'
 import { CompletionBar } from './CompletionBar'
 import { EMPTY_GROUP, HabitGroupCard } from './HabitGroupCard'
+import { UNTRACKED_PERCENT } from './habitsSurface'
 import { DomainIcon } from './DomainIcon'
 import { HabitTrackerRow, INVALID_NUMBER } from './HabitTrackerRow'
 
@@ -321,5 +322,40 @@ describe('HabitGroupCard — Panel por grupo', () => {
       />,
     )
     expect(screen.queryByText(/peso ×/)).not.toBeInTheDocument()
+  })
+})
+
+// Story 16.2c — dia "não registrado": o % do grupo vem NULO e o card escreve o
+// estado; nenhuma barra (uma barra em 0 seria leitura fabricada).
+describe('HabitGroupCard — dia não registrado (16.2c)', () => {
+  it('marcado: "Não registrado" no slot do %, SEM barra, linhas ainda editáveis', () => {
+    renderWithQuery(
+      <HabitGroupCard
+        group={{ id: 'g1', name: 'Corpo', completion: null }}
+        entries={[entry(), NUMERIC]}
+        compact={false}
+        headingId="h-corpo"
+        untracked
+      />,
+    )
+    expect(screen.getByTestId('habit-group-percent')).toHaveTextContent(UNTRACKED_PERCENT)
+    expect(screen.queryByTestId('completion-bar-group')).not.toBeInTheDocument()
+    expect(screen.queryByRole('img', { name: /Completude do grupo/ })).not.toBeInTheDocument()
+    // O dia marcado continua EDITÁVEL: o checkbox booleano segue habilitado.
+    expect(screen.getByRole('checkbox', { name: 'Alongamento' })).toBeEnabled()
+    expect(screen.getAllByTestId('habit-tracker-row')).toHaveLength(2)
+  })
+
+  it('nulo TRANSIENTE (sem a flag): "—" sem barra, até o refetch trazer o número', () => {
+    renderWithQuery(
+      <HabitGroupCard
+        group={{ id: 'g1', name: 'Corpo', completion: null }}
+        entries={[entry()]}
+        compact={false}
+        headingId="h-corpo"
+      />,
+    )
+    expect(screen.getByTestId('habit-group-percent')).toHaveTextContent('—')
+    expect(screen.queryByTestId('completion-bar-group')).not.toBeInTheDocument()
   })
 })

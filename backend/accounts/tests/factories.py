@@ -3,7 +3,7 @@ from datetime import date, timedelta
 import factory
 from factory.django import DjangoModelFactory
 
-from accounts.models import User, UserHoliday
+from accounts.models import UntrackedCollection, UntrackedDay, User, UserHoliday
 from core.tests.registry import register_isolation_case
 
 
@@ -44,4 +44,26 @@ register_isolation_case(
     id="accounts.UserHoliday",
     model=UserHoliday,
     make=lambda: {"date": date(2026, 1, 1)},
+)
+
+
+class UntrackedDayFactory(DjangoModelFactory):
+    """Dia "não registrado" por collection (Story 16.2c). Mesmo molde de
+    ``UserHolidayFactory`` (``Params`` + ``SelfAttribute``; datas fixas + ``timedelta``)."""
+
+    class Meta:
+        model = UntrackedDay
+
+    class Params:
+        user = factory.SubFactory(UserFactory)
+
+    user_id = factory.SelfAttribute("user.id")
+    date = factory.Sequence(lambda n: date(2026, 1, 1) + timedelta(days=n))
+    collection = UntrackedCollection.HABITS
+
+
+register_isolation_case(
+    id="accounts.UntrackedDay",
+    model=UntrackedDay,
+    make=lambda: {"date": date(2026, 1, 1), "collection": UntrackedCollection.HABITS},
 )

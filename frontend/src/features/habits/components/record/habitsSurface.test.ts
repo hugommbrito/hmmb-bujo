@@ -324,3 +324,30 @@ describe('formatDecimal — null NÃO vira zero fabricado', () => {
     expect(formatDecimal('1000')).toBe('1.000')
   })
 })
+
+// Story 16.2c — o dia marcado "não registrado" CHEGA VAZIO do servidor: ele
+// simplesmente não entra em `entries`, e a fórmula (inalterada) o deixa fora do
+// denominador — nem numerador, nem falha.
+describe('célula da grade — dia não registrado chega vazio (16.2c)', () => {
+  it('booleano: o dia marcado não entra no denominador (5/6, não 5/7)', () => {
+    const trackedDays = [
+      { value: '1' },
+      { value: '1' },
+      { value: '1' },
+      { value: '1' },
+      { value: '1' },
+      { value: null },
+      // o 7º dia foi marcado e o servidor NÃO devolveu linha dele
+    ]
+    const cell = gridCell({ type: 'boolean', entries: trackedDays })
+    expect(cell.display).toBe('5/6')
+    expect(cell.daysWithRecord).toBe(6)
+    expect(cell.percent).toBe(83)
+  })
+
+  it('bucket cujo único dia foi marcado é "período sem registro" (—)', () => {
+    const cell = gridCell({ type: 'boolean', entries: [] })
+    expect(cell.hasRecord).toBe(false)
+    expect(cell.display).toBe('—')
+  })
+})

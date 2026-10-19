@@ -11,6 +11,7 @@ import type {
   MedicationScheduleVersion,
   MedicationSubstanceVersion,
   TimeBlock,
+  UntrackedDayResult,
 } from './types'
 
 // --- Queries -----------------------------------------------------------------
@@ -425,5 +426,43 @@ export function useCreateAdHocEntryMutation(date?: string) {
     mutationFn: createAdHoc,
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: keys.medications.day(date) }),
+  })
+}
+
+// --- Story 16.2c — dia "não registrado" (collection `medications`) ----------
+// Molde de `useSetUntrackedDayMutation` de habits/api.ts, sobre a chave do dia
+// de Medicamentos: otimista só na FLAG (`untracked`) — blocos/linhas/status não
+// mudam (o servidor também não os toca); a UI troca "Dose perdida"/"Doses
+// perdidas" por "Não registrado" lendo a flag. Rollback em erro; `onSettled`
+// do hook reconcilia com o refetch.
+interface SetMedicationUntrackedDayVariables {
+  date: string
+  untracked: boolean
+}
+
+async function setMedicationUntrackedDay({
+  date,
+  untracked,
+}: SetMedicationUntrackedDayVariables): Promise<UntrackedDayResult> {
+  const response = await client.post<UntrackedDayResult>(
+    '/api/medications/untracked-days/',
+    { date, untracked },
+  )
+  return response.data
+}
+
+export function useSetMedicationUntrackedDayMutation(date?: string) {
+  return useOptimisticMutation<
+    UntrackedDayResult,
+    unknown,
+    SetMedicationUntrackedDayVariables,
+    MedicationDay
+  >({
+    mutationFn: setMedicationUntrackedDay,
+    queryKey: keys.medications.day(date),
+    updater: (current, { untracked }) => {
+      if (!current) return current as unknown as MedicationDay
+      return { ...current, untracked }
+    },
   })
 }

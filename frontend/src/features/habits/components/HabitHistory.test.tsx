@@ -55,11 +55,19 @@ const HISTORY: HabitHistoryRange = {
   end: TODAY,
   habits: [{ id: 'h1', name: 'Ler', emoticon: '📖', type: 'boolean', unit: '', group: 'g1' }],
   days: [
-    { date: YESTERDAY, dayType: 'weekday', totalCompletion: null, groups: [], entries: [] },
+    {
+      date: YESTERDAY,
+      dayType: 'weekday',
+      totalCompletion: null,
+      untracked: false,
+      groups: [],
+      entries: [],
+    },
     {
       date: TODAY,
       dayType: 'weekday',
       totalCompletion: 100,
+      untracked: false,
       groups: [{ id: 'g1', name: 'Saúde', completion: 100 }],
       entries: [ENTRY_DONE],
     },

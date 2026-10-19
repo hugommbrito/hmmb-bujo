@@ -649,3 +649,21 @@ summary: `HabitsRecordPage.test.tsx` › "DW-60: o glifo aparece no detalhe do d
 reason: `npm run test:run` fecha em 2368 passed | 8 failed: 7 são as da DW-61 e esta 8ª é de Hábitos. Confirmado pré-existente: falha isolada também num worktree limpo no baseline `32429a37c29458c3ad9532afb6ee89b06b4acb34`, sem nenhuma linha da 14.11 (que não toca `pages/habits`).
 evidence: Suíte vermelha mascara regressões novas (mesma razão da DW-61); provavelmente regressão da DW-64/DW-65 (seletor/pré-carga de glifos) sobre a asserção da DW-60.
 status: open
+
+### DW-78: `GET /api/summary/today` não adota a flag `untracked` de Hábitos
+origin: spec-16-2c-dia-nao-registrado-por-collection.md (Design Notes "`compute_day_completeness` fica puro"), 2026-10-19
+location: backend/automation/services.py (`build_today_summary` → `compute_day_completeness`), backend/automation/serializers.py (`SummaryHabits*Serializer`)
+source_spec: `_bmad-output/implementation-artifacts/spec-16-2c-dia-nao-registrado-por-collection.md`
+severity: low
+summary: O resumo do widget (`habits.total`/`groups[].completion`) segue numérico mesmo com hoje marcado como "não registrado" em Hábitos.
+reason: A 16.2c manteve `compute_day_completeness` puro e criou `get_day_completeness` (ciente da flag) só para a aba Hoje; mudar o contrato numérico do widget (`total: null` + `untracked`) é breaking change do consumidor externo e ficou explicitamente fora do escopo (Boundaries "Never: mudar `GET /api/summary/today`"). Guardado por `test_summary_habits_segue_numerico_com_dia_marcado_nao_registrado`.
+evidence: Um dia marcado aparece como 0%/N% no widget enquanto a aba Hoje lê "Não registrado" — duas leituras do mesmo dia. Resolver = trocar o service do summary para `get_day_completeness`, tornar `total`/`completion` `allow_null` e expor `untracked` no `SummaryHabitsSerializer`, regenerando `schema.yaml`.
+status: open
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-16-2c-dia-nao-registrado-por-collection.md`
+  summary: O contrato OpenAPI de `PATCH /api/habits/untracked-days/` e `/api/medications/untracked-days/` anuncia `PatchedSetUntrackedDay` com campos opcionais, mas `patch = post` usa `SetUntrackedDaySerializer` (ambos obrigatórios) — mesma convenção pré-existente de `PatchedSetHoliday`/`HabitHolidayView`.
+  evidence: drf-spectacular divide `Patched*` automaticamente para PATCH; um body parcial devolve 400 ao contrário do schema. Nenhum consumidor usa PATCH (frontend só faz POST). Corrigir de uma vez para feriado e não registrado (anotar o `patch` com o schema não-parcial ou remover `patch = post`).
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-16-2c-dia-nao-registrado-por-collection.md`
+  summary: Em `HabitsTodayPanel.tsx`, o retry do toggle de feriado (`setHoliday.mutate({ date, isHoliday: !isHoliday })`) deriva do estado atual e o `isError` sobrevive à troca de data — após uma falha em D1 e navegação para D2, o alerta persiste e o retry escreve em D2 ou inverte a intenção.
+  evidence: Fragilidade anterior a esta story (Story 16.1); a 16.2c corrigiu o padrão só no toggle novo (reset ao trocar de data + retry com `variables`). Aplicar o mesmo ao feriado (e ao override) mantém as três escritas coerentes.

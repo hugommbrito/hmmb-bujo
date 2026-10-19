@@ -52,7 +52,7 @@
 # - Épicos 1–9 e 11 são HISTÓRICO (MVP) — não entram na fila.
 
 generated: 2026-06-22
-last_updated: 2026-08-22
+last_updated: 2026-10-19
 project: hmmb-bujo
 project_key: NOKEY
 tracking_system: file-system
@@ -202,7 +202,8 @@ development_status:
   16-0-ux-mockup-de-habitos-no-sistema-novo: done  # ✅ gate UX do lote 1 aprovado por Hugo em 2026-08-22 (rito bmad-ux); promovido a DESIGN/EXPERIENCE; 16.1–16.2 DESBLOQUEADAS
   16-1-habitos-no-sistema-novo: done
   16-2-campo-icon-key-e-catalogo-phosphor: done
-  16-2b-leituras-agregadas-de-habitos: backlog  # aprovada no gate 16.0 (2026-08-21); depende de 16.1/16.2; exige backend novo (agregacoes + GET /api/habits/history/by-group/)
+  16-2c-dia-nao-registrado-por-collection: review  # precede 16.2b (a agregação consome a flag untracked); accounts.UntrackedDay + endpoints por módulo (plano aprovado 2026-10-19)
+  16-2b-leituras-agregadas-de-habitos: backlog  # aprovada no gate 16.0 (2026-08-21); depende de 16.1/16.2; exige backend novo (agregacoes + GET /api/habits/history/by-group/); depende de 16.2c (flag untracked)
   16-3-ux-mockups-de-saude-metricas-e-medicamentos: backlog  # ⛔ gate UX do lote 2 (rito bmad-ux, mesma sessão — NUNCA dev-story/automator); bloqueia 16.4–16.9
   16-4-saude-metricas-no-sistema-novo: backlog
   16-5-refinos-c3-reordenar-e-editar-metricas: backlog

@@ -168,21 +168,30 @@ class HabitDayEntrySerializer(serializers.ModelSerializer):
 
 
 class HabitDayGroupSerializer(serializers.Serializer):
-    """Cabeçalho de grupo do tracker: nome + % ponderado do grupo."""
+    """Cabeçalho de grupo do tracker: nome + % ponderado do grupo.
+
+    ``completion`` **allow_null** (Story 16.2c): num dia marcado "não registrado" a
+    aba Hoje ainda lista os grupos (o dia é editável), mas a completude é nula — a
+    interface escreve "Não registrado", nunca uma barra em 0."""
 
     id = serializers.UUIDField()
     name = serializers.CharField()
-    completion = serializers.IntegerField()
+    completion = serializers.IntegerField(allow_null=True)
 
 
 class HabitDaySerializer(serializers.Serializer):
-    """Payload do tracker do dia: % total, % por grupo, tipo do dia e as linhas."""
+    """Payload do tracker do dia: % total, % por grupo, tipo do dia e as linhas.
+
+    ``total_completion`` **allow_null** + ``untracked`` (Story 16.2c): dia marcado
+    "não registrado" vem com ``untracked=True`` e completude nula — as ``entries``
+    continuam presentes e PATCH-áveis."""
 
     date = serializers.DateField()
-    total_completion = serializers.IntegerField()
+    total_completion = serializers.IntegerField(allow_null=True)
     # Tipo do dia (nível-dia, para o toggle de feriado / legenda). Mesmos 3 valores
     # de HabitDayEntry.day_type → mesmo DayTypeEnum (sem colisão).
     day_type = serializers.ChoiceField(choices=DayType.choices)
+    untracked = serializers.BooleanField()
     groups = HabitDayGroupSerializer(many=True)
     entries = HabitDayEntrySerializer(many=True)
 
@@ -298,11 +307,14 @@ class HabitSlimSerializer(serializers.ModelSerializer):
 
 class HabitHistoryDaySerializer(serializers.Serializer):
     """Um dia no range de histórico. ``total_completion`` **allow_null** = lacuna
-    honesta (dia nunca aberto); ``groups`` traz o % ponderado POR GRUPO (AC1)."""
+    honesta (dia nunca aberto); ``groups`` traz o % ponderado POR GRUPO (AC1).
+    ``untracked`` (Story 16.2c): dia marcado "não registrado" chega como lacuna
+    (``entries=[]``) com esta flag ligada, para a interface nomear o estado."""
 
     date = serializers.DateField()
     day_type = serializers.ChoiceField(choices=DayType.choices)
     total_completion = serializers.IntegerField(allow_null=True)
+    untracked = serializers.BooleanField()
     groups = HabitDayGroupSerializer(many=True)
     entries = HabitDayEntrySerializer(many=True)
 

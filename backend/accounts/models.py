@@ -54,3 +54,51 @@ class UserHoliday(TenantModel):
                 name="uniq_user_holiday",
             ),
         ]
+
+
+class UntrackedCollection(models.TextChoices):
+    """Collections que podem ter um dia marcado como "não registrado" (Story 16.2c).
+
+    ``health`` fica de fora de propósito: não tem estatística a excluir. O enum
+    vive só no model (``CheckConstraint`` + ``choices``) — **nunca** entra no wire:
+    cada endpoint (``habits``/``medications``) fixa a sua collection, então nenhum
+    serializer o expõe e o contrato OpenAPI não ganha enum novo.
+    """
+
+    HABITS = "habits", "Hábitos"
+    MEDICATIONS = "medications", "Medicamentos"
+
+
+class UntrackedDay(TenantModel):
+    """Dia "não registrado" por ``(usuário, data, collection)`` (Story 16.2c).
+
+    Molde de ``UserHoliday``: a **presença** da linha é a flag — o dia sai de toda
+    estatística daquela collection (completude nula, fora de todo denominador,
+    ponto omitido na série). Nenhuma linha de domínio (``habit_day_entries``,
+    ``medication_day_entries``) é apagada ou re-semeada por marcar/desmarcar: o dia
+    marcado continua editável e nunca desmarca sozinho.
+
+    Uma tabela só em ``accounts`` (porta já usada por ``UserHoliday``), importável
+    pelos dois módulos; ``collection`` dá o escopo por módulo — a flag de Hábitos
+    não afeta Medicamentos e vice-versa. Herda ``TenantModel`` (UUID PK +
+    ``user_id`` + auto-scope + gate de isolamento); unicidade em
+    ``(user_id, date, collection)``.
+    """
+
+    date = models.DateField()
+    collection = models.CharField(max_length=16, choices=UntrackedCollection.choices)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "user_untracked_days"
+        ordering = ["date"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user_id", "date", "collection"],
+                name="uniq_user_untracked_day",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(collection__in=UntrackedCollection.values),
+                name="user_untracked_day_collection_valid",
+            ),
+        ]

@@ -38,3 +38,26 @@ export function domainErrorCode(error: unknown): string | null {
   const body = conflictBody(error)
   return typeof body?.code === 'string' ? body.code : null
 }
+
+// ─── Erro de CAMPO num 400 de validação (Story 16.2c) ────────────────────────
+// O handler central responde 400 como `{detail, fields: {campo: [msg, …]}}`.
+// Quem conhece o formulário lê a mensagem do SEU campo e a mostra como está;
+// `domainErrorMessage` (409) fica intacto — são envelopes distintos.
+
+function validationBody(error: unknown): DomainErrorBody | null {
+  if (!isAxiosError(error) || error.response?.status !== 400) return null
+  const data: unknown = error.response.data
+  return data !== null && typeof data === 'object' ? (data as DomainErrorBody) : null
+}
+
+/**
+ * Primeira mensagem de `fields[field]` num 400 de validação, ou `null` para
+ * qualquer outro erro (409, 500, rede, 400 sem esse campo). Puro: não decide o
+ * que fazer com a mensagem — o chamador escolhe mostrar e/ou suprimir o retry.
+ */
+export function fieldErrorMessage(error: unknown, field: string): string | null {
+  const body = validationBody(error)
+  const messages: unknown = body?.fields?.[field]
+  const first: unknown = Array.isArray(messages) ? messages[0] : undefined
+  return typeof first === 'string' && first.trim() !== '' ? first : null
+}

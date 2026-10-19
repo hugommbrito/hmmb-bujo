@@ -2526,18 +2526,41 @@ Para que o histórico de Hábitos responda perguntas de tendência que hoje exig
 
 **Dado que** a interface nunca infere completude — a regra vale igualmente para agregações —,
 **Quando** as quatro leituras forem implementadas,
-**Então** todas são calculadas **no servidor** sobre os pesos congelados, com dia sem linha vindo explicitamente nulo (render "sem registro", nunca barra zerada),
+**Então** todas são calculadas **no servidor** sobre os pesos congelados, com dia sem linha **ou marcado como não registrado (16.2c)** vindo explicitamente nulo (render "sem registro", nunca barra zerada),
 **E** a rota da série por grupo é `GET /api/habits/history/by-group/?start&end`.
 
 **Dado que** as definições foram fixadas no gate 16.0,
 **Quando** cada leitura for calculada,
-**Então** o denominador é sempre "dias com registro" (dia sem linha não entra nem como falha); o hábito numérico agrega por **média simples** das contribuições diárias; o booleano mostra dias feitos sobre dias com registro; o período "ano" é **ano civil**; dia com Σ pesos efetivos = 0 sai da contagem,
+**Então** o denominador é sempre "dias com registro" (dia sem linha ou marcado como não registrado não entra nem como falha); o hábito numérico agrega por **média simples** das contribuições diárias; o booleano mostra dias feitos sobre dias com registro; o período "ano" é **ano civil**; dia com Σ pesos efetivos = 0 sai da contagem,
 **E** a sequência atravessa período de inatividade do hábito, quebra em dia não aberto dentro de período ativo e trata o dia corrente ainda não registrado como **neutro** (considera até ontem).
 
 **Dado que** a leitura precisa permanecer legível e factual,
 **Quando** as superfícies renderizarem,
 **Então** o gráfico por grupo respeita o teto de 4 cores — acima disso mostra só o total do dia e a leitura por grupo fica íntegra na tabela equivalente —, o filtro de grupos é de leitura (ocultar um grupo não muda o total do dia), a grade rotula a semana parcial pelos dias reais ("3 dias") e o número dentro da célula é o canal primário com o tom como reforço,
 **E** nada de chama colorida, medalha, "não quebre a corrente" ou cor que mude conforme o número — a proibição de celebração (UX-DR13) permanece válida.
+
+### Story 16.2c: Dia "não registrado" por collection (Hábitos e Medicamentos)
+
+Como Hugo,
+Quero marcar um dia como "não registrado" em Hábitos e, separadamente, em Medicamentos,
+Para que os dias em que não preenchi o módulo fiquem fora das estatísticas em vez de virar 0% ou "dose perdida" (nunca 0% fabricado; precede a 16.2b, que consome a flag).
+
+**Critérios de Aceitação:**
+
+**Dado que** abrir um dia materializa linhas com valor nulo (`seed_habit_day`/`seed_medication_day`) e hoje não há como distinguir "abri e não fiz" de "não registrei",
+**Quando** Hugo marca um dia (≤ hoje) como não registrado numa collection,
+**Então** a marcação é por `(usuário, data, collection)` em `accounts.UntrackedDay` (presença = fora das estatísticas, molde de `user_holidays`), idempotente, via `POST /api/habits/untracked-days/` e `POST /api/medications/untracked-days/` com `{date, untracked}`; data futura = 400,
+**E** nenhum dado de domínio é apagado: as linhas do dia permanecem, continuam editáveis e **não** desmarcam o dia automaticamente; desmarcar devolve o dia às estatísticas sem recálculo.
+
+**Dado que** a interface nunca calcula completude,
+**Quando** as leituras de Hábitos servem um dia marcado,
+**Então** `GET /api/habits/days/` devolve `untracked: true` com `totalCompletion` e `groups[].completion` nulos (entries presentes), `GET /api/habits/history/` trata o dia como dia sem linha (`totalCompletion` nulo, `groups` e `entries` vazios, `untracked: true`) e `GET /api/habits/{id}/series/` omite o ponto — fora de grade, gráfico e de qualquer denominador,
+**E** a superfície escreve "Não registrado" no lugar da porcentagem (nenhuma barra em 0, nunca só cor), com o controle "Marcar este dia como não registrado" ao lado do de feriado na aba Hoje e o estado nomeado no detalhe do Histórico.
+
+**Dado que** "dose perdida" é sinal clínico, não ausência de registro,
+**Quando** um dia de Medicamentos está marcado,
+**Então** `GET /api/medications/days/` devolve `untracked: true` e a linha `scheduled` sem confirmação lê **"Não registrado"** em vez de "Dose perdida" (bloco idem), com o mesmo controle na superfície de Histórico,
+**E** a flag de uma collection não afeta a outra no mesmo dia.
 
 ### Story 16.3: [UX] Mockups de Saúde-Métricas + Medicamentos (x.0 do lote — mesma sessão)
 

@@ -1,7 +1,7 @@
 import { AxiosError, AxiosHeaders, type AxiosResponse } from 'axios'
 import { describe, expect, it } from 'vitest'
 
-import { domainErrorCode, domainErrorMessage } from './errors'
+import { domainErrorCode, domainErrorMessage, fieldErrorMessage } from './errors'
 
 function axiosErrorWith(status: number, data: unknown): AxiosError {
   const response = {
@@ -47,5 +47,38 @@ describe('domainErrorMessage (Story 14.11)', () => {
     expect(domainErrorMessage(axiosErrorWith(409, { detail: ['lista'] }), 'fallback')).toBe('fallback')
     expect(domainErrorMessage(axiosErrorWith(409, 'texto cru'), 'fallback')).toBe('fallback')
     expect(domainErrorMessage(axiosErrorWith(409, null), 'fallback')).toBe('fallback')
+  })
+})
+
+describe('fieldErrorMessage (Story 16.2c)', () => {
+  const FUTURE = 'Não é possível marcar um dia futuro como não registrado.'
+
+  it('400 de validação: devolve a PRIMEIRA mensagem do campo pedido', () => {
+    const error = axiosErrorWith(400, { detail: 'Validation failed', fields: { date: [FUTURE, 'outra'] } })
+    expect(fieldErrorMessage(error, 'date')).toBe(FUTURE)
+  })
+
+  it('400 sem o campo pedido (ou sem `fields`): null', () => {
+    expect(
+      fieldErrorMessage(axiosErrorWith(400, { detail: 'x', fields: { untracked: ['obrigatório'] } }), 'date'),
+    ).toBeNull()
+    expect(fieldErrorMessage(axiosErrorWith(400, { detail: 'x' }), 'date')).toBeNull()
+    expect(fieldErrorMessage(axiosErrorWith(400, { fields: { date: [] } }), 'date')).toBeNull()
+    expect(fieldErrorMessage(axiosErrorWith(400, { fields: { date: ['  '] } }), 'date')).toBeNull()
+    expect(fieldErrorMessage(axiosErrorWith(400, { fields: { date: 'não-lista' } }), 'date')).toBeNull()
+    expect(fieldErrorMessage(axiosErrorWith(400, 'texto cru'), 'date')).toBeNull()
+    expect(fieldErrorMessage(axiosErrorWith(400, null), 'date')).toBeNull()
+  })
+
+  it('fora do 400 (409, 500, rede, undefined): null — o chamador cai no genérico', () => {
+    expect(fieldErrorMessage(axiosErrorWith(409, { detail: 'gate', fields: { date: [FUTURE] } }), 'date')).toBeNull()
+    expect(fieldErrorMessage(axiosErrorWith(500, { detail: 'Internal server error' }), 'date')).toBeNull()
+    expect(fieldErrorMessage(new Error('Network Error'), 'date')).toBeNull()
+    expect(fieldErrorMessage(undefined, 'date')).toBeNull()
+  })
+
+  it('não interfere em `domainErrorMessage` (envelopes distintos)', () => {
+    const error = axiosErrorWith(400, { detail: 'Validation failed', fields: { date: [FUTURE] } })
+    expect(domainErrorMessage(error, 'fallback')).toBe('fallback')
   })
 })

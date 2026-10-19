@@ -30,6 +30,12 @@
 //     permanente** em `details` é a representação de ACESSIBILIDADE e fica só
 //     texto: glifo ali seria ruído sem informação nova.
 //
+//   ▶ DIA "NÃO REGISTRADO" (Story 16.2c) chega do servidor como dia SEM linha
+//     (`entries: []`) + `untracked: true`: a célula semanal e o rótulo de dias
+//     reais já o excluem do denominador pela regra existente, sem `if` novo.
+//     Só a lista compact (que nomeia cada dia) escreve "Não registrado" no
+//     lugar de "Sem registro neste dia.".
+//
 //   ▶ AS LEITURAS AGREGADAS DE SERVIDOR (sequência, dias 100%, série por grupo,
 //     e a agregação por bucket calculada no backend) são da **Story 16.2b**.
 //     O que esta grade faz é contar/mediar o que o servidor JÁ devolveu por
@@ -43,6 +49,7 @@ import { DAY_TYPE_LABEL, formatDateBR } from '../historyUtils'
 import type { DayType, HabitDayEntry, HabitGroup, HabitHistoryRange, HabitSlim } from '../../types'
 import { DomainIcon } from './DomainIcon'
 import {
+  UNTRACKED_PERCENT,
   bucketLabel,
   formatDateMediumBR,
   formatDecimal,
@@ -190,7 +197,9 @@ export function HabitCompletionGrid({
                 <Box component="span" sx={{ fontVariantNumeric: 'tabular-nums' }}>
                   {hasRecord
                     ? `${day.totalCompletion}% · ${filled}/${day.entries.length} registros`
-                    : NO_RECORD_DAY}
+                    : day.untracked
+                      ? UNTRACKED_PERCENT
+                      : NO_RECORD_DAY}
                 </Box>
                 </Box>
                 {/* RECOMPOSIÇÃO, não compressão: a leitura POR HÁBITO é a

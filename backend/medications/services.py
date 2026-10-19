@@ -19,6 +19,8 @@ Dois eixos independentes: ``add_substance_version`` (substância/lab/médico) e
 from django.db import IntegrityError, transaction
 from django.db.models import Max
 
+from accounts.models import UntrackedCollection
+from accounts.services import is_untracked
 from core.calendar import now, today_for
 from core.exceptions import DomainError
 from medications.models import (
@@ -440,11 +442,17 @@ def get_medication_day(*, user, date) -> dict:
     """Read-model do dia (AC4/AC6) — **read-only, NÃO chama ``seed``** (a view semeia
     antes; a 8.3 lê sem semear).
 
-    Monta ``{date, blocks:[...], ad_hoc:[...]}``: agrupa as linhas ``scheduled`` por
-    bloco (ordenado por ``display_order``/``name``, com ``status`` derivado por AC6) e
-    coloca as linhas ``ad_hoc`` numa lista separada. Uma query
+    Monta ``{date, blocks:[...], ad_hoc:[...], untracked}``: agrupa as linhas
+    ``scheduled`` por bloco (ordenado por ``display_order``/``name``, com ``status``
+    derivado por AC6) e coloca as linhas ``ad_hoc`` numa lista separada. Uma query
     (``select_related("medication","time_block")``); ``substance_name`` derivado por
     linha (N+1 aceitável — AD-14: single-user, poucos itens).
+
+    ``untracked`` (Story 16.2c) é a flag de ``accounts.UntrackedDay`` para a
+    collection ``medications``: blocos e linhas vêm **inalterados** (nada é apagado
+    nem re-derivado — ``_derive_block_status`` fica puro); só a UI troca "Dose
+    perdida"/"Doses perdidas" por "Não registrado", porque ausência de registro não
+    é sinal clínico.
     """
     entries = list(
         MedicationDayEntry.objects.filter(date=date).select_related(
@@ -475,7 +483,14 @@ def get_medication_day(*, user, date) -> dict:
         }
         for item in ordered
     ]
-    return {"date": date, "blocks": blocks, "ad_hoc": ad_hoc}
+    return {
+        "date": date,
+        "blocks": blocks,
+        "ad_hoc": ad_hoc,
+        "untracked": is_untracked(
+            user=user, date=date, collection=UntrackedCollection.MEDICATIONS
+        ),
+    }
 
 
 @transaction.atomic

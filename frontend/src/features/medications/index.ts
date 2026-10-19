@@ -18,6 +18,8 @@ export {
   useCreateAdHocEntryMutation,
   // Story 8.3 — correção retroativa de dose.
   useEditEntryDoseMutation,
+  // Story 16.2c — dia "não registrado".
+  useSetMedicationUntrackedDayMutation,
 } from './api'
 export { MedicationsManager } from './components/MedicationsManager'
 export { MedicationBlock } from './components/MedicationBlock'
@@ -35,4 +37,7 @@ export type {
   MedicationDay,
   MedicationDayBlock,
   MedicationDayEntry,
+  // Story 16.2c — dia "não registrado".
+  SetUntrackedDay,
+  UntrackedDayResult,
 } from './types'

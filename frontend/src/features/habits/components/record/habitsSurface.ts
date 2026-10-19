@@ -80,6 +80,14 @@ export function tabLabelOf(tab: HabitTabDefinition, compact: boolean): string {
  */
 export const RETRY_LABEL = 'Tentar de novo'
 
+/**
+ * Leitura ESCRITA de um dia marcado "não registrado" (Story 16.2c), no lugar
+ * da porcentagem do dia e de cada grupo — nunca barra em 0, nunca só cor. Vive
+ * aqui (módulo puro) porque o cabeçalho do dia e o card de grupo a compartilham
+ * e nenhum é dono do outro.
+ */
+export const UNTRACKED_PERCENT = 'Não registrado'
+
 // ─── Números e datas ─────────────────────────────────────────────────────────
 
 const numberFormat = new Intl.NumberFormat('pt-BR')
@@ -400,7 +408,13 @@ export function realDaysLabel(daysWithRecord: number): string {
 
 export interface GridCellInput {
   type: 'boolean' | 'numeric'
-  /** Linhas MATERIALIZADAS do hábito dentro do bucket (dia sem linha não entra). */
+  /**
+   * Linhas MATERIALIZADAS do hábito dentro do bucket (dia sem linha não entra).
+   * Um dia marcado "não registrado" (Story 16.2c) CHEGA VAZIO do servidor
+   * (`GET /api/habits/history/` devolve `entries: []` nele), então ele cai fora
+   * do denominador por esta mesma regra — a fórmula abaixo não conhece a flag
+   * e não precisa conhecer.
+   */
   entries: readonly { value?: string | null; metaAtTime?: string | null }[]
 }
 

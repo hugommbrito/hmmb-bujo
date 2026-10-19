@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 
-from accounts.models import User, UserHoliday
+from accounts.models import UntrackedDay, User, UserHoliday
 
 
 @admin.register(User)
@@ -35,3 +35,15 @@ class UserHolidayAdmin(admin.ModelAdmin):
 
     def get_queryset(self, request):
         return UserHoliday.all_objects.all()
+
+
+@admin.register(UntrackedDay)
+class UntrackedDayAdmin(admin.ModelAdmin):
+    """Admin de operador (AD-12): usa ``all_objects`` (cross-tenant). Story 16.2c."""
+
+    list_display = ("id", "user_id", "date", "collection", "created_at")
+    list_filter = ("collection", "date")
+    search_fields = ("id", "user_id")
+
+    def get_queryset(self, request):
+        return UntrackedDay.all_objects.all()

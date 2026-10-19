@@ -12,6 +12,12 @@
 //   ▶ DIA-LACUNA: "Sem registro neste dia." + a nota de que nenhuma linha foi
 //     materializada. NENHUMA porcentagem — 0% fabricado seria mentira.
 //
+//   ▶ DIA "NÃO REGISTRADO" (Story 16.2c): o servidor devolve o dia marcado
+//     como a MESMA lacuna (`entries: []`, `totalCompletion: null`) + a flag
+//     `untracked`. A grade, a lista compacta e o gráfico já tratam "dia sem
+//     linha" como fora do denominador — aqui só o detalhe NOMEIA o estado
+//     ("Dia não registrado — fora das estatísticas.") em vez de "Sem registro".
+//
 //   ▶ PICTOGRAMA (DW-60) em tamanho `compact` antes do nome de cada entrada do
 //     detalhe do dia. `HabitDayEntry.iconKey` JÁ vem no contrato; chave nula ou
 //     órfã simplesmente não rende glifo. O `<select>` de "Evolução por hábito"
@@ -63,6 +69,10 @@ export const NO_HABIT_SELECTED = 'Selecione um hábito para ver o gráfico de ev
 export const NO_RECORD_DAY_NOTE =
   'Nenhuma linha foi materializada para este dia — o dia nunca foi aberto.'
 export const OPEN_FOR_EDIT = 'Abrir este dia para edição'
+/** Story 16.2c — detalhe de um dia marcado "não registrado". */
+export const UNTRACKED_DAY = 'Dia não registrado — fora das estatísticas.'
+export const UNTRACKED_DAY_NOTE =
+  'Este dia foi marcado como não registrado: não entra em médias, sequências nem na grade. As linhas dele continuam editáveis na aba Hoje, onde também é possível desmarcá-lo.'
 
 /** Últimos 30 dias, inclusive — paridade com `HabitHistory.tsx:16`. */
 const DEFAULT_SPAN = 29
@@ -132,7 +142,8 @@ function DayDetail({
   onOpenForEdit: () => void
 }) {
   const headingId = `habits-history-detail-${date}`
-  const hasRecord = day != null && day.entries.length > 0
+  const untracked = day?.untracked === true
+  const hasRecord = day != null && day.entries.length > 0 && day.totalCompletion != null
 
   return (
     <Box component="section" aria-labelledby={headingId} sx={BLOCK_SX}>
@@ -144,7 +155,16 @@ function DayDetail({
         {formatDateLongBR(date)}
       </Box>
 
-      {!hasRecord ? (
+      {untracked ? (
+        // Estado NOMEADO (nunca só a ausência de número) — o ramo vem ANTES da
+        // lacuna porque o dia marcado também chega com `entries: []`.
+        <>
+          <Box data-testid="habits-history-untracked" sx={{ ...typography.body, color: 'var(--ds-ink)' }}>
+            {UNTRACKED_DAY}
+          </Box>
+          <Box sx={{ ...typography.meta, color: 'var(--ds-ink-muted)' }}>{UNTRACKED_DAY_NOTE}</Box>
+        </>
+      ) : !hasRecord ? (
         <>
           <Box sx={{ ...typography.body, color: 'var(--ds-ink-muted)' }}>{NO_RECORD_DAY}</Box>
           <Box sx={{ ...typography.meta, color: 'var(--ds-ink-muted)' }}>{NO_RECORD_DAY_NOTE}</Box>

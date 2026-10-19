@@ -20,3 +20,8 @@ export type DoseComponent = MedicationScheduleVersion['dose'][number]
 export type MedicationDay = components['schemas']['MedicationDay']
 export type MedicationDayBlock = components['schemas']['MedicationDayBlock']
 export type MedicationDayEntry = components['schemas']['MedicationDayEntry']
+
+// Story 16.2c — dia "não registrado" (contrato único com Hábitos: `{date, untracked}`;
+// a collection é fixada pelo endpoint, nunca enviada).
+export type SetUntrackedDay = components['schemas']['SetUntrackedDay']
+export type UntrackedDayResult = components['schemas']['UntrackedDayResult']

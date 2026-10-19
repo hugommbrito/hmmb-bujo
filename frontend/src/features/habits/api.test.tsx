@@ -22,6 +22,7 @@ import {
   useMarkHabitEntryMutation,
   useSetGroupMultipliersMutation,
   useSetHolidayMutation,
+  useSetUntrackedDayMutation,
   useUpdateHabitIdentityMutation,
 } from './api'
 import type {
@@ -88,6 +89,7 @@ const HABIT_DAY: HabitDay = {
   date: '2026-07-17',
   totalCompletion: 0,
   dayType: 'weekday',
+  untracked: false,
   groups: [{ id: 'group-1', name: 'Saúde', completion: 0 }],
   entries: [ENTRY],
 }
@@ -393,6 +395,7 @@ const HISTORY: HabitHistoryRange = {
       date: '2026-01-05',
       dayType: 'weekday',
       totalCompletion: 100,
+      untracked: false,
       groups: [{ id: 'group-1', name: 'Saúde', completion: 100 }],
       entries: [ENTRY],
     },
@@ -400,6 +403,7 @@ const HISTORY: HabitHistoryRange = {
       date: '2026-01-06',
       dayType: 'weekday',
       totalCompletion: null,
+      untracked: false,
       groups: [],
       entries: [],
     },
@@ -456,5 +460,91 @@ describe('useHabitSeriesQuery', () => {
     // enabled=false → fica pending sem disparar request.
     expect(result.current.fetchStatus).toBe('idle')
     expect(mockGet).not.toHaveBeenCalled()
+  })
+})
+
+// --- Story 16.2c — dia "não registrado" ---------------------------------------
+
+describe('useSetUntrackedDayMutation', () => {
+  beforeEach(() => vi.resetAllMocks())
+
+  it('marcar: flipa `untracked` e ZERA (null) os % do dia e dos grupos antes do servidor', async () => {
+    const { qc, wrapper } = makeWrapper()
+    qc.setQueryData(keys.habits.day('2026-07-17'), { ...HABIT_DAY, totalCompletion: 64 })
+    let resolvePost: (value: { data: unknown }) => void = () => {}
+    mockPost.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolvePost = resolve
+      }),
+    )
+
+    const { result } = renderHook(() => useSetUntrackedDayMutation('2026-07-17'), { wrapper })
+    result.current.mutate({ date: '2026-07-17', untracked: true })
+
+    await waitFor(() => {
+      const cached = qc.getQueryData<HabitDay>(keys.habits.day('2026-07-17'))
+      expect(cached?.untracked).toBe(true)
+      expect(cached?.totalCompletion).toBeNull()
+      expect(cached?.groups[0].completion).toBeNull()
+    })
+    // As linhas NÃO são tocadas pelo updater.
+    expect(qc.getQueryData<HabitDay>(keys.habits.day('2026-07-17'))?.entries).toEqual([ENTRY])
+
+    resolvePost({ data: { date: '2026-07-17', untracked: true } })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(mockPost).toHaveBeenCalledWith('/api/habits/untracked-days/', {
+      date: '2026-07-17',
+      untracked: true,
+    })
+  })
+
+  it('desmarcar: só flipa a flag — a porcentagem real volta com o refetch (nunca recalculada)', async () => {
+    const { qc, wrapper } = makeWrapper()
+    qc.setQueryData(keys.habits.day('2026-07-17'), {
+      ...HABIT_DAY,
+      untracked: true,
+      totalCompletion: null,
+      groups: [{ id: 'group-1', name: 'Saúde', completion: null }],
+    })
+    mockPost.mockReturnValueOnce(new Promise(() => {}))
+
+    const { result } = renderHook(() => useSetUntrackedDayMutation('2026-07-17'), { wrapper })
+    result.current.mutate({ date: '2026-07-17', untracked: false })
+
+    await waitFor(() => {
+      const cached = qc.getQueryData<HabitDay>(keys.habits.day('2026-07-17'))
+      expect(cached?.untracked).toBe(false)
+      expect(cached?.totalCompletion).toBeNull()
+      expect(cached?.groups[0].completion).toBeNull()
+    })
+  })
+
+  it('sucesso invalida a chave do dia E os prefixos de histórico/série', async () => {
+    const { qc, wrapper } = makeWrapper()
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+    mockPost.mockResolvedValueOnce({ data: { date: '2026-07-17', untracked: true } })
+
+    const { result } = renderHook(() => useSetUntrackedDayMutation('2026-07-17'), { wrapper })
+    result.current.mutate({ date: '2026-07-17', untracked: true })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.habits.day('2026-07-17') })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['habits', 'history'] })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['habits', 'series'] })
+  })
+
+  it('erro: rollback devolve flag E porcentagens ao snapshot', async () => {
+    const { qc, wrapper } = makeWrapper()
+    qc.setQueryData(keys.habits.day('2026-07-17'), { ...HABIT_DAY, totalCompletion: 64 })
+    mockPost.mockRejectedValueOnce(new Error('falha de rede'))
+
+    const { result } = renderHook(() => useSetUntrackedDayMutation('2026-07-17'), { wrapper })
+    result.current.mutate({ date: '2026-07-17', untracked: true })
+
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    const cached = qc.getQueryData<HabitDay>(keys.habits.day('2026-07-17'))
+    expect(cached?.untracked).toBe(false)
+    expect(cached?.totalCompletion).toBe(64)
+    expect(cached?.groups[0].completion).toBe(0)
   })
 })

@@ -218,6 +218,44 @@ test('feriado congela o peso, a legenda é factual e o override toca só o dia v
   await expect(page.getByText(/peso ×/)).toHaveCount(0)
 })
 
+test('dia "não registrado" (16.2c): a porcentagem vira texto sem barra, persiste, e desmarcar devolve o número', async ({
+  page,
+  email,
+}) => {
+  test.setTimeout(90_000)
+
+  // Mesmo cenário do feriado (três hábitos booleanos, pesos 2/1/1), sem
+  // multiplicador: marcar "Emails" dá 50% determinísticos em qualquer dia.
+  seedMultiplierScenario(email, {})
+
+  await page.goto('/habits')
+  await expect(page.getByTestId('habits-day-percent')).toBeVisible(RECONCILE)
+  await page.getByRole('checkbox', { name: 'Emails' }).click()
+  await expect(page.getByTestId('habits-day-percent')).toHaveText('50%', RECONCILE)
+  await expect(page.getByTestId('completion-bar-day')).toBeVisible()
+
+  const toggle = page.getByRole('checkbox', { name: 'Marcar este dia como não registrado' })
+  await toggle.click()
+  await expect(page.getByTestId('habits-day-percent')).toHaveText('Não registrado', RECONCILE)
+  await expect(page.getByTestId('habits-day-untracked-chip')).toBeVisible()
+  await expect(page.getByTestId('completion-bar-day')).toHaveCount(0)
+  await expect(page.getByTestId('completion-bar-group')).toHaveCount(0)
+  await expect(page.getByTestId('habit-group-percent').first()).toHaveText('Não registrado')
+  // As linhas seguem EDITÁVEIS num dia marcado.
+  await expect(page.getByRole('checkbox', { name: 'Emails' })).toBeEnabled()
+
+  // Persistência: a flag vive no servidor, não no cache.
+  await page.reload()
+  await expect(page.getByTestId('habits-day-percent')).toHaveText('Não registrado', RECONCILE)
+  await expect(toggle).toBeChecked()
+
+  // Desmarcar devolve a porcentagem REAL (sem recálculo — o servidor a traz).
+  await toggle.click()
+  await expect(page.getByTestId('habits-day-percent')).toHaveText('50%', RECONCILE)
+  await expect(page.getByTestId('habits-day-untracked-chip')).toHaveCount(0)
+  await expect(page.getByTestId('completion-bar-day')).toBeVisible()
+})
+
 test('dia passado é editável com os pesos congelados dele (sem limite de retroatividade)', async ({
   page,
   email,

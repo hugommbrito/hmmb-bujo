@@ -13,6 +13,11 @@
 //   ▶ LEGENDA DE MULTIPLICADOR só quando o dia NÃO é útil **E** o multiplicador
 //     difere de 1 (paridade com `HabitTracker.tsx:166-180`). Texto verbatim do
 //     gate: `Feriado · peso ×0,5 neste grupo`.
+//
+//   ▶ DIA "NÃO REGISTRADO" (Story 16.2c): `completion` chega NULO do servidor
+//     e o card escreve "Não registrado" no lugar do % — SEM barra (uma barra
+//     em 0 seria leitura fabricada). Nulo sem a flag (transiente, após
+//     desmarcar) lê "—" até o refetch. As linhas seguem editáveis.
 // ─────────────────────────────────────────────────────────────────────────────
 import { Box } from '@mui/material'
 
@@ -21,7 +26,12 @@ import { DAY_TYPE_LABEL } from '../historyUtils'
 import type { DayType, HabitDayEntry, HabitDayGroup } from '../../types'
 import { CompletionBar } from './CompletionBar'
 import { HabitTrackerRow } from './HabitTrackerRow'
-import { formatDecimal, formatEffectiveWeight, sumEffectiveWeights } from './habitsSurface'
+import {
+  UNTRACKED_PERCENT,
+  formatDecimal,
+  formatEffectiveWeight,
+  sumEffectiveWeights,
+} from './habitsSurface'
 
 /** Verbatim do gate — grupo vazio é estado LEGÍTIMO, não erro a corrigir. */
 export const EMPTY_GROUP = 'Nenhum hábito neste grupo.'
@@ -41,6 +51,8 @@ export interface HabitGroupCardProps {
    * e a legenda do grupo ainda dizia "Dia útil".
    */
   dayType?: DayType
+  /** Dia marcado "não registrado" (vem do DIA, `HabitDay.untracked`). */
+  untracked?: boolean
 }
 
 export function HabitGroupCard({
@@ -52,6 +64,7 @@ export function HabitGroupCard({
   disabledReasonId,
   headingId,
   dayType: dayTypeProp,
+  untracked = false,
 }: HabitGroupCardProps) {
   const effectiveWeight = sumEffectiveWeights(entries)
   const first = entries[0]
@@ -59,6 +72,13 @@ export function HabitGroupCard({
   const dayType = dayTypeProp ?? first?.dayType
   const showLegend =
     dayType != null && dayType !== 'weekday' && multiplier != null && Number(multiplier) !== 1
+  const completion = group.completion
+  const percentText = untracked
+    ? UNTRACKED_PERCENT
+    : completion == null
+      ? '—'
+      : `${completion}%`
+  const showBar = !untracked && completion != null
 
   return (
     <Box
@@ -104,15 +124,17 @@ export function HabitGroupCard({
             fontVariantNumeric: 'tabular-nums',
           }}
         >
-          {group.completion}%
+          {percentText}
         </Box>
       </Box>
 
-      <CompletionBar
-        scope="group"
-        percent={group.completion}
-        label={`Completude do grupo ${group.name}: ${group.completion} por cento`}
-      />
+      {showBar && (
+        <CompletionBar
+          scope="group"
+          percent={completion}
+          label={`Completude do grupo ${group.name}: ${completion} por cento`}
+        />
+      )}
 
       {showLegend && (
         <Box sx={{ ...typography.meta, color: 'var(--ds-warning)' }}>
