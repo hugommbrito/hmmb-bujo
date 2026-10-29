@@ -75,8 +75,17 @@ describe('normalizeTaskItems / normalizeTemplateItems / normalizePendingDailyGro
   it('normaliza itens de Task preservando decision e scheduledDate', () => {
     const items: RitualTaskItem[] = [{ task: task({ id: 't-1', scheduledDate: '2026-07-20' }), decision: 'keep' }]
     expect(normalizeTaskItems(items)).toEqual([
-      { id: 't-1', kind: 'task', title: 'Tarefa', decision: 'keep', scheduledDate: '2026-07-20' },
+      { id: 't-1', kind: 'task', title: 'Tarefa', decision: 'keep', scheduledDate: '2026-07-20', parentTitle: null },
     ])
+  })
+
+  // Story 14.11: `previous-weekly` lista a subtarefa aberta sob pai disposto
+  // como cabeça, com `parentTitle` — o normalizador não pode descartá-lo.
+  it('preserva parentTitle da subtarefa-cabeça (Story 14.11)', () => {
+    const items: RitualTaskItem[] = [
+      { task: task({ id: 's-1', title: 'Marcar retorno' }), decision: null, parentTitle: 'Cardiologista' },
+    ]
+    expect(normalizeTaskItems(items)[0]).toMatchObject({ id: 's-1', parentTitle: 'Cardiologista' })
   })
 
   it('normaliza itens de template preservando instancesInTargetCount', () => {

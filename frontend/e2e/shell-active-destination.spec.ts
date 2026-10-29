@@ -31,7 +31,10 @@ import { bottomNav, mainNav, navigationSheet } from './shellHelpers'
  * As 9 rotas profundas que antes da 13.4 deixavam a sidebar sem nenhum ativo
  * estão marcadas com ◀ — são a mudança de comportamento intencional do AC1.
  */
-const EXPECTED_ACTIVE: ReadonlyArray<readonly [string, string | RegExp | null]> = [
+// Story 16.1: duas rotas de Hábitos viraram REDIRECT (a superfície é única, com
+// abas em `?tab=`). O 3º elemento é a URL RESOLVIDA quando difere da pedida —
+// sem ele o `toHaveURL(path)` reprovaria por um motivo que não é o do teste.
+const EXPECTED_ACTIVE: ReadonlyArray<readonly [string, string | RegExp | null, string?]> = [
   ['/today', 'Hoje'],
   // Sem destino próprio e sem pai: contrato registrado, não bug (AC1).
   ['/daily/2026-07-01', null],
@@ -44,11 +47,13 @@ const EXPECTED_ACTIVE: ReadonlyArray<readonly [string, string | RegExp | null]> 
   ['/archive/weekly/2026-07-20', 'Arquivo'], // ◀ prefixo profundo
   ['/archive/monthly/2026-07-01', 'Arquivo'], // ◀ prefixo profundo
   ['/settings', 'Configurações'],
-  ['/settings/habits', 'Configurações'], // ◀ prefixo colidente
+  // ◀ redirect da 16.1: resolve em `/habits?tab=configuracao`, logo o destino
+  // ativo passa a ser Hábitos (a rota de Configurações não existe mais).
+  ['/settings/habits', 'Hábitos', '/habits?tab=configuracao'],
   ['/settings/health-metrics', 'Configurações'], // ◀ prefixo colidente
   ['/settings/medications', 'Configurações'], // ◀ prefixo colidente
   ['/habits', 'Hábitos'],
-  ['/habits/history', 'Hábitos'], // ◀
+  ['/habits/history', 'Hábitos', '/habits?tab=historico'], // ◀ redirect da 16.1
   ['/health/metrics', 'Métricas'],
   ['/health/metrics/history', 'Métricas'], // ◀
   ['/health/medications', 'Medicamentos'],
@@ -69,9 +74,9 @@ test.describe('Destino ativo no router real — wide 1440×900', () => {
     test.setTimeout(180_000)
     const nav = mainNav(page)
 
-    for (const [path, expected] of EXPECTED_ACTIVE) {
+    for (const [path, expected, resolvedUrl] of EXPECTED_ACTIVE) {
       await page.goto(path)
-      await expect(page, path).toHaveURL(path)
+      await expect(page, path).toHaveURL(resolvedUrl ?? path)
       // Marcador estável: o chrome montou (a nav deriva só do pathname, mas medir
       // antes da montagem mediria zero elementos e passaria em falso).
       await expect(nav.getByRole('button', { name: 'Colapsar sidebar' }), path).toBeVisible()

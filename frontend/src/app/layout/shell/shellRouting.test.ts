@@ -79,6 +79,11 @@ describe('shellRouting — registro por rota', () => {
     'archive/monthly/:monthFirst',
     // Story 15.1 (M11) — Brain Dump/Inbox no sistema novo.
     'brain-dump',
+    // Story 16.1 (M12) — Hábitos no sistema novo (superfície única + os dois
+    // deep links antigos, que agora redirecionam para as abas).
+    'habits',
+    'habits/history',
+    'settings/habits',
   ])
 
   it('test_shell_e_novo_em_tudo_e_apenas_as_rotas_migradas_tem_surfaceMigrated_true', () => {
@@ -126,6 +131,19 @@ describe('shellRouting — registro por rota', () => {
     // `settings` continua `false` — a flag não "vazou" para toda rota ainda
     // não migrada.
     expect(shellRoutes.find((route) => route.routeId === 'settings')?.surfaceMigrated).toBe(false)
+  })
+
+  it('test_as_tres_rotas_de_habitos_sao_migradas_na_story_16_1', () => {
+    for (const routeId of ['habits', 'habits/history', 'settings/habits']) {
+      expect(shellRoutes.find((route) => route.routeId === routeId)?.surfaceMigrated).toBe(true)
+    }
+    // Irmã de NÃO-VACUIDADE: as demais rotas de settings e as outras
+    // collections continuam `false` — a flag não vazou.
+    expect(shellRoutes.find((route) => route.routeId === 'settings')?.surfaceMigrated).toBe(false)
+    expect(
+      shellRoutes.find((route) => route.routeId === 'settings/health-metrics')?.surfaceMigrated,
+    ).toBe(false)
+    expect(shellRoutes.find((route) => route.routeId === 'gratitude')?.surfaceMigrated).toBe(false)
   })
 
   it('test_resolve_rota_estatica_e_rota_parametrizada', () => {

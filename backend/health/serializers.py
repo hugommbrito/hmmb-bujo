@@ -14,6 +14,7 @@ tipar ``string[]`` (um ``JSONField`` cru viraria um objeto opaco no contrato).
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from core.phosphor import validate_icon_key
 from health.models import HealthFieldDefinition, HealthFieldType, HealthLog
 
 # ``display_order`` é ``PositiveIntegerField`` no model (0..2_147_483_647). Capar o
@@ -50,7 +51,10 @@ class HealthFieldDefinitionSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = HealthFieldDefinition
-        fields = ["id", "name", "field_type", "enum_options", "active", "display_order"]
+        fields = [
+            "id", "name", "field_type", "enum_options", "active", "display_order",
+            "icon_key",
+        ]
 
 
 class HealthFieldCreateSerializer(serializers.Serializer):
@@ -64,6 +68,11 @@ class HealthFieldCreateSerializer(serializers.Serializer):
     display_order = serializers.IntegerField(
         required=False, min_value=0, max_value=_MAX_DISPLAY_ORDER
     )
+    # Story 16.2: só o CAMPO, sem UI (a apresentação de Saúde está atrás do gate
+    # UX 16.3). `CharField` + validador compartilhado, nunca `ChoiceField`.
+    icon_key = serializers.CharField(max_length=64, required=False, allow_null=True)
+
+    validate_icon_key = staticmethod(validate_icon_key)
 
     def validate(self, attrs):
         field_type = attrs["field_type"]
@@ -81,9 +90,10 @@ class HealthFieldCreateSerializer(serializers.Serializer):
 
 class HealthFieldUpdateSerializer(serializers.Serializer):
     """Entrada de edição (AC2, AC4): ``name``/``enum_options``/``display_order``/
-    ``active``. ``field_type`` é **imutável** — enviá-lo é rejeitado (400). A regra
-    enum⇔opções no update é validada na camada de serviço contra o ``field_type``
-    atual (imutável), pois o serializer não conhece o tipo persistido."""
+    ``active``/``icon_key``. ``field_type`` é **imutável** — enviá-lo é rejeitado
+    (400). A regra enum⇔opções no update é validada na camada de serviço contra o
+    ``field_type`` atual (imutável), pois o serializer não conhece o tipo
+    persistido."""
 
     _IMMUTABLE = ("field_type", "fieldType")
 
@@ -95,6 +105,10 @@ class HealthFieldUpdateSerializer(serializers.Serializer):
         required=False, min_value=0, max_value=_MAX_DISPLAY_ORDER
     )
     active = serializers.BooleanField(required=False)
+    # `allow_null`: PATCH `{iconKey: null}` limpa o pictograma.
+    icon_key = serializers.CharField(max_length=64, required=False, allow_null=True)
+
+    validate_icon_key = staticmethod(validate_icon_key)
 
     def validate(self, attrs):
         if any(f in self.initial_data for f in self._IMMUTABLE):

@@ -461,3 +461,209 @@ severity: low
 reason: The follow-up-review damping cap (limits.max_followup_reviews = 1) was spent with the story finalized (status: done, verify green) while the review pass still recommended an independent follow-up. The work was committed by bmad-loop run 20260804-091035-18f0; this entry preserves the lingering recommendation for a deliberate later review.
 status: done 2026-08-04
 resolution: already resolved: já resolvida: DW-52 (deferred-work.md:391), DW-53 (:399) e DW-54 (:407) têm origin 'review (follow-up review pass) of spec-dw-32-exception-handler-set-rollback.md, 2026-08-04', e a spec registra três passes (:173, :192, :204 — a terceira com triage 6 patch / 2 defer / 19 reject); a DW-53 é literalmente uma pass posterior corrigindo achado da anterior, prova mais forte não existe.
+
+### DW-56: Updater otimista de feriado destrói a distinção de fim de semana
+origin: review (bmad-build step-04, ciclo 1) of 16-1-habitos-no-sistema-novo.md, 2026-08-22
+location: frontend/src/features/habits/api.ts:290-293
+source_spec: `_bmad-output/implementation-artifacts/16-1-habitos-no-sistema-novo.md`
+severity: medium
+reason: O updater faz `dayType: isHoliday ? 'holiday' : 'weekday'`. Desmarcar feriado num sábado/domingo mostra "Dia útil" (e esconde o botão de override) até o refetch chegar. Pré-existente: `api.ts` tem diff ZERO nesta story (o domínio é reuso integral por contrato da spec), e o mesmo updater já servia o `HabitTracker` legado. A story 16.1 apenas passa a exibir o chip de tipo de dia de forma mais proeminente, tornando a janela visível.
+status: open
+
+### DW-57: `useOverrideDayWorkdayMutation` sem invalidate em falha parcial
+origin: review (bmad-build step-04, ciclo 1) of 16-1-habitos-no-sistema-novo.md, 2026-08-22
+location: frontend/src/features/habits/api.ts:308-315
+source_spec: `_bmad-output/implementation-artifacts/16-1-habitos-no-sistema-novo.md`
+severity: medium
+reason: O override dispara N PATCH via `Promise.all` e só invalida em `onSuccess`. Se o Promise.all rejeitar no meio, parte das linhas já foi sobrescrita no servidor mas a UI mostra erro com os multiplicadores antigos — e a legenda do grupo (derivada de `entries[0]`) pode afirmar ×0,5 para um grupo cuja primeira linha já foi para 1,00. A própria I/O Matrix da 16.1 prevê "falha parcial → erro agregado com retry", mas o conserto é em `api.ts` (diff zero por contrato). Sugestão: `onSettled` invalidando `keys.habits.day(date)`.
+status: open
+
+### DW-58: `HabitEvolutionChart.tsx` e `habitSeriesView.ts` fora dos guards de literais
+origin: review (bmad-build step-04, ciclo 1) of 16-1-habitos-no-sistema-novo.md, 2026-08-22
+location: frontend/src/features/habits/components/record/noLiteralTokens.test.ts (SOURCES)
+source_spec: `_bmad-output/implementation-artifacts/16-1-habitos-no-sistema-novo.md`
+severity: low
+reason: A 16.1 converteu `HabitEvolutionChart.tsx` para `var(--ds-*)` e criou `habitSeriesView.ts`, mas nenhum dos dois entra no `SOURCES` dos dois `noLiteralTokens.test.ts` — o guard que sustenta o "zero literal" não cobre o componente de gráfico que a superfície nova monta (restam `fontSize: 11`, `fillOpacity: 0.06`, `strokeWidth: 2`). Ficam fora da subpasta `record/` que a spec escopou ao guard, daí o defer.
+status: open
+
+### DW-59: `handle.title` morto na rota de redirect `settings/habits`
+origin: review (bmad-build step-04, ciclo 1) of 16-1-habitos-no-sistema-novo.md, 2026-08-22
+location: frontend/src/app/router.tsx:205-210
+source_spec: `_bmad-output/implementation-artifacts/16-1-habitos-no-sistema-novo.md`
+severity: low
+reason: A rota virou `<Navigate>` mas conservou `handle: { title: 'Configurações — Hábitos' }`. Como a rota nunca renderiza conteúdo, o `RouteAnnouncer` jamais usa esse título — sobra um título morto no manifest de rotas. Inofensivo hoje; limpeza natural quando o Épico 18 aposentar o chrome legado.
+status: open
+
+### DW-60: Pictograma na UI de Hábitos — renderização por `iconKey` e seletor Phosphor
+origin: split (bmad-build step-02) of 16-2-campo-icon-key-e-catalogo-phosphor.md, 2026-08-22
+location: frontend/src/features/habits/components/record/ (HabitTrackerRow, HabitsConfigPanel, HabitCompletionGrid, HabitsHistoryPanel)
+source_spec: `_bmad-output/implementation-artifacts/16-2-campo-icon-key-e-catalogo-phosphor.md`
+severity: high
+reason: A Story 16.2 foi dividida em contrato (backend) e apresentação (frontend) porque a spec unificada chegou a ~5.500 tokens — mais de 3× o teto de 1.600 — com risco de context-rot nas 23 tarefas. O mesmo padrão que o Épico 16 já impõe na 16.6→16.7 ("backend e frontend nunca no mesmo diff"). O backend fica nesta story; o frontend cobre: chunk lazy do catálogo Phosphor (`phosphorCatalog.ts` via `import()`, para manter os 13MB de defs fora do bundle inicial), módulo puro `iconKey.ts` (conversão kebab⇄Pascal, busca por substring, ordenação usados-primeiro, cálculo da janela virtual), `DomainIcon.tsx` (renderização decorativa com coluna vazia para chave nula/órfã), `PictogramPicker.tsx` (Drawer/Dialog no molde de `DestinationPicker.tsx:436-452`, busca com contagem em `aria-live`, grade virtualizada de tiles `role="radio"` sem controle desenhado), preenchimento do slot em `HabitTrackerRow.tsx:190-199`, seletor no bloco Identidade de `HabitsConfigPanel.tsx:399-431`, glifo compact em grade e histórico, `iconKey?` nas interfaces de `api.ts:106-115,129-135`, registro dos arquivos novos em `SOURCES` do guard, inversão de `recordPrimitives.test.tsx:110-117` e `HabitsRecordPage.test.tsx:571,:1280`, e E2E `habits-record.spec.ts:138-143`. Decisões já fechadas com Hugo: chunk lazy separado, janela de virtualização própria (sem dep nova), chave em kebab-case. **Até que isto rode, a coluna do glifo permanece vazia — que é o estado válido entregue pela 16.1.**
+status: open
+
+### DW-61: 7 testes de frontend falhando em `bujo`/`planner` (pré-existentes)
+origin: review (bmad-build step-04, ciclo 1) of 16-2-campo-icon-key-e-catalogo-phosphor.md, 2026-08-22
+location: frontend/src/features/bujo/components/TaskDestinationDialog.test.tsx (5), frontend/src/features/bujo/components/TaskDetailPanel.test.tsx (1), frontend/src/pages/planner/FuturePage.test.tsx (1)
+source_spec: `_bmad-output/implementation-artifacts/16-2-campo-icon-key-e-catalogo-phosphor.md`
+severity: medium
+reason: A suíte do frontend fecha em 2214 passed | 7 failed. Confirmado que são ANTERIORES a esta story: as mesmas 7 falham em worktree limpo no baseline `901464a`, sem nenhuma linha do diff da 16.2 — que não toca `features/bujo/` nem `pages/planner/`. Falhas em torno do seletor de destino e da migração ("clicar um dia não migra ainda", "toggle" do dia selecionado, "trocar de aba não reseta o estado", "onClose encadeado", "confirmar sem preencher a data"). Um `npm run test:run` vermelho é ruído permanente que mascara regressões novas — daí a severidade. Registradas aqui porque o padrão de defer documentado só em prosa vira órfão.
+status: open
+
+### DW-62: gates de artefato do CI não são protegidos contra remoção silenciosa
+origin: review (bmad-build step-04, ciclo 1) of 16-2-campo-icon-key-e-catalogo-phosphor.md, 2026-08-22
+location: .github/workflows/ci.yml (steps de `schema.yaml`, `types.gen.ts` e o novo do catálogo Phosphor)
+source_spec: `_bmad-output/implementation-artifacts/16-2-campo-icon-key-e-catalogo-phosphor.md`
+severity: low
+reason: O step "Verificar catálogo Phosphor está atualizado" é a ÚNICA coisa que amarra `backend/habits/phosphor_catalog.json` ao pacote instalado. Se for apagado, ganhar `continue-on-error` ou tiver o exit code engolido, o backend passa a validar `icon_key` contra catálogo velho e nenhum teste falha. O repo já decidiu que esse risco vale guarda: `backend/core/tests/test_prod_settings.py:281` parseia o `ci.yml` para garantir que os dois deploy-checks continuem lá. Vale estender o mesmo parse aos três gates de artefato. Pré-existente em forma (os gates de `schema.yaml`/`types.gen.ts` têm a mesma exposição); entra no ledger porque o gate novo protege uma decisão de runtime (400 × aceitar), não só um artefato gerado.
+status: open
+
+### DW-63: `@phosphor-icons/react` em range de caret com catálogo de versão exata
+origin: review (bmad-build step-04, ciclo 1) of 16-2-campo-icon-key-e-catalogo-phosphor.md, 2026-08-22
+location: frontend/package.json ("@phosphor-icons/react": "^2.1.10")
+source_spec: `_bmad-output/implementation-artifacts/16-2-campo-icon-key-e-catalogo-phosphor.md`
+severity: low
+reason: O catálogo commitado embute a versão exata (2.1.10) e `core/phosphor.py` a exibe na mensagem de 400. Um `npm update` dentro do caret desloca catálogo, texto de erro e a asserção de contagem de uma vez — o gate de CI pega (falha ruidosa, que é o desejado), mas obriga um passe manual de regeneração. Pinar exato alinharia a dependência ao tratamento que o artefato recebe em todo o resto do diff. Decisão de política de dependências, fora do escopo desta story.
+status: open
+
+### DW-64: Seletor de pictograma (PictogramPicker) e chunk lazy do catálogo Phosphor
+origin: split (bmad-build step-02) of spec-dw-60-pictograma-na-ui-de-habitos.md, 2026-08-23
+location: frontend/src/features/habits/components/record/ (PictogramPicker.tsx novo, HabitsConfigPanel.tsx bloco Identidade), frontend/src/features/habits/phosphorCatalog.ts (novo)
+source_spec: `_bmad-output/implementation-artifacts/spec-dw-60-pictograma-na-ui-de-habitos.md`
+severity: high
+reason: A DW-60 foi dividida em **renderização** (glifo nas superfícies, que fica na spec atual) e **escolha** (este item) porque a spec unificada chegou a ~4.600–5.200 tokens — 3× o teto de 1.600 — com 12 tarefas; o mesmo motivo que dividiu a própria Story 16.2 em contrato+apresentação. A renderização entrega valor sozinha: os hábitos cujo `emoticon` a migração da 16.2 já converteu em `iconKey` passam a exibir o pictograma sem que exista seletor. Este item cobre: `phosphorCatalog.ts` (ÚNICO ponto que importa `@phosphor-icons/react`, alcançável só por `import()`), `PictogramPicker.tsx` (Drawer/Dialog no molde de `DestinationPicker.tsx:199-207,434-486` — incluindo `shellCssVariables` nos dois slots e a regra de ARIA condicional que evita dialogs aninhados; busca com contagem em `aria-live="polite"` no molde de `ArchivePage.tsx:398`; grade virtualizada de tiles `role="radio"` com roving tabindex no molde de `TemplateDetailCard.tsx:292-333`; colunas de `pictogramPicker` em `tokens.ts:341-345`), o `<Field>` de pictograma no cartão Identidade (`HabitsConfigPanel.tsx:388-439`, após `:438`), `iconKey` no diff de identidade (`:333-336`) e no payload de criação (`:634-635`), registro do arquivo novo em `SOURCES` do guard, e E2E do fluxo de escolha. **Decisão de arquitetura fechada com Hugo em 2026-08-23:** o barrel atrás de `import()` concentra o catálogo num chunk lazy de 6,9 MB (1,14 MB gzip) baixado uma vez ao abrir o seletor; catálogo curado (26 kB) foi descartado por contrariar `EXPERIENCE.md:358`, que revogou o catálogo fechado para Hábitos. **CORREÇÃO 2026-08-23 (medida na implementação da DW-60):** a objeção original a `import.meta.glob` — "299 kB no bundle INICIAL" — NÃO se confirmou. Medido com build real: o mapa de loaders cai no chunk LAZY da rota (`HabitsRecordPage` 57 → 340 kB raw, ~13 → ~65 kB gzip), e o chunk de ENTRADA sobe só 1,4 kB (1.082.217 → 1.083.660 bytes). O que se confirma é o número de arquivos: `dist/assets` vai de 16 para 1.504 JS — inócuo no deploy atual (`npx serve -s dist` no Railway, sem limite por arquivo). Consequência: **as duas stories usam mecanismos diferentes, de propósito** — a DW-60 RENDERIZA por chave usada com `import.meta.glob` (+52 kB gzip na rota, contra 1,07 MB do barrel: 20× melhor para exibir punhados de glifos), e esta DW-64 NAVEGA o catálogo inteiro com o barrel lazy, onde o custo cai sobre uma ação deliberada. Não unificar sem medir de novo. Enquanto isto não rodar, `iconKey` só é escolhível via API — a UI apenas lê.
+status: open
+
+### DW-65: Latência por chave do pictograma é visualmente indistinguível de "sem pictograma"
+origin: review (bmad-build step-04, ciclo 1) of spec-dw-60-pictograma-na-ui-de-habitos.md, 2026-08-23
+location: frontend/src/features/habits/components/record/DomainIcon.tsx:57,164-199 (GLYPH_LOADERS + o estado sem loading)
+source_spec: `_bmad-output/implementation-artifacts/spec-dw-60-pictograma-na-ui-de-habitos.md`
+severity: medium
+reason: A DW-60 resolve cada glifo como MÓDULO PRÓPRIO (`import.meta.glob` lazy), então cada `iconKey` distinto tem sua própria latência de primeira pintura. Por decisão de design da spec, "ainda não resolveu" e "não tem glifo" compartilham a MESMA renderização (coluna vazia, sem skeleton, para não haver CLS) — o que torna carregamento lento indistinguível da ausência legítima do gate 16.0. **Medido no E2E:** um run marcou `1 flaky` exatamente no cenário do glifo — `toHaveCount(1)` no `svg` falhou por 10s (24 polls, 0 elementos) SEM nenhum erro de console, e passou no retry; o run seguinte deu 9/9 limpo. É cold start do Vite dev compilando 1 dos 1512 módulos sob demanda. Em produção são chunks pré-buildados de ~4 kB (a suíte de unidade e o build não reproduzem), mas o mecanismo mantém a propriedade: em cache frio ou rede ruim, o usuário vê coluna vazia onde há pictograma escolhido. Fora do escopo da DW-60 (cuja Boundary manda justamente não ter estado de loading) e melhor decidido JUNTO com a DW-64, que revisita o mecanismo do catálogo — as duas usam mecanismos diferentes de propósito. Opções a pesar lá: pré-carregar as chaves do payload do dia numa só passada, aceitar a latência como cosmética em glifo decorativo, ou (se a DW-64 já baixar o barrel) reusar o catálogo já em memória.
+status: open
+
+### DW-66: Nada automatizado defende o AC de bundle do catálogo Phosphor
+origin: review (bmad-build step-04, ciclo 1) of spec-dw-64-dw-65-seletor-de-pictograma.md, 2026-08-23
+location: frontend/vite.config.ts (alias `phosphor-catalog-bundle`), frontend/package.json (nenhum orçamento de bundle), .github/workflows/ci.yml (job `frontend`)
+source_spec: `_bmad-output/implementation-artifacts/spec-dw-64-dw-65-seletor-de-pictograma.md`
+severity: medium
+reason: O desenho inteiro da DW-64 depende de dois números que só um humano lendo `ls -la dist/assets` observa: o chunk de ENTRADA em ~1,08 MB e o catálogo isolado em chunk próprio. **Demonstrado pela camada verification-gap:** trocar o alias por `import * as … from '@phosphor-icons/react'` — exatamente a "simplificação" que o KEEP do Spec Change Log existe para impedir — deixa `typecheck`, `lint`, `build`, a suíte Vitese (que tem alias próprio para o barrel) e o E2E TODOS verdes, e multiplica por 4,7 o caminho crítico de toda rota (1,08 MB → 6,16 MB). A metade barata do guard entrou na DW-64 (P14: nenhum arquivo importa `./phosphorCatalog` estaticamente); o que falta é o TETO de tamanho, lendo `dist/.vite/manifest.json` e falhando acima de um limite — no molde "regenera e diffa" que o repo já usa para `schema.yaml`/`types.gen.ts`/`phosphor_catalog.json`. É infra nova de build, fora do escopo da spec do seletor.
+status: open
+
+### DW-67: Retry do catálogo do seletor pode não recuperar — `import()` rejeitado fica cacheado
+origin: review (bmad-build step-04, ciclo 1) of spec-dw-64-dw-65-seletor-de-pictograma.md, 2026-08-23
+location: frontend/src/features/habits/components/record/PictogramPicker.tsx (efeito de carga do catálogo + botão "Tentar de novo")
+source_spec: `_bmad-output/implementation-artifacts/spec-dw-64-dw-65-seletor-de-pictograma.md`
+severity: medium
+reason: A I/O Matrix da DW-64 exige `role="alert"` + retry quando o chunk do catálogo falha, e o botão existe. Mas o grafo de módulos do browser CACHEIA a rejeição de um `import()`: reincrementar a tentativa re-aguarda a MESMA rejeição, então "Tentar de novo" provavelmente nunca recupera de uma falha de rede real — só de uma falha dentro de `loadPhosphorCatalog()`. O teste da matriz não pega porque mocka `../../phosphorCatalog` e faz `loadPhosphorCatalog()` rejeitar, deixando o `import()` sempre resolvido. Recuperar de verdade exige cache-busting no specifier (que o Vite não expõe para módulo interno) ou recarregar a superfície — decisão de mecanismo, não correção de linha. Enquanto isso o usuário tem um botão que parece prometer recuperação e, no caso comum de queda de rede, não entrega.
+status: open
+
+### DW-68: CI não roda os testes de unidade do frontend nem o Playwright
+origin: review (bmad-build step-04, ciclo 1) of spec-dw-64-dw-65-seletor-de-pictograma.md, 2026-08-23
+location: .github/workflows/ci.yml (job `frontend`: typecheck, lint, build — sem `npm run test:run`; nenhum job de Playwright)
+source_spec: `_bmad-output/implementation-artifacts/spec-dw-64-dw-65-seletor-de-pictograma.md`
+severity: medium
+reason: PRÉ-EXISTENTE, exposto ao medir a cobertura da DW-64. O job `frontend` do CI roda só `typecheck`, `lint` e `build`; os ~2.300 testes de unidade e os E2E dependem inteiramente de alguém rodá-los localmente. Contraste com o backend, cujo `uv run pytest` roda sem scoping no push (memória do projeto registra isso como o gate cross-app). Consequência: toda verificação discutida nos reviews da 16.x — inclusive os guards de literais e de catálogo, cuja razão de existir é falhar ruidosamente — pode ser burlada por um push que ninguém rodou local. Fora do escopo de qualquer story de feature; é decisão de pipeline (custo de minutos de CI × Postgres/Playwright no runner).
+status: open
+
+### DW-69: Janela virtual do seletor não é remedida em resize/rotação
+origin: review (bmad-build step-04, ciclo 1) of spec-dw-64-dw-65-seletor-de-pictograma.md, 2026-08-23
+location: frontend/src/features/habits/components/record/PictogramPicker.tsx (efeito que mede `clientHeight`, deps `[catalog, compact]`)
+source_spec: `_bmad-output/implementation-artifacts/spec-dw-64-dw-65-seletor-de-pictograma.md`
+severity: low
+reason: A altura da viewport da grade é medida quando o catálogo chega e quando a faixa troca, mais a cada evento de `scroll`. Redimensionar a janela ou girar o dispositivo com o overlay ABERTO deixa a janela calculada obsoleta até o próximo scroll: menos linhas renderizadas do que o espaço agora comporta (faixa vazia no fim) ou mais do que o necessário. Cosmético e autocorrige no primeiro scroll. A correção certa é `ResizeObserver` no contêiner de rolagem — maquinaria nova para um caso que se conserta sozinho, então não entrou no ciclo de patch.
+status: open
+
+### DW-70: Grade do seletor não tem Home/End/PageUp/PageDown nem typeahead
+origin: review (bmad-build step-04, ciclo 1) of spec-dw-64-dw-65-seletor-de-pictograma.md, 2026-08-23
+location: frontend/src/features/habits/components/record/PictogramPicker.tsx (`handleGridKeyDown`)
+source_spec: `_bmad-output/implementation-artifacts/spec-dw-64-dw-65-seletor-de-pictograma.md`
+severity: low
+reason: O gate 16.0 especifica apenas "setas percorrem o `radiogroup`; Enter/Espaço seleciona; Esc fecha", e a busca é o mecanismo de travessia projetado — então isto NÃO é desvio de spec. Mas num catálogo de ~1.512 itens as setas são o único movimento de teclado dentro da grade, sem caminho para o fim da lista; `DestinationDialog.tsx:492-508`, o molde de roving tabindex do próprio repo, já trata Home/End. Vale decidir junto de qualquer passe futuro de teclado do seletor (o de Saúde, que reusa o mesmo componente na 16.4).
+status: open
+
+### DW-71: Vitest exercita o barrel ESM do Phosphor; dev/produção usam o bundle CJS
+origin: review (bmad-build step-04, ciclo 1) of spec-dw-64-dw-65-seletor-de-pictograma.md, 2026-08-23
+location: frontend/vitest.config.ts (alias `phosphor-catalog-bundle` → `@phosphor-icons/react`) × frontend/vite.config.ts (→ `dist/index.cjs.js`)
+source_spec: `_bmad-output/implementation-artifacts/spec-dw-64-dw-65-seletor-de-pictograma.md`
+severity: low
+reason: Divergência DECLARADA e aceita no Spec Change Log da DW-64 (o Node recusa um `.js` CommonJS dentro de um pacote `"type": "module"`, então o Vitest não consegue carregar o bundle de produção). Depois da correção P1 os NOMES passam a sair de `dist/csr/*.es.js` — idêntico nos dois artefatos —, então a divergência encolhe para a busca do COMPONENTE, cuja forma de export foi verificada igual (`exports.XIcon = …` no CJS, export nomeado no ESM). O artefato de produção é exercitado pelo E2E contra o servidor de dev, mas só na faixa wide: `playwright.config.ts` tem um único projeto `chromium`/Desktop Chrome, então o caminho Drawer/compact nunca roda contra ele. Fechar isso exige projeto mobile no Playwright ou um teste de nó que carregue o CJS via esbuild — infra, não linha de código.
+status: open
+
+### DW-72: Fila unificada e aliases legados listam subtarefa órfã sem o contexto do pai
+origin: review (bmad-build step-04, ciclo 1) of spec-14-11-regularizacao-atrasada-do-ciclo-mensal.md, 2026-10-01
+location: backend/bujo/services/migration.py (`unified_migration_queue`), backend/bujo/serializers.py (`UnifiedMigrationQueueSerializer`/`CatchUpQueueSerializer` — itens via `TaskSerializer`), frontend/src/pages/MigrationRitualPage.tsx
+source_spec: `_bmad-output/implementation-artifacts/spec-14-11-regularizacao-atrasada-do-ciclo-mensal.md`
+severity: medium
+summary: Fila unificada e aliases legados listam subtarefa órfã sem o contexto do pai.
+reason: A fila passou a listar cabeças abertas (subtarefa aberta sob pai disposto) para não esconder o que trava o gate de finalizar, mas o item sai só como `Task` — a UI de Migração/Catch-Up (14.9) e os banners do Daily legado mostram "Marcar retorno" como se fosse raiz solta.
+evidence: Causado pela 14.11, mas o Code Map da spec restringiu `parent_title` ao `RitualTaskItemSerializer`; um campo aditivo nos itens da fila exige mudança de contrato das 3 respostas e adoção na UI da 14.9 (fora do escopo de um patch).
+status: open
+
+### DW-73: Páginas do ritual SEMANAL engolem o 409 de ciclo e gateiam "Finalizar semana anterior" pela contagem local
+origin: review (bmad-build step-04, ciclo 1) of spec-14-11-regularizacao-atrasada-do-ciclo-mensal.md, 2026-10-01
+location: frontend/src/pages/planner/WeeklyPlanningPage.tsx (cycleAction.mutate sem onError), frontend/src/pages/planner/WeeklyBoardPage.tsx (open_planning_target sem callbacks), frontend/src/features/bujo/components/weekly/WeeklyContextRail.tsx (visibilidade por `previousWeeklyPendingCount === 0`)
+source_spec: `_bmad-output/implementation-artifacts/spec-14-11-regularizacao-atrasada-do-ciclo-mensal.md`
+severity: medium
+summary: Páginas do ritual SEMANAL engolem o 409 de ciclo e gateiam "Finalizar semana anterior" pela contagem local.
+reason: O backend agora devolve `{detail, code}` legíveis também para os gates semanais, mas a UI semanal não os exibe (botões mudos no 409) nem lê `readiness.finalize` para a visibilidade/motivo de Finalizar, como o rail mensal passou a fazer.
+evidence: Pré-existente (a 14.11 só mudou as superfícies mensais); a mecânica de cabeças abertas já corrige o beco sem saída semanal no backend. Reaplicar `domainErrorMessage`/`runCycleAction` e o painel de gates de Finalizar nos irmãos semanais.
+status: open
+
+### DW-74: `destination: 'month'` legado (sem `month_first`) não valida `scheduled_date` dentro do mês corrente
+origin: review (bmad-build step-04, ciclo 1) of spec-14-11-regularizacao-atrasada-do-ciclo-mensal.md, 2026-10-01
+location: backend/bujo/views.py (`TaskMigrateView`, ramo `month_first is None`), backend/bujo/serializers.py (`TaskMigrateSerializer._validate_month_target` só roda com `month_first`)
+source_spec: `_bmad-output/implementation-artifacts/spec-14-11-regularizacao-atrasada-do-ciclo-mensal.md`
+severity: low
+summary: `destination: 'month'` legado (sem `month_first`) não valida `scheduled_date` dentro do mês corrente.
+reason: Um POST `'month'` sem `monthFirst` e com `scheduledDate` de outro mês grava o sucessor no log do mês corrente com um dia fora dele.
+evidence: Pré-existente (caminho legado intacto por decisão da spec); a view conhece o mês corrente e pode aplicar a mesma checagem de mesmo-mês do ramo explícito.
+status: open
+
+### DW-75: Filas de review legadas (`weekly-review/queue/`, `monthly-review/queue/`) continuam só com raízes
+origin: review (bmad-build step-04, ciclo 1) of spec-14-11-regularizacao-atrasada-do-ciclo-mensal.md, 2026-10-01
+location: backend/bujo/views.py (`WeeklyReviewQueueView`/`MonthlyReviewQueueView`, `parent_task__isnull=True`)
+source_spec: `_bmad-output/implementation-artifacts/spec-14-11-regularizacao-atrasada-do-ciclo-mensal.md`
+severity: low
+summary: Filas de review legadas (`weekly-review/queue/`, `monthly-review/queue/`) continuam só com raízes.
+reason: Os banners legados do Daily ("Revisar semana/mês anterior") não mostram a subtarefa aberta sob pai disposto que a fonte bloqueante e a fila unificada agora listam.
+evidence: Pré-existente; superfícies legadas substituídas pelo ritual do shell (14.9) e removidas no Épico 18 — trocar para `undisposed_heads` é uma linha, mas exige revisar os testes de caracterização `*_so_traz_raizes_*`.
+status: open
+
+### DW-76: 400 de `monthFirst` quando o alvo de planejamento avança em outra sessão mostra só o erro genérico e o retry repete o alvo obsoleto
+origin: review (bmad-build step-04, ciclo 1) of spec-14-11-regularizacao-atrasada-do-ciclo-mensal.md, 2026-10-01
+location: frontend/src/pages/planner/MonthlyPlanningPage.tsx (onError dos 3 fluxos de migrate; `retryActionsRef` guarda o closure com o `targetMonthFirst` antigo)
+source_spec: `_bmad-output/implementation-artifacts/spec-14-11-regularizacao-atrasada-do-ciclo-mensal.md`
+severity: low
+summary: 400 de `monthFirst` quando o alvo de planejamento avança em outra sessão mostra só o erro genérico e o retry repete o alvo obsoleto.
+reason: Com duas sessões, iniciar o alvo numa delas faz a outra enviar `'month'` + `monthFirst` abaixo do novo piso; o 400 `fields.monthFirst` vira "Não foi possível migrar" e o retry replica o mesmo payload até recarregar.
+evidence: Caso raro (multi-sessão); a correção certa é um leitor de erro de campo (`fields`) + refetch da readiness antes do retry, fora do escopo do patch.
+status: open
+
+### DW-77: `HabitsRecordPage.test.tsx` › "DW-60: o glifo aparece no detalhe do dia e na grade" falha no baseline
+origin: review (bmad-build step-04, ciclo 1) of spec-14-11-regularizacao-atrasada-do-ciclo-mensal.md, 2026-10-01
+location: frontend/src/pages/habits/HabitsRecordPage.test.tsx (Aba Histórico)
+source_spec: `_bmad-output/implementation-artifacts/spec-14-11-regularizacao-atrasada-do-ciclo-mensal.md`
+severity: medium
+summary: `HabitsRecordPage.test.tsx` › "DW-60: o glifo aparece no detalhe do dia e na grade" falha no baseline.
+reason: `npm run test:run` fecha em 2368 passed | 8 failed: 7 são as da DW-61 e esta 8ª é de Hábitos. Confirmado pré-existente: falha isolada também num worktree limpo no baseline `32429a37c29458c3ad9532afb6ee89b06b4acb34`, sem nenhuma linha da 14.11 (que não toca `pages/habits`).
+evidence: Suíte vermelha mascara regressões novas (mesma razão da DW-61); provavelmente regressão da DW-64/DW-65 (seletor/pré-carga de glifos) sobre a asserção da DW-60.
+status: open
+
+### DW-78: `GET /api/summary/today` não adota a flag `untracked` de Hábitos
+origin: spec-16-2c-dia-nao-registrado-por-collection.md (Design Notes "`compute_day_completeness` fica puro"), 2026-10-19
+location: backend/automation/services.py (`build_today_summary` → `compute_day_completeness`), backend/automation/serializers.py (`SummaryHabits*Serializer`)
+source_spec: `_bmad-output/implementation-artifacts/spec-16-2c-dia-nao-registrado-por-collection.md`
+severity: low
+summary: O resumo do widget (`habits.total`/`groups[].completion`) segue numérico mesmo com hoje marcado como "não registrado" em Hábitos.
+reason: A 16.2c manteve `compute_day_completeness` puro e criou `get_day_completeness` (ciente da flag) só para a aba Hoje; mudar o contrato numérico do widget (`total: null` + `untracked`) é breaking change do consumidor externo e ficou explicitamente fora do escopo (Boundaries "Never: mudar `GET /api/summary/today`"). Guardado por `test_summary_habits_segue_numerico_com_dia_marcado_nao_registrado`.
+evidence: Um dia marcado aparece como 0%/N% no widget enquanto a aba Hoje lê "Não registrado" — duas leituras do mesmo dia. Resolver = trocar o service do summary para `get_day_completeness`, tornar `total`/`completion` `allow_null` e expor `untracked` no `SummaryHabitsSerializer`, regenerando `schema.yaml`.
+status: open
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-16-2c-dia-nao-registrado-por-collection.md`
+  summary: O contrato OpenAPI de `PATCH /api/habits/untracked-days/` e `/api/medications/untracked-days/` anuncia `PatchedSetUntrackedDay` com campos opcionais, mas `patch = post` usa `SetUntrackedDaySerializer` (ambos obrigatórios) — mesma convenção pré-existente de `PatchedSetHoliday`/`HabitHolidayView`.
+  evidence: drf-spectacular divide `Patched*` automaticamente para PATCH; um body parcial devolve 400 ao contrário do schema. Nenhum consumidor usa PATCH (frontend só faz POST). Corrigir de uma vez para feriado e não registrado (anotar o `patch` com o schema não-parcial ou remover `patch = post`).
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-16-2c-dia-nao-registrado-por-collection.md`
+  summary: Em `HabitsTodayPanel.tsx`, o retry do toggle de feriado (`setHoliday.mutate({ date, isHoliday: !isHoliday })`) deriva do estado atual e o `isError` sobrevive à troca de data — após uma falha em D1 e navegação para D2, o alerta persiste e o retry escreve em D2 ou inverte a intenção.
+  evidence: Fragilidade anterior a esta story (Story 16.1); a 16.2c corrigiu o padrão só no toggle novo (reset ao trocar de data + retry com `variables`). Aplicar o mesmo ao feriado (e ao override) mantém as três escritas coerentes.

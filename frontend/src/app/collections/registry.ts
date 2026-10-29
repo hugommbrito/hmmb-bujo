@@ -100,18 +100,28 @@ export const collections: CollectionManifestEntry[] = [
     nav: { label: 'Hábitos', order: 0 },
     routes: [
       {
+        // Story 16.1 (M12): `habits` passa a montar a superfície de REGISTRO do
+        // sistema novo (uma rota, três abas em `?tab=`). `HabitsPage` legada (e
+        // `HabitsTabs`) permanecem no repositório, apenas DESMONTADAS —
+        // a remoção do legado é o Épico 18 (padrão de 14.7/14.8/15.1).
         path: 'habits',
         title: 'Hábitos',
         component: lazy(() =>
-          import('../../pages/habits/HabitsPage').then((m) => ({ default: m.HabitsPage })),
+          import('../../pages/habits/HabitsRecordPage').then((m) => ({
+            default: m.HabitsRecordPage,
+          })),
         ),
       },
       {
+        // Deep link antigo → aba Histórico. A rota PERMANECE no manifest (só o
+        // componente vira redirect) porque `shellRouting.test.ts` exige que
+        // toda rota do registro tenha entrada em `shellRoutes`, e
+        // `shellDestinations` deriva o destino de `routes[0]` (`habits`).
         path: 'habits/history',
         title: 'Hábitos — Histórico',
         component: lazy(() =>
-          import('../../pages/habits/HabitHistoryPage').then((m) => ({
-            default: m.HabitHistoryPage,
+          import('../../pages/habits/HabitHistoryRedirect').then((m) => ({
+            default: m.HabitHistoryRedirect,
           })),
         ),
       },

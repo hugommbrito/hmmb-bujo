@@ -78,6 +78,9 @@ export interface NormalizedRitualItem {
   /** Só itens de Task — usado pelo seletor de destino mensal (preserva o dia
    * de origem quando aplicável). */
   scheduledDate?: string | null
+  /** Só itens de Task que são SUBTAREFA listada como cabeça aberta (pai já
+   * disposto) — Story 14.11; `null`/ausente em raízes. */
+  parentTitle?: string | null
   /** Só itens de template — distingue `monthly`/`annual` dentro de `items`
    * (AC5: "são 4 buckets observáveis, não 3"). */
   recurrenceGroup?: RitualTemplateItem['template']['recurrenceGroup']
@@ -93,6 +96,7 @@ export function normalizeTaskItems(items: RitualTaskItem[]): NormalizedRitualIte
     title: item.task.title,
     decision: item.decision,
     scheduledDate: item.task.scheduledDate,
+    parentTitle: item.parentTitle ?? null,
   }))
 }
 
@@ -164,3 +168,36 @@ export function itemsForView(
   if (view === 'pending') return items.filter((item) => item.decision === null)
   return [...items.filter((item) => item.decision !== null), ...mutatedThisVisit]
 }
+
+// ─── Destino de migração para um Monthly (Story 14.11) ───────────────────────
+export interface MonthMigrateFields {
+  destination: 'month' | 'future'
+  monthFirst: string
+  scheduledDate: string | null
+}
+
+/**
+ * Adaptador ÚNICO de destino mensal para `POST /tasks/{id}/migrate/`:
+ *
+ *   ▶ `monthFirst > corrente` → `'future'` + `monthFirst` (Future Log, inalterado);
+ *   ▶ senão → `'month'` + `monthFirst` explícito — o servidor aceita qualquer
+ *     mês na faixa `[alvo de planejamento, corrente]` (regularização atrasada:
+ *     o alvo do ritual pode ser ANTERIOR ao mês corrente, e é o único mês já
+ *     passado em que ainda se escreve).
+ *
+ * Substitui o guard local `monthWouldBeRejectedAsFuture()` da 14.6 (Questão
+ * aberta nº 5): não há mais combinação "sem destino" — o 400 do servidor, se
+ * vier, é um erro real (mês abaixo do alvo), não uma lacuna de contrato.
+ */
+export function migrateFieldsForMonth(
+  monthFirst: string,
+  scheduledDate: string | null,
+  currentMonthFirst: string,
+): MonthMigrateFields {
+  return {
+    destination: monthFirst > currentMonthFirst ? 'future' : 'month',
+    monthFirst,
+    scheduledDate,
+  }
+}
+

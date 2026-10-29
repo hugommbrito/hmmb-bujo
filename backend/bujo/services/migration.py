@@ -29,7 +29,7 @@ from bujo.services.logs import (
     get_or_create_monthly_log,
     get_or_create_weekly_log,
 )
-from bujo.services.rituals import undisposed_roots
+from bujo.services.rituals import undisposed_heads
 from bujo.services.state_machine import transition_task
 from bujo.services.tasks import create_task, set_lineage_fields
 from core.calendar import today_for, week_start_of
@@ -135,9 +135,14 @@ def migrate_task(*, user, task_id, destination, month_first=None, scheduled_date
                  pré-existente: semana CORRENTE (week_start calculado aqui
                  via today_for, novo registro sem dia). Origem vira MIGRATED
                  em ambos os casos.
-    "month"  -> destino = Monthly Log do MÊS CORRENTE (month_first calculado
-                 aqui via today_for, NUNCA aceito do cliente); scheduled_date
-                 opcional; origem vira POSTPONED.
+    "month"  -> destino = Monthly Log de `month_first` quando informado (a view
+                 valida a faixa `[min(alvo de planejamento, corrente), corrente]`
+                 — Story 14.11, regularização atrasada: o alvo do ritual é o piso
+                 e os meses INTERMEDIÁRIOS até o corrente também valem — neles o
+                 log fica `NULL` e será o próximo alvo da sequência); sem
+                 `month_first`, comportamento legado: MÊS CORRENTE (calculado na
+                 view via today_for). scheduled_date opcional; origem vira
+                 POSTPONED.
     "future" -> destino = Monthly Log de month_first (validado > mês corrente
                  na view); scheduled_date opcional; origem vira POSTPONED.
     "cancel" -> sem destino; origem vira CANCELLED via transition_task; sem
@@ -269,7 +274,12 @@ def unified_migration_queue(*, user) -> dict:
 
     for spec in _SECTION_SPECS:
         tasks = (
-            undisposed_roots(
+            # `undisposed_heads` (Story 14.11), não `undisposed_roots`: a
+            # subtarefa aberta sob pai já disposto é a cabeça da sua cadeia e
+            # precisa de decisão como qualquer raiz — invisível à fila, ela
+            # travaria o gate de finalizar sem nunca aparecer para ninguém.
+            # A subtarefa aberta sob RAIZ aberta continua aninhada (não é cabeça).
+            undisposed_heads(
                 Task.objects.filter(**{f"{spec.period_lookup}__lt": spec.boundary(today)})
             )
             # A chave do período tem de vir na MESMA query: filtrar/ordenar por

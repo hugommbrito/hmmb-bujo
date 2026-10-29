@@ -18,7 +18,7 @@ from bujo.models import (
     Task,
     WeeklyLog,
 )
-from bujo.services.cycles import add_months
+from bujo.services.cycles import add_months, format_month_pt
 from bujo.services.logs import (
     get_or_create_daily_log,
     get_or_create_monthly_log,
@@ -38,6 +38,7 @@ from bujo.views import (
     MigrationQueueView,
     RecurringTaskTemplateDetailView,
 )
+from core.calendar import now as cal_now
 from core.calendar import today_for, week_start_of
 from core.tenant import current_user_id, tenant_context
 
@@ -3448,7 +3449,12 @@ def test_post_monthly_cycle_gate_de_iniciar_retorna_409(auth_client, user):
     )
 
     assert response.status_code == 409
-    assert "detail" in response.json()
+    corpo = response.json()
+    # Story 14.11: `code` = chave do gate recusado (a mesma de `start.gates`) e
+    # `detail` legível em pt-BR, não "Invalid transition: planning -> active".
+    assert corpo["code"] == "planning_completed"
+    assert "Invalid transition" not in corpo["detail"]
+    assert "planejamento" in corpo["detail"]
 
 
 @pytest.mark.django_db
@@ -3475,6 +3481,7 @@ def test_post_monthly_cycle_finalizar_sem_proximo_mes_em_planejamento_retorna_40
     )
 
     assert response.status_code == 409
+    assert response.json()["code"] == "next_planning_exists"  # Story 14.11
     with tenant_context(user):
         assert MonthlyLog.objects.get(month_first=mes).status == "active"
 
@@ -3798,7 +3805,10 @@ def test_fonte_pending_dailies_no_fio_usa_groups(auth_client, user):
     assert [grupo["date"] for grupo in corpo["groups"]] == [
         (_R_SEMANA - timedelta(days=3)).isoformat()
     ]
-    assert set(corpo["groups"][0]["items"][0]) == {"task", "decision"}
+    # `parentTitle` (Story 14.11) é campo do ITEM da fonte em todas as sete:
+    # `null` em item-raiz (os Daily pendentes só listam raízes).
+    assert set(corpo["groups"][0]["items"][0]) == {"task", "decision", "parentTitle"}
+    assert corpo["groups"][0]["items"][0]["parentTitle"] is None
     # `decision` NUNCA entra no `TaskSerializer` (compartilhado por ~10 respostas
     # legadas): fica no item da fonte — AC8.
     assert "decision" not in corpo["groups"][0]["items"][0]["task"]
@@ -4783,3 +4793,284 @@ def test_excluir_template_com_decisao_snapshot_preserva_a_decisao_e_a_leitura_da
     with tenant_context(user):
         assert RitualDecision.objects.filter(recurring_template_id=decidido.id).count() == 1
         assert RecurringTaskTemplate.objects.filter(pk=decidido.id).exists()
+
+
+# --- Story 14.11: regularização atrasada do ciclo mensal (no fio) --------------
+MIGRATE_URL = "/api/bujo/tasks/{id}/migrate/"
+
+
+def _cenario_alvo_passado(user):
+    """m−2 `active` com uma raiz aberta; m−1 `planning`; hoje em m. Devolve
+    `(atual, m2, m1, tarefa_aberta_em_m2)`."""
+    with tenant_context(user):
+        atual = today_for(user).replace(day=1)
+        m2, m1 = add_months(atual, -2), add_months(atual, -1)
+        anterior = MonthlyLogFactory(user=user, month_first=m2, status=CycleStatus.ACTIVE)
+        MonthlyLogFactory(user=user, month_first=m1, status=CycleStatus.PLANNING)
+        tarefa = TaskFactory(user=user, monthly_log=anterior, status=Task.Status.PENDING)
+    return atual, m2, m1, tarefa
+
+
+@pytest.mark.django_db
+def test_post_migrate_month_com_month_first_igual_ao_alvo_passado_retorna_200(auth_client, user):
+    """Matriz "Migrar p/ alvo passado": `'month'` + `monthFirst` = alvo em
+    `planning` < corrente ⇒ 200, sucessor no alvo, origem `postponed`."""
+    _, _, m1, tarefa = _cenario_alvo_passado(user)
+
+    response = auth_client.post(
+        MIGRATE_URL.format(id=tarefa.id),
+        {
+            "destination": "month",
+            "monthFirst": m1.isoformat(),
+            "scheduledDate": m1.replace(day=7).isoformat(),
+        },
+        format="json",
+    )
+
+    assert response.status_code == 200, response.json()
+    assert response.data["status"] == "postponed"
+    with tenant_context(user):
+        tarefa.refresh_from_db()
+        assert tarefa.migrated_to_task.monthly_log.month_first == m1
+        assert tarefa.migrated_to_task.scheduled_date == m1.replace(day=7)
+
+
+@pytest.mark.django_db
+def test_post_migrate_month_com_month_first_corrente_quando_alvo_e_passado_retorna_200(
+    auth_client, user
+):
+    """Matriz "Adiar p/ corrente": o teto da faixa é o mês corrente, mesmo com o
+    alvo de planejamento em m−1."""
+    atual, _, _, tarefa = _cenario_alvo_passado(user)
+
+    response = auth_client.post(
+        MIGRATE_URL.format(id=tarefa.id),
+        {"destination": "month", "monthFirst": atual.isoformat()},
+        format="json",
+    )
+
+    assert response.status_code == 200, response.json()
+    with tenant_context(user):
+        tarefa.refresh_from_db()
+        assert tarefa.migrated_to_task.monthly_log.month_first == atual
+
+
+@pytest.mark.django_db
+def test_post_migrate_month_com_month_first_anterior_ao_alvo_retorna_400(auth_client, user):
+    """Matriz "Fora da faixa" (piso): abaixo do alvo de planejamento ⇒ 400 em
+    `fields.month_first` — nunca se escreve num mês anterior ao alvo."""
+    _, m2, _, tarefa = _cenario_alvo_passado(user)
+
+    response = auth_client.post(
+        MIGRATE_URL.format(id=tarefa.id),
+        {"destination": "month", "monthFirst": m2.isoformat()},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert response.json()["fields"]["monthFirst"] == ["Anterior ao alvo de planejamento mensal."]
+    with tenant_context(user):
+        tarefa.refresh_from_db()
+        assert tarefa.status == "pending"
+
+
+@pytest.mark.django_db
+def test_post_migrate_month_com_month_first_posterior_ao_corrente_retorna_400(auth_client, user):
+    """Matriz "Fora da faixa" (teto): acima do corrente é território do
+    `'future'`, que segue inalterado."""
+    atual, _, _, tarefa = _cenario_alvo_passado(user)
+
+    response = auth_client.post(
+        MIGRATE_URL.format(id=tarefa.id),
+        {"destination": "month", "monthFirst": add_months(atual, 1).isoformat()},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert response.json()["fields"]["monthFirst"] == ["Use 'future' para meses após o corrente."]
+
+
+@pytest.mark.django_db
+def test_post_migrate_month_com_month_first_fora_do_dia_1_retorna_400(auth_client, user):
+    """`'month'` com `monthFirst` explícito passa pelas MESMAS regras de forma do
+    `'future'` (dia 1; `scheduledDate` dentro do mês)."""
+    _, _, m1, tarefa = _cenario_alvo_passado(user)
+
+    dia_15 = auth_client.post(
+        MIGRATE_URL.format(id=tarefa.id),
+        {"destination": "month", "monthFirst": m1.replace(day=15).isoformat()},
+        format="json",
+    )
+    assert dia_15.status_code == 400
+    assert "monthFirst" in dia_15.json()["fields"]
+
+    fora_do_mes = auth_client.post(
+        MIGRATE_URL.format(id=tarefa.id),
+        {
+            "destination": "month",
+            "monthFirst": m1.isoformat(),
+            "scheduledDate": add_months(m1, 1).isoformat(),
+        },
+        format="json",
+    )
+    assert fora_do_mes.status_code == 400
+    assert "scheduledDate" in fora_do_mes.json()["fields"]
+
+
+@pytest.mark.django_db
+def test_post_migrate_month_sem_alvo_de_planejamento_so_aceita_o_corrente(auth_client, user):
+    """Sem `planning` nem `active`, o piso é o próprio mês corrente — o mês
+    anterior continua inalcançável (não é regularização, é passado)."""
+    with tenant_context(user):
+        atual = today_for(user).replace(day=1)
+        tarefa = TaskFactory(user=user, status=Task.Status.PENDING)
+
+    passado = auth_client.post(
+        MIGRATE_URL.format(id=tarefa.id),
+        {"destination": "month", "monthFirst": add_months(atual, -1).isoformat()},
+        format="json",
+    )
+    assert passado.status_code == 400
+
+    corrente = auth_client.post(
+        MIGRATE_URL.format(id=tarefa.id),
+        {"destination": "month", "monthFirst": atual.isoformat()},
+        format="json",
+    )
+    assert corrente.status_code == 200
+
+
+@pytest.mark.django_db
+def test_post_monthly_cycle_finalizar_com_subtarefa_aberta_retorna_409_no_open_tasks(
+    auth_client, user
+):
+    """Matriz "Gate de finalizar": subtarefa aberta sob pai concluído ⇒ 409
+    `{detail, code: 'no_open_tasks'}`, e o `detail` cita subtarefas."""
+    with tenant_context(user):
+        mes = today_for(user).replace(day=1)
+        ativo = MonthlyLogFactory(user=user, month_first=mes, status=CycleStatus.ACTIVE)
+        MonthlyLogFactory(user=user, month_first=add_months(mes, 1), status=CycleStatus.PLANNING)
+        pai = TaskFactory(user=user, monthly_log=ativo, status=Task.Status.COMPLETED)
+        TaskFactory(user=user, monthly_log=ativo, parent_task=pai, status=Task.Status.STARTED)
+
+    response = auth_client.post(
+        MONTHLY_CYCLE_URL, {"action": "finalize", "monthFirst": mes.isoformat()}, format="json"
+    )
+
+    assert response.status_code == 409
+    corpo = response.json()
+    assert corpo["code"] == "no_open_tasks"
+    assert "subtarefas" in corpo["detail"]
+    assert set(corpo) == {"detail", "code"}
+
+
+@pytest.mark.django_db
+def test_post_monthly_cycle_iniciar_com_anterior_nao_finalizado_retorna_409_previous_finalized(
+    auth_client, user
+):
+    """Matriz "Gate de iniciar": anterior não finalizado ⇒ 409
+    `{detail, code: 'previous_finalized'}`, detail em pt-BR citando o anterior."""
+    with tenant_context(user):
+        atual = today_for(user).replace(day=1)
+        m2, m1 = add_months(atual, -2), add_months(atual, -1)
+        MonthlyLogFactory(user=user, month_first=m2, status=CycleStatus.ACTIVE)
+        MonthlyLogFactory(
+            user=user, month_first=m1, status=CycleStatus.PLANNING, planning_completed_at=cal_now()
+        )
+
+    response = auth_client.post(
+        MONTHLY_CYCLE_URL, {"action": "start", "monthFirst": m1.isoformat()}, format="json"
+    )
+
+    assert response.status_code == 409
+    corpo = response.json()
+    assert corpo["code"] == "previous_finalized"
+    assert format_month_pt(m2) in corpo["detail"]  # "agosto de 2026", como a UI
+
+
+@pytest.mark.django_db
+def test_fonte_previous_monthly_no_fio_expoe_parent_title_da_subtarefa_orfa(auth_client, user):
+    """`parentTitle` (camelCase) no item da fonte bloqueante quando a cabeça
+    aberta é uma subtarefa; `null` em item-raiz."""
+    with tenant_context(user):
+        alvo = add_months(_R_MES, 1)
+        MonthlyLogFactory(user=user, month_first=alvo, status=CycleStatus.PLANNING)
+        anterior = MonthlyLogFactory(user=user, month_first=_R_MES, status=CycleStatus.ACTIVE)
+        pai = TaskFactory(
+            user=user, monthly_log=anterior, status=Task.Status.COMPLETED, title="Cardiologista"
+        )
+        TaskFactory(
+            user=user,
+            monthly_log=anterior,
+            parent_task=pai,
+            status=Task.Status.STARTED,
+            title="Marcar retorno",
+        )
+        TaskFactory(user=user, monthly_log=anterior, status=Task.Status.PENDING, title="Raiz")
+
+    corpo = auth_client.get(
+        f"/api/bujo/rituals/monthly/sources/previous-monthly/?month_first={alvo.isoformat()}"
+    ).json()
+
+    por_titulo = {item["task"]["title"]: item for item in corpo["items"]}
+    assert set(por_titulo) == {"Marcar retorno", "Raiz"}
+    assert por_titulo["Marcar retorno"]["parentTitle"] == "Cardiologista"
+    assert por_titulo["Raiz"]["parentTitle"] is None
+    assert corpo["readyToFinalize"] is False
+    assert corpo["reviewed"] is False
+
+
+@pytest.mark.django_db
+def test_post_migrate_month_aceita_mes_intermediario_entre_alvo_e_corrente(auth_client, user):
+    """Review 14.11: a faixa `[alvo, corrente]` INCLUI os meses intermediários —
+    alvo m−2 em `planning` (m−3 `active`), `month_first` = m−1 ⇒ 200 e o
+    sucessor nasce num log `NULL` (fora do regime), que será o próximo alvo da
+    sequência: é o "Adiar" a partir do alvo."""
+    with tenant_context(user):
+        atual = today_for(user).replace(day=1)
+        m3, m2, m1 = add_months(atual, -3), add_months(atual, -2), add_months(atual, -1)
+        anterior = MonthlyLogFactory(user=user, month_first=m3, status=CycleStatus.ACTIVE)
+        MonthlyLogFactory(user=user, month_first=m2, status=CycleStatus.PLANNING)
+        tarefa = TaskFactory(user=user, monthly_log=anterior, status=Task.Status.PENDING)
+
+    response = auth_client.post(
+        MIGRATE_URL.format(id=tarefa.id),
+        {"destination": "month", "monthFirst": m1.isoformat()},
+        format="json",
+    )
+
+    assert response.status_code == 200, response.json()
+    with tenant_context(user):
+        tarefa.refresh_from_db()
+        destino = tarefa.migrated_to_task.monthly_log
+        assert destino.month_first == m1
+        assert destino.status is None  # materializado fora do regime, nunca iniciado
+
+
+@pytest.mark.django_db
+def test_post_migrate_month_na_posicao_regular_so_aceita_o_corrente(auth_client, user):
+    """Review 14.11: sem atraso (`active` = corrente, `planning` = corrente+1) o
+    piso É o corrente: `month_first` = corrente ⇒ 200; = corrente+1 ⇒ 400 "Use
+    'future'…" — o Future Log não se relaxa."""
+    with tenant_context(user):
+        atual = today_for(user).replace(day=1)
+        ativo = MonthlyLogFactory(user=user, month_first=atual, status=CycleStatus.ACTIVE)
+        MonthlyLogFactory(user=user, month_first=add_months(atual, 1), status=CycleStatus.PLANNING)
+        tarefa = TaskFactory(user=user, monthly_log=ativo, status=Task.Status.PENDING)
+        outra = TaskFactory(user=user, monthly_log=ativo, status=Task.Status.PENDING)
+
+    corrente = auth_client.post(
+        MIGRATE_URL.format(id=tarefa.id),
+        {"destination": "month", "monthFirst": atual.isoformat()},
+        format="json",
+    )
+    assert corrente.status_code == 200, corrente.json()
+
+    seguinte = auth_client.post(
+        MIGRATE_URL.format(id=outra.id),
+        {"destination": "month", "monthFirst": add_months(atual, 1).isoformat()},
+        format="json",
+    )
+    assert seguinte.status_code == 400
+    assert seguinte.json()["fields"]["monthFirst"] == ["Use 'future' para meses após o corrente."]
+

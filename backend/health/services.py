@@ -29,7 +29,10 @@ from health.models import HealthFieldDefinition, HealthFieldType, HealthLog
 _NUMERIC_TYPES = (HealthFieldType.INTEGER, HealthFieldType.DECIMAL)
 
 # Campos mutáveis por UPDATE direto (Saúde não versiona). ``field_type`` é imutável.
-_MUTABLE_FIELDS = ("name", "display_order", "enum_options", "active")
+# ``icon_key`` (Story 16.2) precisa estar AQUI: ``update_health_field`` faz
+# ``continue`` em tudo fora da tupla, então um campo de fora seria descartado em
+# silêncio pelo PATCH.
+_MUTABLE_FIELDS = ("name", "display_order", "enum_options", "active", "icon_key")
 
 # Cap defensivo de tamanho para valores ``text`` (evita blob JSONB gigante por linha).
 _MAX_TEXT_LEN = 1000
@@ -63,7 +66,7 @@ def list_health_fields(*, user, include_inactive=False):
 
 @transaction.atomic
 def create_health_field(
-    *, user, name, field_type, enum_options=None, display_order=None
+    *, user, name, field_type, enum_options=None, display_order=None, icon_key=None
 ) -> HealthFieldDefinition:
     """Cria uma definição de campo (AC1). ``active=True`` por default.
 
@@ -83,12 +86,14 @@ def create_health_field(
         field_type=field_type,
         enum_options=options,
         display_order=display_order,
+        icon_key=icon_key,
     )
 
 
 @transaction.atomic
 def update_health_field(*, user, field_id, **fields) -> HealthFieldDefinition:
-    """UPDATE direto de ``name``/``display_order``/``enum_options``/``active`` (AC4).
+    """UPDATE direto de ``name``/``display_order``/``enum_options``/``active``/
+    ``icon_key`` (AC4).
 
     ``field_type`` é **imutável**: passá-lo levanta ``DomainError``. Se
     ``enum_options`` for alterado, valida contra o ``field_type`` atual (imutável).

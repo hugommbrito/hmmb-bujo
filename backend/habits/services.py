@@ -4,8 +4,8 @@ Funções de módulo (nunca classes de serviço); ``user`` é sempre o primeiro
 kwarg keyword-only; toda escrita é ``@transaction.atomic``; scoping implícito via
 ``TenantManager``. Regra de ouro (AD-06): mudança de ``weight``/``active``/``meta``/
 ``bonus`` = INSERT de ``HabitVersion`` com ``effective_from = today_for(user)``
-(prospectivo); identidade (``name``/``emoticon``/``group``) é UPDATE direto sem versão;
-``type`` é imutável.
+(prospectivo); identidade (``name``/``emoticon``/``icon_key``/``group``) é UPDATE
+direto sem versão; ``type`` é imutável.
 """
 
 from datetime import timedelta
@@ -13,6 +13,8 @@ from decimal import ROUND_HALF_UP, Decimal
 
 from django.db import transaction
 
+from accounts.models import UntrackedCollection
+from accounts.services import is_untracked, untracked_dates
 from core.calendar import resolve_day_type, resolve_day_types_range, today_for
 from core.exceptions import DomainError
 from habits.models import (
@@ -24,8 +26,11 @@ from habits.models import (
     HabitVersion,
 )
 
-# Campos de identidade (UPDATE direto no `habits`, não versionados).
-_IDENTITY_FIELDS = ("name", "emoticon", "group_id", "unit")
+# Campos de identidade (UPDATE direto no `habits`, não versionados). `icon_key`
+# (Story 16.2) precisa estar AQUI: `update_habit_identity` faz `continue` em tudo
+# que não está na tupla, então um campo de fora seria descartado em silêncio pelo
+# PATCH — 200 sem persistir nada.
+_IDENTITY_FIELDS = ("name", "emoticon", "icon_key", "group_id", "unit")
 
 # Sentinela para distinguir "não passou value" de "passou value=None (desmarcar)".
 _UNSET = object()
@@ -97,7 +102,8 @@ def list_habits(*, user, include_inactive=False):
 
 @transaction.atomic
 def create_habit(
-    *, user, name, group_id, type, weight, emoticon="", unit="", meta=None, bonus=None
+    *, user, name, group_id, type, weight, emoticon="", unit="", icon_key=None,
+    meta=None, bonus=None,
 ) -> Habit:
     """Cria ``Habit`` + a primeira ``HabitVersion`` (``active=True``,
     ``effective_from = hoje``) numa transação. ``meta``/``bonus`` só se aplicam a
@@ -110,7 +116,8 @@ def create_habit(
         bonus = None
 
     habit = Habit.objects.create(
-        name=name, emoticon=emoticon, group=group, type=type, unit=unit
+        name=name, emoticon=emoticon, group=group, type=type, unit=unit,
+        icon_key=icon_key,
     )
     version = HabitVersion.objects.create(
         habit=habit,
@@ -126,8 +133,8 @@ def create_habit(
 
 @transaction.atomic
 def update_habit_identity(*, user, habit_id, **fields) -> Habit:
-    """Atualiza identidade (``name``/``emoticon``/``group``) com UPDATE direto — não
-    cria versão. ``type`` é imutável: passá-lo levanta ``DomainError``."""
+    """Atualiza identidade (``name``/``emoticon``/``icon_key``/``group``) com UPDATE
+    direto — não cria versão. ``type`` é imutável: passá-lo levanta ``DomainError``."""
     if "type" in fields:
         raise DomainError("O tipo do hábito é imutável.")
 
@@ -363,6 +370,33 @@ def compute_day_completeness(*, user, date) -> dict:
     }
 
 
+# --- Dia "não registrado" (Story 16.2c) ---------------------------------------
+# A flag mora em `accounts.UntrackedDay` (`habits → accounts`, mesma porta de
+# `UserHoliday`). `compute_day_completeness` fica PURO (o resumo do widget em
+# `automation` segue com contrato numérico — DW); `get_day_completeness` é o
+# wrapper que conhece a flag. UMA regra de exclusão para todo consumidor:
+# dia marcado = dia sem linha (completude nula, fora de todo denominador,
+# ponto omitido na série), sem apagar nem re-semear nada.
+
+
+def get_day_completeness(*, user, date) -> dict:
+    """Completude do dia para a aba Hoje, **ciente** do dia "não registrado".
+
+    Embrulha ``compute_day_completeness`` (inalterado). Dia marcado → ``total=None``,
+    ``groups[].completion=None`` (os grupos continuam listados — o dia é editável e
+    os cards precisam existir), ``untracked=True``. Dia não marcado → o cálculo
+    puro + ``untracked=False``.
+    """
+    completeness = compute_day_completeness(user=user, date=date)
+    if not is_untracked(user=user, date=date, collection=UntrackedCollection.HABITS):
+        return {**completeness, "untracked": False}
+    return {
+        "total": None,
+        "groups": [{**group, "completion": None} for group in completeness["groups"]],
+        "untracked": True,
+    }
+
+
 @transaction.atomic
 def set_holiday(*, user, date, is_holiday) -> None:
     """Marca/desmarca ``date`` como feriado e recalcula **só aquele dia** (AD-10 item 6).
@@ -459,6 +493,8 @@ def get_habit_history_range(*, user, start, end) -> dict:
     ``compute_day_completeness`` via ``_grouped_completeness``) e as ``entries``; um dia
     **sem linha** (nunca aberto/pulado) é **lacuna honesta**: ``total_completion=None``,
     ``groups=[]``, ``entries=[]`` — nunca 0% fabricado, e **nada é materializado**.
+    Um dia marcado "não registrado" (Story 16.2c) é devolvido como a mesma lacuna
+    + ``untracked=True``; um hábito que só aparece em dias marcados sai de ``habits``.
     """
     _validate_range(start, end)
 
@@ -468,10 +504,21 @@ def get_habit_history_range(*, user, start, end) -> dict:
         )
     )
     dtypes = resolve_day_types_range(user, start, end)
+    # Story 16.2c — dias marcados "não registrado" (UMA query no range). O dia
+    # marcado é devolvido como LACUNA (`entries=[]`, `total=None`, `groups=[]`) +
+    # `untracked=True`: toda agregação cliente (grade, lista compacta, legado,
+    # gráfico) já trata "dia sem linha" como fora do denominador, então devolver
+    # vazio reaproveita essa regra em vez de espalhar `if (untracked)` por cada
+    # consumidor. As linhas continuam no banco — só não saem daqui.
+    untracked = untracked_dates(
+        user=user, start=start, end=end, collection=UntrackedCollection.HABITS
+    )
 
     by_date: dict = {}
     habits_seen: dict = {}
     for entry in entries:
+        if entry.date in untracked:
+            continue  # dia marcado: fora do payload E de `habits_seen`
         by_date.setdefault(entry.date, []).append(entry)
         habits_seen.setdefault(entry.habit_id, entry.habit)
 
@@ -498,6 +545,7 @@ def get_habit_history_range(*, user, start, end) -> dict:
                 "total_completion": total,
                 "groups": groups,
                 "entries": day_entries,
+                "untracked": d in untracked,
             }
         )
         d += timedelta(days=1)
@@ -576,6 +624,12 @@ def get_habit_series(*, user, habit_id, start, end) -> dict:
     point_rows = HabitDayEntry.objects.filter(
         habit_id=habit_id, date__range=(start, end)
     ).order_by("date")
+    # Story 16.2c — ponto de dia marcado "não registrado" é OMITIDO (vira lacuna
+    # no gráfico, como dia sem linha); `day_types` abaixo continua cobrindo o
+    # range inteiro, inclusive esse dia.
+    untracked = untracked_dates(
+        user=user, start=start, end=end, collection=UntrackedCollection.HABITS
+    )
     points = [
         {
             "date": e.date,
@@ -584,6 +638,7 @@ def get_habit_series(*, user, habit_id, start, end) -> dict:
             "day_type": e.day_type,
         }
         for e in point_rows
+        if e.date not in untracked
     ]
 
     versions = list(

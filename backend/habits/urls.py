@@ -8,6 +8,7 @@ from habits.views import (
     HabitHolidayView,
     HabitListCreateView,
     HabitSeriesView,
+    HabitUntrackedDayView,
     HabitVersionCreateView,
 )
 
@@ -18,6 +19,8 @@ urlpatterns = [
     path("days/", HabitDayView.as_view(), name="habit-day"),
     path("days/<uuid:pk>/", HabitDayEntryDetailView.as_view(), name="habit-day-entry-detail"),
     path("holidays/", HabitHolidayView.as_view(), name="habit-holiday"),
+    # Story 16.2c — dia "não registrado" (collection `habits` fixada na view).
+    path("untracked-days/", HabitUntrackedDayView.as_view(), name="habit-untracked-day"),
     # Histórico read-only (Story 6.4): intervalo (grade + detalhe por-data) e série por hábito.
     path("history/", HabitHistoryRangeView.as_view(), name="habit-history"),
     path("<uuid:pk>/", HabitDetailView.as_view(), name="habit-detail"),

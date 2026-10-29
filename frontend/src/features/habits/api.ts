@@ -13,6 +13,7 @@ import type {
   HabitType,
   HabitVersion,
   HolidayResult,
+  UntrackedDayResult,
 } from './types'
 
 // --- Queries -----------------------------------------------------------------
@@ -106,6 +107,14 @@ export function useHabitSeriesQuery(habitId: string, range: HistoryRange) {
 interface CreateHabitVariables {
   name: string
   emoticon?: string
+  /**
+   * Nome do glifo Phosphor em kebab-case (Story 16.2). O tipo entra aqui para o
+   * contrato do cliente ficar completo e coerente com `types.gen.ts`
+   * (`Habit.iconKey`); a ESCRITA — seletor + campo na Configuração — é da DW-64.
+   * `null` limpa o pictograma; nome inexistente é rejeitado com 400 pelo
+   * servidor (`core/phosphor.validate_icon_key`).
+   */
+  iconKey?: string | null
   unit?: string
   group: string
   type: HabitType
@@ -131,6 +140,8 @@ interface UpdateHabitIdentityVariables {
   habitId: string
   name?: string
   emoticon?: string
+  /** Ver `CreateHabitVariables.iconKey`: identidade, vale para todo o histórico. */
+  iconKey?: string | null
   unit?: string
   group?: string
 }
@@ -290,6 +301,60 @@ export function useSetHolidayMutation(date?: string) {
     updater: (current, { isHoliday }) => {
       if (!current) return current as unknown as HabitDay
       return { ...current, dayType: isHoliday ? 'holiday' : 'weekday' }
+    },
+  })
+}
+
+// --- Story 16.2c — dia "não registrado" ------------------------------------
+// Molde do feriado: otimista em `keys.habits.day(date)`. MARCAR flipa
+// `untracked` E zera (`null`) `totalCompletion`/`groups[].completion` — a UI
+// escreve "Não registrado" no lugar da porcentagem sem esperar o servidor, e
+// isso NÃO é recálculo (nulo é a ausência explícita de leitura). DESMARCAR só
+// flipa a flag: a porcentagem real volta com o refetch (até lá o slot lê "—"),
+// porque a interface nunca calcula completude. `onSuccess` invalida o
+// histórico e as séries por prefixo (o dia marcado vira lacuna lá também);
+// `onSettled` do hook já invalida a chave do dia.
+interface SetUntrackedDayVariables {
+  date: string
+  untracked: boolean
+}
+
+async function setUntrackedDay({
+  date,
+  untracked,
+}: SetUntrackedDayVariables): Promise<UntrackedDayResult> {
+  const response = await client.post<UntrackedDayResult>('/api/habits/untracked-days/', {
+    date,
+    untracked,
+  })
+  return response.data
+}
+
+export function useSetUntrackedDayMutation(date?: string) {
+  const queryClient = useQueryClient()
+  return useOptimisticMutation<
+    UntrackedDayResult,
+    unknown,
+    SetUntrackedDayVariables,
+    HabitDay
+  >({
+    mutationFn: setUntrackedDay,
+    queryKey: keys.habits.day(date),
+    updater: (current, { untracked }) => {
+      if (!current) return current as unknown as HabitDay
+      if (!untracked) return { ...current, untracked: false }
+      return {
+        ...current,
+        untracked: true,
+        totalCompletion: null,
+        groups: current.groups.map((group) => ({ ...group, completion: null })),
+      }
+    },
+    mutationOptions: {
+      onSuccess: () => {
+        void queryClient.invalidateQueries({ queryKey: ['habits', 'history'] })
+        void queryClient.invalidateQueries({ queryKey: ['habits', 'series'] })
+      },
     },
   })
 }

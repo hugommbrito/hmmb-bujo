@@ -17,6 +17,14 @@ import { seedMultiplierScenario } from './seedMultiplierScenario'
 // de `HabitTracker`/`HabitsManager` (que mockam a API): aqui é o fluxo real
 // (config → materialização → feriado → peso efetivo persistido).
 //
+// ⚠ AJUSTADO NA STORY 16.1 (M12): a configuração deixou de ser
+// `/settings/habits` e virou a ABA "Configuração" da superfície única
+// (`/habits?tab=configuracao`); a rota antiga permanece como REDIRECT. Os
+// campos de multiplicador passaram a ser `textbox` com `inputMode="decimal"`
+// (aceitam VÍRGULA — `type="number"` recusa vírgula em pt-BR) e mostram campo
+// VAZIO com placeholder `1,00` quando não há configuração salva. O tracker de
+// `/today` continua sendo o LEGADO (o redesenho do Hoje é a onda da home).
+//
 // Determinismo de tempo: o tracker sempre mostra HOJE e o tipo de dia real varia
 // com o dia em que a suíte roda (fim de semana automático). Por isso os specs
 // usam o toggle de FERIADO como alavanca — `holiday` tem precedência sobre
@@ -39,17 +47,21 @@ test('config prospectiva do multiplicador de grupo persiste (AC1)', async ({ pag
   // Um único grupo → os localizadores por-grupo (campo/botão) ficam inequívocos.
   seedMultiplierScenario(email, { onlyProfessional: true })
 
-  // AC1 — primeira edição por-grupo em Settings › Hábitos (afordância greenfield).
+  // AC1 — edição por-grupo na aba Configuração. A rota antiga redireciona.
   await page.goto('/settings/habits')
-  await expect(page.getByRole('main', { name: 'Configurações — Hábitos' })).toBeVisible()
+  await expect(page).toHaveURL('/habits?tab=configuracao')
+  await expect(page.getByRole('main', { name: 'Hábitos' })).toBeVisible()
 
-  // O form de multiplicador só monta após carregar a config vigente (default
-  // ×1,00) — esperar o valor carregado garante que o form já assentou antes de
-  // editar (evita que um refetch remonte o form e descarte o que foi digitado).
-  const holidayField = page.getByRole('spinbutton', { name: /Multiplicador de feriado/ })
-  await expect(holidayField).toHaveValue(/1\.00?/)
-  await holidayField.fill('0.2')
-  await expect(holidayField).toHaveValue('0.2')
+  // O form de multiplicador só monta após carregar a config vigente — sem
+  // configuração salva o campo nasce VAZIO com placeholder `1,00` (1,00 é o
+  // implícito do domínio, nunca armazenado). Esperar o campo garante que o
+  // form assentou antes de editar (evita que um refetch remonte o form e
+  // descarte o que foi digitado).
+  const holidayField = page.getByRole('textbox', { name: /Multiplicador de feriado/ })
+  await expect(holidayField).toHaveValue('')
+  await expect(holidayField).toHaveAttribute('placeholder', '1,00')
+  await holidayField.fill('0,2')
+  await expect(holidayField).toHaveValue('0,2')
 
   // Salvar e esperar o PUT concluir ANTES de recarregar — recarregar com o PUT
   // em voo cancela a escrita (navegação aborta o XHR), e a config não persiste.
@@ -61,10 +73,10 @@ test('config prospectiva do multiplicador de grupo persiste (AC1)', async ({ pag
   ])
 
   // Persistência prospectiva: recarregar reidrata o form da config vigente vinda
-  // do servidor (DecimalField de 2 casas → "0.20").
+  // do servidor (DecimalField de 2 casas → "0.20", exibido em pt-BR como "0,2").
   await page.reload()
-  await expect(page.getByRole('spinbutton', { name: /Multiplicador de feriado/ })).toHaveValue(
-    /0\.20?/,
+  await expect(page.getByRole('textbox', { name: /Multiplicador de feriado/ })).toHaveValue(
+    '0,2',
     RECONCILE,
   )
 })

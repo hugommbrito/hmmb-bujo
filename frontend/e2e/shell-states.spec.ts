@@ -183,8 +183,11 @@ test.describe('Estados do chrome — compact 390×720', () => {
   test('ST-06 readonly no compact: Menu selecionado e chrome fechado em 3 atalhos + Menu + FAB', async ({
     page,
   }) => {
+    // Story 16.1: `/habits/history` redireciona para a aba Histórico da
+    // superfície única, e o título da rota resolvida é "Hábitos".
     await page.goto('/habits/history')
-    await expect(page.getByRole('banner')).toContainText('Hábitos — Histórico')
+    await expect(page).toHaveURL('/habits?tab=historico')
+    await expect(page.getByRole('banner')).toContainText('Hábitos')
 
     const nav = bottomNav(page)
     await expect(nav.getByRole('button')).toHaveCount(4)
@@ -320,7 +323,11 @@ test.describe('Sticky das superfícies de histórico sob o workspace do shell �
     test.setTimeout(120_000)
     seedHabitHistory(email)
 
-    await page.goto('/habits/history')
+    // Story 16.1: a grade agora é SEMANAL e vive na aba Histórico (a rota
+    // antiga redireciona). A tabela equivalente fica dentro de um `<details>`
+    // fechado, logo fora da árvore acessível — `getByRole('table')` continua
+    // resolvendo só a grade.
+    await page.goto('/habits?tab=historico')
     await expect(page.getByRole('table')).toBeVisible({ timeout: 30_000 })
 
     await expectStickyAnchoredToInnerScroller(page, 'Hábito')

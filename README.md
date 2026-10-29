@@ -4,6 +4,7 @@ Bullet Journal digital multi-tenant. Monorepo com **backend** Django + DRF e
 **frontend** React + Vite + MUI. Banco PostgreSQL via [Neon](https://neon.tech)
 (branch `dev` ↔ `.env.dev`, branch `main` ↔ `.env.prod`, branch `e2e` ↔
 `.env.e2e` para a suíte E2E).
+exempo de deploy
 
 ## Estrutura
 

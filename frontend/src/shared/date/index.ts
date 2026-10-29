@@ -134,6 +134,19 @@ export function addMonthsIso(monthFirst: string, delta: number): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-01`
 }
 
+/**
+ * Meses (com sinal) de `fromMonthFirst` até `toMonthFirst`, ambos "AAAA-MM-01":
+ * `monthsBetweenIso('2026-09-01', '2026-10-01') === 1`. Inverso de
+ * `addMonthsIso` (`addMonthsIso(a, monthsBetweenIso(a, b)) === b`). Story
+ * 14.11: conta quantos meses a regularização atrasada ainda tem de
+ * materializar entre o alvo do ritual e o mês corrente.
+ */
+export function monthsBetweenIso(fromMonthFirst: string, toMonthFirst: string): number {
+  const [fromYear, fromMonth] = fromMonthFirst.split('-').map(Number)
+  const [toYear, toMonth] = toMonthFirst.split('-').map(Number)
+  return (toYear - fromYear) * 12 + (toMonth - fromMonth)
+}
+
 export interface MonthGridDay {
   iso: string
   /** `false` para dias fora do mês-alvo (início/fim da grade) — AC1: não

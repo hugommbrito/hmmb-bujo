@@ -60,6 +60,14 @@ export interface ItemRowBaseProps {
   title: string
   /** Linha secundária de contexto (em Recorrentes: `{Grupo} — {recurrenceText}`). */
   subline?: string
+  /**
+   * `id` da subline, para que um controle da própria linha possa apontar
+   * `aria-describedby` para o texto JÁ VISÍVEL — em Hábitos, o estado
+   * obrigatório ("Feito"/"Não feito"/"Meta atingida") descreve o checkbox.
+   * Sem isto o consumidor precisaria duplicar a string num nó sr-only, e a
+   * mesma frase apareceria duas vezes na árvore acessível.
+   */
+  sublineId?: string
   /** Descrição opcional, truncada em UMA linha. */
   description?: string | null
   category?: TaskCategory | null
@@ -93,11 +101,34 @@ export interface ItemRowBaseProps {
    * de edição do item.
    */
   onActivate?: () => void
+  /**
+   * Colunas FIXAS antes do corpo — Épico 16 (Habit Tracker Row): coluna de
+   * controle (`--ds-habit-tracker-row-control-column`) + coluna do pictograma
+   * (`--ds-domain-icon-size-default`). Ausente (default) preserva a anatomia
+   * de Recorrentes/Brain Dump, que não têm cluster leading.
+   * Consumidor de produção: `habits/components/record/HabitTrackerRow.tsx`.
+   */
+  leadingSlot?: ReactNode
+  /**
+   * Conteúdo alinhado à DIREITA na mesma linha do título (`space-between`) —
+   * em Hábitos, os fatores congelados (`Peso 3 × 0,5 = 1,5`), que o
+   * `DESIGN.md` L710 coloca "nas extremidades opostas da mesma linha".
+   * Ausente (default) mantém título+chips encostados à esquerda.
+   */
+  titleTrailing?: ReactNode
+  /**
+   * `false` remove a borda esquerda de categoria — `{components.habit-tracker-
+   * row}.category-border: 'none'`. Hábito NÃO tem categoria, e o alinhamento
+   * vem da coluna de controle, não de um filete neutro (DESIGN.md L710).
+   * Default `true`: Recorrentes e Brain Dump seguem com a borda.
+   */
+  categoryBorder?: boolean
 }
 
 export function ItemRowBase({
   title,
   subline,
+  sublineId,
   description,
   category = null,
   eisenhower = null,
@@ -105,6 +136,9 @@ export function ItemRowBase({
   deemphasized = false,
   trailingSlot,
   onActivate,
+  leadingSlot,
+  titleTrailing,
+  categoryBorder = true,
 }: ItemRowBaseProps) {
   const eisenhowerLabel =
     eisenhower && eisenhower !== 'none' ? EISENHOWER_CHIP_LABEL[eisenhower] : null
@@ -118,8 +152,12 @@ export function ItemRowBase({
         gap: 'var(--ds-space-2)',
         minHeight: 'var(--ds-task-row-min-height-pointer)',
         '@media (pointer: coarse)': { minHeight: 'var(--ds-task-row-min-height-touch)' },
-        borderLeft: 'var(--ds-task-row-category-border-width) solid',
-        borderLeftColor: category ? `var(--ds-category-${category})` : 'var(--ds-border)',
+        ...(categoryBorder
+          ? {
+              borderLeft: 'var(--ds-task-row-category-border-width) solid',
+              borderLeftColor: category ? `var(--ds-category-${category})` : 'var(--ds-border)',
+            }
+          : {}),
         pl: 'var(--ds-space-2)',
         pr: 'var(--ds-space-3)',
         py: 'var(--ds-space-1)',
@@ -128,6 +166,15 @@ export function ItemRowBase({
         '&:hover': { backgroundColor: 'var(--ds-surface-subtle)' },
       }}
     >
+      {leadingSlot && (
+        <Box
+          data-testid="item-row-leading"
+          sx={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: 'var(--ds-space-2)' }}
+        >
+          {leadingSlot}
+        </Box>
+      )}
+
       <Box
         component={onActivate ? 'button' : 'div'}
         type={onActivate ? 'button' : undefined}
@@ -156,7 +203,8 @@ export function ItemRowBase({
             // próprio conteúdo e o pai o centraliza (`alignItems: 'center'`),
             // deixando uma faixa de padding acima/abaixo (dentro do hover da
             // linha) sem responder a toque — quebra a promessa de "linha
-            // inteira é o alvo de 48px" no compact.
+            // inteira é o alvo de toque" no compact
+            // (`--ds-task-row-min-height-touch`).
             alignSelf: 'stretch',
             display: 'flex',
             flexDirection: 'column',
@@ -165,8 +213,17 @@ export function ItemRowBase({
           }),
         }}
       >
-        {/* Título + chips na MESMA linha (mockup frame A, `.t1`). */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 'var(--ds-space-1)', minWidth: 0 }}>
+        {/* Título + chips na MESMA linha (mockup frame A, `.t1`). Com
+            `titleTrailing`, o slot vai à extremidade OPOSTA da mesma linha
+            (`space-between`) — anatomia da Habit Tracker Row, DESIGN.md L710. */}
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 'var(--ds-space-1)',
+            minWidth: 0,
+          }}
+        >
           <Box
             sx={{
               ...typography.body,
@@ -217,10 +274,20 @@ export function ItemRowBase({
               {statusChipLabel}
             </Box>
           )}
+
+          {/* Extremidade oposta da MESMA linha (`ml: auto` ⇒ `space-between`
+              sem envolver o título num wrapper novo, que mudaria o DOM dos
+              consumidores que não usam o slot). */}
+          {titleTrailing && (
+            <Box sx={{ flex: '0 0 auto', ml: 'auto', pl: 'var(--ds-space-2)' }}>
+              {titleTrailing}
+            </Box>
+          )}
         </Box>
 
         {subline && (
           <Box
+            id={sublineId}
             sx={{
               ...typography.meta,
               // De-ênfase de TEXTO por cor semântica, nunca por opacity.

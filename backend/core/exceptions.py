@@ -45,16 +45,36 @@ class DomainError(Exception):
 
     Plain ``Exception`` (not ``APIException``) on purpose: domain code stays
     framework-agnostic and the HTTP mapping is centralised in the handler.
+
+    ``code`` (Story 14.11) is the explicit contract for the optional machine-
+    readable key the handler puts next to ``detail`` in the 409 body. ``None``
+    here, on every subclass by default; only ``InvalidTransition`` raised by a
+    cycle gate sets it.
     """
+
+    code: str | None = None
 
 
 class InvalidTransition(DomainError):
-    """A state machine was asked for a transition it does not allow (AD-02)."""
+    """A state machine was asked for a transition it does not allow (AD-02).
 
-    def __init__(self, from_status, to_status):
+    ``reason``/``code`` (Story 14.11) are OPTIONAL and additive: a cycle gate
+    (``services/cycles.py``) raises one ``InvalidTransition`` per gate with a
+    human-readable pt-BR ``reason`` (becomes the 409 ``detail``) and a stable
+    ``code`` equal to the readiness gate key (``previous_finalized``,
+    ``no_open_tasks``, ...), so a client can tell *which* gate refused without
+    parsing prose. Without ``reason`` the message stays the generic
+    ``"Invalid transition: a -> b"`` every other call site relies on, and without
+    ``code`` the handler emits no ``code`` key at all — nothing changes for the
+    task state machine or the ritual-decision matrix.
+    """
+
+    def __init__(self, from_status, to_status, *, reason=None, code=None):
         self.from_status = from_status
         self.to_status = to_status
-        super().__init__(f"Invalid transition: {from_status} -> {to_status}")
+        self.reason = reason
+        self.code = code
+        super().__init__(reason or f"Invalid transition: {from_status} -> {to_status}")
 
 
 class ImmutableSnapshot(DomainError):
@@ -133,7 +153,8 @@ def custom_exception_handler(exc, context):
       a ``Response``; we normalise that body to ``{detail, fields}``.
     - For ``DomainError`` (plain ``Exception``) DRF returns ``None``; we map them
       ourselves. ``TenantScopeViolation`` → opaque 500 + ``logger.critical``;
-      every other ``DomainError`` → 409.
+      every other ``DomainError`` → 409 (plus ``code`` when the exception carries
+      one — the cycle gates of Story 14.11).
     - ``User.DoesNotExist`` (DW-25) → 401 + ``logger.warning``, carrying the same
       body *and* ``WWW-Authenticate`` challenge as DRF's own 401: the only
       non-domain exception we domesticate, because simplejwt's token refresh
@@ -174,12 +195,13 @@ def custom_exception_handler(exc, context):
         # ``set_rollback()``, ``Response``). Not cosmetic: ``str(exc)`` runs a subclass's
         # arbitrary ``__str__``, and after the mark any query on this connection raises
         # ``TransactionManagementError``, turning this documented 409 into a raw 500.
-        detail = str(exc)
+        body = {"detail": str(exc)}
+        # ``code`` only when the exception carries one (Story 14.11: cycle gates) —
+        # every other 409 keeps the exact ``{"detail"}`` shape it always had.
+        if exc.code is not None:
+            body["code"] = exc.code
         set_rollback()  # Same DRF parity as the branch above (DW-32).
-        return Response(
-            {"detail": detail},
-            status=status.HTTP_409_CONFLICT,
-        )
+        return Response(body, status=status.HTTP_409_CONFLICT)
 
     # DW-25: simplejwt's ``TokenRefreshSerializer.validate()`` looks the token's
     # user up with a bare ``.objects.get()`` — no try/except — and that lookup runs

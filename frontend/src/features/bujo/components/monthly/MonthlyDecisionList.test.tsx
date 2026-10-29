@@ -288,3 +288,119 @@ describe('MonthlyDecisionList — cor explícita AA em TODO botão (DW-16)', () 
     expect(declaration).toContain("color: 'var(--ds-primary)'")
   })
 })
+
+// ─── Story 14.11 — regularização atrasada ─────────────────────────────────────
+describe('MonthlyDecisionList — títulos com mês, meta de mês passado e subtarefa (Story 14.11)', () => {
+  const placed = [{ id: 'p1', kind: 'template' as const, title: 'Já no mês', decision: null }]
+  const placedInYear = [{ id: 'p2', kind: 'template' as const, title: 'Já no ano', decision: null }]
+
+  it('"Já alocados em Setembro de 2026" / "no ano de 2026" — aria-labels inalterados', () => {
+    render(
+      <MonthlyDecisionList
+        sourceId="recurring"
+        targetMonthFirst="2026-09-01"
+        items={[]}
+        alreadyPlacedItems={placed}
+        alreadyPlacedInYearItems={placedInYear}
+        view="pending"
+        loading={false}
+        error={false}
+        {...noop}
+      />,
+    )
+    const month = screen.getByLabelText('Já alocados (fora do progresso)')
+    expect(within(month).getByText('Já alocados em Setembro de 2026')).toBeInTheDocument()
+    const year = screen.getByLabelText('Já alocados no ano (fora do progresso)')
+    expect(within(year).getByText('Já alocados no ano de 2026')).toBeInTheDocument()
+  })
+
+  it('targetMonthIsPast acrescenta a meta de mês passado sob o título da fonte', () => {
+    render(
+      <MonthlyDecisionList
+        sourceId="previous-monthly"
+        targetMonthFirst="2026-09-01"
+        items={[]}
+        targetMonthIsPast
+        view="pending"
+        loading={false}
+        error={false}
+        {...noop}
+      />,
+    )
+    expect(
+      screen.getByText('Setembro de 2026 já passou — as decisões abaixo regularizam o registro desse mês.'),
+    ).toBeInTheDocument()
+  })
+
+  it('sem targetMonthIsPast, nenhuma meta de mês passado', () => {
+    render(
+      <MonthlyDecisionList
+        sourceId="previous-monthly"
+        targetMonthFirst="2026-09-01"
+        items={[]}
+        view="pending"
+        loading={false}
+        error={false}
+        {...noop}
+      />,
+    )
+    expect(screen.queryByText(/já passou/)).not.toBeInTheDocument()
+  })
+
+  it('"Adiar" nomeia o mês real quando o alvo já passou; senão "Adiar ao Future Log"', () => {
+    const items: NormalizedRitualItem[] = [
+      { id: 't1', kind: 'task', title: 'Adiável', decision: null, scheduledDate: null },
+    ]
+    const { unmount } = render(
+      <MonthlyDecisionList
+        sourceId="previous-monthly"
+        targetMonthFirst="2026-09-01"
+        items={items}
+        targetMonthIsPast
+        view="pending"
+        loading={false}
+        error={false}
+        {...noop}
+      />,
+    )
+    expect(screen.getByRole('button', { name: 'Adiar para Outubro de 2026' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Adiar ao Future Log' })).not.toBeInTheDocument()
+    unmount()
+
+    render(
+      <MonthlyDecisionList
+        sourceId="previous-monthly"
+        targetMonthFirst="2026-09-01"
+        items={items}
+        view="pending"
+        loading={false}
+        error={false}
+        {...noop}
+      />,
+    )
+    expect(screen.getByRole('button', { name: 'Adiar ao Future Log' })).toBeInTheDocument()
+  })
+
+  it('item que é subtarefa (cabeça aberta sob pai disposto) mostra o pai', () => {
+    const items: NormalizedRitualItem[] = [
+      { id: 's1', kind: 'task', title: 'Marcar retorno', decision: null, scheduledDate: null, parentTitle: 'Cardiologista' },
+      { id: 'r1', kind: 'task', title: 'Raiz', decision: null, scheduledDate: null, parentTitle: null },
+    ]
+    render(
+      <MonthlyDecisionList
+        sourceId="previous-monthly"
+        targetMonthFirst="2026-09-01"
+        items={items}
+        view="pending"
+        loading={false}
+        error={false}
+        {...noop}
+      />,
+    )
+    expect(screen.getByText('Subtarefa de Cardiologista')).toBeInTheDocument()
+    expect(screen.getAllByText(/^Subtarefa de/)).toHaveLength(1)
+    // A subtarefa-cabeça tem as MESMAS ações de qualquer item da fonte bloqueante.
+    expect(screen.getAllByRole('button', { name: 'Concluir' })).toHaveLength(2)
+  })
+})
+

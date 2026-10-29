@@ -433,3 +433,27 @@ describe('WeeklyDecisionList — cor explícita AA em TODO botão (DW-16)', () =
     expect(declaration).toContain("color: 'var(--ds-primary)'")
   })
 })
+
+// Story 14.11 — a fonte bloqueante lista subtarefas-cabeça com o pai nomeado.
+describe('WeeklyDecisionList — subtarefa-cabeça mostra o pai (Story 14.11)', () => {
+  it('item com parentTitle mostra "Subtarefa de <pai>"; sem parentTitle não mostra', () => {
+    render(
+      <WeeklyDecisionList
+        sourceId="previous-weekly"
+        weekStart="2026-07-20"
+        items={[
+          item({ id: 's-1', title: 'Marcar retorno', parentTitle: 'Cardiologista' }),
+          item({ id: 'r-1', title: 'Raiz', parentTitle: null }),
+        ]}
+        view="pending"
+        loading={false}
+        error={false}
+        {...noop}
+      />,
+    )
+    expect(screen.getByText('Subtarefa de Cardiologista')).toBeInTheDocument()
+    expect(screen.getAllByText(/^Subtarefa de/)).toHaveLength(1)
+    expect(screen.getByText('Raiz')).toBeInTheDocument()
+  })
+})
+

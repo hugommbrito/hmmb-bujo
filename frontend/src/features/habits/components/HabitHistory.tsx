@@ -58,7 +58,16 @@ interface DayDetailProps {
 // Detalhe por-data (AC1): read-only, agrupado, % por grupo + % total + tipo do dia.
 // Dia-lacuna → "Sem registro neste dia." (nunca 0% fabricado).
 function DayDetail({ day }: DayDetailProps) {
-  if (!day || day.entries.length === 0) {
+  // Story 16.2c: dia marcado "não registrado" chega como lacuna + flag; o legado
+  // só NOMEIA o estado (sem toggle aqui) e guarda o % nulo.
+  if (day?.untracked) {
+    return (
+      <Typography variant="body2" color="text.secondary" sx={{ px: 1 }}>
+        Dia não registrado — fora das estatísticas.
+      </Typography>
+    )
+  }
+  if (!day || day.entries.length === 0 || day.totalCompletion == null) {
     return (
       <Typography variant="body2" color="text.secondary" sx={{ px: 1 }}>
         Sem registro neste dia.
@@ -77,7 +86,7 @@ function DayDetail({ day }: DayDetailProps) {
         return (
           <Box key={group.id} sx={{ mb: 1 }}>
             <Typography variant="subtitle2" component="h4" sx={{ px: 1, py: 0.5 }}>
-              {group.name} · {group.completion}%
+              {group.name} · {group.completion == null ? 'Não registrado' : `${group.completion}%`}
             </Typography>
             {groupEntries.map((entry) => (
               <Typography

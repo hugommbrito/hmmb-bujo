@@ -85,6 +85,15 @@ class _CycleSpec:
     # Predicado do gate de finalizar: "o próximo ciclo já está registrado como
     # planning?". Diferente por tipo de propósito — NÃO compartilhar.
     next_planning_exists: Callable[[date], bool]
+    # Rótulo pt-BR com artigo ("a semana" / "o mês") — só para o `detail` legível
+    # dos 409 de gate (Story 14.11). Nunca entra em chave de API.
+    label: str
+    # Como o próximo ciclo em planejamento é descrito no gate de finalizar: o
+    # Weekly aceita QUALQUER semana posterior; o Monthly exige o mês seguinte.
+    next_planning_hint: str
+    # Como a chave do ciclo aparece no `detail`: Weekly = dd/mm/aaaa (a segunda-
+    # feira); Monthly = "agosto de 2026", o mesmo texto que a UI usa.
+    fmt_key: Callable[[date], str]
 
 
 def _weekly_next_planning_exists(key: date) -> bool:
@@ -102,15 +111,49 @@ def _monthly_next_planning_exists(key: date) -> bool:
     ).exists()
 
 
+# Tabela local (sem locale do sistema): o `detail` de um gate mensal cita o mês
+# como a UI o nomeia ("agosto de 2026"), nunca "01/08/2026".
+_PT_MONTHS = (
+    "janeiro",
+    "fevereiro",
+    "março",
+    "abril",
+    "maio",
+    "junho",
+    "julho",
+    "agosto",
+    "setembro",
+    "outubro",
+    "novembro",
+    "dezembro",
+)
+
+
+def format_day_pt(key: date) -> str:
+    """dd/mm/aaaa — a segunda-feira de um Weekly nos `detail` dos gates."""
+    return key.strftime("%d/%m/%Y")
+
+
+def format_month_pt(key: date) -> str:
+    """"agosto de 2026" — o Monthly nos `detail` dos gates (texto da UI)."""
+    return f"{_PT_MONTHS[key.month - 1]} de {key.year}"
+
+
 _WEEKLY = _CycleSpec(
     model=WeeklyLog,
     key_field="week_start",
     next_planning_exists=_weekly_next_planning_exists,
+    label="a semana",
+    next_planning_hint="de uma próxima semana",
+    fmt_key=format_day_pt,
 )
 _MONTHLY = _CycleSpec(
     model=MonthlyLog,
     key_field="month_first",
     next_planning_exists=_monthly_next_planning_exists,
+    label="o mês",
+    next_planning_hint="do mês seguinte",
+    fmt_key=format_month_pt,
 )
 
 
@@ -124,11 +167,27 @@ def _status_of(log) -> str | None:
     return log.status if log is not None else None
 
 
+def _status_label(status) -> str:
+    """``None`` legível nos `detail`: fora do regime operacional."""
+    return status if status is not None else "fora do regime"
+
+
 def _check_allowed(log, to_status) -> None:
-    """Impõe a matriz. Log inexistente conta como ``status = None``."""
+    """Impõe a matriz. Log inexistente conta como ``status = None``.
+
+    O motivo (Story 14.11) é o de readiness OBSOLETA: o cliente pediu uma
+    transição legal para o estado que ele viu, mas o ciclo já mudou (outra aba,
+    outro dispositivo) — daí "recarregue a página", não um erro de regra.
+    """
     from_status = _status_of(log)
     if to_status not in ALLOWED[from_status]:
-        raise InvalidTransition(from_status, to_status)
+        raise InvalidTransition(
+            from_status,
+            to_status,
+            reason=f"O ciclo mudou de estado ({_status_label(from_status)} → esperado "
+            f"{_status_label(to_status)}) — recarregue a página.",
+            code="state_changed",
+        )
 
 
 def _previous_operational(spec: _CycleSpec, *, key: date):
@@ -207,7 +266,13 @@ def _complete_planning(spec: _CycleSpec, *, key: date):
     # Exige `planning`: concluir planejamento de um log fora do regime (`NULL`)
     # seria o primeiro passo do bypass do ritual descrito na matriz acima.
     if _status_of(log) != CycleStatus.PLANNING:
-        raise InvalidTransition(_status_of(log), PLANNING_COMPLETED)
+        raise InvalidTransition(
+            _status_of(log),
+            PLANNING_COMPLETED,
+            reason="Só é possível concluir o planejamento de um ciclo em planejamento — "
+            "recarregue a página.",
+            code="not_planning",
+        )
     if log.planning_completed_at is not None:
         # Idempotente E não re-timbra: o marco original é dado de auditoria
         # (mesmo espírito do "create-if-missing" de `seed_medication_day`).
@@ -228,15 +293,37 @@ def _start(spec: _CycleSpec, *, user, key: date):
 
     # Os três gates de Iniciar são CUMULATIVOS (M06/M07). Avisos de Daily,
     # Monthly e recorrentes NÃO bloqueiam — só o ciclo anterior do mesmo tipo.
+    #
+    # Um `raise` POR GATE (Story 14.11): `reason` vira o `detail` do 409 e `code`
+    # é a MESMA chave que `*_cycle_readiness` expõe em `start.gates` — o cliente
+    # mostra o motivo sem adivinhar qual dos três recusou. Antes os três emitiam
+    # `detail` byte-a-byte idêntico e a UI engolia o erro.
     if today_for(user) < key:
         # "Uma semana futura nunca entra Em andamento antes de sua segunda-feira,
         # mesmo quando seu planejamento for concluído antecipadamente."
-        raise InvalidTransition(CycleStatus.PLANNING, CycleStatus.ACTIVE)
+        raise InvalidTransition(
+            CycleStatus.PLANNING,
+            CycleStatus.ACTIVE,
+            reason=f"{spec.label.capitalize()} ainda não começou — iniciar só a partir de "
+            f"{spec.fmt_key(key)}.",
+            code="date_reached",
+        )
     if log.planning_completed_at is None:
-        raise InvalidTransition(CycleStatus.PLANNING, CycleStatus.ACTIVE)
+        raise InvalidTransition(
+            CycleStatus.PLANNING,
+            CycleStatus.ACTIVE,
+            reason=f"Conclua o planejamento d{spec.label} ({spec.fmt_key(key)}) antes de iniciar.",
+            code="planning_completed",
+        )
     previous = _previous_operational(spec, key=key)
     if previous is not None and previous.status != CycleStatus.FINALIZED:
-        raise InvalidTransition(CycleStatus.PLANNING, CycleStatus.ACTIVE)
+        previous_key = spec.fmt_key(getattr(previous, spec.key_field))
+        raise InvalidTransition(
+            CycleStatus.PLANNING,
+            CycleStatus.ACTIVE,
+            reason=f"Finalize {spec.label} anterior ({previous_key}) antes de iniciar.",
+            code="previous_finalized",
+        )
 
     log.status = CycleStatus.ACTIVE
     _save_status(log, fields=["status"])
@@ -249,10 +336,23 @@ def _finalize(spec: _CycleSpec, *, key: date):
         return log  # idempotente
     _check_allowed(log, CycleStatus.FINALIZED)
 
+    # Um `raise` por gate, `code` = chave de `finalize.gates` (Story 14.11).
     if _has_undisposed(log):
-        raise InvalidTransition(CycleStatus.ACTIVE, CycleStatus.FINALIZED)
+        raise InvalidTransition(
+            CycleStatus.ACTIVE,
+            CycleStatus.FINALIZED,
+            reason=f"Ainda há tarefas pendentes ou iniciadas n{spec.label} ({spec.fmt_key(key)}), "
+            "subtarefas incluídas — decida todas antes de finalizar.",
+            code="no_open_tasks",
+        )
     if not spec.next_planning_exists(key):
-        raise InvalidTransition(CycleStatus.ACTIVE, CycleStatus.FINALIZED)
+        raise InvalidTransition(
+            CycleStatus.ACTIVE,
+            CycleStatus.FINALIZED,
+            reason=f"Abra o planejamento {spec.next_planning_hint} antes de finalizar "
+            f"{spec.label} ({spec.fmt_key(key)}).",
+            code="next_planning_exists",
+        )
 
     log.status = CycleStatus.FINALIZED
     _save_status(log, fields=["status"])
@@ -395,7 +495,13 @@ def open_weekly_planning_target(*, user, week_start) -> WeeklyLog:
     operacional" de todos os ciclos seguintes.
     """
     if week_start < week_start_of(today_for(user)):
-        raise InvalidTransition(None, CycleStatus.PLANNING)
+        raise InvalidTransition(
+            None,
+            CycleStatus.PLANNING,
+            reason=f"A semana de {format_day_pt(week_start)} já passou — escolha a semana "
+            "corrente ou uma futura.",
+            code="past_target",
+        )
     return _open_planning_target(_WEEKLY, key=week_start)
 
 
@@ -433,7 +539,13 @@ def cancel_weekly_planning_target(*, user, week_start) -> WeeklyLog:
         return log  # idempotente: já está fora do regime, nada a escrever
     _check_allowed(log, None)
     if log.tasks.exists():
-        raise InvalidTransition(CycleStatus.PLANNING, None)
+        raise InvalidTransition(
+            CycleStatus.PLANNING,
+            None,
+            reason="A semana já tem tarefas — só um alvo de planejamento vazio pode ser "
+            "cancelado.",
+            code="target_not_empty",
+        )
     log.status = None
     log.planning_completed_at = None
     log.save(update_fields=["status", "planning_completed_at"])

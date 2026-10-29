@@ -79,7 +79,10 @@ export const shellRoutes: readonly ShellRouteEntry[] = [
   { routeId: 'archive/weekly/:weekStart', shell: 'new', surfaceMigrated: true },
   { routeId: 'archive/monthly/:monthFirst', shell: 'new', surfaceMigrated: true },
   { routeId: 'settings', shell: 'new', surfaceMigrated: false },
-  { routeId: 'settings/habits', shell: 'new', surfaceMigrated: false },
+  // Story 16.1 (M12): `settings/habits` redireciona para a aba Configuração da
+  // superfície de Hábitos, que É do sistema novo — o seam legado não pode
+  // aparecer na transição.
+  { routeId: 'settings/habits', shell: 'new', surfaceMigrated: true },
   { routeId: 'settings/health-metrics', shell: 'new', surfaceMigrated: false },
   { routeId: 'settings/medications', shell: 'new', surfaceMigrated: false },
 
@@ -87,8 +90,11 @@ export const shellRoutes: readonly ShellRouteEntry[] = [
   // Enumeradas explicitamente (e não geradas por map) porque o rollback por
   // superfície exige que cada entrada seja editável em uma linha. O teste
   // `shellRouting.test.ts` garante que nenhuma rota do registro fique de fora.
-  { routeId: 'habits', shell: 'new', surfaceMigrated: false },
-  { routeId: 'habits/history', shell: 'new', surfaceMigrated: false },
+  // Story 16.1 (M12): SÉTIMA superfície interna migrada (Hábitos/Registro) — o
+  // `LegacySeamNotice` desaparece nas três rotas de Hábitos (`habits`,
+  // `habits/history` e `settings/habits`, as duas últimas já como redirect).
+  { routeId: 'habits', shell: 'new', surfaceMigrated: true },
+  { routeId: 'habits/history', shell: 'new', surfaceMigrated: true },
   { routeId: 'health/metrics', shell: 'new', surfaceMigrated: false },
   { routeId: 'health/metrics/history', shell: 'new', surfaceMigrated: false },
   { routeId: 'health/medications', shell: 'new', surfaceMigrated: false },

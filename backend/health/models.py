@@ -56,6 +56,15 @@ class HealthFieldDefinition(TenantModel):
     enum_options = models.JSONField(default=list, blank=True)
     active = models.BooleanField(default=True)
     display_order = models.PositiveIntegerField(default=0)
+    # Nome do glifo Phosphor em kebab-case (ex. "heartbeat") — nunca componente
+    # React nem SVG (Story 16.2). Config mutável, como `name`/`display_order`.
+    # Saúde recebe SÓ o campo nesta story: a apresentação está atrás do gate UX
+    # 16.3, e ter a coluna já criada evita uma segunda migration na Story 16.4.
+    # Mesmas duas notas do par em `habits.Habit`: sem `CheckConstraint` (catálogo
+    # aberto, validação no serializer via `core.phosphor` → 400) e `noqa: DJ001`
+    # porque NULL é o único vazio e é semântico ("sem pictograma") — o serializer
+    # rejeita `""`, então os dois vazios que a regra teme não coexistem.
+    icon_key = models.CharField(max_length=64, null=True, blank=True)  # noqa: DJ001
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

@@ -6,7 +6,7 @@ import type { MedicationDayEntry } from './types'
 
 export type BlockStatus = 'confirmed' | 'partial' | 'pending'
 
-export type EntryStatus = 'confirmed' | 'missed' | 'pending'
+export type EntryStatus = 'confirmed' | 'missed' | 'pending' | 'unrecorded'
 
 /**
  * Estado temporal DERIVADO de UMA linha (Story 8.3, AC3). A distinção "dose perdida"
@@ -16,12 +16,18 @@ export type EntryStatus = 'confirmed' | 'missed' | 'pending'
  * Helper puro (molde `deriveBlockStatus`) — mantém a derivação no front sem tocar o
  * read-model compartilhado. `deriveBlockStatus` permanece inalterado (alimenta o
  * updater otimista); o relabel "pending→Doses perdidas" do bloco é só de exibição.
+ *
+ * `untracked` (Story 16.2c): num dia marcado "não registrado", a linha `scheduled`
+ * sem confirmação é `unrecorded` — ausência de REGISTRO, não sinal clínico de dose
+ * perdida — em qualquer dia (passado ou hoje). Confirmadas/avulsas seguem `confirmed`.
  */
 export function deriveEntryStatus(
   entry: MedicationDayEntry,
   isPast: boolean,
+  untracked = false,
 ): EntryStatus {
   if (entry.source === 'ad_hoc' || entry.confirmedAt != null) return 'confirmed'
+  if (untracked) return 'unrecorded'
   return isPast ? 'missed' : 'pending'
 }
 

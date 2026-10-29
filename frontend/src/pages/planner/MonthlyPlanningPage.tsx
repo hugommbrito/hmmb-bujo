@@ -5,29 +5,34 @@
 //
 //   ▶ O alvo do ritual vem SEMPRE de `readiness.planning.monthFirst` — nunca
 //     da URL.
-//   ▶ `destination: 'month'` vs `'future'` (Dev Notes → `TaskMigrateSerializer`):
-//     o servidor resolve `'month'` sempre para `today_for(user)` — então só é
-//     seguro usar `'month'` quando o mês-alvo COINCIDE com o mês corrente.
-//     Caso contrário, `'future'` com `monthFirst` explícito. `destinationForTarget()`
-//     decide isso uma única vez. ACHADO DE REVISÃO: em meses pulados (AC3), o
-//     alvo pode ficar ANTES do mês corrente — `'future'` rejeita `monthFirst`
-//     não estritamente posterior (`views.py:748-755`), e não há combinação que
-//     migre para o próprio alvo já passado. `monthWouldBeRejectedAsFuture()`
-//     guarda os 3 fluxos afetados (migrar dia nomeado, confirmar destino,
-//     adiar ao Future Log) com um erro local explicativo em vez de um 400 sem
-//     contexto. Sem fix de contrato nesta story (ver Dev Notes → Questão 5).
+//   ▶ Destino de migração (Story 14.11): UM adaptador, `migrateFieldsForMonth`
+//     (`monthlyRitualSources.ts`) — `> corrente` ⇒ `'future'`; senão `'month'`
+//     + `monthFirst` explícito, que o servidor aceita na faixa `[alvo de
+//     planejamento, corrente]`. Substitui o guard local
+//     `monthWouldBeRejectedAsFuture()` da 14.6 (Questão aberta nº 5): em meses
+//     pulados o alvo pode ser ANTERIOR ao mês corrente, e agora migrar/adiar
+//     alcança o próprio alvo em vez de parar num erro local.
+//   ▶ Regularização atrasada (Story 14.11): quando o alvo é anterior ao mês
+//     corrente, a faixa `MonthlyCatchUpBanner` nomeia o alvo, conta os meses
+//     que faltam e marca o "Próximo passo" (verdade do servidor, via readiness).
+//   ▶ Todo POST de ciclo rejeitado (409 de gate, `{detail, code}`) aparece em
+//     `role="alert"` com o `detail` do servidor (`domainErrorMessage`); fora do
+//     409 vale um fallback genérico. Nenhum botão fica mudo.
 //   ▶ "Alocar" (recorrentes) abre o MESMO seletor de destino mensal — unifica
 //     as duas opções do mockup ("Escolher dia"/"Alocar sem dia") num único
 //     fluxo, já que `place/` aceita `scheduledDate` opcional.
 //   ▶ "Adiar ao Future Log" é um clique único e determinístico: sempre o mês
 //     imediatamente seguinte ao alvo (mesmo padrão de "sempre o próximo",
-//     usado em toda a story para evitar escolha/retargeting).
+//     usado em toda a story para evitar escolha/retargeting). Durante a
+//     regularização atrasada esse mês pode ser ≤ corrente — o adaptador então
+//     manda `'month'` + `monthFirst`, e o servidor aceita.
 //   ▶ Sem `cancel_planning_target` — AC3: não existe "Cancelar planejamento"
 //     em nenhuma tela do Monthly.
 // ─────────────────────────────────────────────────────────────────────────────
 import { useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { Box, useMediaQuery } from '@mui/material'
+import { Box, Button, useMediaQuery } from '@mui/material'
+import { Link as RouterLink } from 'react-router-dom'
 
 import {
   invalidateRitualQueries,
@@ -43,37 +48,42 @@ import {
   useRitualDecisionMutation,
   useRitualTaskTransitionMutation,
 } from '../../features/bujo'
+import type { MonthlyCycleAction } from '../../features/bujo'
+import { domainErrorMessage } from '../../api/errors'
 import { PlannerSkeleton } from '../../features/bujo/components/PlannerSkeleton'
 import { MonthlySourceRail, type MonthlySourceRailEntry } from '../../features/bujo/components/monthly/MonthlySourceRail'
 import { MonthlyDecisionList } from '../../features/bujo/components/monthly/MonthlyDecisionList'
+import { MonthlyCatchUpBanner } from '../../features/bujo/components/monthly/MonthlyCatchUpBanner'
 import {
   DestinationDialog,
   type DestinationSelection,
 } from '../../features/bujo/components/DestinationDialog'
 import { MonthlyContextRail, type MonthlyProgressSourceInput } from '../../features/bujo/components/monthly/MonthlyContextRail'
 import {
+  migrateFieldsForMonth,
   normalizeAlreadyPlacedBuckets,
   normalizeSource,
   MONTHLY_RITUAL_SOURCE_ORDER,
   type MonthlyRitualSourceId,
   type NormalizedRitualItem,
 } from '../../features/bujo/components/monthly/monthlyRitualSources'
-import { capitalize, MONTH_NAMES_PT } from '../../features/bujo/monthNames'
+import { formatMonthTitle, MONTH_NAMES_PT } from '../../features/bujo/monthNames'
 import { mediaQueries, typography } from '../../shared/design/tokens'
+import { addMonthsIso } from '../../shared/date'
 import { useOnlineStatus } from '../../shared/hooks/useOnlineStatus'
 
-function addMonthsIso(monthFirstIso: string, delta: number): string {
-  const [year, month] = monthFirstIso.split('-').map(Number)
-  const date = new Date(year, month - 1 + delta, 1)
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-01`
-}
-
-function formatMonthTitle(monthFirst: string): string {
-  const [year, month] = monthFirst.split('-').map(Number)
-  return `${capitalize(MONTH_NAMES_PT[month - 1])} de ${year}`
-}
-
 type DestinationTarget = { kind: 'template' | 'task'; id: string }
+
+const CYCLE_ERROR_FALLBACK: Record<MonthlyCycleAction['action'], string> = {
+  open_planning_target: 'Não foi possível abrir o planejamento. Tente novamente.',
+  complete_planning: 'Não foi possível concluir o planejamento. Tente novamente.',
+  start: 'Não foi possível iniciar o mês. Tente novamente.',
+  finalize: 'Não foi possível finalizar o mês anterior. Tente novamente.',
+}
+
+const CURRENT_MONTH_UNKNOWN_ERROR =
+  'O mês corrente ainda não carregou — tente novamente em instantes.'
+const CURRENT_MONTH_FAILED_ERROR = 'Não foi possível carregar o mês corrente — tente novamente.'
 
 export function MonthlyPlanningPage() {
   const queryClient = useQueryClient()
@@ -84,6 +94,9 @@ export function MonthlyPlanningPage() {
   const [itemErrors, setItemErrors] = useState<Record<string, string>>({})
   const retryActionsRef = useRef<Record<string, () => void>>({})
   const [destinationError, setDestinationError] = useState<string | null>(null)
+  // Story 14.11: motivo do último POST de ciclo rejeitado (409 → `detail` do
+  // servidor; outro erro → fallback). Limpo no próximo sucesso.
+  const [cycleError, setCycleError] = useState<string | null>(null)
   // Story 14.6 AC6 — dia escolhido no rail de densidade. O rail fica `aria-hidden`
   // atrás do backdrop enquanto o seletor está aberto, então o clique acontece
   // ANTES: guardamos o dia e o seletor abre com ele JÁ ARMADO, a um clique da
@@ -102,9 +115,10 @@ export function MonthlyPlanningPage() {
   const targetMonthFirst = readiness.data?.planning?.monthFirst
   const hasTarget = Boolean(targetMonthFirst)
   // Autoridade de "mês corrente" (Convenção #8): a query sem parâmetro resolve
-  // via `today_for(user)` no servidor — usada só para decidir `'month'` vs
-  // `'future'` no destino (Dev Notes → edge case real do `TaskMigrateSerializer`).
+  // via `today_for(user)` no servidor — usada pelo adaptador de destino
+  // (`'month'` vs `'future'`) e pela faixa de regularização atrasada.
   const currentMonthLog = useMonthlyLogQuery()
+  const currentMonthFirst = currentMonthLog.data?.monthFirst ?? null
 
   const recurring = useMonthlyRecurringSourceQuery(targetMonthFirst ?? '', { enabled: hasTarget })
   const futureLog = useMonthlyFutureLogSourceQuery(targetMonthFirst ?? '', { enabled: hasTarget })
@@ -131,19 +145,37 @@ export function MonthlyPlanningPage() {
     )
   }
 
-  if (!targetMonthFirst) {
+  // Story 14.11 — matriz "readiness falha": sem prontidão não há alvo nem
+  // gates; em vez de "nenhum mês em planejamento" (falso), motivo + retry.
+  if (readiness.isError) {
     return (
       <Box component="main" aria-label="Planejar o mês" sx={{ p: 'var(--ds-space-4)' }}>
-        Nenhum mês em planejamento no momento.
+        <Box role="alert" sx={{ ...typography.body, color: 'var(--ds-danger)' }}>
+          Não foi possível carregar a prontidão do ciclo mensal.{' '}
+          <Button size="small" onClick={() => readiness.refetch()} sx={{ color: 'var(--ds-primary)' }}>
+            Tentar novamente
+          </Button>
+        </Box>
+      </Box>
+    )
+  }
+
+  if (!targetMonthFirst) {
+    return (
+      <Box component="main" aria-label="Planejar o mês" sx={{ p: 'var(--ds-space-4)', display: 'flex', flexDirection: 'column', gap: 'var(--ds-space-2)', alignItems: 'flex-start' }}>
+        <Box sx={{ ...typography.body, color: 'var(--ds-ink)' }}>Nenhum mês em planejamento no momento.</Box>
+        {/* Story 14.11: o alvo só nasce pelo board ("Planejar <mês>") — link, não beco. */}
+        <Button component={RouterLink} to="/planner/month" sx={{ color: 'var(--ds-primary)' }}>
+          Ir para Este Mês
+        </Button>
       </Box>
     )
   }
 
   const mainLabel = `Planejar ${formatMonthTitle(targetMonthFirst)}`
-
-  function destinationForTarget(): 'month' | 'future' {
-    return targetMonthFirst === currentMonthLog.data?.monthFirst ? 'month' : 'future'
-  }
+  // Story 14.11: regularização atrasada — o alvo em `planning` é anterior ao
+  // mês corrente (meses pulados materializados um a um, M07).
+  const targetMonthIsPast = Boolean(currentMonthFirst && targetMonthFirst < currentMonthFirst)
 
   const itemsBySource: Record<MonthlyRitualSourceId, NormalizedRitualItem[]> = {
     recurring: normalizeSource('recurring', recurring.data),
@@ -191,27 +223,6 @@ export function MonthlyPlanningPage() {
     setItemErrors((prev) => ({ ...prev, [itemId]: message }))
   }
 
-  // Achado de revisão (AC3/AC5): `next_monthly_target` (backend) não tem piso —
-  // em meses pulados, o alvo do ritual pode ficar ESTRITAMENTE ANTES do mês
-  // corrente real (prova: `test_ciclo_monthly_dois_meses_pulados_exigem_materializacao_sequencial`,
-  // `test_services.py`). `TaskMigrateView` só aceita `destination: 'future'` com
-  // `monthFirst` ESTRITAMENTE POSTERIOR ao corrente (`views.py:748-755`) e
-  // `destination: 'month'` sempre resolve para o corrente no servidor, nunca
-  // para o alvo — não existe combinação que migre/adie uma tarefa PARA o
-  // próprio mês-alvo quando ele já é passado em relação a hoje. `Alocar`
-  // (`place/`) não tem essa restrição (`RecurringTaskTemplatePlaceSerializer`),
-  // por isso só os 3 fluxos que passam por `migrateTask` precisam do guard
-  // abaixo. Sem solução no escopo desta story (mudaria o contrato do endpoint
-  // de migração, pré-existente) — registrado como Questão aberta nº5 no Dev
-  // Notes para decisão de produto futura.
-  function monthWouldBeRejectedAsFuture(monthFirst: string): boolean {
-    const currentMonthFirst = currentMonthLog.data?.monthFirst
-    return Boolean(currentMonthFirst && monthFirst <= currentMonthFirst)
-  }
-
-  const STALE_TARGET_MIGRATE_ERROR =
-    'Este mês já é anterior ao mês atual — migrar ou adiar para um dia específico dele ainda não é suportado. Use Concluir/Cancelar, ou regularize o ciclo para prosseguir.'
-
   function clearItemError(itemId: string) {
     setItemErrors((prev) => {
       if (!(itemId in prev)) return prev
@@ -223,6 +234,17 @@ export function MonthlyPlanningPage() {
 
   function handleRetryItem(itemId: string) {
     retryActionsRef.current[itemId]?.()
+  }
+
+  // O adaptador de destino precisa do mês corrente. Query ainda em voo ⇒ "ainda
+  // não carregou" (o retry do item basta); query FALHADA ⇒ ninguém a refaria
+  // sozinho, então refaz aqui e diz que falhou (Story 14.11, review).
+  function currentMonthUnavailableMessage(): string {
+    if (currentMonthLog.isError) {
+      currentMonthLog.refetch()
+      return CURRENT_MONTH_FAILED_ERROR
+    }
+    return CURRENT_MONTH_UNKNOWN_ERROR
   }
 
   function handleAllocate(templateId: string) {
@@ -245,11 +267,11 @@ export function MonthlyPlanningPage() {
             onError: () => setItemError(id),
           },
         )
-      } else if (monthWouldBeRejectedAsFuture(deferredMonthFirst)) {
-        setItemError(id, STALE_TARGET_MIGRATE_ERROR)
+      } else if (!currentMonthFirst) {
+        setItemError(id, currentMonthUnavailableMessage())
       } else {
         migrateTask.mutate(
-          { taskId: id, destination: 'future', monthFirst: deferredMonthFirst },
+          { taskId: id, ...migrateFieldsForMonth(deferredMonthFirst, null, currentMonthFirst) },
           {
             onSuccess: () => {
               recordMutation(activeSourceId, id, 'deferred')
@@ -313,15 +335,14 @@ export function MonthlyPlanningPage() {
   }
 
   function handleMigrateNamedDay(taskId: string, destinationDate: string) {
-    const destination = destinationForTarget()
-    if (destination === 'future' && monthWouldBeRejectedAsFuture(targetMonthFirst)) {
-      setItemError(taskId, STALE_TARGET_MIGRATE_ERROR)
-      return
-    }
     const run = () => {
       clearItemError(taskId)
+      if (!currentMonthFirst) {
+        setItemError(taskId, currentMonthUnavailableMessage())
+        return
+      }
       migrateTask.mutate(
-        { taskId, destination, scheduledDate: destinationDate, ...(destination === 'future' ? { monthFirst: targetMonthFirst } : {}) },
+        { taskId, ...migrateFieldsForMonth(targetMonthFirst, destinationDate, currentMonthFirst) },
         {
           onSuccess: () => {
             recordMutation(activeSourceId, taskId, 'migrated')
@@ -364,13 +385,12 @@ export function MonthlyPlanningPage() {
       )
       return
     }
-    const destination = destinationForTarget()
-    if (destination === 'future' && monthWouldBeRejectedAsFuture(targetMonthFirst)) {
-      setDestinationError(STALE_TARGET_MIGRATE_ERROR)
+    if (!currentMonthFirst) {
+      setDestinationError(currentMonthUnavailableMessage())
       return
     }
     migrateTask.mutate(
-      { taskId: id, destination, scheduledDate, ...(destination === 'future' ? { monthFirst: targetMonthFirst } : {}) },
+      { taskId: id, ...migrateFieldsForMonth(targetMonthFirst, scheduledDate, currentMonthFirst) },
       {
         onSuccess: () => {
           recordMutation(activeSourceId, id, 'migrated')
@@ -387,23 +407,35 @@ export function MonthlyPlanningPage() {
   )
   const activeAllItems = view === 'all' ? [...activeItems, ...(mutatedThisVisit[activeSourceId] ?? [])] : activeItems
 
-  function refetchReadinessAfter() {
-    readiness.refetch()
+  // Story 14.11: TODA ação de ciclo passa por aqui — o 409 de gate vira texto
+  // (`detail` do servidor) em `role="alert"`, qualquer outro erro vira o
+  // fallback da ação; sucesso limpa o aviso. `onSettled` re-lê a prontidão.
+  function runCycleAction(variables: MonthlyCycleAction) {
+    cycleAction.mutate(variables, {
+      onSuccess: () => setCycleError(null),
+      onError: (error) => setCycleError(domainErrorMessage(error, CYCLE_ERROR_FALLBACK[variables.action])),
+      onSettled: () => {
+        readiness.refetch()
+      },
+    })
   }
 
   function handleCompletePlanning() {
-    cycleAction.mutate({ action: 'complete_planning', monthFirst: targetMonthFirst }, { onSettled: refetchReadinessAfter })
+    runCycleAction({ action: 'complete_planning', monthFirst: targetMonthFirst })
   }
 
   function handleStart() {
-    cycleAction.mutate({ action: 'start', monthFirst: targetMonthFirst }, { onSettled: refetchReadinessAfter })
+    runCycleAction({ action: 'start', monthFirst: targetMonthFirst })
   }
 
   const previousPeriodStart = previousMonthly.data?.previousPeriodStart ?? null
+  // Alvo de Finalizar = o `active` da readiness (verdade do servidor); a chave
+  // da fonte bloqueante é o fallback quando a readiness ainda não o trouxe.
+  const finalizeTarget = readiness.data?.finalize?.target ?? previousPeriodStart
 
   function handleFinalizePrevious() {
-    if (!previousPeriodStart) return
-    cycleAction.mutate({ action: 'finalize', monthFirst: previousPeriodStart }, { onSettled: refetchReadinessAfter })
+    if (!finalizeTarget) return
+    runCycleAction({ action: 'finalize', monthFirst: finalizeTarget })
   }
 
   function handleNavigateToSource(sourceId: MonthlyRitualSourceId) {
@@ -455,6 +487,8 @@ export function MonthlyPlanningPage() {
     pendingNow: itemsBySource[sourceId].filter((item) => item.decision === null).length,
   }))
 
+  const readinessData = readiness.data ?? { active: null, planning: null, start: null, finalize: null }
+
   return (
     <Box
       component="main"
@@ -477,11 +511,35 @@ export function MonthlyPlanningPage() {
         </Box>
       )}
 
+      {targetMonthIsPast && currentMonthFirst && (
+        <Box sx={{ gridColumn: '1 / -1' }}>
+          <MonthlyCatchUpBanner
+            targetMonthFirst={targetMonthFirst}
+            currentMonthFirst={currentMonthFirst}
+            readiness={readinessData}
+            // A readiness já nomeia o anterior (`finalize.target`) antes de a
+            // fonte bloqueante responder — a faixa nasce completa, sem o passo
+            // "Finalizar" piscando depois.
+            previousPeriodStart={finalizeTarget}
+          />
+        </Box>
+      )}
+
+      {cycleError && (
+        <Box
+          role="alert"
+          sx={{ gridColumn: '1 / -1', ...typography.body, color: 'var(--ds-danger)', backgroundColor: 'var(--ds-danger-soft)', padding: 'var(--ds-space-2)', borderRadius: 'var(--ds-radius-sm)' }}
+        >
+          {cycleError}
+        </Box>
+      )}
+
       <MonthlySourceRail entries={railEntries} activeSourceId={activeSourceId} onSelect={setActiveSourceId} />
 
       <MonthlyDecisionList
         sourceId={activeSourceId}
         targetMonthFirst={targetMonthFirst}
+        targetMonthIsPast={targetMonthIsPast}
         items={activeAllItems}
         alreadyPlacedItems={activeSourceId === 'recurring' ? alreadyPlacedBuckets.alreadyPlaced : undefined}
         alreadyPlacedInYearItems={activeSourceId === 'recurring' ? alreadyPlacedBuckets.alreadyPlacedInYear : undefined}
@@ -505,10 +563,11 @@ export function MonthlyPlanningPage() {
       <Box component="aside" aria-label="Contexto do planejamento" sx={{ position: 'sticky', top: 0 }}>
         <MonthlyContextRail
           targetMonthFirst={targetMonthFirst}
-          readiness={readiness.data ?? { active: null, planning: null, start: null, finalize: null }}
+          readiness={readinessData}
           progressSources={progressSources}
           previousMonthlyPendingCount={progressSources.find((s) => s.sourceId === 'previous-monthly')?.pendingNow ?? 0}
-          previousPeriodStart={previousPeriodStart}
+          previousMonthlyLoading={previousMonthly.isPending}
+          previousMonthlyError={previousMonthly.isError}
           onNavigateToSource={handleNavigateToSource}
           onSelectDay={handleSelectDayFromDensity}
           onCompletePlanning={handleCompletePlanning}

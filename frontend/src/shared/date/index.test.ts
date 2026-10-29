@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   addDaysIso,
   addMonthsIso,
+  monthsBetweenIso,
   formatDayLabel,
   isoOf,
   isoWeekNumber,
@@ -227,3 +228,24 @@ describe('addMonthsIso (Story 14.7)', () => {
     expect(addMonthsIso('2026-02-01', 0)).toBe('2026-02-01')
   })
 })
+
+describe('monthsBetweenIso (Story 14.11)', () => {
+  it('conta meses com sinal, cruzando ano', () => {
+    expect(monthsBetweenIso('2026-09-01', '2026-10-01')).toBe(1)
+    expect(monthsBetweenIso('2026-08-01', '2026-10-01')).toBe(2)
+    expect(monthsBetweenIso('2026-11-01', '2027-02-01')).toBe(3)
+    expect(monthsBetweenIso('2026-10-01', '2026-10-01')).toBe(0)
+    expect(monthsBetweenIso('2026-10-01', '2026-07-01')).toBe(-3)
+  })
+
+  it('é o inverso de addMonthsIso', () => {
+    for (const [a, b] of [
+      ['2026-01-01', '2026-12-01'],
+      ['2025-12-01', '2026-01-01'],
+      ['2026-10-01', '2024-03-01'],
+    ]) {
+      expect(addMonthsIso(a, monthsBetweenIso(a, b))).toBe(b)
+    }
+  })
+})
+

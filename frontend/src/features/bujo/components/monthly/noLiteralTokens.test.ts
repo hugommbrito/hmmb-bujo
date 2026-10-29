@@ -11,6 +11,11 @@ import monthlySourceRailSource from './MonthlySourceRail.tsx?raw'
 import monthlyDecisionListSource from './MonthlyDecisionList.tsx?raw'
 import monthlyDestinationPickerSource from './MonthlyDestinationPicker.tsx?raw'
 import monthlyContextRailSource from './MonthlyContextRail.tsx?raw'
+// Story 14.11: faixa de regularização atrasada + `GateRow` compartilhada
+// (extraída dos dois rails; vive em `components/`, como `TaskRowBase`).
+import monthlyCatchUpBannerSource from './MonthlyCatchUpBanner.tsx?raw'
+import monthlyCatchUpSource from './monthlyCatchUp.ts?raw'
+import gateRowSource from '../GateRow.tsx?raw'
 
 const FORBIDDEN_LITERALS = ['268px', '188px', '310px', '0.58', '36px', '48px', '3px']
 
@@ -22,6 +27,9 @@ const SOURCES: Record<string, string> = {
   'MonthlyDecisionList.tsx': monthlyDecisionListSource,
   'MonthlyDestinationPicker.tsx': monthlyDestinationPickerSource,
   'MonthlyContextRail.tsx': monthlyContextRailSource,
+  'MonthlyCatchUpBanner.tsx': monthlyCatchUpBannerSource,
+  'monthlyCatchUp.ts': monthlyCatchUpSource,
+  'GateRow.tsx': gateRowSource,
 }
 
 describe('AC8 — zero literal estrutural/cromático nos componentes novos do Monthly', () => {
