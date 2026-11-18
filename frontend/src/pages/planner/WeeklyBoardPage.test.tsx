@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { AxiosError, AxiosHeaders, type AxiosResponse } from 'axios'
 import { axe } from 'jest-axe'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ThemeProvider } from '@mui/material'
@@ -752,5 +753,95 @@ describe('WeeklyBoardPage — reordenação relativa dentro do dia (Task 7, lacu
         position: 'after',
       }),
     )
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// "Planejar semana de dd/mm": alvo com piso na semana corrente + 409 explicado.
+// Regressão: semana `active` de 26/10 com "hoje" em 18/11 mandava 02/11 e o
+// servidor recusava com `past_target` — sem nenhum aviso na tela.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('WeeklyBoardPage — abrir planejamento (alvo com piso na semana corrente)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+    mockFaixa('wide')
+  })
+
+  function readinessWithActive(weekStart: string) {
+    return {
+      active: { weekStart, status: 'active', planningCompletedAt: null },
+      planning: null,
+      start: null,
+      finalize: null,
+    }
+  }
+
+  function conflict409(detail: string, code: string): AxiosError {
+    const response = {
+      status: 409,
+      data: { detail, code },
+      statusText: 'Conflict',
+      headers: {},
+      config: { headers: new AxiosHeaders() },
+    } as AxiosResponse
+    return new AxiosError('Request failed with status code 409', 'ERR_BAD_REQUEST', response.config, undefined, response)
+  }
+
+  it('active em dia (semana corrente): o alvo é a semana seguinte', async () => {
+    mockRoutes({ log: weeklyLog(), readiness: readinessWithActive('2026-07-20') })
+    mockPost.mockResolvedValueOnce({ data: { weekStart: '2026-07-27', status: 'planning', planningCompletedAt: null } })
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Planejar semana de 27/07' }))
+    await waitFor(() =>
+      expect(mockPost).toHaveBeenCalledWith('/api/bujo/logs/weekly/cycle/', {
+        action: 'open_planning_target',
+        weekStart: '2026-07-27',
+      }),
+    )
+  })
+
+  it('active ATRASADA (semanas sem uso): o alvo sobe para a semana corrente, nunca uma semana passada', async () => {
+    mockRoutes({ log: weeklyLog(), readiness: readinessWithActive('2026-06-29') })
+    mockPost.mockResolvedValueOnce({ data: { weekStart: '2026-07-20', status: 'planning', planningCompletedAt: null } })
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Planejar semana de 20/07' }))
+    await waitFor(() =>
+      expect(mockPost).toHaveBeenCalledWith('/api/bujo/logs/weekly/cycle/', {
+        action: 'open_planning_target',
+        weekStart: '2026-07-20',
+      }),
+    )
+    expect(mockPost).not.toHaveBeenCalledWith(
+      '/api/bujo/logs/weekly/cycle/',
+      expect.objectContaining({ weekStart: '2026-07-06' }),
+    )
+  })
+
+  it('sem ciclo operacional: o alvo é a semana corrente', async () => {
+    mockRoutes({ log: weeklyLog() })
+    renderPage()
+    expect(await screen.findByRole('button', { name: 'Planejar semana de 20/07' })).toBeInTheDocument()
+  })
+
+  it('409 em "Planejar": o detail do servidor aparece em role="alert" e o botão reabilita', async () => {
+    mockRoutes({ log: weeklyLog() })
+    mockPost.mockRejectedValueOnce(
+      conflict409('A semana de 20/07/2026 já passou — escolha a semana corrente ou uma futura.', 'past_target'),
+    )
+    renderPage()
+    const button = await screen.findByRole('button', { name: 'Planejar semana de 20/07' })
+    fireEvent.click(button)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'A semana de 20/07/2026 já passou — escolha a semana corrente ou uma futura.',
+    )
+    await waitFor(() => expect(button).not.toBeDisabled())
+
+    // Fora do 409: fallback genérico.
+    mockPost.mockRejectedValueOnce(new Error('Network Error'))
+    fireEvent.click(button)
+    expect(await screen.findByText('Não foi possível abrir o planejamento. Tente novamente.')).toBeInTheDocument()
   })
 })

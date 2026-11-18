@@ -16,11 +16,18 @@
 //     gravam em logs DIFERENTES — não dá para alcançar um pelo outro. As regras
 //     de domínio de `POST /migrate/` viram indisponibilidade EXPLÍCITA com
 //     motivo, nunca um 400 cru (ver `WEEK_UNDATED_UNAVAILABLE_REASON`).
+//   ▶ "Planejar semana de dd/mm": o alvo previsto é a semana seguinte à
+//     `active` com PISO na semana corrente (`nextWeeklyTarget`) — espelha a
+//     janela de `open_weekly_planning_target` (corrente ou futura; M06 admite
+//     pular semanas sem registro). Um 409 vira `role="alert"` com o `detail` do
+//     servidor, como no board mensal (Story 14.11).
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Box, Button, useMediaQuery } from '@mui/material'
 import { Link as RouterLink } from 'react-router-dom'
+
+import { domainErrorMessage } from '../../api/errors'
 
 import {
   DestinationDialog,
@@ -72,6 +79,24 @@ const WEEK_UNDATED_UNAVAILABLE_REASON = 'esta não é a semana corrente — esco
 const FUTURE_MONTH_REJECTED_REASON = 'Este Mês atende o mês corrente — escolha essa opção.'
 
 const MOVE_ERROR = 'Não foi possível mover a tarefa. Tente novamente.'
+
+const OPEN_PLANNING_ERROR = 'Não foi possível abrir o planejamento. Tente novamente.'
+
+/** Alvo previsto de "Planejar": a semana seguinte à `active`, com piso na
+ * semana corrente. O servidor recusa alvo no passado (`past_target`), então
+ * sem o piso quem passou uma semana ou mais sem fechar o ciclo pedia uma semana
+ * já vencida e o botão não fazia nada. Sem `active`, é a semana corrente. Datas
+ * ISO `YYYY-MM-DD` comparam corretamente como string. */
+function nextWeeklyTarget(activeWeekStart: string | undefined, currentWeekStart: string | null): string | null {
+  if (!activeWeekStart) return currentWeekStart
+  const following = addDaysIso(activeWeekStart, 7)
+  return currentWeekStart && currentWeekStart > following ? currentWeekStart : following
+}
+
+/** "2026-11-16" → "16/11" — o mesmo formato do `detail` dos gates semanais. */
+function formatShortDate(iso: string): string {
+  return `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
+}
 
 /** Ids das ofertas — o chamador é quem traduz `meta.offerId` no `destination`
  * do POST (o diálogo é agnóstico de domínio). */
@@ -156,6 +181,9 @@ export function WeeklyBoardPage() {
   const [selectedIndex, setSelectedIndex] = useState(0) // 0-6 dias, 7 = pool (compact)
   const [movingTaskId, setMovingTaskId] = useState<string | null>(null)
   const [moveError, setMoveError] = useState<string | null>(null)
+  // Motivo do último `open_planning_target` rejeitado (409 → `detail` do
+  // servidor; outro erro → fallback). Limpo no próximo sucesso.
+  const [cycleError, setCycleError] = useState<string | null>(null)
 
   const weeklyLog = useWeeklyLogQuery(explicitWeekStart)
   // Dedup automático com a query acima quando `explicitWeekStart` é `undefined`
@@ -372,12 +400,17 @@ export function WeeklyBoardPage() {
     )
   }
 
+  const nextTarget = nextWeeklyTarget(readiness.data?.active?.weekStart, currentWeekStart)
+
   function handleOpenPlanning() {
-    const target = readiness.data?.active
-      ? addDaysIso(readiness.data.active.weekStart, 7)
-      : currentWeekLog.data?.weekStart
-    if (!target) return
-    cycleAction.mutate({ action: 'open_planning_target', weekStart: target })
+    if (!nextTarget) return
+    cycleAction.mutate(
+      { action: 'open_planning_target', weekStart: nextTarget },
+      {
+        onSuccess: () => setCycleError(null),
+        onError: (error) => setCycleError(domainErrorMessage(error, OPEN_PLANNING_ERROR)),
+      },
+    )
   }
 
   const planningTarget = readiness.data?.planning?.weekStart
@@ -469,12 +502,19 @@ export function WeeklyBoardPage() {
           ) : (
             <Button
               onClick={handleOpenPlanning}
+              disabled={cycleAction.isPending}
               sx={{ backgroundColor: 'var(--ds-primary)', color: 'var(--ds-on-primary)' }}
             >
-              Planejar próxima semana
+              {nextTarget ? `Planejar semana de ${formatShortDate(nextTarget)}` : 'Planejar próxima semana'}
             </Button>
           )}
         </Box>
+
+        {cycleError && !planningTarget && (
+          <Box role="alert" sx={{ ...typography.body, color: 'var(--ds-danger)', backgroundColor: 'var(--ds-danger-soft)', padding: 'var(--ds-space-2)', borderRadius: 'var(--ds-radius-sm)' }}>
+            {cycleError}
+          </Box>
+        )}
 
         <Box role="group" aria-label="Filtros por status" sx={{ display: 'flex', gap: 'var(--ds-space-1)', flexWrap: 'wrap', alignItems: 'center' }}>
           <FilterButton active={statusFilter === null} onClick={() => setStatusFilter(null)} label={`${totals.all} registros`} />
