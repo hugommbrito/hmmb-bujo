@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { AxiosError, AxiosHeaders, type AxiosResponse } from 'axios'
 import { axe } from 'jest-axe'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ThemeProvider } from '@mui/material'
@@ -372,7 +373,104 @@ describe('MonthlyBoardPage — "Mover tarefa" (DW-27)', () => {
     )
   })
 
-  it('mês em foco ANTERIOR ao corrente: a oferta aparece INDISPONÍVEL com o motivo e nenhum POST acontece', async () => {
+  // Story 14.11: entre o alvo de planejamento (passado) e o corrente, o mês em
+  // foco É alcançável — `'month'` + `monthFirst` explícito.
+  it('mês em foco = alvo de planejamento ANTERIOR ao corrente: oferta disponível, manda destination=month + monthFirst', async () => {
+    mockRoutes({
+      log: LOG_WITH_TASK,
+      logByMonthFirst: { '2026-07-01': PREVIOUS_MONTH_LOG },
+      readiness: {
+        active: { monthFirst: '2026-06-01', status: 'active', planningCompletedAt: null },
+        planning: { monthFirst: '2026-07-01', status: 'planning', planningCompletedAt: null },
+        start: { allowed: false, target: '2026-07-01', gates: { dateReached: true, planningCompleted: false, previousFinalized: false } },
+        finalize: { allowed: false, target: '2026-06-01', gates: { noOpenTasks: false, nextPlanningExists: true } },
+      },
+    })
+    mockPost.mockResolvedValueOnce({ data: task({ id: 't-1' }) })
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Tarefa a mover')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mês anterior' }))
+    await waitFor(() => expect(screen.getByText('Julho de 2026')).toBeInTheDocument())
+    await openMoveDialog()
+
+    const julho = within(destinationGroup()).getByRole('radio', { name: 'Julho de 2026' })
+    expect(julho).not.toHaveAttribute('aria-disabled', 'true')
+    fireEvent.click(julho)
+    fireEvent.click(screen.getByRole('button', { name: '15 de julho, sem tarefas' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Mover para 15 jul.' }))
+
+    await waitFor(() =>
+      expect(mockPost).toHaveBeenCalledWith('/api/bujo/tasks/t-1/migrate/', {
+        destination: 'month',
+        monthFirst: '2026-07-01',
+        scheduledDate: '2026-07-15',
+      }),
+    )
+  })
+
+  // Review 14.11: o piso PREVISTO (`active + 1`, sem `planning`) também libera o
+  // mês em foco — espelha `min(next_monthly_target, corrente)` do servidor.
+  it('mês em foco = alvo PREVISTO (active maio, sem planning, corrente agosto): oferta disponível, manda month + monthFirst', async () => {
+    const JUNE_LOG = monthlyLog({ monthFirst: '2026-06-01', tasks: [POOL_TASK] })
+    mockRoutes({
+      log: LOG_WITH_TASK,
+      logByMonthFirst: { '2026-07-01': PREVIOUS_MONTH_LOG, '2026-06-01': JUNE_LOG },
+      readiness: {
+        active: { monthFirst: '2026-05-01', status: 'active', planningCompletedAt: null },
+        planning: null,
+        start: null,
+        finalize: null,
+      },
+    })
+    mockPost.mockResolvedValueOnce({ data: task({ id: 't-1' }) })
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Tarefa a mover')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mês anterior' }))
+    await waitFor(() => expect(screen.getByText('Julho de 2026')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Mês anterior' }))
+    await waitFor(() => expect(screen.getByText('Junho de 2026')).toBeInTheDocument())
+    await openMoveDialog()
+
+    const junho = within(destinationGroup()).getByRole('radio', { name: 'Junho de 2026' })
+    expect(junho).not.toHaveAttribute('aria-disabled', 'true')
+    fireEvent.click(junho)
+    fireEvent.click(screen.getByRole('button', { name: '15 de junho, sem tarefas' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Mover para 15 jun.' }))
+
+    await waitFor(() =>
+      expect(mockPost).toHaveBeenCalledWith('/api/bujo/tasks/t-1/migrate/', {
+        destination: 'month',
+        monthFirst: '2026-06-01',
+        scheduledDate: '2026-06-15',
+      }),
+    )
+  })
+
+  // Review 14.11: sem prontidão o piso é desconhecido — a oferta NÃO é marcada
+  // indisponível; o servidor valida.
+  it('readiness em erro + mês em foco anterior: a oferta fica disponível (o servidor decide)', async () => {
+    mockGet.mockImplementation((url: string, config?: { params?: { month_first?: string } }) => {
+      if (url === '/api/bujo/logs/monthly/cycle/') return Promise.reject(new Error('500'))
+      if (url === '/api/bujo/logs/monthly/') {
+        return Promise.resolve({ data: config?.params?.month_first === '2026-07-01' ? PREVIOUS_MONTH_LOG : LOG_WITH_TASK })
+      }
+      if (url === '/api/bujo/logs/today/') return Promise.resolve({ data: TODAY_LOG })
+      return Promise.reject(new Error(`unhandled GET ${url}`))
+    })
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Tarefa a mover')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mês anterior' }))
+    await waitFor(() => expect(screen.getByText('Julho de 2026')).toBeInTheDocument())
+    await openMoveDialog()
+
+    const julho = within(destinationGroup()).getByRole('radio', { name: 'Julho de 2026' })
+    expect(julho).not.toHaveAttribute('aria-disabled', 'true')
+  })
+
+  it('mês em foco ANTERIOR ao alvo de planejamento: a oferta aparece INDISPONÍVEL com o motivo e nenhum POST acontece', async () => {
     mockRoutes({ log: LOG_WITH_TASK, logByMonthFirst: { '2026-07-01': PREVIOUS_MONTH_LOG } })
     renderPage()
     await waitFor(() => expect(screen.getByText('Tarefa a mover')).toBeInTheDocument())
@@ -381,8 +479,10 @@ describe('MonthlyBoardPage — "Mover tarefa" (DW-27)', () => {
     await waitFor(() => expect(screen.getByText('Julho de 2026')).toBeInTheDocument())
     await openMoveDialog()
 
+    // Sem alvo de planejamento, o piso de escrita é o próprio mês corrente
+    // (Story 14.11): julho fica abaixo dele.
     const past = within(destinationGroup()).getByRole('radio', {
-      name: 'Julho de 2026 — indisponível: este mês já é anterior ao mês atual',
+      name: 'Julho de 2026 — indisponível: este mês é anterior ao alvo de planejamento mensal',
     })
     expect(past).toHaveAttribute('aria-disabled', 'true')
 
@@ -529,3 +629,138 @@ describe('MonthlyBoardPage — criação contextual (AC1)', () => {
     )
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Story 14.11 — botões nomeados, linha de regularização, 409 explicado, retry.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('MonthlyBoardPage — regularização atrasada (Story 14.11)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+    mockFaixa('wide')
+  })
+
+  function conflict409(detail: string, code: string): AxiosError {
+    const response = {
+      status: 409,
+      data: { detail, code },
+      statusText: 'Conflict',
+      headers: {},
+      config: { headers: new AxiosHeaders() },
+    } as AxiosResponse
+    return new AxiosError('Request failed with status code 409', 'ERR_BAD_REQUEST', response.config, undefined, response)
+  }
+
+  it('com alvo em planejamento: "Continuar planejamento de <mês>"', async () => {
+    mockRoutes({
+      log: monthlyLog(),
+      readiness: {
+        active: { monthFirst: '2026-08-01', status: 'active', planningCompletedAt: null },
+        planning: { monthFirst: '2026-09-01', status: 'planning', planningCompletedAt: null },
+        start: null,
+        finalize: null,
+      },
+    })
+    renderPage()
+    expect(await screen.findByRole('link', { name: 'Continuar planejamento de Setembro de 2026' })).toHaveAttribute(
+      'href',
+      '/planner/month/planning',
+    )
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('sem planning, com active: o alvo previsto é o mês seguinte ao active', async () => {
+    mockRoutes({
+      log: monthlyLog(),
+      readiness: {
+        active: { monthFirst: '2026-08-01', status: 'active', planningCompletedAt: null },
+        planning: null,
+        start: null,
+        finalize: null,
+      },
+    })
+    renderPage()
+    expect(await screen.findByRole('button', { name: 'Planejar Setembro de 2026' })).toBeInTheDocument()
+  })
+
+  it('sem ciclo operacional: o alvo previsto é o mês corrente', async () => {
+    mockRoutes({ log: monthlyLog() })
+    renderPage()
+    expect(await screen.findByRole('button', { name: 'Planejar Agosto de 2026' })).toBeInTheDocument()
+  })
+
+  it('alvo anterior ao corrente: linha de regularização atrasada com a contagem de meses', async () => {
+    mockRoutes({
+      log: monthlyLog(),
+      readiness: {
+        active: { monthFirst: '2026-05-01', status: 'active', planningCompletedAt: null },
+        planning: { monthFirst: '2026-06-01', status: 'planning', planningCompletedAt: null },
+        start: null,
+        finalize: null,
+      },
+    })
+    renderPage()
+    await screen.findByRole('link', { name: 'Continuar planejamento de Junho de 2026' })
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Regularização atrasada: Junho de 2026 é anterior ao mês corrente — faltam 2 meses para alcançar Agosto de 2026, um por vez.',
+    )
+  })
+
+  it('alvo PREVISTO anterior ao corrente (active em maio, sem planning): linha + botão "Planejar Junho de 2026"', async () => {
+    mockRoutes({
+      log: monthlyLog(),
+      readiness: {
+        active: { monthFirst: '2026-05-01', status: 'active', planningCompletedAt: null },
+        planning: null,
+        start: null,
+        finalize: null,
+      },
+    })
+    renderPage()
+    expect(await screen.findByRole('button', { name: 'Planejar Junho de 2026' })).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('faltam 2 meses')
+  })
+
+  it('409 em "Planejar": o detail do servidor aparece em role="alert" e o botão reabilita', async () => {
+    mockRoutes({ log: monthlyLog() })
+    mockPost.mockRejectedValueOnce(
+      conflict409('Já existe outro ciclo disputando este alvo. Recarregue e tente de novo.', 'x'),
+    )
+    renderPage()
+    const button = await screen.findByRole('button', { name: 'Planejar Agosto de 2026' })
+    fireEvent.click(button)
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('Já existe outro ciclo disputando este alvo. Recarregue e tente de novo.')
+    await waitFor(() => expect(button).not.toBeDisabled())
+    expect(mockPost).toHaveBeenCalledWith('/api/bujo/logs/monthly/cycle/', { action: 'open_planning_target' })
+
+    // Fora do 409: fallback genérico.
+    mockPost.mockRejectedValueOnce(new Error('Network Error'))
+    fireEvent.click(button)
+    expect(await screen.findByText('Não foi possível abrir o planejamento. Tente novamente.')).toBeInTheDocument()
+  })
+
+  it('readiness em erro: alerta com Tentar novamente que refaz a leitura', async () => {
+    let fail = true
+    mockGet.mockImplementation((url: string) => {
+      if (url === '/api/bujo/logs/monthly/cycle/') {
+        return fail ? Promise.reject(new Error('500')) : Promise.resolve({ data: READINESS })
+      }
+      if (url === '/api/bujo/logs/monthly/') return Promise.resolve({ data: monthlyLog() })
+      if (url === '/api/bujo/logs/today/') return Promise.resolve({ data: TODAY_LOG })
+      return Promise.reject(new Error(`unhandled GET ${url}`))
+    })
+    renderPage()
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('Não foi possível carregar o ciclo mensal.')
+    // Sem prontidão, o botão fica genérico (não inventa alvo).
+    expect(screen.getByRole('button', { name: 'Planejar próximo mês' })).toBeInTheDocument()
+
+    fail = false
+    fireEvent.click(within(alert).getByRole('button', { name: 'Tentar novamente' }))
+    expect(await screen.findByRole('button', { name: 'Planejar Agosto de 2026' })).toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
+  })
+})
+

@@ -23,6 +23,9 @@ const BOOLEAN_ENTRY: HabitDayEntry = {
   habitId: 'h-ler',
   name: 'Ler',
   emoticon: '📖',
+  // Story 16.2: `iconKey` entrou no contrato de leitura; esta superfície legado
+  // não o renderiza (o emoji sai da UI só na superfície nova).
+  iconKey: null,
   type: 'boolean',
   group: 'g-saude',
   unit: '',
@@ -39,6 +42,9 @@ const NUMERIC_ENTRY: HabitDayEntry = {
   habitId: 'h-passos',
   name: 'Passos',
   emoticon: '🏃',
+  // Story 16.2: `iconKey` entrou no contrato de leitura; esta superfície legado
+  // não o renderiza (o emoji sai da UI só na superfície nova).
+  iconKey: null,
   type: 'numeric',
   group: 'g-saude',
   unit: 'passos',
@@ -55,6 +61,7 @@ function makeDay(entries: HabitDayEntry[], overrides: Partial<HabitDay> = {}): H
     date: '2026-07-17',
     totalCompletion: 27,
     dayType: 'weekday',
+    untracked: false,
     groups: [{ id: 'g-saude', name: 'Saúde', completion: 40 }],
     entries,
     ...overrides,
@@ -212,5 +219,28 @@ describe('HabitTracker', () => {
     expect(
       screen.queryByRole('button', { name: /Tratar este dia como dia útil/ }),
     ).not.toBeInTheDocument()
+  })
+})
+
+// Story 16.2c (review 1, P7a): a superfície LEGADA não ganha o toggle, mas
+// guarda o % nulo de um dia marcado — "Não registrado" no lugar do número.
+describe('HabitTracker — dia não registrado (16.2c)', () => {
+  beforeEach(() => vi.resetAllMocks())
+
+  it('untracked com % nulos renderiza "Não registrado" no dia e no grupo', async () => {
+    setDay(
+      makeDay([BOOLEAN_ENTRY], {
+        untracked: true,
+        totalCompletion: null,
+        groups: [{ id: 'g-saude', name: 'Saúde', completion: null }],
+      }),
+    )
+    renderTracker()
+
+    expect(await screen.findByText('Completude do dia: Não registrado')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /Saúde · Não registrado/ })).toBeInTheDocument()
+    expect(screen.queryByText(/%/)).not.toBeInTheDocument()
+    // A linha continua editável.
+    expect(screen.getByRole('checkbox', { name: /Ler/ })).toBeEnabled()
   })
 })

@@ -8,6 +8,7 @@ acontece no renderer JSON). As **chaves internas** da ``dose`` (``label``/``amou
 
 import json
 import uuid
+from datetime import timedelta
 
 from core.calendar import today_for
 from core.tenant import tenant_context
@@ -613,3 +614,101 @@ def test_day_entry_dose_edit_survives_camelcase_roundtrip(auth_client, user):
         "amount": 0.5,
         "unit": "comp",
     }
+
+
+# --- Story 16.2c: dia "não registrado" por collection --------------------------
+_UNTRACKED = "/api/medications/untracked-days/"
+
+
+def test_get_days_untracked_is_false_by_default(auth_client, user):
+    _seed_med_with_schedule(auth_client, user)
+    response = auth_client.get(_DAYS)
+    assert response.status_code == 200
+    assert response.data["untracked"] is False
+
+
+def test_post_untracked_day_marks_and_blocks_stay_unchanged(auth_client, user):
+    """Dia marcado: untracked=True; blocos/linhas/status inalterados (nada apagado)."""
+    from accounts.models import UntrackedDay
+
+    _seed_med_with_schedule(auth_client, user)
+    # Semeia HOJE (agenda vigente só existe a partir de hoje) e marca hoje — permitido.
+    today = today_for(user)
+    before = auth_client.get(_DAYS).data
+
+    response = auth_client.post(
+        _UNTRACKED, {"date": today.isoformat(), "untracked": True}, format="json"
+    )
+    assert response.status_code == 200, response.data
+    assert response.data == {"date": today.isoformat(), "untracked": True}
+
+    after = auth_client.get(_DAYS).data
+    assert after["untracked"] is True
+    assert after["blocks"] == before["blocks"]
+    assert after["blocks"][0]["status"] == "pending"
+    assert after["ad_hoc"] == before["ad_hoc"]
+    with tenant_context(user):
+        assert UntrackedDay.objects.filter(date=today, collection="medications").count() == 1
+        assert MedicationDayEntry.objects.filter(date=today).count() == 1
+
+    # Idempotente; desmarcar devolve false.
+    assert auth_client.post(
+        _UNTRACKED, {"date": today.isoformat(), "untracked": True}, format="json"
+    ).status_code == 200
+    unmark = auth_client.post(
+        _UNTRACKED, {"date": today.isoformat(), "untracked": False}, format="json"
+    )
+    assert unmark.data["untracked"] is False
+    assert auth_client.get(_DAYS).data["untracked"] is False
+
+
+def test_post_untracked_day_future_returns_400_on_date(auth_client, user):
+    tomorrow = today_for(user) + timedelta(days=1)
+    response = auth_client.post(
+        _UNTRACKED, {"date": tomorrow.isoformat(), "untracked": True}, format="json"
+    )
+    assert response.status_code == 400
+    assert "date" in response.data["fields"]
+
+
+def test_patch_untracked_day_past_date(auth_client, user):
+    yesterday = today_for(user) - timedelta(days=1)
+    response = auth_client.patch(
+        _UNTRACKED, {"date": yesterday.isoformat(), "untracked": True}, format="json"
+    )
+    assert response.status_code == 200
+    assert auth_client.get(f"{_DAYS}?date={yesterday.isoformat()}").data["untracked"] is True
+
+
+def test_habits_flag_and_other_tenant_flag_do_not_mark_medications(auth_client, user, other_user):
+    from accounts.models import UntrackedCollection, UntrackedDay
+
+    day = today_for(user) - timedelta(days=1)
+    # Flag de HÁBITOS no mesmo dia (via o endpoint de hábitos).
+    auth_client.post(
+        "/api/habits/untracked-days/", {"date": day.isoformat(), "untracked": True},
+        format="json",
+    )
+    with tenant_context(other_user):
+        UntrackedDay.objects.create(date=day, collection=UntrackedCollection.MEDICATIONS)
+
+    response = auth_client.get(f"{_DAYS}?date={day.isoformat()}")
+    assert response.data["untracked"] is False
+    # E o dia de Hábitos continua marcado (as flags são independentes).
+    assert auth_client.get(f"/api/habits/days/?date={day.isoformat()}").data["untracked"] is True
+
+
+def test_day_mutations_carry_untracked_in_payload(auth_client, user):
+    """As mutações que devolvem o read-model do dia trazem a flag também."""
+    _seed_med_with_schedule(auth_client, user)
+    today = today_for(user)
+    auth_client.post(_UNTRACKED, {"date": today.isoformat(), "untracked": True}, format="json")
+    day = auth_client.get(_DAYS).data
+    entry_id = day["blocks"][0]["entries"][0]["id"]
+
+    response = auth_client.patch(
+        f"{_DAYS}{entry_id}/", {"confirmed": True}, format="json"
+    )
+    assert response.status_code == 200, response.data
+    assert response.data["untracked"] is True
+    assert response.data["blocks"][0]["status"] == "confirmed"

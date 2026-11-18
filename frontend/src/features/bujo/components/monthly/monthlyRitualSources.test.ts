@@ -9,6 +9,7 @@ import {
   sameDayOfMonthClamped,
   MONTHLY_RITUAL_SOURCE_ACTIONS,
   MONTHLY_RITUAL_SOURCE_ORDER,
+  migrateFieldsForMonth,
   type NormalizedRitualItem,
 } from './monthlyRitualSources'
 import type { MonthlyRecurringSource, RitualTaskItem, RitualTemplateItem, Task } from '../../types'
@@ -88,7 +89,7 @@ describe('normalizeTaskItems / normalizeTemplateItems', () => {
       { task: task({ id: 't-1', scheduledDate: null }), decision: 'keep_undated' },
     ]
     expect(normalizeTaskItems(items)).toEqual([
-      { id: 't-1', kind: 'task', title: 'Tarefa', decision: 'keep_undated', scheduledDate: null },
+      { id: 't-1', kind: 'task', title: 'Tarefa', decision: 'keep_undated', scheduledDate: null, parentTitle: null },
     ])
   })
 
@@ -177,7 +178,7 @@ describe('normalizeSource — despacho por sourceId', () => {
       items: [{ task: task({ id: 't-x' }), decision: null }],
     }
     expect(normalizeSource('future-log', data)).toEqual([
-      { id: 't-x', kind: 'task', title: 'Tarefa', decision: null, scheduledDate: undefined },
+      { id: 't-x', kind: 'task', title: 'Tarefa', decision: null, scheduledDate: undefined, parentTitle: null },
     ])
   })
 
@@ -223,3 +224,30 @@ describe('sameDayOfMonthClamped — clamp do dia de origem no mês-alvo (AC5/AD-
     expect(sameDayOfMonthClamped(null, '2026-08-01')).toBe('2026-08-01')
   })
 })
+
+describe('migrateFieldsForMonth (Story 14.11) — adaptador único de destino mensal', () => {
+  it('alvo ANTERIOR ao corrente (regularização atrasada): month + monthFirst explícito', () => {
+    expect(migrateFieldsForMonth('2026-09-01', '2026-09-12', '2026-10-01')).toEqual({
+      destination: 'month',
+      monthFirst: '2026-09-01',
+      scheduledDate: '2026-09-12',
+    })
+  })
+
+  it('alvo IGUAL ao corrente: month + monthFirst (nunca mais o legado sem monthFirst)', () => {
+    expect(migrateFieldsForMonth('2026-10-01', null, '2026-10-01')).toEqual({
+      destination: 'month',
+      monthFirst: '2026-10-01',
+      scheduledDate: null,
+    })
+  })
+
+  it('alvo POSTERIOR ao corrente: future + monthFirst (Future Log inalterado)', () => {
+    expect(migrateFieldsForMonth('2026-11-01', null, '2026-10-01')).toEqual({
+      destination: 'future',
+      monthFirst: '2026-11-01',
+      scheduledDate: null,
+    })
+  })
+})
+

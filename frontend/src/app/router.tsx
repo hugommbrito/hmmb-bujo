@@ -22,7 +22,6 @@ import { ArchiveWeeklyDetailPage } from '../pages/archive/ArchiveWeeklyDetailPag
 import { ArchiveMonthlyDetailPage } from '../pages/archive/ArchiveMonthlyDetailPage'
 import { BrainDumpInboxPage } from '../pages/braindump/BrainDumpInboxPage'
 import { SettingsPage } from '../pages/settings/SettingsPage'
-import { HabitsSettingsPage } from '../pages/settings/HabitsSettingsPage'
 import { HealthMetricsSettingsPage } from '../pages/settings/HealthMetricsSettingsPage'
 import { MedicationsSettingsPage } from '../pages/settings/MedicationsSettingsPage'
 
@@ -202,8 +201,12 @@ export const routeDefinitions: RouteObject[] = [
         handle: { title: 'Configurações' },
       },
       {
+        // Story 16.1 (M12): a configuração de Hábitos passa a ser a ABA
+        // "Configuração" da superfície única. A rota antiga vira redirect —
+        // preserva o deep link e o link de `SettingsPage`. `HabitsSettingsPage`
+        // permanece no repositório, apenas DESMONTADA (remoção é o Épico 18).
         path: 'settings/habits',
-        element: <HabitsSettingsPage />,
+        element: <Navigate to="/habits?tab=configuracao" replace />,
         handle: { title: 'Configurações — Hábitos' },
       },
       {

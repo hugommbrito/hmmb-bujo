@@ -192,7 +192,19 @@ export function WeeklyDecisionList({
                       borderBottom: '1px solid var(--ds-border)',
                     }}
                   >
-                    <Box sx={{ ...typography.body, color: 'var(--ds-ink)' }}>{item.title}</Box>
+                    {/* O título é filho DIRETO da linha focável (tabIndex=-1) — a
+                        continuidade de foco e seus testes dependem disso. Story
+                        14.11: a fonte bloqueante lista a SUBTAREFA aberta sob pai
+                        disposto como cabeça; o pai vai ANINHADO no título, para ela
+                        não parecer uma raiz solta (mesmo padrão da `MonthlyDecisionList`). */}
+                    <Box sx={{ ...typography.body, color: 'var(--ds-ink)' }}>
+                      {item.title}
+                      {item.parentTitle && (
+                        <Box component="span" sx={{ display: 'block', mt: 'var(--ds-space-1)', ...typography.meta, color: 'var(--ds-ink-muted)' }}>
+                          Subtarefa de {item.parentTitle}
+                        </Box>
+                      )}
+                    </Box>
                     <Box sx={{ display: 'flex', gap: 'var(--ds-space-1)', flexWrap: 'wrap' }}>
                       {actions.includes('keep') && (
                         <Button size="small" aria-disabled={offline} onClick={() => actOn(item.id, index, () => onKeep(item.id))} sx={DECISION_BUTTON_SX}>

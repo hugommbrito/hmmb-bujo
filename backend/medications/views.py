@@ -17,7 +17,11 @@ from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from accounts.models import UntrackedCollection
+from accounts.serializers import SetUntrackedDaySerializer, UntrackedDayResultSerializer
+from accounts.services import is_untracked, set_untracked_day
 from core.calendar import today_for
+from core.exceptions import DomainError
 from medications.models import Doctor, Medication, MedicationDayEntry, TimeBlock
 from medications.serializers import (
     AdHocCreateSerializer,
@@ -371,3 +375,38 @@ class MedicationAdHocView(APIView):
             ) from None
         payload = get_medication_day(user=request.user, date=day)
         return Response(MedicationDaySerializer(payload).data)
+
+
+class MedicationUntrackedDayView(APIView):
+    """Marca/desmarca um dia de Medicamentos como "não registrado" (Story 16.2c).
+
+    Paridade de contrato com ``habits.HabitUntrackedDayView``: escreve
+    ``accounts.UntrackedDay`` com ``collection=medications`` fixada aqui (nunca no
+    payload); idempotente; data futura → ``DomainError`` convertido em
+    ``ValidationError({"date": ...})`` → 400 ``{detail, fields: {date: [...]}}``
+    (erro de CAMPO, não o 409 default do handler). Nenhuma linha de
+    ``medication_day_entries`` é tocada. ``POST``/``PATCH`` são equivalentes.
+    """
+
+    @extend_schema(request=SetUntrackedDaySerializer, responses=UntrackedDayResultSerializer)
+    def post(self, request):
+        body = SetUntrackedDaySerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        day = body.validated_data["date"]
+        try:
+            set_untracked_day(
+                user=request.user, date=day,
+                collection=UntrackedCollection.MEDICATIONS,
+                untracked=body.validated_data["untracked"],
+            )
+        except DomainError as exc:
+            raise serializers.ValidationError({"date": str(exc)}) from None
+        result = {
+            "date": day,
+            "untracked": is_untracked(
+                user=request.user, date=day, collection=UntrackedCollection.MEDICATIONS
+            ),
+        }
+        return Response(UntrackedDayResultSerializer(result).data)
+
+    patch = post

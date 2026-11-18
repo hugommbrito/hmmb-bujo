@@ -27,6 +27,8 @@ from bujo.services.cycles import (
     complete_weekly_planning,
     finalize_monthly,
     finalize_weekly,
+    format_month_pt,
+    has_undisposed,
     monthly_cycle_readiness,
     next_monthly_target,
     open_monthly_planning_target,
@@ -64,6 +66,7 @@ from bujo.services.rituals import (
     list_previous_monthly_pendings,
     list_previous_weekly_pendings,
     list_weekly_recurring_candidates,
+    undisposed_heads,
     upsert_ritual_decision,
 )
 from bujo.services.state_machine import ALLOWED, transition_task
@@ -2191,8 +2194,9 @@ def test_ciclo_concluir_planejamento_exige_status_planning(user, status_fora_do_
         key = _current_week(user)
         log = WeeklyLogFactory(user=user, week_start=key, status=status_fora_do_regime)
 
-        with pytest.raises(InvalidTransition):
+        with pytest.raises(InvalidTransition) as excinfo:
             complete_weekly_planning(user=user, week_start=key)
+        assert excinfo.value.code == "not_planning"  # Story 14.11
 
         log.refresh_from_db()
         assert log.planning_completed_at is None
@@ -2201,8 +2205,9 @@ def test_ciclo_concluir_planejamento_exige_status_planning(user, status_fora_do_
 @pytest.mark.django_db
 def test_ciclo_concluir_planejamento_de_log_inexistente_levanta(user):
     with tenant_context(user):
-        with pytest.raises(InvalidTransition):
+        with pytest.raises(InvalidTransition) as excinfo:
             complete_weekly_planning(user=user, week_start=_current_week(user))
+        assert excinfo.value.code == "not_planning"  # Story 14.11
 
 
 # --- Cancelar alvo de planejamento (só Weekly, só vazio) -----------------------
@@ -2237,8 +2242,9 @@ def test_ciclo_weekly_cancelar_bloqueado_com_qualquer_tarefa(user):
         log = WeeklyLogFactory(user=user, week_start=key, status=CycleStatus.PLANNING)
         TaskFactory(user=user, weekly_log=log, status=Task.Status.COMPLETED)
 
-        with pytest.raises(InvalidTransition):
+        with pytest.raises(InvalidTransition) as excinfo:
             cancel_weekly_planning_target(user=user, week_start=key)
+        assert excinfo.value.code == "target_not_empty"  # Story 14.11
 
         log.refresh_from_db()
         assert log.status == CycleStatus.PLANNING
@@ -2247,8 +2253,9 @@ def test_ciclo_weekly_cancelar_bloqueado_com_qualquer_tarefa(user):
 @pytest.mark.django_db
 def test_ciclo_weekly_cancelar_log_inexistente_levanta(user):
     with tenant_context(user):
-        with pytest.raises(InvalidTransition):
+        with pytest.raises(InvalidTransition) as excinfo:
             cancel_weekly_planning_target(user=user, week_start=_current_week(user))
+        assert excinfo.value.code == "state_changed"  # Story 14.11
 
 
 # --- Alvo de planejamento: janela aceita ---------------------------------------
@@ -2259,8 +2266,9 @@ def test_ciclo_weekly_alvo_no_passado_e_rejeitado(user):
     with tenant_context(user):
         passado = _current_week(user) - timedelta(days=7)
 
-        with pytest.raises(InvalidTransition):
+        with pytest.raises(InvalidTransition) as excinfo:
             open_weekly_planning_target(user=user, week_start=passado)
+        assert excinfo.value.code == "past_target"  # Story 14.11
 
         assert not WeeklyLog.objects.filter(week_start=passado).exists()
 
@@ -2578,8 +2586,10 @@ def test_readiness_start_e_o_gate_real_nao_podem_divergir(
         assert readiness["start"]["allowed"] is False
 
         if esperado_post == 409:
-            with pytest.raises(InvalidTransition):
+            with pytest.raises(InvalidTransition) as excinfo:
                 start_weekly(user=user, week_start=semana)
+            # Story 14.11: o `code` do 409 É a chave do gate que a readiness expõe.
+            assert excinfo.value.code == gate_alterado
 
 
 @pytest.mark.django_db
@@ -2614,8 +2624,9 @@ def test_readiness_finalize_e_o_gate_real_nao_podem_divergir(user, gate_alterado
         assert readiness["finalize"]["gates"][gate_alterado] is False
         assert readiness["finalize"]["allowed"] is False
 
-        with pytest.raises(InvalidTransition):
+        with pytest.raises(InvalidTransition) as excinfo:
             finalize_weekly(user=user, week_start=semana)
+        assert excinfo.value.code == gate_alterado  # Story 14.11
 
 
 @pytest.mark.django_db
@@ -2785,8 +2796,12 @@ def test_readiness_monthly_start_e_o_gate_real_nao_podem_divergir(
         assert readiness["start"]["allowed"] is False
 
         if esperado_post == 409:
-            with pytest.raises(InvalidTransition):
+            with pytest.raises(InvalidTransition) as excinfo:
                 start_monthly(user=user, month_first=mes)
+            # Story 14.11: o `code` do 409 É a chave do gate que a readiness expõe,
+            # e o `detail` é legível (pt-BR), não "Invalid transition: ...".
+            assert excinfo.value.code == gate_alterado
+            assert "Invalid transition" not in str(excinfo.value)
 
 
 @pytest.mark.django_db
@@ -2816,8 +2831,10 @@ def test_readiness_monthly_finalize_e_o_gate_real_nao_podem_divergir(user, gate_
         assert readiness["finalize"]["gates"][gate_alterado] is False
         assert readiness["finalize"]["allowed"] is False
 
-        with pytest.raises(InvalidTransition):
+        with pytest.raises(InvalidTransition) as excinfo:
             finalize_monthly(user=user, month_first=mes)
+        assert excinfo.value.code == gate_alterado  # Story 14.11
+        assert "Invalid transition" not in str(excinfo.value)
 
 
 @pytest.mark.django_db
@@ -4428,10 +4445,11 @@ def test_fila_unificada_count_por_secao_total_e_secoes_vazias_presentes(user):
 
 @pytest.mark.django_db
 def test_fila_unificada_descarta_dispostos_e_subtarefas(user):
-    """AC1: só raízes `pending`/`started`. `completed`/`cancelled`/`migrated`/
-    `postponed` antigos ficam fora, e a SUBTAREFA aberta de uma raiz aberta não
-    é item de topo — este é o assert que falha se alguém esquecer
-    `parent_task__isnull=True` (as subtarefas vão ANINHADAS no serializer)."""
+    """AC1: só CABEÇAS abertas (`undisposed_heads`, Story 14.11). `completed`/
+    `cancelled`/`migrated`/`postponed` antigos ficam fora, e a SUBTAREFA aberta
+    sob RAIZ ABERTA não é item de topo — não é cabeça; segue ANINHADA no
+    `TaskSerializer` da raiz. A subtarefa ÓRFÃ (sob pai já disposto), que É
+    cabeça, está coberta em `test_fila_unificada_lista_subtarefa_orfa_na_secao_month`."""
     with tenant_context(user):
         hoje, _, _, _ = _fronteiras(user)
         log = LogFactory(user=user, log_date=hoje - timedelta(days=4))
@@ -4911,3 +4929,222 @@ def test_horizonte_nao_vaza_entre_tenants(user, other_user):
 
         assert [slot["task_count"] for slot in horizonte["horizon"]] == [0] * HORIZON_MONTHS
         assert horizonte["distant"] == []
+
+
+# --- Story 14.11: regularização atrasada do ciclo mensal -----------------------
+#
+# Fonte bloqueante ≡ gate de finalizar POR CONSTRUÇÃO: a fonte lista "cabeças
+# abertas" (`undisposed_heads`), e toda cadeia aberta tem exatamente uma — logo
+# `reviewed == ready_to_finalize == not has_undisposed`. O cenário-âncora é o da
+# produção: subtarefa `started` sob pai `completed` no mês `active`, alvo em
+# `planning` anterior ao mês corrente, e nenhum destino de `migrate/` que
+# alcançasse o alvo.
+
+
+def _arvore(user, log, forma):
+    """Materializa uma das formas de árvore da matriz do spec em `log`.
+
+    Devolve a lista de tarefas criadas (raiz primeiro)."""
+    container = {"monthly_log": log} if isinstance(log, MonthlyLog) else {"weekly_log": log}
+    if forma == "vazia":
+        return []
+    if forma == "raiz_aberta":
+        return [TaskFactory(user=user, status=Task.Status.PENDING, **container)]
+    if forma == "pai_concluido_filho_aberto":
+        pai = TaskFactory(user=user, status=Task.Status.COMPLETED, title="pai", **container)
+        filho = TaskFactory(
+            user=user, status=Task.Status.STARTED, parent_task=pai, title="filho", **container
+        )
+        return [pai, filho]
+    if forma == "pai_aberto_filho_aberto":
+        pai = TaskFactory(user=user, status=Task.Status.PENDING, title="pai", **container)
+        filho = TaskFactory(
+            user=user, status=Task.Status.PENDING, parent_task=pai, title="filho", **container
+        )
+        return [pai, filho]
+    if forma == "tudo_disposto":
+        pai = TaskFactory(user=user, status=Task.Status.COMPLETED, **container)
+        filho = TaskFactory(
+            user=user, status=Task.Status.CANCELLED, parent_task=pai, **container
+        )
+        return [pai, filho]
+    if forma == "neto_aberto_sob_filho_aberto_sob_pai_concluido":
+        pai = TaskFactory(user=user, status=Task.Status.COMPLETED, title="pai", **container)
+        filho = TaskFactory(
+            user=user, status=Task.Status.STARTED, parent_task=pai, title="filho", **container
+        )
+        neto = TaskFactory(
+            user=user, status=Task.Status.PENDING, parent_task=filho, title="neto", **container
+        )
+        return [pai, filho, neto]
+    raise AssertionError(forma)
+
+
+@pytest.mark.django_db
+def test_fonte_previous_monthly_lista_subtarefa_orfa_como_cabeca_aberta(user):
+    """Matriz "Subtarefa órfã": pai `completed` + filho `started` no anterior
+    `active` ⇒ a fonte lista o FILHO (com `parent_title`), `eligible 1`,
+    `reviewed False`, `ready_to_finalize False` — antes, 0 itens e
+    `reviewed: true` com o gate em `false` (o beco sem saída da produção)."""
+    with tenant_context(user):
+        alvo = add_months(_MES, 1)
+        MonthlyLogFactory(user=user, month_first=alvo, status=CycleStatus.PLANNING)
+        anterior = MonthlyLogFactory(user=user, month_first=_MES, status=CycleStatus.ACTIVE)
+        pai, filho = _arvore(user, anterior, "pai_concluido_filho_aberto")
+
+        fonte = list_previous_monthly_pendings(user=user, month_first=alvo)
+
+        assert [item["task"].id for item in fonte["items"]] == [filho.id]
+        assert fonte["items"][0]["parent_title"] == pai.title
+        assert fonte["eligible_count"] == 1
+        assert fonte["reviewed"] is False
+        assert fonte["ready_to_finalize"] is False
+
+
+@pytest.mark.django_db
+def test_fonte_previous_monthly_filho_sob_pai_aberto_nao_vira_item_separado(user):
+    """Matriz "Filho sob pai aberto": só o PAI é item (o filho segue aninhado no
+    `TaskSerializer`); `parent_title` de raiz é `None`."""
+    with tenant_context(user):
+        alvo = add_months(_MES, 1)
+        MonthlyLogFactory(user=user, month_first=alvo, status=CycleStatus.PLANNING)
+        anterior = MonthlyLogFactory(user=user, month_first=_MES, status=CycleStatus.ACTIVE)
+        pai, _filho = _arvore(user, anterior, "pai_aberto_filho_aberto")
+
+        fonte = list_previous_monthly_pendings(user=user, month_first=alvo)
+
+        assert [item["task"].id for item in fonte["items"]] == [pai.id]
+        assert fonte["items"][0]["parent_title"] is None
+        assert fonte["eligible_count"] == 1
+
+
+@pytest.mark.django_db
+def test_fonte_previous_weekly_lista_subtarefa_orfa_como_cabeca_aberta(user):
+    """Gêmea semanal: a mecânica é UMA (`_blocking_previous_source`), então a
+    correção vale para `previous-weekly` sem código próprio."""
+    with tenant_context(user):
+        alvo = _SEMANA + timedelta(weeks=1)
+        WeeklyLogFactory(user=user, week_start=alvo, status=CycleStatus.PLANNING)
+        anterior = WeeklyLogFactory(user=user, week_start=_SEMANA, status=CycleStatus.ACTIVE)
+        pai, filho = _arvore(user, anterior, "pai_concluido_filho_aberto")
+
+        fonte = list_previous_weekly_pendings(user=user, week_start=alvo)
+
+        assert [item["task"].id for item in fonte["items"]] == [filho.id]
+        assert fonte["items"][0]["parent_title"] == pai.title
+        assert fonte["reviewed"] is False
+        assert fonte["ready_to_finalize"] is False
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "forma",
+    [
+        "vazia",
+        "raiz_aberta",
+        "pai_concluido_filho_aberto",
+        "pai_aberto_filho_aberto",
+        "tudo_disposto",
+        "neto_aberto_sob_filho_aberto_sob_pai_concluido",
+    ],
+)
+def test_fonte_bloqueante_invariante_reviewed_igual_ready_to_finalize(user, forma):
+    """Matriz "Invariante": para QUALQUER árvore no anterior,
+    `reviewed == ready_to_finalize == not has_undisposed(anterior)` — e cada
+    cadeia aberta produz EXATAMENTE uma cabeça (o nó aberto mais alto)."""
+    with tenant_context(user):
+        alvo = add_months(_MES, 1)
+        MonthlyLogFactory(user=user, month_first=alvo, status=CycleStatus.PLANNING)
+        anterior = MonthlyLogFactory(user=user, month_first=_MES, status=CycleStatus.ACTIVE)
+        _arvore(user, anterior, forma)
+
+        fonte = list_previous_monthly_pendings(user=user, month_first=alvo)
+        aberto = has_undisposed(anterior)
+
+        assert fonte["reviewed"] == fonte["ready_to_finalize"] == (not aberto)
+        assert len(fonte["items"]) == (1 if aberto else 0)
+        assert undisposed_heads(anterior.tasks).exists() is aberto
+        if forma == "neto_aberto_sob_filho_aberto_sob_pai_concluido":
+            # A cabeça é o FILHO (pai disposto); o neto continua aninhado.
+            assert fonte["items"][0]["task"].title == "filho"
+            assert fonte["items"][0]["parent_title"] == "pai"
+
+
+@pytest.mark.django_db
+def test_fila_unificada_lista_subtarefa_orfa_na_secao_month(user):
+    """Matriz "Fila unificada": subtarefa aberta sob pai disposto num mês ANTERIOR
+    ao anterior aparece na seção `month` (antes: invisível, com o gate de
+    finalizar daquele mês travado para sempre). A subtarefa sob RAIZ aberta
+    continua fora (ver `test_fila_unificada_descarta_dispostos_e_subtarefas`)."""
+    with tenant_context(user):
+        _, _, _, mes_anterior = _fronteiras(user)
+        mes_retro = (mes_anterior - timedelta(days=1)).replace(day=1)
+        log = MonthlyLogFactory(user=user, month_first=mes_retro)
+        _pai, filho = _arvore(user, log, "pai_concluido_filho_aberto")
+        raiz_aberta, _filho_aninhado = _arvore(user, log, "pai_aberto_filho_aberto")
+
+        fila = unified_migration_queue(user=user)
+
+        assert set(_ids_da_secao(fila, "month")) == {filho.id, raiz_aberta.id}
+        assert _secao(fila, "month")["count"] == 2
+
+
+@pytest.mark.django_db
+def test_regularizacao_atrasada_subtarefa_orfa_destrava_pelo_proprio_fluxo(user):
+    """Teste-âncora da Story 14.11 (o cenário real da produção): m−2 `active` com
+    subtarefa `started` sob pai `completed`; m−1 `planning` com planejamento já
+    concluído; hoje em m. Antes: fonte vazia + `ready_to_finalize: false`, e
+    nenhum destino de `migrate/` alcançava m−1. Agora: a fonte lista a subtarefa;
+    migrar para o alvo (`'month'` + `month_first` = m−1) → finalizar m−2 →
+    iniciar m−1 → o alvo seguinte é o mês corrente. Nada é pulado, nada é
+    automático (M07 intacto)."""
+    with tenant_context(user):
+        atual = _current_month(user)
+        m2, m1 = add_months(atual, -2), add_months(atual, -1)
+        anterior = MonthlyLogFactory(user=user, month_first=m2, status=CycleStatus.ACTIVE)
+        alvo = MonthlyLogFactory(
+            user=user, month_first=m1, status=CycleStatus.PLANNING, planning_completed_at=cal_now()
+        )
+        pai, filho = _arvore(user, anterior, "pai_concluido_filho_aberto")
+
+        # 1. A fonte bloqueante expõe a subtarefa órfã (fonte ≡ gate).
+        fonte = list_previous_monthly_pendings(user=user, month_first=m1)
+        assert [item["task"].id for item in fonte["items"]] == [filho.id]
+        assert fonte["ready_to_finalize"] is False
+
+        # 2. Os dois gates recusam com `code` nomeado e motivo legível.
+        with pytest.raises(InvalidTransition) as fin:
+            finalize_monthly(user=user, month_first=m2)
+        assert fin.value.code == "no_open_tasks"
+        assert "subtarefas" in str(fin.value)
+        with pytest.raises(InvalidTransition) as ini:
+            start_monthly(user=user, month_first=m1)
+        assert ini.value.code == "previous_finalized"
+        assert format_month_pt(m2) in str(ini.value)  # "agosto de 2026", como a UI
+
+        # 3. Migrar a subtarefa PARA o alvo passado: `'month'` com `month_first`
+        #    explícito (a faixa é validada na view; o serviço grava onde mandam).
+        origem = migrate_task(
+            user=user,
+            task_id=filho.id,
+            destination="month",
+            month_first=m1,
+            scheduled_date=m1.replace(day=5),
+        )
+        assert origem.status == Task.Status.POSTPONED
+        sucessor = origem.migrated_to_task
+        assert sucessor.monthly_log_id == alvo.id
+        assert sucessor.parent_task_id is None  # nasce como raiz no alvo
+        assert sucessor.status == Task.Status.STARTED  # herda o status da origem
+        assert sucessor.scheduled_date == m1.replace(day=5)
+        pai.refresh_from_db()
+        assert pai.status == Task.Status.COMPLETED  # o pai não foi tocado
+
+        # 4. Fonte zera e o gate concorda — o ritual destrava na ordem do M07.
+        fonte = list_previous_monthly_pendings(user=user, month_first=m1)
+        assert fonte["items"] == [] and fonte["ready_to_finalize"] is True
+        assert finalize_monthly(user=user, month_first=m2).status == CycleStatus.FINALIZED
+        assert start_monthly(user=user, month_first=m1).status == CycleStatus.ACTIVE
+        assert next_monthly_target(user=user) == atual
+        assert not MonthlyLog.objects.filter(month_first=atual).exists()  # nada automático
+

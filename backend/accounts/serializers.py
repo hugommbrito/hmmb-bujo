@@ -36,3 +36,24 @@ class SignupSerializer(serializers.Serializer):
             password=validated_data["password"],
             timezone=validated_data.get("timezone", "America/Sao_Paulo"),
         )
+
+
+# --- Dia "não registrado" por collection (Story 16.2c) -------------------------
+# Contrato ÚNICO dos dois endpoints (`/api/habits/untracked-days/` e
+# `/api/medications/untracked-days/`): `{date, untracked}` na entrada e na saída.
+# `collection` fica FORA do wire (cada view fixa a sua) — nenhum enum novo no schema.
+
+
+class SetUntrackedDaySerializer(serializers.Serializer):
+    """Marca/desmarca um dia como não registrado (write). ``date`` ≤ hoje do
+    usuário (a regra mora em ``accounts.services.set_untracked_day``)."""
+
+    date = serializers.DateField()
+    untracked = serializers.BooleanField()
+
+
+class UntrackedDayResultSerializer(serializers.Serializer):
+    """Resultado do toggle: a data + o estado efetivo após a escrita."""
+
+    date = serializers.DateField()
+    untracked = serializers.BooleanField()

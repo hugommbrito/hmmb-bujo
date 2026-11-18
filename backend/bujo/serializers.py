@@ -460,8 +460,33 @@ class UnifiedMigrationQueueSerializer(serializers.Serializer):
 
 class TaskMigrateSerializer(serializers.Serializer):
     destination = serializers.ChoiceField(choices=["today", "week", "month", "future", "cancel"])
-    month_first = serializers.DateField(required=False)
+    month_first = serializers.DateField(
+        required=False,
+        help_text=(
+            "Dia 1 do mês de destino. Obrigatório em 'future' (estritamente posterior ao "
+            "mês corrente). Opcional em 'month' (Story 14.11, regularização atrasada): "
+            "entre o alvo de planejamento mensal e o mês corrente, inclusive; ausente = "
+            "mês corrente. Ignorado nos demais destinos."
+        ),
+    )
     scheduled_date = serializers.DateField(required=False, allow_null=True)
+
+    @staticmethod
+    def _validate_month_target(attrs):
+        """Regras COMUNS a `'future'` e a `'month'` com `month_first` explícito:
+        dia 1 e `scheduled_date` (se houver) dentro desse mês. A FAIXA permitida
+        (`> corrente` para `'future'`; `[alvo, corrente]` para `'month'`) depende
+        de `today_for(user)` e do alvo de planejamento, e fica na view."""
+        if attrs["month_first"].day != 1:
+            raise serializers.ValidationError({"month_first": "Deve ser o primeiro dia do mês."})
+        scheduled_date = attrs.get("scheduled_date")
+        if scheduled_date and (scheduled_date.year, scheduled_date.month) != (
+            attrs["month_first"].year,
+            attrs["month_first"].month,
+        ):
+            raise serializers.ValidationError(
+                {"scheduled_date": "A data deve pertencer ao mês/ano de monthFirst."}
+            )
 
     def validate(self, attrs):
         destination = attrs["destination"]
@@ -470,18 +495,9 @@ class TaskMigrateSerializer(serializers.Serializer):
                 raise serializers.ValidationError(
                     {"month_first": "Obrigatório para adiar no futuro."}
                 )
-            if attrs["month_first"].day != 1:
-                raise serializers.ValidationError(
-                    {"month_first": "Deve ser o primeiro dia do mês."}
-                )
-            scheduled_date = attrs.get("scheduled_date")
-            if scheduled_date and (scheduled_date.year, scheduled_date.month) != (
-                attrs["month_first"].year,
-                attrs["month_first"].month,
-            ):
-                raise serializers.ValidationError(
-                    {"scheduled_date": "A data deve pertencer ao mês/ano de monthFirst."}
-                )
+            self._validate_month_target(attrs)
+        elif destination == "month" and attrs.get("month_first"):
+            self._validate_month_target(attrs)
         return attrs
 
 
@@ -702,6 +718,12 @@ class _SourceEnvelopeSerializer(serializers.Serializer):
 class RitualTaskItemSerializer(serializers.Serializer):
     task = TaskSerializer()
     decision = serializers.CharField(allow_null=True)
+    # Story 14.11: preenchido só quando o item é uma SUBTAREFA listada como cabeça
+    # aberta (pai já disposto) pela fonte bloqueante/fila — a UI nomeia o pai para
+    # o item não parecer uma raiz solta. `null` em todo item-raiz; opcional no
+    # schema porque as fontes que constroem o item à mão (Daily pendentes) não o
+    # carregam.
+    parent_title = serializers.CharField(allow_null=True, required=False)
 
 
 class RitualTemplateItemSerializer(serializers.Serializer):

@@ -40,17 +40,32 @@ const STATUS_LABEL: Record<BlockStatus, string> = {
 
 // Rótulo/ícone de estado da LINHA (Story 8.3, AC3). "Dose perdida" é sinal clínico
 // NEUTRO: ícone discreto (não vermelho de alarme) + texto — cor nunca sozinha.
+// `unrecorded` (Story 16.2c): dia marcado "não registrado" — ausência de registro,
+// não sinal clínico; ícone neutro de "não marcado" + texto.
+export const UNRECORDED_LABEL = 'Não registrado'
 const ENTRY_STATUS: Record<EntryStatus, { label: string; color: 'success' | 'warning' | 'disabled' }> = {
   confirmed: { label: 'Confirmado', color: 'success' },
   missed: { label: 'Dose perdida', color: 'warning' },
   pending: { label: 'Pendente', color: 'disabled' },
+  unrecorded: { label: UNRECORDED_LABEL, color: 'disabled' },
 }
 
-function StatusIndicator({ status, isPast }: { status: BlockStatus; isPast?: boolean }) {
+function StatusIndicator({
+  status,
+  isPast,
+  untracked,
+}: {
+  status: BlockStatus
+  isPast?: boolean
+  untracked?: boolean
+}) {
   // Relabel de EXIBIÇÃO (AC3): num dia passado, um bloco derivado `pending` (nenhuma
   // linha confirmada) é rotulado "Doses perdidas". `deriveBlockStatus` permanece
   // inalterado (alimenta o updater otimista) — só o rótulo/ícone mudam aqui.
-  const missedBlock = isPast === true && status === 'pending'
+  // Story 16.2c: num dia marcado "não registrado", esse mesmo bloco `pending` lê
+  // "Não registrado" (nunca "Doses perdidas"); `partial`/`confirmed` mantêm o rótulo.
+  const unrecordedBlock = untracked === true && status === 'pending'
+  const missedBlock = !unrecordedBlock && isPast === true && status === 'pending'
   const Icon = missedBlock
     ? RemoveCircleOutlineIcon
     : status === 'confirmed'
@@ -65,7 +80,11 @@ function StatusIndicator({ status, isPast }: { status: BlockStatus; isPast?: boo
       : status === 'partial'
         ? 'warning'
         : 'disabled'
-  const label = missedBlock ? 'Doses perdidas' : STATUS_LABEL[status]
+  const label = unrecordedBlock
+    ? UNRECORDED_LABEL
+    : missedBlock
+      ? 'Doses perdidas'
+      : STATUS_LABEL[status]
   return (
     <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
       <Icon fontSize="small" color={color} aria-hidden />
@@ -235,14 +254,17 @@ interface EntryRowProps {
   // Story 8.3 (AC3): num dia passado, o estado da linha é temporal (missed vs. pending)
   // e o afordance "Corrigir dose" fica disponível (ação de revisão).
   isPast?: boolean
+  // Story 16.2c: dia marcado "não registrado" — a linha sem confirmação lê
+  // "Não registrado" (nunca "Dose perdida"), em qualquer dia.
+  untracked?: boolean
 }
 
-function EntryRow({ entry, date, isPast = false }: EntryRowProps) {
+function EntryRow({ entry, date, isPast = false, untracked = false }: EntryRowProps) {
   const confirm = useConfirmMedicationEntryMutation(date)
   const [editingDose, setEditingDose] = useState(false)
   const checked = entry.confirmedAt != null
   const summary = doseSummary(entry.doseAtTime)
-  const status = deriveEntryStatus(entry, isPast)
+  const status = deriveEntryStatus(entry, isPast, untracked)
   return (
     <Box sx={{ px: 1 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
@@ -264,8 +286,9 @@ function EntryRow({ entry, date, isPast = false }: EntryRowProps) {
           }
         />
         {/* Estado temporal da linha (texto + ícone) — só num dia passado, para não
-            alterar a aba "Hoje" (que já comunica o estado pelo checkbox). */}
-        {isPast && <EntryStatusIndicator status={status} />}
+            alterar a aba "Hoje" (que já comunica o estado pelo checkbox); num dia
+            marcado "não registrado" o estado também é escrito (16.2c). */}
+        {(isPast || untracked) && <EntryStatusIndicator status={status} />}
         {isPast && (
           <Button
             size="small"
@@ -307,9 +330,19 @@ export interface MedicationBlockProps {
   // Story 8.3 (AC3): dia passado → relabel "Doses perdidas" + estado temporal por linha
   // + afordance de correção de dose. Ausente/false = comportamento idêntico à aba "Hoje".
   isPast?: boolean
+  // Story 16.2c: dia marcado "não registrado" (`MedicationDay.untracked`) — bloco
+  // `pending` e linhas sem confirmação leem "Não registrado" no lugar de "Dose(s)
+  // perdida(s)". Blocos/linhas em si não mudam.
+  untracked?: boolean
 }
 
-export function MedicationBlock({ block, date, dayDate, isPast = false }: MedicationBlockProps) {
+export function MedicationBlock({
+  block,
+  date,
+  dayDate,
+  isPast = false,
+  untracked = false,
+}: MedicationBlockProps) {
   const confirmBlock = useConfirmBlockMutation(date)
   // Fonte única (AC6): deriva do estado das linhas (que já refletem o otimismo no
   // cache), para o cabeçalho reagir instantaneamente antes do refetch.
@@ -331,11 +364,17 @@ export function MedicationBlock({ block, date, dayDate, isPast = false }: Medica
         <Typography variant="subtitle2" component="h3">
           {block.timeBlockName}
         </Typography>
-        <StatusIndicator status={status} isPast={isPast} />
+        <StatusIndicator status={status} isPast={isPast} untracked={untracked} />
       </Box>
 
       {block.entries.map((entry) => (
-        <EntryRow key={entry.id} entry={entry} date={date} isPast={isPast} />
+        <EntryRow
+          key={entry.id}
+          entry={entry}
+          date={date}
+          isPast={isPast}
+          untracked={untracked}
+        />
       ))}
 
       <Box sx={{ px: 1, pt: 0.5 }}>

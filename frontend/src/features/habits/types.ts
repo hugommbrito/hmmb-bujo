@@ -23,3 +23,7 @@ export type HabitSeriesPoint = components['schemas']['HabitSeriesPoint']
 export type HabitVersionEvent = components['schemas']['HabitVersionEvent']
 export type HabitChange = components['schemas']['HabitChange']
 export type HabitDayType = components['schemas']['HabitDayType']
+// Story 16.2c — dia "não registrado" por collection (flag em `accounts`; o
+// endpoint de Hábitos fixa a collection, então `collection` não está no wire).
+export type SetUntrackedDay = components['schemas']['SetUntrackedDay']
+export type UntrackedDayResult = components['schemas']['UntrackedDayResult']

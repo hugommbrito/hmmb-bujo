@@ -1,0 +1,171 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// Card de grupo da variante "Registro em cards" (Story 16.1).
+//
+//   ▶ UM Panel POR GRUPO, com Section Header interno (nome · peso efetivo · %)
+//     e a barra de `--ds-completion-bar-height-group`. Nenhum Panel aninhado,
+//     nenhuma sombra — o card não vira dashboard (`DESIGN.md` L708).
+//
+//   ▶ A PORCENTAGEM DO GRUPO VEM DO SERVIDOR (`HabitDayGroup.completion`).
+//     O peso efetivo é a SOMA dos fatores que o servidor já congelou em cada
+//     linha (`weightAtTime × multiplierAtTime`) — transparência do denominador,
+//     não recálculo de completude.
+//
+//   ▶ LEGENDA DE MULTIPLICADOR só quando o dia NÃO é útil **E** o multiplicador
+//     difere de 1 (paridade com `HabitTracker.tsx:166-180`). Texto verbatim do
+//     gate: `Feriado · peso ×0,5 neste grupo`.
+//
+//   ▶ DIA "NÃO REGISTRADO" (Story 16.2c): `completion` chega NULO do servidor
+//     e o card escreve "Não registrado" no lugar do % — SEM barra (uma barra
+//     em 0 seria leitura fabricada). Nulo sem a flag (transiente, após
+//     desmarcar) lê "—" até o refetch. As linhas seguem editáveis.
+// ─────────────────────────────────────────────────────────────────────────────
+import { Box } from '@mui/material'
+
+import { typography } from '../../../../shared/design/tokens'
+import { DAY_TYPE_LABEL } from '../historyUtils'
+import type { DayType, HabitDayEntry, HabitDayGroup } from '../../types'
+import { CompletionBar } from './CompletionBar'
+import { HabitTrackerRow } from './HabitTrackerRow'
+import {
+  UNTRACKED_PERCENT,
+  formatDecimal,
+  formatEffectiveWeight,
+  sumEffectiveWeights,
+} from './habitsSurface'
+
+/** Verbatim do gate — grupo vazio é estado LEGÍTIMO, não erro a corrigir. */
+export const EMPTY_GROUP = 'Nenhum hábito neste grupo.'
+
+export interface HabitGroupCardProps {
+  group: HabitDayGroup
+  entries: HabitDayEntry[]
+  date?: string
+  compact: boolean
+  disabled?: boolean
+  disabledReasonId?: string
+  headingId: string
+  /**
+   * Tipo do dia vindo do DIA (`HabitDay.dayType`), não da linha. O updater
+   * otimista de feriado reescreve só `data.dayType`; derivar daqui de
+   * `entries[0].dayType` abria uma janela em que o chip do dia dizia "Feriado"
+   * e a legenda do grupo ainda dizia "Dia útil".
+   */
+  dayType?: DayType
+  /** Dia marcado "não registrado" (vem do DIA, `HabitDay.untracked`). */
+  untracked?: boolean
+}
+
+export function HabitGroupCard({
+  group,
+  entries,
+  date,
+  compact,
+  disabled,
+  disabledReasonId,
+  headingId,
+  dayType: dayTypeProp,
+  untracked = false,
+}: HabitGroupCardProps) {
+  const effectiveWeight = sumEffectiveWeights(entries)
+  const first = entries[0]
+  const multiplier = first?.multiplierAtTime
+  const dayType = dayTypeProp ?? first?.dayType
+  const showLegend =
+    dayType != null && dayType !== 'weekday' && multiplier != null && Number(multiplier) !== 1
+  const completion = group.completion
+  const percentText = untracked
+    ? UNTRACKED_PERCENT
+    : completion == null
+      ? '—'
+      : `${completion}%`
+  const showBar = !untracked && completion != null
+
+  return (
+    <Box
+      component="section"
+      aria-labelledby={headingId}
+      data-testid="habit-group-card"
+      sx={{
+        backgroundColor: 'var(--ds-surface)',
+        border: '1px solid var(--ds-border)',
+        borderRadius: 'var(--ds-radius-md)',
+        padding: 'var(--ds-panel-padding)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 'var(--ds-space-2)',
+        minWidth: 0,
+      }}
+    >
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'baseline',
+          gap: 'var(--ds-space-2)',
+          flexWrap: 'wrap',
+        }}
+      >
+        <Box
+          component="h3"
+          id={headingId}
+          sx={{ ...typography['section-title'], color: 'var(--ds-ink)', margin: 0 }}
+        >
+          {group.name}
+        </Box>
+        <Box sx={{ ...typography.meta, color: 'var(--ds-ink-muted)' }}>
+          peso efetivo {formatEffectiveWeight(effectiveWeight)}
+        </Box>
+        {/* A porcentagem em TEXTO é obrigatória ao lado da barra. */}
+        <Box
+          data-testid="habit-group-percent"
+          sx={{
+            ...typography['body-strong'],
+            color: 'var(--ds-ink)',
+            marginLeft: 'auto',
+            fontVariantNumeric: 'tabular-nums',
+          }}
+        >
+          {percentText}
+        </Box>
+      </Box>
+
+      {showBar && (
+        <CompletionBar
+          scope="group"
+          percent={completion}
+          label={`Completude do grupo ${group.name}: ${completion} por cento`}
+        />
+      )}
+
+      {showLegend && (
+        <Box sx={{ ...typography.meta, color: 'var(--ds-warning)' }}>
+          {DAY_TYPE_LABEL[dayType]} · peso ×{formatDecimal(multiplier) ?? '1'} neste grupo
+        </Box>
+      )}
+
+      {entries.length === 0 ? (
+        <Box sx={{ ...typography.body, color: 'var(--ds-ink-muted)' }}>{EMPTY_GROUP}</Box>
+      ) : (
+        <Box
+          component="ul"
+          sx={{
+            listStyle: 'none',
+            margin: 0,
+            padding: 0,
+            borderTop: '1px solid var(--ds-border)',
+          }}
+        >
+          {entries.map((entry) => (
+            <HabitTrackerRow
+              key={entry.id}
+              entry={entry}
+              date={date}
+              compact={compact}
+              disabled={disabled}
+              disabledReasonId={disabledReasonId}
+            />
+          ))}
+        </Box>
+      )}
+    </Box>
+  )
+}

@@ -21,6 +21,7 @@ import {
   useMedicationDayQuery,
   useMedicationsQuery,
   useSetMedicationActiveMutation,
+  useSetMedicationUntrackedDayMutation,
   useSetScheduleMutation,
   useTimeBlocksQuery,
   useUpdateMedicationTitleMutation,
@@ -276,6 +277,7 @@ describe('useCreateTimeBlockMutation / useCreateDoctorMutation', () => {
 
 const DAY: MedicationDay = {
   date: '2026-03-01',
+  untracked: false,
   blocks: [
     {
       timeBlockId: 'b1',
@@ -417,5 +419,60 @@ describe('useEditEntryDoseMutation', () => {
       expect(cached?.blocks[0].entries[0].confirmedAt).not.toBeNull()
     })
     expect(mockPatch).toHaveBeenCalledWith('/api/medications/days/e1/', { confirmed: true })
+  })
+})
+
+// --- Story 16.2c — dia "não registrado" ---------------------------------------
+
+describe('useSetMedicationUntrackedDayMutation', () => {
+  beforeEach(() => vi.resetAllMocks())
+
+  it('flipa `untracked` otimisticamente SEM tocar blocos/linhas; POST na rota de medicamentos', async () => {
+    const { qc, wrapper } = makeWrapper()
+    qc.setQueryData(keys.medications.day('2026-03-01'), DAY)
+    let resolvePost: (value: { data: unknown }) => void = () => {}
+    mockPost.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolvePost = resolve
+      }),
+    )
+
+    const { result } = renderHook(
+      () => useSetMedicationUntrackedDayMutation('2026-03-01'),
+      { wrapper },
+    )
+    result.current.mutate({ date: '2026-03-01', untracked: true })
+
+    await waitFor(() => {
+      const cached = qc.getQueryData<MedicationDay>(keys.medications.day('2026-03-01'))
+      expect(cached?.untracked).toBe(true)
+    })
+    expect(qc.getQueryData<MedicationDay>(keys.medications.day('2026-03-01'))?.blocks).toEqual(
+      DAY.blocks,
+    )
+
+    resolvePost({ data: { date: '2026-03-01', untracked: true } })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(mockPost).toHaveBeenCalledWith('/api/medications/untracked-days/', {
+      date: '2026-03-01',
+      untracked: true,
+    })
+  })
+
+  it('erro: rollback da flag', async () => {
+    const { qc, wrapper } = makeWrapper()
+    qc.setQueryData(keys.medications.day('2026-03-01'), DAY)
+    mockPost.mockRejectedValueOnce(new Error('falha de rede'))
+
+    const { result } = renderHook(
+      () => useSetMedicationUntrackedDayMutation('2026-03-01'),
+      { wrapper },
+    )
+    result.current.mutate({ date: '2026-03-01', untracked: true })
+
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    expect(qc.getQueryData<MedicationDay>(keys.medications.day('2026-03-01'))?.untracked).toBe(
+      false,
+    )
   })
 })

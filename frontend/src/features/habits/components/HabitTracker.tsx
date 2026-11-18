@@ -168,7 +168,7 @@ function GroupSection({ group, entries, date }: GroupSectionProps) {
   return (
     <Box sx={{ mb: 2 }}>
       <Typography variant="subtitle2" component="h3" sx={{ px: 1, py: 0.5 }}>
-        {group.name} · {group.completion}%
+        {group.name} · {group.completion == null ? 'Não registrado' : `${group.completion}%`}
       </Typography>
       {showLegend && (
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, px: 1, pb: 0.5 }}>
@@ -219,7 +219,9 @@ export function HabitTracker({ date }: HabitTrackerProps) {
           Hábitos
         </Typography>
         <Typography variant="body2" color="text.secondary" component="div">
-          Completude do dia: {totalCompletion}%
+          {/* Story 16.2c: dia marcado "não registrado" vem com % NULA — guarda
+              de null (a superfície legada não ganha o toggle). */}
+          Completude do dia: {totalCompletion == null ? 'Não registrado' : `${totalCompletion}%`}
         </Typography>
         <FormControlLabel
           sx={{ minHeight: 44 }}

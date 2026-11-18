@@ -87,6 +87,10 @@ export interface NormalizedRitualItem {
   /** Só `pending-dailies` — a data do Daily Log de origem (agrupamento). */
   groupLabel?: string
   instancesInTargetCount?: number
+  /** Só itens de Task que são SUBTAREFA listada como cabeça aberta (pai já
+   * disposto) na fonte bloqueante `previous-weekly` — Story 14.11; `null` em
+   * raízes. */
+  parentTitle?: string | null
 }
 
 export function normalizeTaskItems(items: RitualTaskItem[]): NormalizedRitualItem[] {
@@ -96,6 +100,7 @@ export function normalizeTaskItems(items: RitualTaskItem[]): NormalizedRitualIte
     title: item.task.title,
     decision: item.decision,
     scheduledDate: item.task.scheduledDate,
+    parentTitle: item.parentTitle ?? null,
   }))
 }
 

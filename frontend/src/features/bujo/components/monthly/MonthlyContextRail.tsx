@@ -11,15 +11,22 @@
 //     concluídas/demais), mesmo agrupamento do texto da legenda do mockup
 //     (`key-monthly.html`) — a barra colorida é `aria-hidden` (decorativa); a
 //     contagem completa por status vive só no nome acessível do botão do dia.
+//   ▶ Story 14.11 — "Finalizar mês anterior" tem o SEU painel de verificação
+//     (2 gates, ✓/✗ + motivo) e a visibilidade/habilitação do botão vêm de
+//     `readiness.finalize` (servidor), não do contador local da fonte. O
+//     contador só alimenta o aviso "N pendência(s)"; quando ele zera mas o gate
+//     `noOpenTasks` continua ✗ (cache defasado, subtarefa fora da lista), o
+//     aviso diz isso em vez de prometer "pronto para finalizar".
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState } from 'react'
 import { Box } from '@mui/material'
 
 import { useMonthlyDensityQuery } from '../../api'
 import { monthGridWeeks, parseLocalDate } from '../../../../shared/date'
-import { MONTH_NAMES_PT } from '../../monthNames'
+import { formatMonthTitle, MONTH_NAMES_PT } from '../../monthNames'
 import { typography } from '../../../../shared/design/tokens'
 import type { DensityDay, MonthlyCycleReadiness } from '../../types'
+import { GateRow } from '../GateRow'
 import { MONTHLY_RITUAL_SOURCE_LABEL, type MonthlyRitualSourceId } from './monthlyRitualSources'
 
 export interface MonthlyProgressSourceInput {
@@ -35,7 +42,14 @@ export interface MonthlyContextRailProps {
    * tem 4 (uma delas, `monthly-expanded`, fica fora do denominador lá). */
   progressSources: MonthlyProgressSourceInput[]
   previousMonthlyPendingCount: number
-  previousPeriodStart: string | null
+  /** Story 14.11: a fonte bloqueante ainda em voo — o contador local é 0 por
+   * ausência de dado, não por ausência de pendência; o ramo defensivo
+   * ("subtarefas fora desta lista") não pode anunciar nada nesse instante. */
+  previousMonthlyLoading: boolean
+  /** Fonte bloqueante em ERRO: a lista de decisões já mostra o alerta "Não foi
+   * possível carregar esta fonte" com retry — o rail não duplica a live region
+   * nem acusa "subtarefas fora desta lista" por um contador vazio de dado. */
+  previousMonthlyError?: boolean
   onNavigateToSource: (sourceId: MonthlyRitualSourceId) => void
   onSelectDay: (scheduledDate: string | null) => void
   onCompletePlanning: () => void
@@ -83,7 +97,8 @@ export function MonthlyContextRail({
   readiness,
   progressSources,
   previousMonthlyPendingCount,
-  previousPeriodStart,
+  previousMonthlyLoading,
+  previousMonthlyError = false,
   onNavigateToSource,
   onSelectDay,
   onCompletePlanning,
@@ -104,6 +119,9 @@ export function MonthlyContextRail({
 
   const canFinalize = readiness.finalize?.allowed ?? false
   const canStart = readiness.start?.allowed ?? false
+  // Verdade do servidor (Story 14.11): o MESMO predicado do gate de finalizar e
+  // do `readyToFinalize` da fonte — o contador local nunca decide isto.
+  const previousHasOpenTasks = readiness.finalize ? !readiness.finalize.gates.noOpenTasks : false
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 'var(--ds-space-4)' }}>
@@ -246,7 +264,8 @@ export function MonthlyContextRail({
             </Box>
           ))}
 
-        {previousMonthlyPendingCount > 0 ? (
+        {previousMonthlyPendingCount > 0 ||
+        (previousHasOpenTasks && !previousMonthlyLoading && !previousMonthlyError) ? (
           <Box role="alert" sx={{ ...typography.body, color: 'var(--ds-danger)', display: 'flex', flexDirection: 'column', gap: 'var(--ds-space-1)' }}>
             <Box
               component="button"
@@ -265,11 +284,41 @@ export function MonthlyContextRail({
                 minHeight: 'var(--ds-touch-target-min)',
               }}
             >
-              Monthly anterior: {previousMonthlyPendingCount} pendência(s) — bloqueia iniciar mês
+              {previousMonthlyPendingCount > 0
+                ? `Monthly anterior: ${previousMonthlyPendingCount} pendência(s) — bloqueia iniciar mês`
+                // Contador local zerado mas o gate do servidor ainda ✗: estado
+                // defensivo contra cache defasado (a fonte lista as mesmas cabeças
+                // abertas que o gate vê, então após o refetch os dois concordam).
+                : 'Monthly anterior: tarefas abertas fora desta lista (subtarefas) — bloqueia finalizar'}
             </Box>
           </Box>
-        ) : (
+        ) : previousHasOpenTasks && previousMonthlyLoading ? (
+          // Gate ✗ no servidor, lista ainda carregando: nada a anunciar ainda —
+          // sem `role="alert"`, para a live region não trocar de texto em seguida.
+          <Box sx={{ ...typography.body, color: 'var(--ds-ink-muted)' }}>Carregando o Monthly anterior…</Box>
+        ) : previousHasOpenTasks && previousMonthlyError ? (
+          <Box
+            component="button"
+            type="button"
+            onClick={() => onNavigateToSource('previous-monthly')}
+            sx={{
+              ...typography.body,
+              textAlign: 'left',
+              border: 'none',
+              background: 'none',
+              cursor: 'pointer',
+              color: 'var(--ds-ink-muted)',
+              display: 'flex',
+              alignItems: 'center',
+              minHeight: 'var(--ds-touch-target-min)',
+            }}
+          >
+            Monthly anterior indisponível — tente novamente pela fonte.
+          </Box>
+        ) : readiness.finalize ? (
           <Box sx={{ ...typography.body, color: 'var(--ds-success)' }}>Mês anterior pronto para finalizar.</Box>
+        ) : (
+          <Box sx={{ ...typography.body, color: 'var(--ds-ink-muted)' }}>Nenhum Monthly anterior a finalizar.</Box>
         )}
       </Box>
 
@@ -287,9 +336,21 @@ export function MonthlyContextRail({
           <Box sx={{ ...typography.label, color: 'var(--ds-ink-muted)' }}>Iniciar mês</Box>
           {readiness.start && (
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 'var(--ds-space-1)' }}>
-              <GateRow label="Data alcançada (dia 1 ou posterior)" ok={readiness.start.gates.dateReached} />
-              <GateRow label="Planejamento concluído" ok={readiness.start.gates.planningCompleted} />
-              <GateRow label="Monthly anterior finalizado" ok={readiness.start.gates.previousFinalized} />
+              <GateRow
+                label="Data alcançada (dia 1 ou posterior)"
+                ok={readiness.start.gates.dateReached}
+                reason={`Disponível a partir de 1 de ${MONTH_NAMES_PT[parseLocalDate(readiness.start.target).getMonth()]}.`}
+              />
+              <GateRow
+                label="Planejamento concluído"
+                ok={readiness.start.gates.planningCompleted}
+                reason='Use "Concluir planejamento" acima.'
+              />
+              <GateRow
+                label="Monthly anterior finalizado"
+                ok={readiness.start.gates.previousFinalized}
+                reason='Finalize o Monthly anterior primeiro ("Finalizar mês anterior", abaixo).'
+              />
             </Box>
           )}
           <Box
@@ -312,8 +373,23 @@ export function MonthlyContextRail({
           </Box>
         </Box>
 
-        {previousMonthlyPendingCount === 0 && previousPeriodStart && (
-          <>
+        {readiness.finalize && (
+          <Box component="section" aria-label="Painel de verificação — Finalizar mês anterior" sx={{ display: 'flex', flexDirection: 'column', gap: 'var(--ds-space-2)' }}>
+            <Box sx={{ ...typography.label, color: 'var(--ds-ink-muted)' }}>
+              Finalizar {formatMonthTitle(readiness.finalize.target)}
+            </Box>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 'var(--ds-space-1)' }}>
+              <GateRow
+                label="Sem tarefas abertas no mês anterior"
+                ok={readiness.finalize.gates.noOpenTasks}
+                reason='Pendentes ou iniciadas, subtarefas incluídas — decida todas na fonte "Monthly anterior".'
+              />
+              <GateRow
+                label="Mês seguinte em planejamento"
+                ok={readiness.finalize.gates.nextPlanningExists}
+                reason="Abra o planejamento do mês seguinte antes de finalizar."
+              />
+            </Box>
             <Box
               component="button"
               type="button"
@@ -323,7 +399,7 @@ export function MonthlyContextRail({
               sx={{
                 ...typography.label,
                 border: '1px solid var(--ds-danger)',
-                color: 'var(--ds-danger)',
+                color: canFinalize ? 'var(--ds-danger)' : 'var(--ds-ink-disabled)',
                 background: 'none',
                 borderRadius: 'var(--ds-radius-sm)',
                 padding: 'var(--ds-space-2)',
@@ -352,18 +428,9 @@ export function MonthlyContextRail({
                 </Box>
               </Box>
             )}
-          </>
+          </Box>
         )}
       </Box>
-    </Box>
-  )
-}
-
-function GateRow({ label, ok }: { label: string; ok: boolean }) {
-  return (
-    <Box sx={{ ...typography.body, display: 'flex', gap: 'var(--ds-space-1)', color: ok ? 'var(--ds-success)' : 'var(--ds-danger)' }}>
-      <span aria-hidden>{ok ? '✓' : '✗'}</span>
-      <span>{label}</span>
     </Box>
   )
 }

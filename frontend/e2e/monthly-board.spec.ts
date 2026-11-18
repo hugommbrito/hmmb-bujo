@@ -6,6 +6,7 @@ import {
   seedFinalizedMonthWithTasks,
   seedMonthlyBoardLineageScenario,
 } from './seedMonthlyBoardScenario'
+import { monthTitle, seedMonthlyCatchUpScenario } from './seedMonthlyCatchUpScenario'
 
 // Cobre o Monthly Board do sistema novo (Story 14.6, AC1/AC7/AC9) contra o
 // backend REAL da branch Neon `e2e`. `/planner/month` é a SEGUNDA superfície
@@ -252,6 +253,60 @@ test.describe('Monthly Board — wide 1440×900', () => {
     await page.getByRole('dialog', { name: 'Detalhe da tarefa' }).getByRole('button', { name: 'Excluir tarefa' }).click()
     await expect(page.getByRole('dialog', { name: 'Detalhe da tarefa' })).toHaveCount(0)
     await expect(disposableRow).toHaveCount(0)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Story 14.11 — botões de ciclo nomeados, linha de regularização, 409 explicado.
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('Monthly Board — regularização atrasada (Story 14.11) — wide 1440×900', () => {
+  test.use({ viewport: { width: 1440, height: 900 } })
+
+  test('sem ciclo operacional, "Planejar <mês corrente>" nomeia o alvo previsto; 409 simulado vira alerta e o botão reabilita', async ({
+    page,
+    email,
+  }) => {
+    const { monthFirst } = seedMonthlyBoardScenario(email)
+    await page.route('**/api/bujo/logs/monthly/cycle/', async (route) => {
+      if (route.request().method() !== 'POST') {
+        await route.continue()
+        return
+      }
+      await route.fulfill({
+        status: 409,
+        contentType: 'application/json',
+        body: JSON.stringify({ detail: 'Simulado: disputa pelo alvo.', code: 'target_conflict' }),
+      })
+    })
+
+    await page.getByRole('button', { name: 'Este Mês' }).click()
+    await expect(page.getByRole('main', { name: 'Este Mês' })).toBeVisible()
+
+    const button = page.getByRole('button', { name: `Planejar ${monthTitle(monthFirst)}` })
+    await expect(button).toBeVisible()
+    await expect(page.getByRole('status').filter({ hasText: 'Regularização atrasada' })).toHaveCount(0)
+
+    await button.click()
+    await expect(page.getByRole('alert').filter({ hasText: 'Simulado: disputa pelo alvo.' })).toBeVisible()
+    await expect(button).toBeEnabled()
+  })
+
+  test('alvo em planejamento anterior ao corrente: "Continuar planejamento de <mês>" + linha de regularização', async ({
+    page,
+    email,
+  }) => {
+    const { currentMonthFirst, targetMonthFirst } = seedMonthlyCatchUpScenario(email)
+
+    await page.getByRole('button', { name: 'Este Mês' }).click()
+    await expect(page.getByRole('main', { name: 'Este Mês' })).toBeVisible()
+
+    await expect(
+      page.getByRole('link', { name: `Continuar planejamento de ${monthTitle(targetMonthFirst)}` }),
+    ).toBeVisible()
+    await expect(page.getByRole('status').filter({ hasText: 'Regularização atrasada' })).toContainText(
+      `${monthTitle(targetMonthFirst)} é anterior ao mês corrente — falta 1 mês para alcançar ${monthTitle(currentMonthFirst)}, um por vez.`,
+    )
+    await expectNoAxeViolations(page, { label: 'wide · /planner/month · regularização atrasada' })
   })
 })
 

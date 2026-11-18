@@ -21,7 +21,7 @@ Companion canônico do `EXPERIENCE.md`. Nomes preservam a nomenclatura upstream 
 | FR-4.14 — nome às categorias; FR-4.15 — `waiting_on`; FR-4.16 — herança `started` | Task Row/detalhe/migração | obrigação downstream | architecture-and-story-handoff |
 | FR-5.1 — inbox independente/vazia; FR-5.2 — campos; FR-5.3 — processamento manual; FR-5.4 — indicador persistente | Brain Dump + Capture Sheet + App Shell Badge | coberto | Fluxo 3 + Story 13.0 + Story 15.0 (`EXPERIENCE.md.Brain Dump e captura`) |
 | FR-6.1 — Dashboard ponto de entrada; FR-6.2 — Dashboard=ver; FR-6.3 — Hoje=trabalhar; FR-6.4 — empty-state=Index; FR-6.5 — card por collection; FR-6.6 — indicadores | Dashboard-panorama + Hoje | diferido | x.0 ampliada do Épico 17 |
-| FR-7.1 — grupos; FR-7.2 — campos; FR-7.3 — meta/bonus; FR-7.4 — completude; FR-7.5 — pesos; FR-7.6 — snapshot; FR-7.7 — desativação; FR-7.8 — reativação; FR-7.9 — histórico; FR-7.10 — gráfico/eventos | Hábitos | diferido | Story 16.0 |
+| FR-7.1 — grupos; FR-7.2 — campos; FR-7.3 — meta/bonus; FR-7.4 — completude; FR-7.5 — pesos; FR-7.6 — snapshot; FR-7.7 — desativação; FR-7.8 — reativação; FR-7.9 — histórico; FR-7.10 — gráfico/eventos | Hábitos | coberto | Story 16.0 (`EXPERIENCE.md.Hábitos`, Fluxo 9); implementação nas Stories 16.1–16.2 |
 | FR-8.1 — campos dinâmicos; FR-8.2 — log diário; FR-8.3 — histórico em três visualizações | Saúde-Métricas | diferido | Story 16.3 |
 | FR-9.1 — entidade Medicamento; FR-9.2 — múltiplos blocos/doses; FR-9.3 — confirmação lote/individual; FR-9.4 — ativo/inativo e histórico | Medicamentos | diferido | Story 16.3 |
 | FR-10.1 — campos de relato; FR-10.2 — ciclo seguro; FR-10.3 — `contexto_ia` off; FR-10.4 — múltiplas entradas; FR-10.5 — cadência/histórico; FR-10.6 — card no Hoje; FR-10.7 — absorção da Gratidão | Journalling/Gratidões | diferido | Story 16.10 |
@@ -33,4 +33,4 @@ Companion canônico do `EXPERIENCE.md`. Nomes preservam a nomenclatura upstream 
 
 ## Jornadas
 
-UJ-1 integral está diferida à x.0 ampliada do Épico 17; o Fluxo 1 do EXPERIENCE é somente o subfluxo Hoje. UJ-2–UJ-5 possuem Key Flows atuais. UJ-6, UJ-7 e UJ-8 permanecem diferidas a 16.10, 16.3 e 16.0.
+UJ-1 integral está diferida à x.0 ampliada do Épico 17; o Fluxo 1 do EXPERIENCE é somente o subfluxo Hoje. UJ-2–UJ-5 possuem Key Flows atuais. UJ-8 foi fechada no gate 16.0 e tem Key Flow próprio (Fluxo 9 — Configurar e registrar hábitos); UJ-6 e UJ-7 permanecem diferidas a 16.10 e 16.3.

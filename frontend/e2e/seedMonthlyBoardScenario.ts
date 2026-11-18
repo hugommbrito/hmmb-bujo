@@ -57,7 +57,7 @@ with tenant_context(user):
 // Mesma técnica de aritmética de mês PURA (sem dependência externa) usada
 // pelos 3 seeds abaixo que precisam de "N meses atrás/à frente" — evita
 // depender de `dateutil` (não usado em nenhum outro lugar do backend).
-const SHIFT_MONTHS_HELPER = `
+export const SHIFT_MONTHS_HELPER = `
 def shift_months(d, delta):
     total = d.year * 12 + (d.month - 1) + delta
     year, month = divmod(total, 12)

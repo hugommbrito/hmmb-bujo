@@ -540,3 +540,275 @@ def test_get_series_range_too_large_returns_400(auth_client, user):
     )
     assert response.status_code == 400
     assert "exceder" in response.data["detail"]
+
+
+# ==============================================================================
+# Story 16.2c — dia "não registrado" (POST untracked-days / efeito nas leituras)
+# ==============================================================================
+
+_UNTRACKED = "/api/habits/untracked-days/"
+
+
+def _past(user, days_ago):
+    return today_for(user) - timedelta(days=days_ago)
+
+
+def _seed_day(user, day, *, value=Decimal("1")):
+    """Grupo + hábito booleano + UMA linha materializada em `day` (peso 2)."""
+    with tenant_context(user):
+        group = HabitGroupFactory(user=user, name="Corpo")
+        habit = HabitFactory(user=user, group=group, type="boolean", name="Ler")
+        HabitVersionFactory(
+            user=user, habit=habit, weight=Decimal("2"), active=True,
+            effective_from=date(2025, 1, 1),
+        )
+        entry = HabitDayEntryFactory(
+            user=user, habit=habit, date=day, value=value,
+            weight_at_time=Decimal("2"), multiplier_at_time=Decimal("1.00"),
+        )
+    return group, habit, entry
+
+
+def test_post_untracked_day_marks_past_day_and_keeps_entries(auth_client, user):
+    """Marcar dia passado: 200 {date, untracked}; 1 linha (user, D, habits); entries intactas."""
+    from accounts.models import UntrackedDay
+
+    day = _past(user, 3)
+    _group, _habit, entry = _seed_day(user, day)
+
+    response = auth_client.post(
+        _UNTRACKED, {"date": day.isoformat(), "untracked": True}, format="json"
+    )
+    assert response.status_code == 200, response.data
+    assert response.data == {"date": day.isoformat(), "untracked": True}
+    with tenant_context(user):
+        rows = UntrackedDay.objects.filter(date=day)
+        assert rows.count() == 1
+        assert rows.get().collection == "habits"
+        # Nenhuma linha de domínio criada, alterada ou apagada.
+        assert HabitDayEntry.objects.filter(date=day).count() == 1
+        entry.refresh_from_db()
+        assert entry.value == Decimal("1")
+
+
+def test_post_untracked_day_is_idempotent(auth_client, user):
+    from accounts.models import UntrackedDay
+
+    day = _past(user, 1)
+    for _ in range(2):
+        response = auth_client.post(
+            _UNTRACKED, {"date": day.isoformat(), "untracked": True}, format="json"
+        )
+        assert response.status_code == 200
+    with tenant_context(user):
+        assert UntrackedDay.objects.filter(date=day).count() == 1
+
+    # Desmarcar duas vezes (a 2ª sem linha) também é 200.
+    for _ in range(2):
+        response = auth_client.post(
+            _UNTRACKED, {"date": day.isoformat(), "untracked": False}, format="json"
+        )
+        assert response.status_code == 200
+        assert response.data["untracked"] is False
+    with tenant_context(user):
+        assert UntrackedDay.objects.filter(date=day).count() == 0
+
+
+def test_patch_untracked_day_is_equivalent_to_post(auth_client, user):
+    day = _past(user, 1)
+    response = auth_client.patch(
+        _UNTRACKED, {"date": day.isoformat(), "untracked": True}, format="json"
+    )
+    assert response.status_code == 200
+    assert response.data["untracked"] is True
+
+
+def test_post_untracked_day_today_is_allowed(auth_client, user):
+    today = today_for(user)
+    response = auth_client.post(
+        _UNTRACKED, {"date": today.isoformat(), "untracked": True}, format="json"
+    )
+    assert response.status_code == 200
+    assert response.data["untracked"] is True
+
+
+def test_get_days_default_today_reflects_untracked_flag(auth_client, user):
+    """`GET /api/habits/days/` SEM `?date=` (default = hoje do usuário) lê a flag
+    de hoje — o mesmo dia que `today_for(user)` resolve no serviço."""
+    today = today_for(user)
+    _seed_day(user, today)
+    assert auth_client.get("/api/habits/days/").data["untracked"] is False
+
+    auth_client.post(_UNTRACKED, {"date": today.isoformat(), "untracked": True}, format="json")
+
+    response = auth_client.get("/api/habits/days/")
+    assert response.status_code == 200, response.data
+    assert response.data["date"] == today.isoformat()
+    assert response.data["untracked"] is True
+    assert response.data["total_completion"] is None
+    assert response.data["groups"][0]["completion"] is None
+
+
+def test_post_untracked_day_future_returns_400_on_date(auth_client, user):
+    """DomainError do serviço → 400 {"date": ...} (não 409)."""
+    from accounts.models import UntrackedDay
+
+    tomorrow = today_for(user) + timedelta(days=1)
+    response = auth_client.post(
+        _UNTRACKED, {"date": tomorrow.isoformat(), "untracked": True}, format="json"
+    )
+    assert response.status_code == 400, response.data
+    assert response.data["fields"]["date"] == [
+        "Não é possível marcar um dia futuro como não registrado."
+    ]
+    with tenant_context(user):
+        assert UntrackedDay.objects.count() == 0
+
+
+def test_post_untracked_day_invalid_body_returns_400(auth_client, user):
+    day = _past(user, 1)
+    assert auth_client.post(_UNTRACKED, {"untracked": True}, format="json").status_code == 400
+    assert (
+        auth_client.post(_UNTRACKED, {"date": day.isoformat()}, format="json").status_code
+        == 400
+    )
+    assert (
+        auth_client.post(
+            _UNTRACKED, {"date": "2026-13-99", "untracked": True}, format="json"
+        ).status_code
+        == 400
+    )
+
+
+def test_get_days_untracked_returns_null_completion_with_editable_entries(auth_client, user):
+    """Aba Hoje de dia marcado: semeia como antes; untracked=True; % nulos; entries presentes."""
+    day = _past(user, 2)
+    _seed_day(user, day)
+    auth_client.post(_UNTRACKED, {"date": day.isoformat(), "untracked": True}, format="json")
+
+    response = auth_client.get(f"/api/habits/days/?date={day.isoformat()}")
+    assert response.status_code == 200, response.data
+    assert response.data["untracked"] is True
+    assert response.data["total_completion"] is None
+    assert len(response.data["groups"]) == 1
+    assert response.data["groups"][0]["name"] == "Corpo"
+    assert response.data["groups"][0]["completion"] is None
+    assert len(response.data["entries"]) == 1
+
+    # A linha continua PATCH-ável e o dia NUNCA desmarca sozinho.
+    entry_id = response.data["entries"][0]["id"]
+    patched = auth_client.patch(f"/api/habits/days/{entry_id}/", {"value": None}, format="json")
+    assert patched.status_code == 200
+    again = auth_client.get(f"/api/habits/days/?date={day.isoformat()}")
+    assert again.data["untracked"] is True
+    assert again.data["total_completion"] is None
+    assert again.data["entries"][0]["value"] is None
+
+
+def test_get_days_not_untracked_has_flag_false_and_numeric_completion(auth_client, user):
+    day = _past(user, 2)
+    _seed_day(user, day)
+    response = auth_client.get(f"/api/habits/days/?date={day.isoformat()}")
+    assert response.data["untracked"] is False
+    assert response.data["total_completion"] == 100
+    assert response.data["groups"][0]["completion"] == 100
+
+
+def test_unmark_restores_real_percentage_without_recalc(auth_client, user):
+    day = _past(user, 2)
+    _group, _habit, entry = _seed_day(user, day)
+    before = auth_client.get(f"/api/habits/days/?date={day.isoformat()}").data
+
+    auth_client.post(_UNTRACKED, {"date": day.isoformat(), "untracked": True}, format="json")
+    auth_client.post(_UNTRACKED, {"date": day.isoformat(), "untracked": False}, format="json")
+
+    after = auth_client.get(f"/api/habits/days/?date={day.isoformat()}").data
+    assert after["untracked"] is False
+    assert after["total_completion"] == before["total_completion"] == 100
+    assert after["groups"] == before["groups"]
+    with tenant_context(user):
+        assert HabitDayEntry.objects.filter(date=day).count() == 1
+        entry.refresh_from_db()
+        assert entry.value == Decimal("1")
+        assert entry.weight_at_time == Decimal("2")
+
+
+def test_get_history_untracked_day_is_gap_with_flag_and_neighbors_intact(auth_client, user):
+    """Histórico: dia marcado = untracked=True, total None, groups [], entries []; vizinho intacto;
+    hábito que só aparece no dia marcado sai de `habits`."""
+    marked = _past(user, 3)
+    kept = _past(user, 2)
+    with tenant_context(user):
+        group = HabitGroupFactory(user=user, name="Corpo")
+        shared = HabitFactory(user=user, group=group, type="boolean", name="Ler")
+        only_marked = HabitFactory(user=user, group=group, type="boolean", name="Só no marcado")
+        HabitDayEntryFactory(
+            user=user, habit=shared, date=marked, value=Decimal("1"), weight_at_time=Decimal("2")
+        )
+        HabitDayEntryFactory(
+            user=user, habit=only_marked, date=marked, value=Decimal("1"),
+            weight_at_time=Decimal("1"),
+        )
+        HabitDayEntryFactory(
+            user=user, habit=shared, date=kept, value=Decimal("1"), weight_at_time=Decimal("2")
+        )
+    auth_client.post(_UNTRACKED, {"date": marked.isoformat(), "untracked": True}, format="json")
+
+    response = auth_client.get(
+        f"/api/habits/history/?start={marked.isoformat()}&end={kept.isoformat()}"
+    )
+    assert response.status_code == 200, response.data
+    days = {d["date"]: d for d in response.data["days"]}
+    gap = days[marked.isoformat()]
+    assert gap["untracked"] is True
+    assert gap["total_completion"] is None
+    assert gap["groups"] == []
+    assert gap["entries"] == []
+    neighbor = days[kept.isoformat()]
+    assert neighbor["untracked"] is False
+    assert neighbor["total_completion"] == 100
+    assert len(neighbor["entries"]) == 1
+    assert [h["name"] for h in response.data["habits"]] == ["Ler"]
+    # Nada foi apagado: as 2 linhas do dia marcado continuam no banco.
+    with tenant_context(user):
+        assert HabitDayEntry.objects.filter(date=marked).count() == 2
+
+
+def test_get_series_omits_untracked_point_but_day_types_cover_it(auth_client, user):
+    marked = _past(user, 3)
+    kept = _past(user, 2)
+    with tenant_context(user):
+        group = HabitGroupFactory(user=user)
+        habit = HabitFactory(user=user, group=group, type="boolean", name="Ler")
+        HabitVersionFactory(
+            user=user, habit=habit, weight=Decimal("2"), active=True,
+            effective_from=date(2025, 1, 1),
+        )
+        HabitDayEntryFactory(user=user, habit=habit, date=marked, value=Decimal("1"))
+        HabitDayEntryFactory(user=user, habit=habit, date=kept, value=Decimal("1"))
+    auth_client.post(_UNTRACKED, {"date": marked.isoformat(), "untracked": True}, format="json")
+
+    response = auth_client.get(
+        f"/api/habits/{habit.id}/series/?start={marked.isoformat()}&end={kept.isoformat()}"
+    )
+    assert response.status_code == 200, response.data
+    assert [p["date"] for p in response.data["points"]] == [kept.isoformat()]
+    assert [d["date"] for d in response.data["day_types"]] == [
+        marked.isoformat(), kept.isoformat()
+    ]
+
+
+def test_untracked_flag_is_per_collection_and_per_tenant(auth_client, user, other_user):
+    """Flag de medicamentos em D e flag alheia em D não marcam o dia de Hábitos."""
+    from accounts.models import UntrackedCollection, UntrackedDay
+
+    day = _past(user, 2)
+    _seed_day(user, day)
+    with tenant_context(user):
+        UntrackedDay.objects.create(date=day, collection=UntrackedCollection.MEDICATIONS)
+    with tenant_context(other_user):
+        UntrackedDay.objects.create(date=day, collection=UntrackedCollection.HABITS)
+
+    response = auth_client.get(f"/api/habits/days/?date={day.isoformat()}")
+    assert response.data["untracked"] is False
+    assert response.data["total_completion"] == 100

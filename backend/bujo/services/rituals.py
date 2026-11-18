@@ -235,7 +235,18 @@ def _envelope(source_id: str, *, items: list, blocking: bool = False, **extra) -
 
 
 def _task_items(tasks, decisions_by_task: dict) -> list:
-    return [{"task": task, "decision": decisions_by_task.get(task.id)} for task in tasks]
+    """Itens de Task de uma fonte. ``parent_title`` (Story 14.11) só é lido quando o
+    item é uma SUBTAREFA (cabeça aberta sob pai disposto — ver ``undisposed_heads``);
+    raízes nunca tocam ``parent_task`` (``parent_task_id`` é ``None``), então as
+    fontes que listam só raízes não ganham query nenhuma."""
+    return [
+        {
+            "task": task,
+            "decision": decisions_by_task.get(task.id),
+            "parent_title": task.parent_task.title if task.parent_task_id is not None else None,
+        }
+        for task in tasks
+    ]
 
 
 def undisposed_roots(queryset):
@@ -249,6 +260,33 @@ def undisposed_roots(queryset):
     predicado. Promover em vez de importar um símbolo privado entre serviços
     mantém uma fonte única de "raiz aberta" sem tornar o acoplamento invisível."""
     return queryset.filter(status__in=UNDISPOSED, parent_task__isnull=True)
+
+
+def undisposed_heads(queryset):
+    """**Cabeças abertas**: toda tarefa ``pending``/``started`` cujo pai NÃO está
+    aberto — raiz aberta, ou subtarefa aberta sob pai já disposto (Story 14.11).
+
+    Diferença para ``undisposed_roots``: aquela lista só raízes e deixa a
+    subtarefa aberta sob pai ``completed`` INVISÍVEL para a fonte bloqueante e
+    para a fila unificada — enquanto ``has_undisposed`` (o gate de finalizar,
+    FR-1.10) olha a subárvore inteira e a vê. Resultado: ``reviewed: true`` com
+    ``ready_to_finalize: false`` e um ritual travado sem nada a decidir.
+
+    Toda cadeia aberta tem EXATAMENTE uma cabeça (o nó aberto mais alto dela;
+    os filhos abertos abaixo continuam aninhados pelo ``TaskSerializer``), logo
+    ``has_undisposed(log) ⇔ undisposed_heads(log.tasks).exists()`` — e é essa
+    equivalência que faz fonte e gate não poderem divergir, por construção.
+
+    Não substitui ``undisposed_roots`` nas fontes NÃO bloqueantes (Future Log,
+    Monthly-na-semana, Daily pendentes): lá a pergunta é "o que planejar", não
+    "o que impede fechar" — e o produto decide o pai, nunca o filho solto.
+    ``select_related("parent_task")`` porque o item carrega ``parent_title``.
+    """
+    return (
+        queryset.filter(status__in=UNDISPOSED)
+        .exclude(parent_task__status__in=UNDISPOSED)
+        .select_related("parent_task")
+    )
 
 
 def _by_day_then_undated(queryset):
@@ -295,13 +333,21 @@ def _blocking_previous_source(source_id: str, previous) -> dict:
     contratado na AC7 da Story 14.1. ``ready_to_finalize`` é o MESMO predicado do
     gate de finalizar (``has_undisposed``), não uma reimplementação.
 
+    **Invariante (Story 14.11), com anterior presente:**
+    ``reviewed == ready_to_finalize == not has_undisposed(previous)``. Os itens
+    vêm de ``undisposed_heads`` (não de ``undisposed_roots``): uma subtarefa
+    aberta sob pai já concluído é a ÚNICA cabeça da sua cadeia e aparece como
+    item, com ``parent_title``; antes ela era invisível à fonte (0 itens,
+    ``reviewed: true``) enquanto o gate a via (``ready_to_finalize: false``) — o
+    beco sem saída da regularização atrasada.
+
     ``previous_period_start`` (Story 14.5, AC4) é a chave de período do log
     anterior — necessária porque ``finalize`` exige um alvo e ``week_start - 7
     dias``/``month anterior por aritmética`` está ERRADO quando um ciclo ``NULL``
     intermediário existe (``previous_operational_*`` já pula esses ciclos; a
     aritmética não pularia).
     """
-    tasks = [] if previous is None else _by_day_then_undated(undisposed_roots(previous.tasks))
+    tasks = [] if previous is None else _by_day_then_undated(undisposed_heads(previous.tasks))
     return _envelope(
         source_id,
         items=_task_items(tasks, {}),

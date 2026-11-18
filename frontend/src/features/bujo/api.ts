@@ -746,6 +746,14 @@ export function invalidateRitualQueries(queryClient: QueryClient) {
   // chamam esta função em `onSettled`.
   queryClient.invalidateQueries({ queryKey: ['bujo', 'futureLog'] })
   queryClient.invalidateQueries({ queryKey: ['bujo', 'taskDensity'] })
+  // Story 14.11: a fonte bloqueante e a fila unificada passaram a listar as
+  // mesmas "cabeças abertas" (subtarefa aberta sob pai disposto incluída).
+  // Concluir/cancelar uma delas pelo ritual (via `useRitualTaskTransitionMutation`,
+  // que NÃO é `useMigrateTaskMutation`) tem de re-derivar a fila e os dois
+  // aliases finos — senão a faixa do Hoje continua contando um item já decidido.
+  queryClient.invalidateQueries({ queryKey: keys.bujo.migrationQueue() })
+  queryClient.invalidateQueries({ queryKey: keys.bujo.unifiedMigrationQueue() })
+  queryClient.invalidateQueries({ queryKey: keys.bujo.catchUpQueue() })
 }
 
 /**

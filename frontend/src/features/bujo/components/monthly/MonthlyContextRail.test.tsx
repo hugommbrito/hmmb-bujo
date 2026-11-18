@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -39,7 +39,7 @@ function renderRail(overrides: Partial<Parameters<typeof MonthlyContextRail>[0]>
           { sourceId: 'previous-monthly', eligibleNow: 2, pendingNow: 2 },
         ]}
         previousMonthlyPendingCount={2}
-        previousPeriodStart="2026-07-01"
+        previousMonthlyLoading={false}
         onNavigateToSource={vi.fn()}
         onSelectDay={vi.fn()}
         onCompletePlanning={vi.fn()}
@@ -76,10 +76,53 @@ describe('MonthlyContextRail — avisos (AC5)', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Monthly anterior: 2 pendência(s) — bloqueia iniciar mês')
   })
 
-  it('sem pendências no Monthly anterior, mostra mensagem de pronto para finalizar', async () => {
-    renderRail({ previousMonthlyPendingCount: 0 })
+  it('sem pendências no Monthly anterior E gate noOpenTasks ✓ (servidor), mostra pronto para finalizar', async () => {
+    renderRail({
+      previousMonthlyPendingCount: 0,
+      readiness: { ...READINESS, finalize: { ...READINESS.finalize!, gates: { noOpenTasks: true, nextPlanningExists: true } } },
+    })
     await screen.findByRole('progressbar', { name: 'Fontes revisadas' })
     expect(screen.getByText('Mês anterior pronto para finalizar.')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  // Story 14.11 — matriz "UI: contador 0 + gate ✗": a verdade é do servidor.
+  it('contador local 0 mas gate noOpenTasks ✗: alerta das subtarefas, botão desabilitado, sem "pronto"', async () => {
+    renderRail({ previousMonthlyPendingCount: 0 }) // READINESS.finalize.gates.noOpenTasks === false
+    await screen.findByRole('progressbar', { name: 'Fontes revisadas' })
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Monthly anterior: tarefas abertas fora desta lista (subtarefas) — bloqueia finalizar',
+    )
+    expect(screen.queryByText('Mês anterior pronto para finalizar.')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Finalizar mês anterior' })).toHaveAttribute('aria-disabled', 'true')
+  })
+
+  // Review 14.11: fonte ainda em voo ⇒ contador 0 por AUSÊNCIA de dado; o ramo
+  // defensivo não pode anunciar "subtarefas fora desta lista" nesse instante.
+  it('fonte carregando + contador 0 + gate ✗: texto neutro, sem alert', async () => {
+    renderRail({ previousMonthlyPendingCount: 0, previousMonthlyLoading: true })
+    await screen.findByRole('progressbar', { name: 'Fontes revisadas' })
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.getByText('Carregando o Monthly anterior…')).toBeInTheDocument()
+    expect(screen.queryByText('Mês anterior pronto para finalizar.')).not.toBeInTheDocument()
+  })
+
+  // Review 14.11 (E2E "3 fontes carregam independentemente"): fonte em ERRO ⇒ a
+  // lista já alerta com retry; o rail não duplica a live region.
+  it('fonte em erro + contador 0 + gate ✗: texto neutro clicável, sem alert', async () => {
+    const onNavigateToSource = vi.fn()
+    renderRail({ previousMonthlyPendingCount: 0, previousMonthlyError: true, onNavigateToSource })
+    await screen.findByRole('progressbar', { name: 'Fontes revisadas' })
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByText('Monthly anterior indisponível — tente novamente pela fonte.'))
+    expect(onNavigateToSource).toHaveBeenCalledWith('previous-monthly')
+  })
+
+  it('sem readiness.finalize (nenhum active): texto neutro, sem botão de finalizar', async () => {
+    renderRail({ previousMonthlyPendingCount: 0, readiness: { ...READINESS, active: null, finalize: null } })
+    await screen.findByRole('progressbar', { name: 'Fontes revisadas' })
+    expect(screen.getByText('Nenhum Monthly anterior a finalizar.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Finalizar mês anterior' })).not.toBeInTheDocument()
   })
 
   it('fonte não-bloqueante com pendência aparece como aviso clicável', async () => {
@@ -106,12 +149,37 @@ describe('MonthlyContextRail — painel de verificação e ações do ciclo (AC3
     expect(screen.queryByRole('button', { name: 'Cancelar planejamento' })).not.toBeInTheDocument()
   })
 
+  // Story 14.11 — os 2 gates de Finalizar são visíveis, com motivo no ✗.
+  it('mostra os 2 gates individuais de Finalizar mês anterior, com motivo no ✗', async () => {
+    renderRail()
+    await screen.findByRole('progressbar', { name: 'Fontes revisadas' })
+    const panel = screen.getByRole('region', { name: 'Painel de verificação — Finalizar mês anterior' })
+    expect(within(panel).getByText('Finalizar Julho de 2026')).toBeInTheDocument()
+    expect(within(panel).getByText('Sem tarefas abertas no mês anterior')).toBeInTheDocument()
+    expect(within(panel).getByText(/subtarefas incluídas/)).toBeInTheDocument()
+    expect(within(panel).getByText('Mês seguinte em planejamento')).toBeInTheDocument()
+    // ✓ não carrega motivo.
+    expect(within(panel).queryByText('Abra o planejamento do mês seguinte antes de finalizar.')).not.toBeInTheDocument()
+  })
+
+  it('gates de Iniciar ✗ carregam motivo', async () => {
+    renderRail()
+    await screen.findByRole('progressbar', { name: 'Fontes revisadas' })
+    const panel = screen.getByRole('region', { name: 'Painel de verificação — Iniciar mês' })
+    expect(within(panel).getByText('Disponível a partir de 1 de agosto.')).toBeInTheDocument()
+    expect(within(panel).getByText('Use "Concluir planejamento" acima.')).toBeInTheDocument()
+    expect(within(panel).getByText(/Finalize o Monthly anterior primeiro/)).toBeInTheDocument()
+  })
+
   it('Finalizar mês anterior pede confirmação irreversível antes de disparar', async () => {
     const onFinalizePrevious = vi.fn()
     renderRail({
       previousMonthlyPendingCount: 0,
       onFinalizePrevious,
-      readiness: { ...READINESS, finalize: { ...READINESS.finalize!, allowed: true } },
+      readiness: {
+        ...READINESS,
+        finalize: { ...READINESS.finalize!, allowed: true, gates: { noOpenTasks: true, nextPlanningExists: true } },
+      },
     })
     await screen.findByRole('progressbar', { name: 'Fontes revisadas' })
     fireEvent.click(screen.getByRole('button', { name: 'Finalizar mês anterior' }))

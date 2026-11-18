@@ -70,3 +70,56 @@ test('histórico: dose perdida, confirmação e correção de dose retroativas p
 
   expect(consoleErrors).toEqual([])
 })
+
+// Story 16.2c — dia "não registrado" em Medicamentos: o mesmo dia passado sem
+// confirmação deixa de ler "Dose perdida" (sinal clínico) e passa a ler
+// "Não registrado" (ausência de registro); desmarcar devolve o sinal.
+test('dia "não registrado" (16.2c): "Dose perdida" vira "Não registrado" ao marcar, persiste e volta ao desmarcar', async ({
+  page,
+  email,
+}) => {
+  test.setTimeout(120_000)
+
+  seedMedicationPastSchedule(email, {
+    title: 'Losartana',
+    substanceName: 'Losartana K',
+    blockName: 'Manhã',
+    dose: [{ label: '', amount: 50, unit: 'mg' }],
+    daysAgo: 1,
+  })
+
+  await page.goto('/health/medications')
+  await page.getByRole('tab', { name: 'Histórico' }).click()
+  await expect(page).toHaveURL('/health/medications/history')
+  await page.getByRole('button', { name: 'Dia anterior' }).click()
+  await expect(page.getByText('Losartana · 50 mg')).toBeVisible()
+  await expect(page.getByText('Dose perdida')).toBeVisible()
+  await expect(page.getByText('Doses perdidas')).toBeVisible()
+
+  const toggle = page.getByRole('checkbox', { name: 'Marcar este dia como não registrado' })
+  await expect(toggle).not.toBeChecked()
+  await toggle.click()
+  await expect(toggle).toBeChecked()
+  await expect(page.getByText('Dose perdida')).toHaveCount(0)
+  await expect(page.getByText('Doses perdidas')).toHaveCount(0)
+  // Linha + cabeçalho do bloco (`exact`: o título da data também contém a frase).
+  await expect(page.getByText('Não registrado', { exact: true })).toHaveCount(2)
+  await expect(
+    page.getByRole('heading', { level: 3, name: /Dia não registrado — fora das estatísticas/ }),
+  ).toBeVisible()
+  // Continua editável: o checkbox da dose segue disponível.
+  await expect(page.getByRole('checkbox', { name: /Losartana/ })).toBeEnabled()
+
+  // Persistência: recarregar e voltar a ontem mantém a flag e o rótulo.
+  await page.reload()
+  await page.getByRole('button', { name: 'Dia anterior' }).click()
+  await expect(page.getByRole('checkbox', { name: 'Marcar este dia como não registrado' })).toBeChecked()
+  await expect(page.getByText('Dose perdida')).toHaveCount(0)
+  await expect(page.getByText('Não registrado', { exact: true })).toHaveCount(2)
+
+  // Desmarcar devolve o sinal clínico.
+  await page.getByRole('checkbox', { name: 'Marcar este dia como não registrado' }).click()
+  await expect(page.getByText('Dose perdida')).toBeVisible()
+  await expect(page.getByText('Doses perdidas')).toBeVisible()
+  await expect(page.getByText('Não registrado', { exact: true })).toHaveCount(0)
+})

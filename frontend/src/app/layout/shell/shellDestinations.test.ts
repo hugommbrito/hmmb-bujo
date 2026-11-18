@@ -123,6 +123,35 @@ describe('shellDestinations — nav mínima (AC2/AC3)', () => {
     expect(flattenDestinations(items).map((d) => d.label)).not.toContain('Gratidão')
   })
 
+  // DIR-12c (Story 16.1): "Hábitos com a collection desligada". O gateamento
+  // futuro FILTRA o registro; a derivação precisa tolerar a ausência da entrada
+  // sem deixar link fantasma, item disabled ou heading vazio para trás.
+  it('sem a entrada `habits` no manifest, o destino Hábitos some da navegação inteira', () => {
+    const semHabitos = registry.filter((c) => c.id !== 'habits')
+    const items = deriveShellNavItems(semHabitos)
+    const destinos = flattenDestinations(items)
+
+    // Nenhum link fantasma e nenhuma rota de Hábitos alcançável pela nav.
+    expect(destinos.map((d) => d.label)).not.toContain('Hábitos')
+    expect(destinos.map((d) => d.path)).not.toContain('/habits')
+    // Nenhum destino sem rótulo/rota (o "item disabled" que o gate proíbe).
+    for (const destino of destinos) {
+      expect(destino.label).toBeTruthy()
+      expect(destino.path).toBeTruthy()
+    }
+    // Nenhum agrupador vazio (heading sem filhos).
+    for (const item of items) {
+      if (item.kind === 'group') expect(item.group.children.length).toBeGreaterThan(0)
+    }
+    // Núcleo e Planner seguem ÍNTEGROS.
+    for (const label of ['Hoje', 'Esta Semana', 'Este Mês', 'Futuro', 'Recorrentes', 'Arquivo']) {
+      expect(destinos.map((d) => d.label)).toContain(label)
+    }
+    // As demais collections continuam presentes — só Hábitos saiu.
+    expect(destinos.map((d) => d.label)).toContain('Gratidão')
+    expect(destinos.map((d) => d.label)).toContain('Métricas')
+  })
+
   it('grupo Saúde só existe com ≥1 filho e ordena por nav.order', () => {
     const onlyMetrics = registry.filter((c) => c.id === 'health-metrics')
     const items = deriveShellNavItems(onlyMetrics)

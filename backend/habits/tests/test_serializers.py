@@ -137,13 +137,26 @@ def test_change_serializer_accepts_created_and_before_after():
 
 
 def test_history_day_serializer_allows_null_total_completion():
-    """Dia-lacuna: total_completion=None serializa sem erro (allow_null)."""
+    """Dia-lacuna: total_completion=None serializa sem erro (allow_null).
+    `untracked` entrou no contrato na 16.2c (dia marcado "não registrado")."""
     data = HabitHistoryDaySerializer(
         {"date": "2026-01-06", "day_type": "weekday", "total_completion": None,
-         "groups": [], "entries": []}
+         "untracked": False, "groups": [], "entries": []}
     ).data
     assert data["total_completion"] is None
+    assert data["untracked"] is False
     assert data["groups"] == []
+
+
+def test_day_group_serializer_allows_null_completion():
+    """Story 16.2c: dia marcado "não registrado" lista os grupos com completion=None
+    (a UI escreve "Não registrado", nunca barra em 0)."""
+    from habits.serializers import HabitDayGroupSerializer
+
+    data = HabitDayGroupSerializer(
+        {"id": "7b6b4f8e-1b2a-4c3d-9e8f-0a1b2c3d4e5f", "name": "Corpo", "completion": None}
+    ).data
+    assert data["completion"] is None
 
 
 def test_series_point_serializer_allows_null_value():

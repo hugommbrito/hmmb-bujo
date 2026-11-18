@@ -215,3 +215,24 @@ jobs:
 
       - name: Build (vite)
         run: npm run build
+
+      # Story 16.2: `backend/habits/phosphor_catalog.json` é a autoridade que o
+      # servidor usa para validar `icon_key` — e é um artefato COMMITADO, porque
+      # o backend roda em produção sem `node_modules`. Este gate segue o mesmo
+      # molde dos checks de `schema.yaml`/`types.gen.ts` do job backend:
+      # regenera a partir do pacote instalado e `diff`a contra o versionado.
+      # Sem ele, um upgrade de `@phosphor-icons/react` faria o catálogo divergir
+      # em silêncio — e nomes de glifo válidos passariam a devolver 400.
+      # Roda NESTE job (e não no backend) porque só aqui existe `node_modules`.
+      - name: Verificar catálogo Phosphor está atualizado
+        shell: bash
+        run: |
+          cp backend/habits/phosphor_catalog.json /tmp/phosphor.committed.json
+          node scripts/gen_phosphor_catalog.mjs
+          # Restaura o arquivo ANTES de decidir: o gerador escreve in-place, e um
+          # step futuro depois deste não deve herdar a árvore suja.
+          cp backend/habits/phosphor_catalog.json /tmp/phosphor.generated.json
+          cp /tmp/phosphor.committed.json backend/habits/phosphor_catalog.json
+          diff /tmp/phosphor.committed.json /tmp/phosphor.generated.json \
+            || (echo "❌ backend/habits/phosphor_catalog.json divergiu do @phosphor-icons/react instalado — rode 'node scripts/gen_phosphor_catalog.mjs' na raiz e commite" && exit 1)
+        working-directory: ${{ github.workspace }}

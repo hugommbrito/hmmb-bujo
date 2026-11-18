@@ -40,3 +40,25 @@ describe('deriveEntryStatus (unidade pura, AC3)', () => {
     expect(deriveEntryStatus(adHoc, false)).toBe('confirmed')
   })
 })
+
+// Story 16.2c — dia "não registrado": ausência de REGISTRO, não sinal clínico.
+describe('deriveEntryStatus — untracked (16.2c)', () => {
+  it('scheduled sem confirmação num dia marcado → unrecorded (passado OU hoje)', () => {
+    expect(deriveEntryStatus(entry({ confirmedAt: null }), true, true)).toBe('unrecorded')
+    expect(deriveEntryStatus(entry({ confirmedAt: null }), false, true)).toBe('unrecorded')
+  })
+
+  it('confirmada e avulsa seguem confirmed mesmo com o dia marcado', () => {
+    expect(
+      deriveEntryStatus(entry({ confirmedAt: '2026-03-01T10:00:00Z' }), true, true),
+    ).toBe('confirmed')
+    expect(
+      deriveEntryStatus(entry({ source: 'ad_hoc', confirmedAt: null, timeBlockId: null }), true, true),
+    ).toBe('confirmed')
+  })
+
+  it('default `untracked=false` preserva a matriz da 8.3', () => {
+    expect(deriveEntryStatus(entry({ confirmedAt: null }), true)).toBe('missed')
+    expect(deriveEntryStatus(entry({ confirmedAt: null }), false)).toBe('pending')
+  })
+})

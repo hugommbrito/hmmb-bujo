@@ -372,6 +372,29 @@ def test_summary_habits_bloco_reflete_grupos_reais_com_shape_id_name_completion(
     assert grupo["completion"] == 100
 
 
+def test_summary_habits_segue_numerico_com_dia_marcado_nao_registrado(user):
+    # Story 16.2c: o resumo do widget NÃO adota a flag `untracked` nesta story (DW
+    # "summary/today adota `untracked`"): `compute_day_completeness` fica puro e o
+    # contrato de `habits.total`/`groups[].completion` segue inteiro, mesmo com
+    # hoje marcado como "não registrado" em Hábitos.
+    from accounts.models import UntrackedCollection, UntrackedDay
+
+    with tenant_context(user):
+        today = today_for(user)
+        get_or_create_daily_log(user=user, log_date=today)
+        group = HabitGroupFactory(user=user, name="Manhã")
+        habit = HabitFactory(user=user, group=group)
+        HabitDayEntryFactory(user=user, habit=habit, date=today, value=Decimal("1"))
+        UntrackedDay.objects.create(date=today, collection=UntrackedCollection.HABITS)
+    client, *_ = _token_client(user, scopes=[SCOPE_SUMMARY])
+
+    body = client.get(SUMMARY_URL).json()
+
+    assert body["habits"]["total"] == 100
+    assert body["habits"]["groups"][0]["completion"] == 100
+    assert "untracked" not in body["habits"]
+
+
 # --- AC2: campo genérico lastJournalEntry (null / preenchido) -----------------
 
 

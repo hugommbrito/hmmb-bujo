@@ -992,7 +992,9 @@ export interface paths {
          *
          *     Série diária derivada on-read de ``habit_day_entries``; eventos derivados do stream
          *     de ``habit_versions``; ritmo (day_type) para o sombreamento. ``Habit.DoesNotExist``
-         *     (inclusive cross-tenant) → 404, como as views existentes.
+         *     (inclusive cross-tenant) → 404, como as views existentes. O ponto de um dia
+         *     marcado "não registrado" (Story 16.2c) é **omitido** de ``points`` (vira
+         *     lacuna no gráfico); ``dayTypes`` continua cobrindo o range inteiro.
          */
         get: operations["habits_series_retrieve"];
         put?: never;
@@ -1030,7 +1032,10 @@ export interface paths {
          * @description Tracker do dia (snapshot realizado, Story 6.2).
          *
          *     ``GET`` materializa (idempotente) as linhas do dia via ``seed_habit_day`` e
-         *     retorna ``{date, totalCompletion, groups, entries}`` (default = hoje).
+         *     retorna ``{date, totalCompletion, dayType, untracked, groups, entries}``
+         *     (default = hoje). Dia marcado "não registrado" (Story 16.2c) semeia como
+         *     antes e devolve ``untracked=True`` com completude nula — as linhas seguem
+         *     presentes e editáveis.
          */
         get: operations["habits_days_retrieve"];
         put?: never;
@@ -1070,7 +1075,10 @@ export interface paths {
          *
          *     Alimenta a grade hábitos × dias **e** o detalhe por-data (fatia do mesmo payload).
          *     **Nunca** materializa (não chama ``seed_habit_day``): dias nunca abertos são
-         *     lacunas honestas (``totalCompletion=null``), não 0% fabricado (AC1).
+         *     lacunas honestas (``totalCompletion=null``), não 0% fabricado (AC1). Um dia
+         *     marcado "não registrado" (Story 16.2c) chega como a mesma lacuna
+         *     (``entries: []``, ``groups: []``, ``totalCompletion: null``) com
+         *     ``untracked: true`` — as linhas dele continuam no banco, só não entram aqui.
          */
         get: operations["habits_history_retrieve"];
         put?: never;
@@ -1103,6 +1111,42 @@ export interface paths {
          *     e recalcula (bounded) só aquele dia. ``POST``/``PATCH`` são equivalentes.
          */
         patch: operations["habits_holidays_partial_update"];
+        trace?: never;
+    };
+    "/api/habits/untracked-days/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description Marca/desmarca um dia de Hábitos como "não registrado" (Story 16.2c).
+         *
+         *     Escreve ``accounts.UntrackedDay`` com ``collection=habits`` fixada aqui (nunca
+         *     no payload). Idempotente; data futura → ``DomainError`` do serviço convertido
+         *     em ``ValidationError({"date": ...})`` → 400 ``{detail, fields: {date: [...]}}``
+         *     (erro de CAMPO, não o 409 default do handler nem o ``{"detail": ...}`` de
+         *     ``HabitGroupMultipliersView.put``). ``POST``/``PATCH`` são equivalentes.
+         *     Nenhuma linha de ``habit_day_entries`` é tocada.
+         */
+        post: operations["habits_untracked_days_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * @description Marca/desmarca um dia de Hábitos como "não registrado" (Story 16.2c).
+         *
+         *     Escreve ``accounts.UntrackedDay`` com ``collection=habits`` fixada aqui (nunca
+         *     no payload). Idempotente; data futura → ``DomainError`` do serviço convertido
+         *     em ``ValidationError({"date": ...})`` → 400 ``{detail, fields: {date: [...]}}``
+         *     (erro de CAMPO, não o 409 default do handler nem o ``{"detail": ...}`` de
+         *     ``HabitGroupMultipliersView.put``). ``POST``/``PATCH`` são equivalentes.
+         *     Nenhuma linha de ``habit_day_entries`` é tocada.
+         */
+        patch: operations["habits_untracked_days_partial_update"];
         trace?: never;
     };
     "/api/health-field-definitions/": {
@@ -1396,6 +1440,42 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/medications/untracked-days/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description Marca/desmarca um dia de Medicamentos como "não registrado" (Story 16.2c).
+         *
+         *     Paridade de contrato com ``habits.HabitUntrackedDayView``: escreve
+         *     ``accounts.UntrackedDay`` com ``collection=medications`` fixada aqui (nunca no
+         *     payload); idempotente; data futura → ``DomainError`` convertido em
+         *     ``ValidationError({"date": ...})`` → 400 ``{detail, fields: {date: [...]}}``
+         *     (erro de CAMPO, não o 409 default do handler). Nenhuma linha de
+         *     ``medication_day_entries`` é tocada. ``POST``/``PATCH`` são equivalentes.
+         */
+        post: operations["medications_untracked_days_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * @description Marca/desmarca um dia de Medicamentos como "não registrado" (Story 16.2c).
+         *
+         *     Paridade de contrato com ``habits.HabitUntrackedDayView``: escreve
+         *     ``accounts.UntrackedDay`` com ``collection=medications`` fixada aqui (nunca no
+         *     payload); idempotente; data futura → ``DomainError`` convertido em
+         *     ``ValidationError({"date": ...})`` → 400 ``{detail, fields: {date: [...]}}``
+         *     (erro de CAMPO, não o 409 default do handler). Nenhuma linha de
+         *     ``medication_day_entries`` é tocada. ``POST``/``PATCH`` são equivalentes.
+         */
+        patch: operations["medications_untracked_days_partial_update"];
         trace?: never;
     };
     "/api/summary/today": {
@@ -1718,6 +1798,7 @@ export interface components {
             readonly id: string;
             name: string;
             emoticon?: string;
+            iconKey?: string | null;
             /** Format: uuid */
             group: string;
             type: components["schemas"]["HabitTypeEnum"];
@@ -1749,6 +1830,7 @@ export interface components {
             emoticon: string;
             /** @default  */
             unit: string;
+            iconKey?: string | null;
             /** Format: uuid */
             group: string;
             type: components["schemas"]["HabitTypeEnum"];
@@ -1759,19 +1841,26 @@ export interface components {
             /** Format: decimal */
             bonus?: string | null;
         };
-        /** @description Payload do tracker do dia: % total, % por grupo, tipo do dia e as linhas. */
+        /**
+         * @description Payload do tracker do dia: % total, % por grupo, tipo do dia e as linhas.
+         *
+         *     ``total_completion`` **allow_null** + ``untracked`` (Story 16.2c): dia marcado
+         *     "não registrado" vem com ``untracked=True`` e completude nula — as ``entries``
+         *     continuam presentes e PATCH-áveis.
+         */
         HabitDay: {
             /** Format: date */
             date: string;
-            totalCompletion: number;
+            totalCompletion: number | null;
             dayType: components["schemas"]["DayTypeEnum"];
+            untracked: boolean;
             groups: components["schemas"]["HabitDayGroup"][];
             entries: components["schemas"]["HabitDayEntry"][];
         };
         /**
          * @description Uma linha do tracker do dia: identidade do hábito + snapshot congelado.
          *
-         *     Expõe a identidade do hábito (``name``/``emoticon``/``type``/``group``/``unit``)
+         *     Expõe a identidade do hábito (``name``/``emoticon``/``icon_key``/``type``/``group``/``unit``)
          *     junto do estado do dia (``value``/``*_at_time``). ``type`` reusa ``HabitTypeEnum``
          *     via ``ChoiceField`` (mesmo override de enum da 6.1).
          */
@@ -1782,6 +1871,7 @@ export interface components {
             readonly habitId: string;
             readonly name: string;
             readonly emoticon: string;
+            readonly iconKey: string | null;
             readonly type: components["schemas"]["HabitTypeEnum"];
             /** Format: uuid */
             readonly group: string;
@@ -1798,12 +1888,18 @@ export interface components {
             /** Format: decimal */
             multiplierAtTime?: string;
         };
-        /** @description Cabeçalho de grupo do tracker: nome + % ponderado do grupo. */
+        /**
+         * @description Cabeçalho de grupo do tracker: nome + % ponderado do grupo.
+         *
+         *     ``completion`` **allow_null** (Story 16.2c): num dia marcado "não registrado" a
+         *     aba Hoje ainda lista os grupos (o dia é editável), mas a completude é nula — a
+         *     interface escreve "Não registrado", nunca uma barra em 0.
+         */
         HabitDayGroup: {
             /** Format: uuid */
             id: string;
             name: string;
-            completion: number;
+            completion: number | null;
         };
         /**
          * @description Tipo de dia de um dia de calendário do range (para o sombreamento de ritmo,
@@ -1826,12 +1922,15 @@ export interface components {
         /**
          * @description Um dia no range de histórico. ``total_completion`` **allow_null** = lacuna
          *     honesta (dia nunca aberto); ``groups`` traz o % ponderado POR GRUPO (AC1).
+         *     ``untracked`` (Story 16.2c): dia marcado "não registrado" chega como lacuna
+         *     (``entries=[]``) com esta flag ligada, para a interface nomear o estado.
          */
         HabitHistoryDay: {
             /** Format: date */
             date: string;
             dayType: components["schemas"]["DayTypeEnum"];
             totalCompletion: number | null;
+            untracked: boolean;
             groups: components["schemas"]["HabitDayGroup"][];
             entries: components["schemas"]["HabitDayEntry"][];
         };
@@ -1877,6 +1976,7 @@ export interface components {
             readonly id: string;
             name: string;
             emoticon?: string;
+            iconKey?: string | null;
             readonly type: components["schemas"]["HabitTypeEnum"];
             unit?: string;
             /** Format: uuid */
@@ -1951,6 +2051,7 @@ export interface components {
             fieldType: components["schemas"]["HealthFieldTypeEnum"];
             enumOptions?: string[];
             displayOrder?: number;
+            iconKey?: string | null;
         };
         /** @description Saída: a definição de campo. ``field_type`` emite ``HealthFieldTypeEnum``. */
         HealthFieldDefinition: {
@@ -1961,6 +2062,7 @@ export interface components {
             readonly enumOptions: string[];
             active?: boolean;
             displayOrder?: number;
+            iconKey?: string | null;
         };
         /**
          * @description Payload de ``GET /api/health-logs/series/``: a definição do campo + a série.
@@ -2104,12 +2206,17 @@ export interface components {
             /** Format: uuid */
             prescribedById?: string | null;
         };
-        /** @description Payload da superfície diária: blocos agendados + seção avulso/PRN (AC4/AC7). */
+        /**
+         * @description Payload da superfície diária: blocos agendados + seção avulso/PRN (AC4/AC7).
+         *     ``untracked`` (Story 16.2c): dia marcado "não registrado" na collection
+         *     ``medications`` — blocos/linhas inalterados, só o rótulo muda na UI.
+         */
         MedicationDay: {
             /** Format: date */
             date: string;
             blocks: components["schemas"]["MedicationDayBlock"][];
             adHoc: components["schemas"]["MedicationDayEntry"][];
+            untracked: boolean;
         };
         /**
          * @description Um Medication Block do dia: cabeçalho (nome + estado derivado) + suas linhas
@@ -2363,20 +2470,23 @@ export interface components {
             name?: string;
             emoticon?: string;
             unit?: string;
+            iconKey?: string | null;
             /** Format: uuid */
             group?: string;
         };
         /**
          * @description Entrada de edição (AC2, AC4): ``name``/``enum_options``/``display_order``/
-         *     ``active``. ``field_type`` é **imutável** — enviá-lo é rejeitado (400). A regra
-         *     enum⇔opções no update é validada na camada de serviço contra o ``field_type``
-         *     atual (imutável), pois o serializer não conhece o tipo persistido.
+         *     ``active``/``icon_key``. ``field_type`` é **imutável** — enviá-lo é rejeitado
+         *     (400). A regra enum⇔opções no update é validada na camada de serviço contra o
+         *     ``field_type`` atual (imutável), pois o serializer não conhece o tipo
+         *     persistido.
          */
         PatchedHealthFieldUpdate: {
             name?: string;
             enumOptions?: string[];
             displayOrder?: number;
             active?: boolean;
+            iconKey?: string | null;
         };
         /** @description Entrada de edição do slot (AC7): só ``title`` (identidade, não versionada). */
         PatchedMedicationUpdate: {
@@ -2396,6 +2506,15 @@ export interface components {
             /** Format: date */
             date?: string;
             isHoliday?: boolean;
+        };
+        /**
+         * @description Marca/desmarca um dia como não registrado (write). ``date`` ≤ hoje do
+         *     usuário (a regra mora em ``accounts.services.set_untracked_day``).
+         */
+        PatchedSetUntrackedDay: {
+            /** Format: date */
+            date?: string;
+            untracked?: boolean;
         };
         PatchedTaskUpdate: {
             title?: string;
@@ -2514,6 +2633,7 @@ export interface components {
         RitualTaskItem: {
             task: components["schemas"]["Task"];
             decision: string | null;
+            parentTitle?: string | null;
         };
         RitualTemplateItem: {
             template: components["schemas"]["RecurringTaskTemplate"];
@@ -2553,6 +2673,15 @@ export interface components {
             /** Format: date */
             date: string;
             isHoliday: boolean;
+        };
+        /**
+         * @description Marca/desmarca um dia como não registrado (write). ``date`` ≤ hoje do
+         *     usuário (a regra mora em ``accounts.services.set_untracked_day``).
+         */
+        SetUntrackedDay: {
+            /** Format: date */
+            date: string;
+            untracked: boolean;
         };
         Signup: {
             /** Format: email */
@@ -2661,7 +2790,10 @@ export interface components {
         };
         TaskMigrate: {
             destination: components["schemas"]["TaskMigrateDestinationEnum"];
-            /** Format: date */
+            /**
+             * Format: date
+             * @description Dia 1 do mês de destino. Obrigatório em 'future' (estritamente posterior ao mês corrente). Opcional em 'month' (Story 14.11, regularização atrasada): entre o alvo de planejamento mensal e o mês corrente, inclusive; ausente = mês corrente. Ignorado nos demais destinos.
+             */
             monthFirst?: string;
             /** Format: date */
             scheduledDate?: string | null;
@@ -2743,6 +2875,12 @@ export interface components {
             sourceId: string;
             count: number;
             groups: components["schemas"]["UnifiedQueueGroup"][];
+        };
+        /** @description Resultado do toggle: a data + o estado efetivo após a escrita. */
+        UntrackedDayResult: {
+            /** Format: date */
+            date: string;
+            untracked: boolean;
         };
         WeeklyCycle: {
             status: string | null;
@@ -4484,6 +4622,52 @@ export interface operations {
             };
         };
     };
+    habits_untracked_days_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetUntrackedDay"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UntrackedDayResult"];
+                };
+            };
+        };
+    };
+    habits_untracked_days_partial_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PatchedSetUntrackedDay"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UntrackedDayResult"];
+                };
+            };
+        };
+    };
     health_field_definitions_list: {
         parameters: {
             query?: {
@@ -4876,6 +5060,52 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MedicationDay"];
+                };
+            };
+        };
+    };
+    medications_untracked_days_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetUntrackedDay"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UntrackedDayResult"];
+                };
+            };
+        };
+    };
+    medications_untracked_days_partial_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PatchedSetUntrackedDay"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UntrackedDayResult"];
                 };
             };
         };

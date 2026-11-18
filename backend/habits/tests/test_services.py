@@ -1061,3 +1061,80 @@ def test_series_nao_semeia(user):
         get_habit_series(user=user, habit_id=habit.id, start=_HIST_MON, end=_HIST_SUN)
         after = HabitDayEntry.objects.count()
     assert before == after == 0
+
+
+# --- Story 16.2c — dia "não registrado" (wrapper vs. cálculo puro) -------------
+
+
+def test_get_day_completeness_wraps_compute_and_knows_the_flag(user):
+    """Dia marcado → total None, groups[].completion None, untracked True; o cálculo
+    puro (`compute_day_completeness`) permanece numérico e INALTERADO."""
+    from accounts.models import UntrackedCollection, UntrackedDay
+    from habits.services import get_day_completeness
+
+    with tenant_context(user):
+        group = HabitGroupFactory(user=user, name="Corpo")
+        habit = HabitFactory(user=user, group=group, type="boolean")
+        HabitDayEntryFactory(
+            user=user, habit=habit, date=_D1, value=Decimal("1"), weight_at_time=Decimal("2")
+        )
+
+        tracked = get_day_completeness(user=user, date=_D1)
+        assert tracked == {
+            "total": 100,
+            "groups": [{"id": group.id, "name": "Corpo", "completion": 100}],
+            "untracked": False,
+        }
+
+        UntrackedDay.objects.create(date=_D1, collection=UntrackedCollection.HABITS)
+        marked = get_day_completeness(user=user, date=_D1)
+        assert marked == {
+            "total": None,
+            "groups": [{"id": group.id, "name": "Corpo", "completion": None}],
+            "untracked": True,
+        }
+        # O cálculo puro não sabe da flag (contrato numérico do widget — DW).
+        assert compute_day_completeness(user=user, date=_D1) == {
+            "total": 100,
+            "groups": [{"id": group.id, "name": "Corpo", "completion": 100}],
+        }
+
+
+def test_history_range_untracked_day_is_gap_and_habits_seen_ignores_it(user):
+    from accounts.models import UntrackedCollection, UntrackedDay
+
+    with tenant_context(user):
+        group = HabitGroupFactory(user=user)
+        habit = HabitFactory(user=user, group=group, type="boolean", name="Só no marcado")
+        HabitDayEntryFactory(user=user, habit=habit, date=_D1, value=Decimal("1"))
+        UntrackedDay.objects.create(date=_D1, collection=UntrackedCollection.HABITS)
+
+        data = get_habit_history_range(user=user, start=_D1, end=_D1)
+        day = data["days"][0]
+        assert day["untracked"] is True
+        assert day["total_completion"] is None
+        assert day["groups"] == []
+        assert day["entries"] == []
+        assert data["habits"] == []
+        # A flag de medicamentos NÃO conta para Hábitos.
+        UntrackedDay.objects.filter(date=_D1).delete()
+        UntrackedDay.objects.create(date=_D1, collection=UntrackedCollection.MEDICATIONS)
+        data = get_habit_history_range(user=user, start=_D1, end=_D1)
+        assert data["days"][0]["untracked"] is False
+        assert data["days"][0]["total_completion"] == 100
+
+
+def test_series_omits_untracked_points_and_keeps_day_types(user):
+    from accounts.models import UntrackedCollection, UntrackedDay
+
+    with tenant_context(user):
+        habit = HabitFactory(user=user, type="boolean")
+        HabitVersionFactory(user=user, habit=habit, effective_from=date(2025, 1, 1))
+        HabitDayEntryFactory(user=user, habit=habit, date=_D1, value=Decimal("1"))
+        HabitDayEntryFactory(user=user, habit=habit, date=_D2, value=Decimal("1"))
+        UntrackedDay.objects.create(date=_D1, collection=UntrackedCollection.HABITS)
+
+        data = get_habit_series(user=user, habit_id=habit.id, start=_D1, end=_D2)
+        assert [p["date"] for p in data["points"]] == [_D2]
+        assert data["day_types"][0]["date"] == _D1
+        assert len(data["day_types"]) == (_D2 - _D1).days + 1

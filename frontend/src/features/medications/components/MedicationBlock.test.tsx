@@ -35,6 +35,7 @@ function entry(overrides: Partial<MedicationDayEntry> = {}): MedicationDayEntry 
 function dayWith(overrides: Partial<MedicationDay> = {}): MedicationDay {
   return {
     date: '2026-03-01',
+    untracked: false,
     blocks: [
       {
         timeBlockId: 'b1',
@@ -265,14 +266,20 @@ function block(overrides: Partial<MedicationDayBlock> = {}): MedicationDayBlock 
   }
 }
 
-function renderBlock(b: MedicationDayBlock, { isPast = false } = {}) {
+function renderBlock(b: MedicationDayBlock, { isPast = false, untracked = false } = {}) {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
   return render(
     <QueryClientProvider client={qc}>
       <main aria-label="Medicamentos">
-        <MedicationBlock block={b} date="2026-03-01" dayDate="2026-03-01" isPast={isPast} />
+        <MedicationBlock
+          block={b}
+          date="2026-03-01"
+          dayDate="2026-03-01"
+          isPast={isPast}
+          untracked={untracked}
+        />
       </main>
     </QueryClientProvider>,
   )
@@ -450,5 +457,61 @@ describe('MedicationBlock — editor de dose repetível (isPast, AC6)', () => {
       target: { value: 'comp' },
     })
     expect(save).toBeEnabled()
+  })
+})
+
+// --- Story 16.2c — dia "não registrado" (sem "Dose perdida" fabricada) --------
+
+describe('MedicationBlock — dia não registrado (16.2c)', () => {
+  beforeEach(() => vi.resetAllMocks())
+
+  it('dia passado marcado: linha e bloco pendentes leem "Não registrado", nunca "Dose(s) perdida(s)"', async () => {
+    renderBlock(block({ entries: [entry({ id: 'e1', confirmedAt: null })] }), {
+      isPast: true,
+      untracked: true,
+    })
+    // Linha + cabeçalho do bloco.
+    expect(screen.getAllByText('Não registrado')).toHaveLength(2)
+    expect(screen.queryByText('Dose perdida')).not.toBeInTheDocument()
+    expect(screen.queryByText('Doses perdidas')).not.toBeInTheDocument()
+    expect(screen.queryByText('Pendente')).not.toBeInTheDocument()
+    // Continua editável: checkbox e "Corrigir dose" seguem disponíveis.
+    expect(screen.getByRole('checkbox', { name: /Losartana/ })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Corrigir dose' })).toBeInTheDocument()
+    expect(await axe(document.body)).toHaveNoViolations()
+  })
+
+  it('hoje marcado: o estado também é ESCRITO na linha (não só o checkbox)', () => {
+    renderBlock(block({ entries: [entry({ id: 'e1', confirmedAt: null })] }), {
+      isPast: false,
+      untracked: true,
+    })
+    expect(screen.getAllByText('Não registrado')).toHaveLength(2)
+    expect(screen.queryByText('Pendente')).not.toBeInTheDocument()
+    // Sem afordance de correção fora do histórico (comportamento da 8.3 mantido).
+    expect(screen.queryByRole('button', { name: 'Corrigir dose' })).not.toBeInTheDocument()
+  })
+
+  it('partial/confirmed mantêm o rótulo; só a linha sem confirmação vira "Não registrado"', () => {
+    renderBlock(
+      block({
+        entries: [
+          entry({ id: 'e1', medicationTitle: 'Losartana', confirmedAt: null }),
+          entry({ id: 'e2', medicationTitle: 'AAS', confirmedAt: '2026-03-01T10:00:00Z' }),
+        ],
+      }),
+      { isPast: true, untracked: true },
+    )
+    expect(screen.getByText('Parcial')).toBeInTheDocument()
+    expect(screen.getByText('Confirmado')).toBeInTheDocument()
+    expect(screen.getAllByText('Não registrado')).toHaveLength(1)
+    expect(screen.queryByText('Dose perdida')).not.toBeInTheDocument()
+  })
+
+  it('sem a flag, o dia passado continua lendo "Dose perdida" (8.3 intacta)', () => {
+    renderBlock(block({ entries: [entry({ id: 'e1', confirmedAt: null })] }), { isPast: true })
+    expect(screen.getByText('Dose perdida')).toBeInTheDocument()
+    expect(screen.getByText('Doses perdidas')).toBeInTheDocument()
+    expect(screen.queryByText('Não registrado')).not.toBeInTheDocument()
   })
 })

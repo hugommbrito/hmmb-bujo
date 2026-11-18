@@ -12,6 +12,9 @@ const ENTRY_DONE: HabitDayEntry = {
   habitId: 'h1',
   name: 'Ler',
   emoticon: '📖',
+  // Story 16.2: `iconKey` entrou no contrato de leitura; nenhuma superfície o
+  // renderiza ainda (DW-60) — a coluna do glifo segue vazia.
+  iconKey: null,
   type: 'boolean',
   group: 'g1',
   unit: '',
@@ -32,11 +35,26 @@ const DATA: HabitHistoryRange = {
       date: '2026-01-05',
       dayType: 'weekday',
       totalCompletion: 100,
+      untracked: false,
       groups: [{ id: 'g1', name: 'Saúde', completion: 100 }],
       entries: [ENTRY_DONE],
     },
-    { date: '2026-01-06', dayType: 'weekday', totalCompletion: null, groups: [], entries: [] },
-    { date: '2026-01-10', dayType: 'weekend', totalCompletion: null, groups: [], entries: [] },
+    {
+      date: '2026-01-06',
+      dayType: 'weekday',
+      totalCompletion: null,
+      untracked: false,
+      groups: [],
+      entries: [],
+    },
+    {
+      date: '2026-01-10',
+      dayType: 'weekend',
+      totalCompletion: null,
+      untracked: false,
+      groups: [],
+      entries: [],
+    },
   ],
 }
 

@@ -13,6 +13,11 @@
 //     com clamp para o mês-alvo mais curto (`sameDayOfMonthClamped`) — a
 //     divergência mensal do "preservar o dia da semana" que o Weekly usa
 //     (dias da semana não fazem sentido entre meses).
+//   ▶ Story 14.11 — os títulos dos buckets nomeiam o mês/ano ("Já alocados em
+//     Setembro de 2026"); `targetMonthIsPast` acrescenta a meta de mês passado
+//     (regularização atrasada). Os `aria-label` das seções ficam INALTERADOS
+//     ("Já alocados (fora do progresso)") — são contrato dos E2E. Um item que é
+//     SUBTAREFA (cabeça aberta sob pai disposto) mostra o pai (`parentTitle`).
 // ─────────────────────────────────────────────────────────────────────────────
 import { useEffect, useRef, useState } from 'react'
 import { Box, Button } from '@mui/material'
@@ -25,8 +30,9 @@ import {
   type MonthlyRitualSourceId,
   type NormalizedRitualItem,
 } from './monthlyRitualSources'
-import { parseLocalDate } from '../../../../shared/date'
+import { addMonthsIso, parseLocalDate } from '../../../../shared/date'
 import { typography } from '../../../../shared/design/tokens'
+import { formatMonthTitle } from '../../monthNames'
 
 /** Cor EXPLÍCITA (achado real do axe, DW-16): sem override, o MUI aplica
  * `theme.palette.primary` — o teal de marca LEGADO —, que fica em torno de
@@ -44,6 +50,9 @@ export interface MonthlyDecisionListProps {
    * instâncias conscientes (AC5). */
   alreadyPlacedItems?: NormalizedRitualItem[]
   alreadyPlacedInYearItems?: NormalizedRitualItem[]
+  /** Story 14.11: alvo anterior ao mês corrente (regularização atrasada) —
+   * acrescenta a meta de mês passado sob o título da fonte. */
+  targetMonthIsPast?: boolean
   view: 'pending' | 'all'
   onViewChange: (view: 'pending' | 'all') => void
   loading: boolean
@@ -67,6 +76,7 @@ export function MonthlyDecisionList({
   items,
   alreadyPlacedItems = [],
   alreadyPlacedInYearItems = [],
+  targetMonthIsPast = false,
   view,
   onViewChange,
   loading,
@@ -118,6 +128,11 @@ export function MonthlyDecisionList({
   }
 
   const actions = MONTHLY_RITUAL_SOURCE_ACTIONS[sourceId]
+  // Story 14.11: na regularização atrasada "adiar" cai em alvo+1 ≤ corrente,
+  // que vai como `'month'` — não é Future Log. O rótulo nomeia o mês real.
+  const deferLabel = targetMonthIsPast
+    ? `Adiar para ${formatMonthTitle(addMonthsIso(targetMonthFirst, 1))}`
+    : MONTHLY_RITUAL_ACTION_LABEL.defer_to_future_log
   const groupedByRecurrence = sourceId === 'recurring'
   // Só grupos com item PRESENTE viram seção (mesmo padrão de
   // `WeeklyDecisionList`/pending-dailies: labels derivados dos itens, não uma
@@ -138,6 +153,11 @@ export function MonthlyDecisionList({
       >
         {MONTHLY_RITUAL_SOURCE_LABEL[sourceId]}
       </Box>
+      {targetMonthIsPast && (
+        <Box sx={{ ...typography.meta, color: 'var(--ds-ink-muted)', mb: 'var(--ds-space-2)' }}>
+          {formatMonthTitle(targetMonthFirst)} já passou — as decisões abaixo regularizam o registro desse mês.
+        </Box>
+      )}
 
       <Box role="group" aria-label="Alternar entre pendentes e tudo" sx={{ display: 'flex', gap: 'var(--ds-space-1)', mb: 'var(--ds-space-2)' }}>
         <Button aria-pressed={view === 'pending'} onClick={() => onViewChange('pending')} size="small" sx={DECISION_BUTTON_SX}>
@@ -196,7 +216,16 @@ export function MonthlyDecisionList({
                       borderBottom: '1px solid var(--ds-border)',
                     }}
                   >
-                    <Box sx={{ ...typography.body, color: 'var(--ds-ink)' }}>{item.title}</Box>
+                    {/* Título como filho DIRETO da linha focável (paridade com a
+                        `WeeklyDecisionList`); o pai da subtarefa-cabeça vai ANINHADO. */}
+                    <Box sx={{ ...typography.body, color: 'var(--ds-ink)' }}>
+                      {item.title}
+                      {item.parentTitle && (
+                        <Box component="span" sx={{ display: 'block', mt: 'var(--ds-space-1)', ...typography.meta, color: 'var(--ds-ink-muted)' }}>
+                          Subtarefa de {item.parentTitle}
+                        </Box>
+                      )}
+                    </Box>
                     <Box sx={{ display: 'flex', gap: 'var(--ds-space-1)', flexWrap: 'wrap' }}>
                       {actions.includes('allocate') && (
                         <Button size="small" aria-disabled={offline} onClick={() => allocate(item.id)} sx={DECISION_BUTTON_SX}>
@@ -235,7 +264,7 @@ export function MonthlyDecisionList({
                       )}
                       {actions.includes('defer_to_future_log') && (
                         <Button size="small" aria-disabled={offline} onClick={() => actOn(item.id, index, () => onDeferToFutureLog(item.id))} sx={DECISION_BUTTON_SX}>
-                          {MONTHLY_RITUAL_ACTION_LABEL.defer_to_future_log}
+                          {deferLabel}
                         </Button>
                       )}
                     </Box>
@@ -258,7 +287,9 @@ export function MonthlyDecisionList({
 
       {sourceId === 'recurring' && alreadyPlacedItems.length > 0 && (
         <Box component="section" aria-label="Já alocados (fora do progresso)" sx={{ mt: 'var(--ds-space-3)' }}>
-          <Box sx={{ ...typography.label, color: 'var(--ds-ink-muted)' }}>Já alocados</Box>
+          <Box sx={{ ...typography.label, color: 'var(--ds-ink-muted)' }}>
+            Já alocados em {formatMonthTitle(targetMonthFirst)}
+          </Box>
           {alreadyPlacedItems.map((item) => (
             <Box
               key={item.id}
@@ -275,7 +306,9 @@ export function MonthlyDecisionList({
 
       {sourceId === 'recurring' && alreadyPlacedInYearItems.length > 0 && (
         <Box component="section" aria-label="Já alocados no ano (fora do progresso)" sx={{ mt: 'var(--ds-space-3)' }}>
-          <Box sx={{ ...typography.label, color: 'var(--ds-ink-muted)' }}>Já alocados no ano</Box>
+          <Box sx={{ ...typography.label, color: 'var(--ds-ink-muted)' }}>
+            Já alocados no ano de {targetMonthFirst.slice(0, 4)}
+          </Box>
           {alreadyPlacedInYearItems.map((item) => (
             <Box
               key={item.id}
